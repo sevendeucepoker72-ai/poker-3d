@@ -1,0 +1,176 @@
+/* ================================================================
+   mobile.css — Touch-optimized responsive overrides
+   Imported in main.jsx / App.jsx for mobile PWA support
+   ================================================================ */
+
+/* ── Safe area insets (iPhone notch / home bar) ────────────────── */
+:root {
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left, 0px);
+  --safe-right:  env(safe-area-inset-right, 0px);
+}
+
+/* ── Touch targets — minimum 44px per Apple HIG ───────────────── */
+@media (max-width: 768px) {
+  button, [role="button"], .btn-accent, .lobby-nav-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Lobby nav: icon only on small screens */
+  .lobby-nav-label { display: none; }
+  .lobby-nav-btn   { font-size: 1.3rem; padding: 10px 14px; }
+
+  /* Top bar: compress */
+  .lobby-top-bar { padding: 8px 12px; flex-wrap: wrap; gap: 6px; }
+  .lobby-top-bar-left { gap: 6px; flex-wrap: wrap; }
+  .lobby-top-bar-name { font-size: 0.85rem; }
+  .lobby-live-badge, .lobby-online-count { font-size: 0.7rem; }
+
+  /* Lobby tabs: scrollable horizontal */
+  .lobby-nav { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .lobby-nav::-webkit-scrollbar { display: none; }
+
+  /* Table list: single column */
+  .table-list-grid { grid-template-columns: 1fr !important; }
+  .table-card { padding: 12px; }
+
+  /* Quick games: 2 columns */
+  .quick-games-grid { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Profile stats: 3 cols */
+  .quick-stats-bar { flex-wrap: wrap; }
+  .stat-chip { min-width: calc(33% - 6px); }
+
+  /* Modals: full screen on mobile */
+  .lobby-modal, [class*="-modal"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* GameHUD action buttons: larger touch targets */
+  .action-btn { min-height: 52px; font-size: 1rem; }
+  .raise-slider { height: 28px; }
+
+  /* Advanced toolbar: two rows + GTO column on right */
+  .adv-toolbar {
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    top: 96px !important;
+    right: 6px !important;
+    bottom: auto !important;
+    transform: none !important;
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    border: none;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .adv-tool-btn {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 14px !important;
+  }
+
+  /* Chat panel: bottom sheet */
+  .chat-panel { bottom: calc(64px + var(--safe-bottom)); }
+
+  /* Timing tells + commentary: smaller on mobile */
+  .timing-tell-panel { width: 190px; font-size: 9px; }
+  .commentary-panel  { width: 220px; }
+  .nameplate { width: 110px !important; min-height: 36px !important; }
+  .nameplate__name { font-size: 9.5px !important; }
+
+  /* Hide decorative elements to save space */
+  .lobby-particles { display: none; }
+}
+
+/* ── Portrait phone (≤ 480px) ──────────────────────────────────── */
+@media (max-width: 480px) {
+  .lobby-top-bar-chips { font-size: 0.85rem; }
+  .lobby-conn-pill      { display: none; }
+  .activity-ticker      { font-size: 0.7rem; padding: 4px 8px; }
+
+  /* Profile card: stack vertically */
+  .lobby-profile-card { flex-direction: column; align-items: center; text-align: center; }
+
+  /* Section headers: smaller */
+  .section-header { font-size: 0.75rem; }
+
+  /* Buttons: full width */
+  .lobby-full-width-btn, .btn-accent { width: 100%; justify-content: center; }
+
+  /* Featured table banner: compress */
+  .featured-table-banner { padding: 10px 12px; }
+
+  /* GameHUD: raise panel full-width */
+  .raise-panel { width: calc(100vw - 24px) !important; left: 12px !important; right: 12px !important; }
+}
+
+/* ── Landscape phone ───────────────────────────────────────────── */
+@media (max-height: 500px) and (orientation: landscape) {
+  .lobby-top-bar { padding: 4px 12px; }
+  .lobby-tab-content { padding-top: 8px; }
+  .adv-toolbar { bottom: calc(8px + var(--safe-bottom)) !important; }
+}
+
+/* ── Swipe gesture support (touch events handled in JS) ─────────── */
+.game-scene-touch {
+  touch-action: none; /* prevent default scroll — we handle gestures */
+}
+
+/* ── PWA install prompt banner ──────────────────────────────────── */
+.pwa-install-banner {
+  position: fixed;
+  bottom: calc(16px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(6, 8, 20, 0.96);
+  border: 1px solid rgba(0, 217, 255, 0.3);
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 9999;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  max-width: calc(100vw - 32px);
+  animation: pwa-banner-slide-up 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes pwa-banner-slide-up {
+  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.pwa-install-banner-icon  { font-size: 1.6rem; flex-shrink: 0; }
+.pwa-install-banner-text  { flex: 1; }
+.pwa-install-banner-title { font-size: 13px; font-weight: 700; color: #e2e8f0; }
+.pwa-install-banner-sub   { font-size: 11px; color: #64748B; margin-top: 2px; }
+.pwa-install-banner-btn   {
+  background: linear-gradient(135deg, #00D9FF, #0EA5E9);
+  color: #0a0a1a;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pwa-install-banner-dismiss {
+  background: none;
+  border: none;
+  color: #475569;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  flex-shrink: 0;
+}

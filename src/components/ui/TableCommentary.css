@@ -1,0 +1,117 @@
+.commentary-panel {
+  position: fixed;
+  bottom: 120px;
+  left: 12px;
+  width: 260px;
+  max-height: 280px;
+  background: rgba(5, 5, 15, 0.94);
+  border: 1px solid rgba(0, 217, 255, 0.15);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+  z-index: 480;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden;
+  transition: max-height 0.25s ease;
+}
+
+.commentary-panel--mini {
+  max-height: 36px;
+}
+
+.commentary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+
+.commentary-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #F59E0B;
+  letter-spacing: 0.4px;
+}
+
+.commentary-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.commentary-btn {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 3px;
+  line-height: 1;
+}
+.commentary-btn:hover { color: #fff; }
+.commentary-btn--close { font-size: 15px; }
+
+.commentary-feed {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+  scroll-behavior: smooth;
+}
+.commentary-feed::-webkit-scrollbar { width: 3px; }
+.commentary-feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.commentary-empty {
+  padding: 12px;
+  text-align: center;
+  color: #334155;
+  font-size: 11px;
+}
+
+.commentary-entry {
+  padding: 4px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  animation: commentary-slide-in 0.3s ease;
+}
+
+@keyframes commentary-slide-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.commentary-ts {
+  display: block;
+  font-size: 7.5px;
+  color: #334155;
+  margin-bottom: 1px;
+  font-family: 'Courier New', monospace;
+}
+
+.commentary-text {
+  font-size: 10.5px;
+  color: #94A3B8;
+  line-height: 1.4;
+}
+
+/* Type variants */
+.commentary-entry--allin .commentary-text {
+  color: #EF4444;
+  font-weight: 600;
+}
+.commentary-entry--bigwin .commentary-text {
+  color: #4ADE80;
+  font-weight: 600;
+}
+.commentary-entry--elimination .commentary-text {
+  color: #F97316;
+  font-weight: 600;
+}
+.commentary-entry--llm .commentary-text {
+  color: #E2E8F0;
+}
+.commentary-entry--system .commentary-text {
+  color: #00D9FF;
+  font-size: 9.5px;
+}

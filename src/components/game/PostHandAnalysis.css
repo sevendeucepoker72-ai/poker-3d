@@ -1,0 +1,156 @@
+/* ===== Post Hand Analysis Panel ===== */
+.post-hand-analysis {
+  position: fixed;
+  bottom: 140px;
+  right: 16px;
+  width: 320px;
+  max-width: 90vw;
+  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
+  border: 1px solid #333;
+  border-radius: 12px;
+  z-index: 550;
+  overflow: hidden;
+  animation: pha-slide-in 0.3s ease-out;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes pha-slide-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.post-hand-analysis.pha-dismissed {
+  animation: pha-slide-out 0.3s ease-in forwards;
+}
+
+@keyframes pha-slide-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(20px); }
+}
+
+.pha-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid #333;
+  cursor: pointer;
+}
+
+.pha-header-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #00D9FF;
+}
+
+.pha-header-toggle {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.pha-timer-bar {
+  height: 3px;
+  background: #333;
+  position: relative;
+}
+
+.pha-timer-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00D9FF, #00D9FF);
+  transition: width 0.1s linear;
+}
+
+.pha-body {
+  padding: 12px 14px;
+}
+
+.pha-street-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.pha-street-row:last-child {
+  border-bottom: none;
+}
+
+.pha-street-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #aaaaaa;
+  min-width: 60px;
+}
+
+.pha-street-hand {
+  font-size: 0.72rem;
+  color: #ccc;
+  flex: 1;
+  text-align: center;
+}
+
+.pha-street-strength {
+  width: 60px;
+  height: 6px;
+  background: #222;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.pha-street-strength-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.pha-divider {
+  height: 1px;
+  background: #333;
+  margin: 8px 0;
+}
+
+.pha-odds-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.pha-odds-label {
+  font-size: 0.72rem;
+  color: #aaaaaa;
+}
+
+.pha-odds-value {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.pha-suggestion {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.pha-suggestion.pha-good {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #4ADE80;
+}
+
+.pha-suggestion.pha-marginal {
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  color: #EAB308;
+}
+
+.pha-suggestion.pha-mistake {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #EF4444;
+}

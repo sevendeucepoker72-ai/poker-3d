@@ -1,0 +1,115 @@
+.spin-reveal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: spin-overlay-in 0.3s ease-out;
+}
+
+@keyframes spin-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.spin-reveal-content {
+  text-align: center;
+  padding: 40px 60px;
+  background: linear-gradient(135deg, #080808, #2d1a4e);
+  border: 2px solid #4A3A6A;
+  border-radius: 24px;
+  box-shadow: 0 0 60px rgba(106, 58, 186, 0.3);
+}
+
+.spin-reveal-title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #00D9FF, #FF6B35);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 4px;
+  letter-spacing: 2px;
+}
+
+.spin-reveal-subtitle {
+  font-size: 0.85rem;
+  color: #aaaaaa;
+  margin-bottom: 24px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.spin-reveal-number {
+  width: 160px;
+  height: 160px;
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 3px solid #4A3A6A;
+  background: rgba(5, 5, 5, 0.6);
+}
+
+.spin-cycling {
+  animation: spin-pulse 0.15s ease-in-out infinite;
+}
+
+.spin-landed {
+  animation: spin-land 0.5s ease-out;
+  border-color: #00D9FF;
+  box-shadow: 0 0 40px rgba(0, 217, 255, 0.3);
+}
+
+@keyframes spin-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@keyframes spin-land {
+  0% { transform: scale(1.3); }
+  50% { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+
+.spin-multiplier {
+  font-size: 3.5rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.spin-reveal-prize {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 20px;
+  animation: prize-bounce 0.5s ease-out;
+}
+
+@keyframes prize-bounce {
+  0% { opacity: 0; transform: translateY(20px); }
+  50% { transform: translateY(-5px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.spin-reveal-tiers {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.spin-tier {
+  padding: 4px 12px;
+  border: 1px solid #3A3A5A;
+  border-radius: 16px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.spin-tier-active {
+  transform: scale(1.2);
+  box-shadow: 0 0 12px currentColor;
+}

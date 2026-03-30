@@ -1,0 +1,126 @@
+.timing-tell-panel {
+  position: fixed;
+  bottom: 420px;
+  right: 12px;
+  width: 230px;
+  background: rgba(5, 5, 15, 0.96);
+  border: 1px solid rgba(0, 217, 255, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+  z-index: 490;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden;
+}
+
+.timing-tell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.timing-tell-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #00D9FF;
+  letter-spacing: 0.5px;
+}
+
+.timing-tell-close {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.timing-tell-close:hover { color: #fff; }
+
+.timing-tell-legend {
+  padding: 5px 10px;
+  font-size: 8.5px;
+  color: #64748B;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.timing-tell-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+
+.timing-tell-table thead tr {
+  background: rgba(255,255,255,0.03);
+}
+
+.timing-tell-table th {
+  padding: 4px 8px;
+  text-align: left;
+  font-size: 8px;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.timing-tell-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.timing-tell-table tr:last-child td {
+  border-bottom: none;
+}
+
+.timing-name {
+  color: #CBD5E1;
+  font-weight: 600;
+  max-width: 70px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timing-num {
+  color: #94A3B8;
+  font-family: 'Courier New', monospace;
+  font-size: 9.5px;
+}
+
+.timing-badge {
+  font-size: 8px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.timing-neutral {
+  color: #334155;
+  font-size: 10px;
+}
+
+.timing-tell-empty {
+  padding: 16px 12px;
+  text-align: center;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.timing-tell-empty span {
+  font-size: 9px;
+  color: #334155;
+}
+
+.timing-tell-note {
+  padding: 5px 10px;
+  font-size: 8px;
+  color: #334155;
+  text-align: center;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}

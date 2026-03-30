@@ -1,0 +1,333 @@
+/* ─── Post-Hand Coach ──────────────────────────────────────────── */
+
+.phc-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 24px;
+  pointer-events: none;
+}
+
+/* Panel – slides up from bottom */
+.phc-panel {
+  pointer-events: all;
+  background: rgba(5, 5, 12, 0.97);
+  border: 1px solid #00D9FF44;
+  border-radius: 14px 14px 12px 12px;
+  box-shadow:
+    0 0 0 1px #00D9FF18,
+    0 -4px 40px rgba(0, 217, 255, 0.1),
+    0 8px 48px rgba(0, 0, 0, 0.8);
+  width: min(480px, calc(100vw - 32px));
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: phc-slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+}
+
+@keyframes phc-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(60px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Header */
+.phc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid #00D9FF1a;
+  flex-shrink: 0;
+}
+
+.phc-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.phc-robot-icon {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.phc-title {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #00D9FF;
+  text-transform: uppercase;
+}
+
+.phc-close-btn {
+  background: transparent;
+  border: 1px solid #445566;
+  border-radius: 6px;
+  color: #667788;
+  font-size: 0.85rem;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  line-height: 1.5;
+}
+
+.phc-close-btn:hover {
+  border-color: #EF4444;
+  color: #EF4444;
+}
+
+/* Scrollable body */
+.phc-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  scrollbar-width: thin;
+  scrollbar-color: #00D9FF33 transparent;
+}
+
+.phc-body::-webkit-scrollbar { width: 4px; }
+.phc-body::-webkit-scrollbar-thumb { background: #00D9FF33; border-radius: 2px; }
+
+/* Loading state */
+.phc-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 0;
+}
+
+.phc-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #00D9FF22;
+  border-top-color: #00D9FF;
+  border-radius: 50%;
+  animation: phc-spin 0.8s linear infinite;
+}
+
+@keyframes phc-spin {
+  to { transform: rotate(360deg); }
+}
+
+.phc-loading-text {
+  color: #8899aa;
+  font-size: 0.9rem;
+  font-style: italic;
+  margin: 0;
+  text-align: center;
+}
+
+/* Error state */
+.phc-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #EF4444;
+  font-size: 0.85rem;
+  padding: 20px 0;
+  justify-content: center;
+}
+
+.phc-error-icon {
+  font-size: 1rem;
+}
+
+/* Score row */
+.phc-score-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.phc-score-number {
+  font-size: 3.2rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  transition: color 0.3s;
+}
+
+.phc-score-denom {
+  font-size: 1.1rem;
+  font-weight: 600;
+  opacity: 0.6;
+  margin-left: 2px;
+}
+
+.phc-score-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #556677;
+  margin-bottom: 6px;
+}
+
+/* Color utilities */
+.phc-green  { color: #22C55E; text-shadow: 0 0 16px rgba(34, 197, 94, 0.35); }
+.phc-yellow { color: #F59E0B; text-shadow: 0 0 16px rgba(245, 158, 11, 0.3); }
+.phc-red    { color: #EF4444; text-shadow: 0 0 16px rgba(239, 68, 68, 0.3); }
+
+/* Summary */
+.phc-summary {
+  font-size: 0.88rem;
+  color: #b0c4d8;
+  line-height: 1.55;
+  margin: 0 0 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #00D9FF15;
+}
+
+/* Decisions section */
+.phc-section-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #00D9FF;
+  opacity: 0.6;
+  margin-bottom: 8px;
+}
+
+.phc-decisions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.phc-decision-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #ffffff0a;
+  border-radius: 8px;
+  padding: 9px 12px;
+}
+
+.phc-decision-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.phc-decision-action {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #dde8f0;
+}
+
+.phc-quality-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
+.phc-quality-good {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid #22C55E66;
+  color: #22C55E;
+}
+
+.phc-quality-ok {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid #F59E0B66;
+  color: #F59E0B;
+}
+
+.phc-quality-poor {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid #EF444466;
+  color: #EF4444;
+}
+
+.phc-decision-advice {
+  font-size: 0.78rem;
+  color: #7a8fa0;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Key lesson callout */
+.phc-key-lesson {
+  margin-top: 16px;
+  background: linear-gradient(135deg, rgba(0, 217, 255, 0.06), rgba(0, 217, 255, 0.02));
+  border: 1px solid #00D9FF33;
+  border-left: 3px solid #00D9FF;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.phc-key-lesson-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #00D9FF;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.phc-key-lesson-text {
+  font-size: 0.85rem;
+  color: #c8dce8;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* Footer */
+.phc-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-top: 1px solid #00D9FF1a;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.phc-countdown-text {
+  font-size: 0.72rem;
+  color: #445566;
+  letter-spacing: 0.04em;
+}
+
+.phc-dismiss-btn {
+  background: rgba(0, 217, 255, 0.08);
+  border: 1px solid #00D9FF44;
+  border-radius: 6px;
+  color: #00D9FF;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 5px 16px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.phc-dismiss-btn:hover {
+  background: rgba(0, 217, 255, 0.16);
+  border-color: #00D9FF;
+  box-shadow: 0 0 8px rgba(0, 217, 255, 0.25);
+}

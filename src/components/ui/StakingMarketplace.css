@@ -1,0 +1,459 @@
+/* Overlay */
+.staking-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 8000;
+  padding: 16px;
+}
+
+/* Modal */
+.staking-modal {
+  background: #080c10;
+  border: 1px solid #00D9FF33;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 580px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 0 40px #00D9FF18, 0 20px 60px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+  font-family: 'Inter', sans-serif;
+  color: #e0e0e0;
+}
+
+/* Header */
+.staking-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #ffffff0a;
+  flex-shrink: 0;
+}
+
+.staking-title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #00D9FF;
+  letter-spacing: 0.5px;
+}
+
+.staking-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+}
+
+.staking-close-btn {
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+  line-height: 1;
+}
+
+.staking-close-btn:hover {
+  color: #fff;
+  background: #ffffff11;
+}
+
+/* Explainer */
+.staking-explainer {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 14px 24px;
+  padding: 12px 14px;
+  background: #00D9FF0a;
+  border: 1px solid #00D9FF22;
+  border-radius: 10px;
+  font-size: 12px;
+  color: #99d4e8;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+
+.staking-explainer-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* Tabs */
+.staking-tabs {
+  display: flex;
+  padding: 0 24px;
+  border-bottom: 1px solid #ffffff0a;
+  flex-shrink: 0;
+}
+
+.staking-tab {
+  padding: 10px 18px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #666;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+
+.staking-tab:hover {
+  color: #aaa;
+}
+
+.staking-tab.active {
+  color: #00D9FF;
+  border-bottom-color: #00D9FF;
+}
+
+/* Scrollable content */
+.staking-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: #00D9FF33 transparent;
+}
+
+.staking-content::-webkit-scrollbar {
+  width: 5px;
+}
+
+.staking-content::-webkit-scrollbar-thumb {
+  background: #00D9FF33;
+  border-radius: 3px;
+}
+
+/* Empty state */
+.staking-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 0;
+  font-size: 14px;
+  color: #555;
+}
+
+.staking-empty-sub {
+  font-size: 12px;
+  color: #3a3a3a;
+}
+
+/* Offer cards */
+.staking-offers {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.staking-card {
+  background: #0d1520;
+  border: 1px solid #00D9FF22;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.staking-card:hover {
+  border-color: #00D9FF55;
+  box-shadow: 0 0 16px #00D9FF11;
+}
+
+.staking-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.staking-card-player {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.staking-card-tournament {
+  font-size: 12px;
+  color: #00D9FFaa;
+  margin-top: 2px;
+}
+
+.staking-card-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.staking-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #00D9FF;
+  background: #00D9FF18;
+  border: 1px solid #00D9FF44;
+  border-radius: 20px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+.staking-backers-count {
+  font-size: 11px;
+  color: #555;
+}
+
+/* Progress bar */
+.staking-progress-track {
+  height: 5px;
+  background: #1a2a3a;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.staking-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00D9FF, #0066ff);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.staking-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #444;
+  margin-top: -4px;
+}
+
+/* Price row */
+.staking-price-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.staking-price-label {
+  color: #777;
+}
+
+.staking-price-value {
+  font-weight: 700;
+  color: #ffd700;
+}
+
+/* Backers pills */
+.staking-backers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.staking-backer-pill {
+  font-size: 11px;
+  background: #1a2a1a;
+  border: 1px solid #00ff8833;
+  color: #00ff88aa;
+  border-radius: 20px;
+  padding: 2px 9px;
+}
+
+/* Buy row */
+.staking-buy-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Inputs */
+.staking-input {
+  background: #0a1520;
+  border: 1px solid #00D9FF33;
+  border-radius: 8px;
+  color: #e0e0e0;
+  padding: 8px 12px;
+  font-size: 13px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: inherit;
+}
+
+.staking-input:focus {
+  border-color: #00D9FF;
+  box-shadow: 0 0 0 2px #00D9FF22;
+}
+
+.staking-input::placeholder {
+  color: #333;
+}
+
+.staking-input-small {
+  width: 100px;
+  flex-shrink: 0;
+}
+
+/* Range */
+.staking-range-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.staking-range {
+  flex: 1;
+  accent-color: #00D9FF;
+  cursor: pointer;
+}
+
+.staking-range-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #00D9FF;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* Buttons */
+.staking-btn {
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.staking-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.staking-btn-buy {
+  background: #00D9FF22;
+  border-color: #00D9FF88;
+  color: #00D9FF;
+}
+
+.staking-btn-buy:hover:not(:disabled) {
+  background: #00D9FF33;
+  border-color: #00D9FF;
+  box-shadow: 0 0 10px #00D9FF44;
+}
+
+.staking-btn-create {
+  width: 100%;
+  padding: 11px;
+  background: linear-gradient(135deg, #00D9FF22, #0066ff22);
+  border-color: #00D9FF88;
+  color: #00D9FF;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.staking-btn-create:hover:not(:disabled) {
+  background: linear-gradient(135deg, #00D9FF33, #0066ff33);
+  border-color: #00D9FF;
+  box-shadow: 0 0 16px #00D9FF33;
+}
+
+/* Result messages */
+.staking-result {
+  font-size: 12px;
+  padding: 7px 12px;
+  border-radius: 7px;
+  text-align: center;
+}
+
+.staking-result-ok {
+  background: #00ff8820;
+  border: 1px solid #00ff8855;
+  color: #00ff88;
+}
+
+.staking-result-err {
+  background: #ff6b6b20;
+  border: 1px solid #ff6b6b55;
+  color: #ff6b6b;
+}
+
+/* Sell form */
+.staking-sell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.staking-sell-info {
+  font-size: 13px;
+  color: #aaa;
+  padding: 10px 14px;
+  background: #0d1520;
+  border: 1px solid #00D9FF18;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+
+.staking-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.staking-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.staking-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.staking-label-hint {
+  text-transform: none;
+  font-weight: 400;
+  color: #555;
+}
+
+.staking-sell-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #0d1520;
+  border: 1px solid #00D9FF18;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #888;
+}
+
+.staking-sell-total {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffd700;
+}

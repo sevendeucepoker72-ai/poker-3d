@@ -1,0 +1,142 @@
+.tournament-section {
+  margin-top: 24px;
+}
+
+.tournament-section h2 {
+  color: #00D9FF;
+  font-size: 1.2rem;
+  margin-bottom: 12px;
+}
+
+.tournament-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tournament-card {
+  background: linear-gradient(135deg, rgba(10, 10, 10, 0.9), rgba(45, 26, 78, 0.6));
+  border: 1px solid rgba(0, 217, 255, 0.15);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: all 0.2s;
+}
+.tournament-card:hover {
+  border-color: rgba(0, 217, 255, 0.4);
+  transform: translateX(2px);
+}
+
+.tournament-card.running {
+  border-color: rgba(74, 222, 128, 0.3);
+}
+.tournament-card.finished {
+  opacity: 0.5;
+}
+
+.tournament-icon {
+  font-size: 1.8rem;
+  width: 48px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.tournament-info {
+  flex: 1;
+}
+
+.tournament-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.tournament-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.tournament-detail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tournament-detail-label {
+  color: #666;
+}
+.tournament-detail-value {
+  color: #00D9FF;
+  font-weight: 600;
+}
+
+.tournament-status-badge {
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.tournament-status-badge.registering {
+  background: rgba(0, 217, 255, 0.2);
+  color: #00D9FF;
+}
+.tournament-status-badge.running {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ADE80;
+}
+
+.tournament-timer {
+  font-size: 0.75rem;
+  color: #00D9FF;
+  margin-top: 4px;
+}
+
+.tournament-blinds-info {
+  font-size: 0.7rem;
+  color: #666;
+  margin-top: 2px;
+}
+
+.tournament-actions {
+  flex-shrink: 0;
+}
+
+.btn-tournament-register {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: linear-gradient(135deg, #00D9FF, #00D9FF);
+  color: #fff;
+}
+.btn-tournament-register:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 12px rgba(0, 217, 255, 0.3);
+}
+.btn-tournament-register:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-tournament-registered {
+  padding: 8px 20px;
+  border: 1px solid #4ADE80;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: transparent;
+  color: #4ADE80;
+  cursor: default;
+}

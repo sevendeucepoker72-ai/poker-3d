@@ -1,0 +1,119 @@
+.emote-trigger-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid #444;
+  color: #ccc;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+.emote-trigger-btn:hover {
+  background: rgba(0, 217, 255, 0.15);
+  border-color: #00D9FF;
+  color: #00D9FF;
+}
+.emote-trigger-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.emote-wheel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emote-wheel-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.emote-wheel {
+  position: relative;
+  width: 240px;
+  height: 240px;
+  z-index: 1;
+}
+
+.emote-item {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 10, 0.95);
+  border: 2px solid #333;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.7rem;
+  color: #aaa;
+}
+
+.emote-item:hover {
+  transform: scale(1.25);
+  border-color: #00D9FF;
+  background: rgba(0, 217, 255, 0.15);
+  z-index: 2;
+}
+
+.emote-item-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.emote-item-label {
+  font-size: 0.55rem;
+  margin-top: 2px;
+  color: #888;
+}
+
+/* Floating emote display */
+.emote-float {
+  position: absolute;
+  pointer-events: none;
+  animation: emoteFloat 2s ease-out forwards;
+  z-index: 600;
+  font-size: 2rem;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes emoteFloat {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-30px) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-60px) scale(0.8);
+  }
+}
+
+.emote-cooldown-bar {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.emote-cooldown-fill {
+  height: 100%;
+  background: #00D9FF;
+  transition: width 0.1s linear;
+}

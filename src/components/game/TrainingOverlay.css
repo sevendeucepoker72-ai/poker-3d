@@ -1,0 +1,261 @@
+.training-overlay {
+  position: absolute;
+  top: 80px;
+  left: 16px;
+  width: 220px;
+  background: rgba(5, 5, 5, 0.88);
+  border: 1px solid #2A2A4A;
+  border-radius: 12px;
+  padding: 16px;
+  color: #ffffff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  z-index: 25;
+  pointer-events: auto;
+  animation: training-fadein 0.3s ease-out;
+  backdrop-filter: blur(6px);
+}
+
+@keyframes training-fadein {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.training-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #2A2A4A;
+}
+
+.training-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #6ABAFF;
+}
+
+.training-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(106, 186, 255, 0.15);
+  border: 1px solid rgba(106, 186, 255, 0.3);
+  color: #6ABAFF;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Equity gauge */
+.training-equity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.equity-gauge {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.equity-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.equity-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 4;
+}
+
+.equity-fill {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.5s ease, stroke 0.5s ease;
+}
+
+.equity-fill.equity-low {
+  stroke: #EF4444;
+}
+
+.equity-fill.equity-mid {
+  stroke: #EAB308;
+}
+
+.equity-fill.equity-high {
+  stroke: #4ADE80;
+}
+
+.equity-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.equity-pct {
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.equity-pct.equity-low { color: #EF4444; }
+.equity-pct.equity-mid { color: #EAB308; }
+.equity-pct.equity-high { color: #4ADE80; }
+
+.equity-label {
+  font-size: 0.5rem;
+  color: #6A6A8A;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.equity-info {
+  flex: 1;
+}
+
+.equity-info-label {
+  font-size: 0.65rem;
+  color: #6A6A8A;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.equity-info-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #CCC;
+}
+
+/* Pot odds */
+.training-pot-odds {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+}
+
+.pot-odds-label {
+  font-size: 0.7rem;
+  color: #aaaaaa;
+}
+
+.pot-odds-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #00D9FF;
+}
+
+/* Suggested action */
+.training-suggested {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid;
+}
+
+.training-suggested.action-fold {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.training-suggested.action-check {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.training-suggested.action-call {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.training-suggested.action-raise {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.suggested-label {
+  font-size: 0.6rem;
+  color: #aaaaaa;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.suggested-action {
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.suggested-action.action-fold { color: #EF4444; }
+.suggested-action.action-check { color: #3B82F6; }
+.suggested-action.action-call { color: #4ADE80; }
+.suggested-action.action-raise { color: #4ADE80; }
+
+.suggested-reasoning {
+  font-size: 0.65rem;
+  color: #999;
+  line-height: 1.4;
+}
+
+/* Hand strength */
+.training-hand {
+  margin-bottom: 10px;
+}
+
+.hand-label {
+  font-size: 0.6rem;
+  color: #aaaaaa;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.hand-value {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* Outs */
+.training-outs {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+.outs-label {
+  font-size: 0.7rem;
+  color: #aaaaaa;
+}
+
+.outs-value {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #6ABAFF;
+}
+
+/* Draw type */
+.training-draw {
+  padding: 4px 10px;
+  font-size: 0.7rem;
+  color: #00D9FF;
+  font-style: italic;
+}

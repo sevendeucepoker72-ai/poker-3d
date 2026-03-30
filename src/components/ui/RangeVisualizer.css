@@ -1,0 +1,261 @@
+/* ============================================================
+   RangeVisualizer – 13×13 poker hand range matrix overlay
+   ============================================================ */
+
+.range-visualizer {
+  position: fixed;
+  top: 96px;
+  left: 12px;
+  width: 290px;
+  background: rgba(5, 5, 5, 0.95);
+  border: 1px solid rgba(0, 217, 255, 0.2);
+  border-radius: 10px;
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.7),
+    0 0 8px rgba(0, 217, 255, 0.08);
+  z-index: 1100;
+  font-family: monospace;
+  color: rgba(255, 255, 255, 0.85);
+  user-select: none;
+  overflow: visible;
+}
+
+/* ── Header ───────────────────────────────────────────────── */
+.rv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px 10px 0 0;
+  border-bottom: 1px solid rgba(0, 217, 255, 0.1);
+}
+
+.rv-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(0, 217, 255, 0.9);
+  text-transform: uppercase;
+}
+
+.rv-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.rv-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  line-height: 1;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.rv-btn:hover {
+  background: rgba(0, 217, 255, 0.15);
+  color: #fff;
+}
+
+/* ── Body ─────────────────────────────────────────────────── */
+.rv-body {
+  padding: 6px 7px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* ── Grid wrapper ─────────────────────────────────────────── */
+.rv-grid-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Column labels row */
+.rv-col-labels {
+  display: flex;
+  gap: 1px;
+  align-items: center;
+}
+
+.rv-corner {
+  width: 12px;
+  height: 8px;
+  flex-shrink: 0;
+}
+
+.rv-rank-label {
+  width: 18px;
+  height: 8px;
+  font-size: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.45);
+  flex-shrink: 0;
+}
+
+/* Grid rows */
+.rv-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.rv-row {
+  display: flex;
+  gap: 1px;
+  align-items: center;
+}
+
+.rv-row-label {
+  width: 12px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* ── Cell ─────────────────────────────────────────────────── */
+.rv-cell {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 2px;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: visible;
+  transition: filter 0.1s;
+}
+
+.rv-cell:hover {
+  filter: brightness(1.35);
+  z-index: 10;
+}
+
+.rv-cell-label {
+  font-size: 7px;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
+  /* hide text by default; show on hover via parent */
+  display: none;
+}
+
+/* Show abbreviated label on hover only for cells wider than 3 chars */
+.rv-cell:hover .rv-cell-label {
+  display: block;
+}
+
+/* ── Opponent range tint ─────────────────────────────────── */
+.rv-opponent-tint {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 217, 255, 0.20);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+/* ── Hero cell highlight ──────────────────────────────────── */
+.rv-hero-cell {
+  filter: brightness(1.25);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.9),
+    0 0 6px rgba(255, 255, 255, 0.5);
+  animation: hero-cell-pulse 1.2s ease-in-out infinite;
+  z-index: 5;
+}
+
+@keyframes hero-cell-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.9),
+      0 0 6px rgba(255, 255, 255, 0.5);
+    filter: brightness(1.25);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 1),
+      0 0 14px rgba(255, 255, 255, 0.85);
+    filter: brightness(1.55);
+  }
+}
+
+/* ── Hover tooltip ────────────────────────────────────────── */
+.rv-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 10, 0.96);
+  border: 1px solid rgba(0, 217, 255, 0.35);
+  border-radius: 5px;
+  padding: 4px 7px;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 200;
+  text-align: center;
+  line-height: 1.5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.rv-cell:hover .rv-tooltip {
+  display: block;
+}
+
+/* Flip tooltip downward for the top two rows to avoid clipping */
+.rv-rows > .rv-row:nth-child(-n+2) .rv-tooltip {
+  bottom: auto;
+  top: calc(100% + 4px);
+}
+
+/* ── Stats row ────────────────────────────────────────────── */
+.rv-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  padding: 2px 1px 0;
+}
+
+.rv-pot-odds {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Legend ───────────────────────────────────────────────── */
+.rv-legend {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding-top: 1px;
+}
+
+.rv-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 8px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.rv-legend-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}

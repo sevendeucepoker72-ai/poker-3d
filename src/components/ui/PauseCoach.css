@@ -1,0 +1,436 @@
+/* =========================================================
+   PauseCoach.css – Training Mode Pause & Analyze Overlay
+   ========================================================= */
+
+/* ---------- Full-screen overlay ---------- */
+.pc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+/* ---------- Slide-in animation ---------- */
+@keyframes pc-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(32px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ---------- Main panel ---------- */
+.pc-panel {
+  position: relative;
+  width: 100%;
+  max-width: 680px;
+  background: rgba(5, 8, 18, 0.98);
+  border: 1px solid rgba(0, 217, 255, 0.25);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(0, 217, 255, 0.06);
+  animation: pc-slide-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  color: #e2e8f0;
+  overflow: hidden;
+}
+
+/* ---------- GTO Recommendation banner ---------- */
+.pc-gto-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(90deg, rgba(255, 186, 0, 0.18), rgba(34, 197, 94, 0.18));
+  border-bottom: 1px solid rgba(255, 186, 0, 0.4);
+  text-align: center;
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #ffd700;
+  text-transform: uppercase;
+}
+
+.pc-panel:has(.pc-gto-banner) {
+  padding-top: 46px;
+}
+
+/* ---------- Header ---------- */
+.pc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.pc-header-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #00d9ff;
+}
+
+.pc-close-btn {
+  background: none;
+  border: none;
+  color: rgba(226, 232, 240, 0.35);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.15s;
+  line-height: 1;
+}
+
+.pc-close-btn:hover {
+  color: #e2e8f0;
+}
+
+/* ---------- Game context ---------- */
+.pc-context {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pc-context-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pc-context-label {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.7);
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.pc-cards-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.pc-card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e2e8f0;
+  letter-spacing: 0.02em;
+}
+
+.pc-card--red {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.pc-card--hero {
+  border-color: rgba(0, 217, 255, 0.4);
+  background: rgba(0, 217, 255, 0.08);
+}
+
+.pc-no-cards {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.4);
+}
+
+.pc-context-pot,
+.pc-context-street {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.7);
+  margin-left: auto;
+}
+
+.pc-context-pot strong,
+.pc-context-street strong {
+  color: #e2e8f0;
+}
+
+.pc-equity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.pc-equity-label {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.7);
+  min-width: 80px;
+}
+
+.pc-equity-value {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.pc-equity--high  { color: #4ade80; }
+.pc-equity--mid   { color: #fbbf24; }
+.pc-equity--low   { color: #f87171; }
+
+/* ---------- Action cards ---------- */
+.pc-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.pc-action-card {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    background 0.25s ease;
+  position: relative;
+}
+
+/* FOLD – red accent */
+.pc-action-card--fold {
+  border-top: 3px solid rgba(239, 68, 68, 0.6);
+}
+
+.pc-action-card--fold .pc-card-label {
+  color: #f87171;
+}
+
+/* CALL – yellow accent */
+.pc-action-card--call {
+  border-top: 3px solid rgba(251, 191, 36, 0.6);
+}
+
+.pc-action-card--call .pc-card-label {
+  color: #fbbf24;
+}
+
+/* RAISE – green accent */
+.pc-action-card--raise {
+  border-top: 3px solid rgba(34, 197, 94, 0.6);
+}
+
+.pc-action-card--raise .pc-card-label {
+  color: #4ade80;
+}
+
+/* Best revealed state */
+.pc-action-card--best {
+  border-color: #ffd700 !important;
+  border-top-color: #ffd700 !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 215, 0, 0.5),
+    0 0 20px rgba(255, 215, 0, 0.18),
+    0 0 40px rgba(34, 197, 94, 0.12);
+  background: rgba(255, 215, 0, 0.06);
+}
+
+.pc-card-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pc-card-ev {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.pc-card-risk {
+  font-size: 10px;
+  color: rgba(148, 163, 184, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pc-card-tip {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.75);
+  font-style: italic;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+/* ---------- Decision tree section ---------- */
+.pc-section {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.pc-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(0, 217, 255, 0.6);
+  margin-bottom: 8px;
+}
+
+/* Tree rows */
+.pc-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 11.5px;
+  color: rgba(203, 213, 225, 0.75);
+}
+
+.pc-tree-row {
+  line-height: 1.5;
+}
+
+.pc-tree-indent {
+  padding-left: 20px;
+  color: rgba(148, 163, 184, 0.6);
+}
+
+.pc-tree-indent::before {
+  content: '→ ';
+  color: rgba(0, 217, 255, 0.4);
+}
+
+.pc-tree-primary {
+  color: rgba(226, 232, 240, 0.9);
+}
+
+.pc-tree-secondary {
+  margin-top: 4px;
+  color: rgba(203, 213, 225, 0.75);
+}
+
+.pc-tree-action {
+  color: #00d9ff;
+  font-weight: 700;
+}
+
+.pc-tree-prob {
+  color: #fbbf24;
+}
+
+.pc-tree-ev {
+  font-weight: 700;
+}
+
+.pc-tree-ev--pos { color: #4ade80; }
+.pc-tree-ev--neg { color: #f87171; }
+
+/* ---------- Calculating spinner text ---------- */
+.pc-calculating {
+  color: rgba(148, 163, 184, 0.5);
+  font-style: italic;
+  font-size: 12px;
+}
+
+.pc-calculating--tree {
+  padding: 4px 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.05em;
+}
+
+/* ---------- Footer ---------- */
+.pc-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.pc-btn {
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border: none;
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.pc-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pc-btn--reveal {
+  background: rgba(255, 215, 0, 0.12);
+  border: 1px solid rgba(255, 215, 0, 0.5);
+  color: #ffd700;
+}
+
+.pc-btn--reveal:hover:not(:disabled) {
+  background: rgba(255, 215, 0, 0.2);
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.2);
+}
+
+.pc-btn--resume {
+  background: rgba(0, 217, 255, 0.12);
+  border: 1px solid rgba(0, 217, 255, 0.45);
+  color: #00d9ff;
+}
+
+.pc-btn--resume:hover:not(:disabled) {
+  background: rgba(0, 217, 255, 0.2);
+  box-shadow: 0 0 12px rgba(0, 217, 255, 0.2);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 540px) {
+  .pc-panel {
+    padding: 16px;
+  }
+
+  .pc-actions {
+    flex-direction: column;
+  }
+
+  .pc-context-pot,
+  .pc-context-street {
+    margin-left: 0;
+  }
+
+  .pc-footer {
+    flex-direction: column;
+  }
+
+  .pc-btn {
+    width: 100%;
+    text-align: center;
+  }
+}

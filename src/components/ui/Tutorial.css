@@ -1,0 +1,173 @@
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 8500;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: tutorial-fade-in 0.3s ease-out;
+}
+
+@keyframes tutorial-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tutorial-panel {
+  background: linear-gradient(135deg, #0e0e24, #1a102e);
+  border: 2px solid rgba(0, 217, 255, 0.35);
+  border-radius: 20px;
+  padding: 36px 40px 28px;
+  width: 440px;
+  max-width: 92vw;
+  text-align: center;
+  box-shadow: 0 0 80px rgba(0, 217, 255, 0.08), 0 12px 48px rgba(0, 0, 0, 0.6);
+  animation: tutorial-scale-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+}
+
+@keyframes tutorial-scale-in {
+  from { transform: scale(0.8) translateY(20px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.tutorial-step-counter {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  font-size: 0.75rem;
+  color: #6A6A8A;
+  font-weight: 600;
+}
+
+.tutorial-icon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+  display: block;
+}
+
+.tutorial-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #00D9FF;
+  margin-bottom: 12px;
+  letter-spacing: 1px;
+}
+
+.tutorial-description {
+  font-size: 0.95rem;
+  color: #aaaaaa;
+  line-height: 1.6;
+  margin-bottom: 28px;
+  padding: 0 8px;
+}
+
+.tutorial-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.tutorial-btn-next {
+  padding: 10px 32px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #00D9FF, #FFA500);
+  color: #000000;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.5px;
+}
+
+.tutorial-btn-next:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 20px rgba(0, 217, 255, 0.3);
+}
+
+.tutorial-btn-back {
+  padding: 10px 24px;
+  border: 1px solid rgba(136, 136, 170, 0.4);
+  border-radius: 10px;
+  background: transparent;
+  color: #aaaaaa;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tutorial-btn-back:hover {
+  border-color: #aaaaaa;
+  color: #aaaaaa;
+}
+
+.tutorial-dots {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.tutorial-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(136, 136, 170, 0.3);
+  transition: all 0.3s;
+}
+
+.tutorial-dot.active {
+  background: #00D9FF;
+  box-shadow: 0 0 8px rgba(0, 217, 255, 0.4);
+  transform: scale(1.2);
+}
+
+.tutorial-dot.completed {
+  background: rgba(0, 217, 255, 0.5);
+}
+
+.tutorial-skip {
+  background: none;
+  border: none;
+  color: #6A6A8A;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color 0.15s;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.tutorial-skip:hover {
+  color: #aaaaaa;
+}
+
+@media (max-width: 480px) {
+  .tutorial-panel {
+    padding: 28px 20px 22px;
+    border-radius: 14px;
+  }
+
+  .tutorial-icon {
+    font-size: 2.4rem;
+  }
+
+  .tutorial-title {
+    font-size: 1.15rem;
+  }
+
+  .tutorial-description {
+    font-size: 0.85rem;
+    margin-bottom: 20px;
+  }
+
+  .tutorial-btn-next {
+    padding: 10px 24px;
+    font-size: 0.85rem;
+  }
+}

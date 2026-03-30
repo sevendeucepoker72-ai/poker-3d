@@ -1,0 +1,302 @@
+.career-mode {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #000000 0%, #12122A 100%);
+  color: #ffffff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  padding: 30px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.career-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+
+.career-back {
+  padding: 6px 14px;
+  border: 1px solid #4A4A6A;
+  border-radius: 6px;
+  background: rgba(10, 10, 10, 0.8);
+  color: #999;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.career-back:hover {
+  border-color: #aaaaaa;
+  color: #CCC;
+}
+
+.career-title {
+  font-size: 1.8rem;
+  margin: 0;
+  background: linear-gradient(135deg, #00D9FF, #6ABAFF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.career-level {
+  padding: 6px 16px;
+  background: rgba(0, 217, 255, 0.15);
+  border: 1px solid rgba(0, 217, 255, 0.3);
+  border-radius: 20px;
+  color: #00D9FF;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* Venue path */
+.career-path {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+}
+
+/* Connector line */
+.career-path::before {
+  content: '';
+  position: absolute;
+  left: 32px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    #4ADE80 0%,
+    #6ABAFF 20%,
+    #00D9FF 40%,
+    #00D9FF 60%,
+    #EF4444 80%,
+    #00D9FF 100%
+  );
+  opacity: 0.2;
+  z-index: 0;
+}
+
+/* Venue card */
+.career-venue {
+  position: relative;
+  border: 1px solid;
+  border-radius: 14px;
+  padding: 18px 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  z-index: 1;
+}
+
+.career-venue:hover {
+  transform: translateX(4px);
+}
+
+.venue-locked {
+  cursor: default;
+  opacity: 0.5;
+  filter: grayscale(0.8);
+}
+
+.venue-locked:hover {
+  transform: none;
+}
+
+.venue-selected {
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.05);
+}
+
+.venue-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.venue-icon {
+  font-size: 2rem;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+}
+
+.venue-info {
+  flex: 1;
+}
+
+.venue-info h3 {
+  margin: 0 0 2px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.venue-tagline {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  color: #aaaaaa;
+  font-style: italic;
+}
+
+.venue-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.72rem;
+}
+
+.venue-level {
+  font-weight: 700;
+}
+
+.venue-opponents {
+  color: #6A6A8A;
+}
+
+.venue-progress-ring {
+  width: 44px;
+  height: 44px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.venue-stages {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #aaaaaa;
+}
+
+/* Expanded venue */
+.venue-expanded {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  animation: expand-in 0.2s ease-out;
+}
+
+@keyframes expand-in {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 400px; }
+}
+
+.venue-stages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.venue-stage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.stage-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.stage-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.stage-personality {
+  font-size: 0.7rem;
+  color: #aaaaaa;
+  font-style: italic;
+}
+
+.stage-stars {
+  display: flex;
+  gap: 2px;
+}
+
+.stage-star {
+  font-size: 0.9rem;
+}
+
+.star-filled {
+  color: #00D9FF;
+}
+
+.star-empty {
+  color: #333;
+}
+
+.btn-stage-play {
+  padding: 5px 16px;
+  border: 1px solid;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.btn-stage-play:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
+}
+
+/* Rewards */
+.venue-rewards {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+}
+
+.reward-label {
+  font-size: 0.72rem;
+  color: #aaaaaa;
+  text-transform: uppercase;
+}
+
+.reward-value {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* Career connector decoration */
+.career-connector {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .career-mode {
+    padding: 16px;
+  }
+
+  .career-title {
+    font-size: 1.3rem;
+  }
+
+  .venue-main {
+    flex-wrap: wrap;
+  }
+
+  .stage-info {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+}

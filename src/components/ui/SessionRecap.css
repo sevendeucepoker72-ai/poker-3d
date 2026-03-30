@@ -1,0 +1,454 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   SessionRecap.css
+   Post-session AI-generated recap modal
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Keyframes ──────────────────────────────────────────────────────────── */
+
+@keyframes recapSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(32px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes recapOverlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Overlay ────────────────────────────────────────────────────────────── */
+
+.recap-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 16px;
+  animation: recapOverlayIn 0.22s ease both;
+}
+
+/* ── Modal ──────────────────────────────────────────────────────────────── */
+
+.recap-modal {
+  background: rgba(10, 14, 22, 0.97);
+  border: 1px solid rgba(0, 160, 220, 0.22);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 24px 22px 20px;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(0, 160, 220, 0.08) inset;
+  animation: recapSlideUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 160, 220, 0.3) transparent;
+}
+
+.recap-modal::-webkit-scrollbar {
+  width: 4px;
+}
+.recap-modal::-webkit-scrollbar-track {
+  background: transparent;
+}
+.recap-modal::-webkit-scrollbar-thumb {
+  background: rgba(0, 160, 220, 0.3);
+  border-radius: 2px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.recap-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  position: relative;
+}
+
+.recap-header__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.recap-header__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.recap-header__text {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #e8f4ff;
+  letter-spacing: 0.01em;
+}
+
+.recap-header__datetime {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  margin-right: 28px;
+}
+
+.recap-header__date {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 500;
+}
+
+.recap-header__time {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 10px;
+  color: rgba(0, 160, 220, 0.7);
+  letter-spacing: 0.06em;
+}
+
+.recap-close-btn {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  transition: color 0.15s;
+}
+
+.recap-close-btn:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* ── Score cards ────────────────────────────────────────────────────────── */
+
+.recap-scorecards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.recap-score-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.recap-score-card__value {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  color: #d0e8ff;
+  letter-spacing: -0.02em;
+}
+
+.recap-score-card__value--positive {
+  color: #44dd88;
+}
+
+.recap-score-card__value--negative {
+  color: #ff5566;
+}
+
+.recap-score-card__label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ── AI Recap prose ─────────────────────────────────────────────────────── */
+
+.recap-prose {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.recap-prose__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.recap-prose__num {
+  flex-shrink: 0;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0099dd;
+  text-shadow: 0 0 8px rgba(0, 153, 221, 0.6);
+  line-height: 1.55;
+  letter-spacing: 0.04em;
+  min-width: 22px;
+}
+
+.recap-prose__text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* ── Hand of Session card ───────────────────────────────────────────────── */
+
+.recap-hot-hand {
+  background: rgba(0, 120, 200, 0.08);
+  border: 1px solid rgba(0, 160, 220, 0.25);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s;
+  flex-wrap: wrap;
+}
+
+.recap-hot-hand:hover {
+  background: rgba(0, 120, 200, 0.15);
+  border-color: rgba(0, 160, 220, 0.45);
+}
+
+.recap-hot-hand:focus {
+  outline: 2px solid rgba(0, 160, 220, 0.6);
+  outline-offset: 2px;
+}
+
+.recap-hot-hand__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(0, 160, 220, 0.8);
+  width: 100%;
+  margin-bottom: -4px;
+}
+
+.recap-hot-hand__cards {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.recap-card-glyph {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  background: rgba(20, 28, 40, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.recap-card-glyph--back {
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 11px;
+}
+
+.recap-card-glyph__suit {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.recap-hot-hand__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.recap-hot-hand__pot {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.recap-hot-hand__result {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.recap-hot-hand__result--win {
+  background: rgba(68, 221, 136, 0.15);
+  color: #44dd88;
+  border: 1px solid rgba(68, 221, 136, 0.3);
+}
+
+.recap-hot-hand__result--loss {
+  background: rgba(255, 85, 102, 0.12);
+  color: #ff5566;
+  border: 1px solid rgba(255, 85, 102, 0.25);
+}
+
+.recap-hot-hand__cta {
+  font-size: 11px;
+  font-weight: 700;
+  color: #00aaee;
+  margin-left: auto;
+  letter-spacing: 0.04em;
+}
+
+/* ── Streak indicators ──────────────────────────────────────────────────── */
+
+.recap-streaks {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.recap-streak {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recap-streak__value {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  color: #ffcc44;
+  text-shadow: 0 0 12px rgba(255, 204, 68, 0.4);
+  letter-spacing: -0.02em;
+}
+
+.recap-streak__label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+  line-height: 1.3;
+}
+
+/* ── Action buttons ─────────────────────────────────────────────────────── */
+
+.recap-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.recap-btn {
+  flex: 1;
+  min-width: 120px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.1s;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.recap-btn:active {
+  transform: scale(0.97);
+}
+
+.recap-btn--primary {
+  background: rgba(0, 140, 220, 0.2);
+  border-color: rgba(0, 140, 220, 0.5);
+  color: #44bbff;
+}
+
+.recap-btn--primary:hover {
+  background: rgba(0, 140, 220, 0.32);
+  border-color: rgba(0, 140, 220, 0.75);
+  color: #66ccff;
+}
+
+.recap-btn--secondary {
+  background: rgba(68, 221, 136, 0.1);
+  border-color: rgba(68, 221, 136, 0.35);
+  color: #44dd88;
+}
+
+.recap-btn--secondary:hover {
+  background: rgba(68, 221, 136, 0.2);
+  border-color: rgba(68, 221, 136, 0.55);
+}
+
+.recap-btn--ghost {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.recap-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .recap-modal {
+    padding: 18px 14px 16px;
+  }
+
+  .recap-scorecards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .recap-score-card__value {
+    font-size: 17px;
+  }
+
+  .recap-actions {
+    flex-direction: column;
+  }
+
+  .recap-btn {
+    min-width: unset;
+  }
+
+  .recap-streaks {
+    flex-direction: column;
+    gap: 8px;
+  }
+}

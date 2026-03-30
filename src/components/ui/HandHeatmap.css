@@ -1,0 +1,98 @@
+/* ─── HandHeatmap.css ──────────────────────────────────────────────────── */
+
+/* ── Full-screen overlay (clicks pass through) ───────────────────────────── */
+.hh-overlay {
+  position: fixed;
+  inset: 0;                /* top/right/bottom/left: 0 */
+  z-index: 800;
+  pointer-events: none;    /* entire overlay is click-through by default */
+  overflow: hidden;
+}
+
+/* ── Per-seat indicator (absolutely positioned within overlay) ───────────── */
+.hh-seat-indicator {
+  position: absolute;
+  /* Center the 60px disc on the anchor point */
+  width: 60px;
+  height: 60px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Allow tooltip to receive pointer events */
+  pointer-events: auto;
+}
+
+/* ── Glowing disc ─────────────────────────────────────────────────────────── */
+.hh-disc {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(var(--hh-r), var(--hh-g), var(--hh-b), var(--hh-glow-opacity)) 0%,
+    rgba(var(--hh-r), var(--hh-g), var(--hh-b), calc(var(--hh-glow-opacity) * 0.4)) 50%,
+    rgba(var(--hh-r), var(--hh-g), var(--hh-b), 0) 100%
+  );
+  box-shadow:
+    0 0 12px 2px rgba(var(--hh-r), var(--hh-g), var(--hh-b), calc(var(--hh-glow-opacity) * 0.6)),
+    0 0 24px 4px rgba(var(--hh-r), var(--hh-g), var(--hh-b), calc(var(--hh-glow-opacity) * 0.25));
+  transition:
+    background      0.5s ease,
+    box-shadow      0.5s ease,
+    opacity         0.5s ease;
+}
+
+/* ── Equity percentage label ─────────────────────────────────────────────── */
+.hh-equity-label {
+  position: relative;   /* above the disc */
+  z-index: 1;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8), 0 0 6px rgba(0, 0, 0, 0.6);
+  opacity: var(--hh-label-opacity, 1);
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+  letter-spacing: 0.3px;
+  user-select: none;
+}
+
+/* ── Tooltip ──────────────────────────────────────────────────────────────── */
+.hh-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 20, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 10px;
+  color: #d1d5db;
+  white-space: nowrap;
+  line-height: 1.5;
+  pointer-events: auto;           /* tooltip itself is interactive */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  z-index: 10;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Show tooltip on hover */
+.hh-seat-indicator:hover .hh-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Small caret pointing down toward the disc */
+.hh-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(10, 10, 20, 0.92);
+}

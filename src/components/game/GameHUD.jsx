@@ -1,0 +1,2947 @@
+import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense, lazy } from 'react';
+import { createPortal } from 'react-dom';
+import { useGameStore } from '../../store/gameStore';
+import { useTableStore } from '../../store/tableStore';
+import { useShallow } from 'zustand/react/shallow';
+import { SUIT_INDEX_TO_SYMBOL, SUIT_INDEX_TO_COLOR, serverRankDisplay, getCardColor } from '../../utils/cardUtils';
+import TableReactions from './TableReactions';
+import { evaluateHandStrength, getWinningCardIndices } from '../../utils/handStrength';
+import { calculateOuts, analyzeBoardTexture } from '../../utils/outsCalculator';
+import useSoundEffects from '../../hooks/useSoundEffects';
+import TrainingOverlay from './TrainingOverlay';
+import EmoteWheel, { EMOTE_MAP } from './EmoteWheel';
+import WinConfetti from './WinConfetti';
+import SessionTracker from './SessionTracker';
+import HandRangeChart from './HandRangeChart';
+import PostHandAnalysis from './PostHandAnalysis';
+import { recordHandStats } from '../../utils/opponentTracker';
+import { useProgressStore } from '../../store/progressStore';
+import { useEquityWorker } from '../../hooks/useEquityWorker';
+import { getSocket } from '../../services/socketService';
+import { useTimerStore } from '../../store/timerStore';
+import { loadHotkeys } from '../ui/HotkeySettings';
+import './GameHUD.css';
+
+// ─── Lazy-loaded overlays — only downloaded when first opened ─────────────────
+const HandReplayViewer  = lazy(() => import('../replay/HandReplayViewer'));
+const HotkeySettings    = lazy(() => import('../ui/HotkeySettings'));
+const EquityCalculator  = lazy(() => import('../ui/EquityCalculator'));
+const ProvablyFair      = lazy(() => import('../ui/ProvablyFair'));
+const ShareReplay       = lazy(() => import('../ui/ShareReplay'));
+const GTOOverlay        = lazy(() => import('../ui/GTOOverlay'));
+const PostHandCoach     = lazy(() => import('../ui/PostHandCoach'));
+const VoiceChat         = lazy(() => import('../ui/VoiceChat'));
+const TimingTellTracker = lazy(() => import('../ui/TimingTellTracker'));
+const TableCommentary   = lazy(() => import('../ui/TableCommentary'));
+const RangeVisualizer   = lazy(() => import('../ui/RangeVisualizer'));
+const SpectatorPredict  = lazy(() => import('../ui/SpectatorPredict'));
+const PauseCoach        = lazy(() => import('../ui/PauseCoach'));
+const StreamOverlay     = lazy(() => import('../ui/StreamOverlay'));
+const CoachingRail      = lazy(() => import('../ui/CoachingRail'));
+const SessionRecap      = lazy(() => import('../ui/SessionRecap'));
+const GTOSolver         = lazy(() => import('../ui/GTOSolver'));
+const PredictionMarket  = lazy(() => import('../ui/PredictionMarket'));
+const HandHeatmap       = lazy(() => import('../ui/HandHeatmap'));
+
+// ─── Static data outside the component so it never recreates ─────────────────
+const QUICK_CHATS = ['Nice hand', 'Good luck', 'gg', 'lol'];
+const GIF_REACTIONS = [
+  { emoji: '\uD83C\uDF89', label: 'Nice!' },
+  { emoji: '\uD83D\uDE02', label: 'LOL' },
+  { emoji: '\uD83D\uDD25', label: 'Hot!' },
+  { emoji: '\uD83D\uDC80', label: 'RIP' },
+  { emoji: '\uD83D\uDC4F', label: 'GG' },
+  { emoji: '\uD83D\uDE24', label: 'Tilted' },
+];
+
+// ─── Memoized chat panel — only re-renders when messages or open state changes ─
+const ChatPanel = React.memo(function ChatPanel({ chatOpen, setChatOpen, chatUnread, setChatUnread, chatMessages, chatInput, setChatInput, chatEndRef, handleSendChat, handleChatKeyDown }) {
+  return (
+    <div className={`chat-panel ${chatOpen ? 'chat-open' : 'chat-closed'}`}>
+      <button className="chat-toggle" onClick={() => { setChatOpen(o => !o); setChatUnread(0); }}>
+        <span className="chat-toggle-icon">💬</span>
+        {!chatOpen && chatUnread > 0 && (
+          <span className="chat-unread-badge">{chatUnread}</span>
+        )}
+        <span className="chat-toggle-label">{chatOpen ? '▼' : '▲'}</span>
+      </button>
+      {chatOpen && (
+        <div className="chat-body">
+          <div className="chat-messages">
+            {chatMessages.map((msg, i) => (
+              <div key={i} className="chat-msg">
+                <span className="chat-msg-name">{msg.playerName}:</span>{' '}
+                <span className="chat-msg-text">{msg.message}</span>
+              </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+          <div className="chat-quick">
+            {QUICK_CHATS.map((text) => (
+              <button key={text} className="chat-quick-btn" onClick={() => handleSendChat(text)}>
+                {text}
+              </button>
+            ))}
+          </div>
+          <div className="chat-gif-reactions">
+            {GIF_REACTIONS.map((r) => (
+              <button key={r.label} className="chat-gif-btn" onClick={() => handleSendChat(`${r.emoji} ${r.label}`)}>
+                {r.emoji} {r.label}
+              </button>
+            ))}
+          </div>
+          <div className="chat-input-row">
+            <input
+              type="text"
+              className="chat-input"
+              placeholder="Type a message..."
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={handleChatKeyDown}
+              maxLength={200}
+            />
+            <button className="chat-send" onClick={() => handleSendChat(chatInput)}>Send</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+export default function GameHUD() {
+  const { calculateEquity } = useEquityWorker();
+
+  const { setScreen, playerName } = useGameStore(
+    useShallow((s) => ({ setScreen: s.setScreen, playerName: s.playerName }))
+  );
+
+  // Game state slice — re-renders only when one of these values changes
+  const gameState = useTableStore((s) => s.gameState);
+  const {
+    mySeat,
+    sendAction,
+    startHand,
+    leaveTable,
+    trainingEnabled,
+    toggleTraining,
+    sittingOut,
+    toggleSitOut,
+    isSpectating,
+    stopSpectating,
+    selectedDiscards,
+    toggleDiscard,
+    sendDraw,
+    rabbitCards,
+    setRabbitCards,
+    clearRabbitCards,
+    requestRabbitHunt,
+  } = useTableStore(
+    useShallow((s) => ({
+      mySeat: s.mySeat,
+      sendAction: s.sendAction,
+      startHand: s.startHand,
+      leaveTable: s.leaveTable,
+      trainingEnabled: s.trainingEnabled,
+      toggleTraining: s.toggleTraining,
+      sittingOut: s.sittingOut,
+      toggleSitOut: s.toggleSitOut,
+      isSpectating: s.isSpectating,
+      stopSpectating: s.stopSpectating,
+      selectedDiscards: s.selectedDiscards,
+      toggleDiscard: s.toggleDiscard,
+      sendDraw: s.sendDraw,
+      rabbitCards: s.rabbitCards,
+      setRabbitCards: s.setRabbitCards,
+      clearRabbitCards: s.clearRabbitCards,
+      requestRabbitHunt: s.requestRabbitHunt,
+    }))
+  );
+  // Chat and emotes in separate subscriptions — they update frequently and should
+  // only trigger re-renders of the chat panel, not the entire HUD.
+  const chatMessages = useTableStore((s) => s.chatMessages);
+  const sendChat = useTableStore((s) => s.sendChat);
+  const emotes = useTableStore((s) => s.emotes);
+  const handHistories = useTableStore((s) => s.handHistories);
+
+  // Sound effects
+  const { playSound } = useSoundEffects();
+
+  // Raise slider state
+  const [raiseAmount, setRaiseAmount] = useState(0);
+  const [showRaisePanel, setShowRaisePanel] = useState(false);
+
+  // Timer state (local + shared store so nameplates can read it)
+  const [timeLeft, setTimeLeft] = useState(30);
+  const timerRef = useRef(null);
+  const timerWarningPlayed = useRef(false);
+  const setTimerStoreLeft  = useTimerStore((s) => s.setTimerLeft);
+  const resetTimerStore    = useTimerStore((s) => s.resetTimer);
+
+  // Showdown overlay state
+  const [showShowdown, setShowShowdown] = useState(false);
+  const showdownTimerRef = useRef(null);
+
+  // Last hand panel state
+  const [showLastHand, setShowLastHand] = useState(false);
+
+  // Replay viewer state
+  const [showReplay, setShowReplay] = useState(false);
+
+  // Auto-action state (pre-select before your turn)
+  const [autoAction, setAutoAction] = useState(null); // 'fold' | 'check' | 'call' | 'callAny' | null
+  const autoActionRef = useRef(null);
+
+  // Pre-action buttons (Upgrade 1)
+  const [preAction, setPreAction] = useState(null); // null | 'checkFold' | 'callAny' | 'checkOnly'
+
+  // Last raise replay (Upgrade 4)
+  const lastRaiseRef = useRef(null);
+
+  // Action history strip (Upgrade 6)
+  const [actionHistory, setActionHistory] = useState([]);
+  const prevSeatsRef = useRef(null);
+
+  // Bet sizing memory (Upgrade 7)
+  const betMemoryRef = useRef(null);
+
+  // Range chart and equity calculator overlays
+  const [showRangeChart, setShowRangeChart] = useState(false);
+  const [showEquityCalc, setShowEquityCalc] = useState(false);
+
+  // New advanced features
+  const [showProvablyFair, setShowProvablyFair] = useState(false);
+  const [showShareReplay, setShowShareReplay] = useState(false);
+  const [showPostHandCoach, setShowPostHandCoach] = useState(false);
+  const [showVoiceChat, setShowVoiceChat] = useState(false);
+  const [gtoVisible, setGtoVisible] = useState(false);
+  const [showTimingTells, setShowTimingTells] = useState(false);
+  const [showCommentary, setShowCommentary] = useState(false);
+  const [showCoachingRail, setShowCoachingRail] = useState(false);
+  const [showRangeViz, setShowRangeViz] = useState(false);
+  const [showSpectatorPredict, setShowSpectatorPredict] = useState(false);
+  const [showPauseCoach, setShowPauseCoach] = useState(false);
+  const [showStream, setShowStream] = useState(false);
+  const [showGTOSolver, setShowGTOSolver] = useState(false);
+  const [showSessionRecap, setShowSessionRecap] = useState(false);
+  const [showPredictionMarket, setShowPredictionMarket] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const deckCommitment = useTableStore((s) => s.deckCommitment);
+  const deckRevelation = useTableStore((s) => s.deckRevelation);
+
+  // Color blind mode (from settings)
+  const [colorBlindMode, setColorBlindMode] = useState(() => {
+    try {
+      const raw = localStorage.getItem('app_poker_settings');
+      if (raw) return JSON.parse(raw).colorBlindMode || false;
+    } catch { /* ignore */ }
+    return false;
+  });
+
+  // Touch gesture state
+  const touchStartRef = useRef(null);
+  const touchTimerRef = useRef(null);
+  const [showGestureHint, setShowGestureHint] = useState(false);
+
+  // Upgrade: fold confirmation micro-animation
+  const [foldPending, setFoldPending] = useState(false);
+  const foldTimerRef = useRef(null);
+  const showBigBetConfirmRef = useRef(false);
+  const [showRaiseSlider, setShowRaiseSlider] = useState(false);
+  const isTouchDevice = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
+
+  // Chat state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const chatEndRef = useRef(null);
+  const [chatUnread, setChatUnread] = useState(0);
+  const prevChatLenRef = useRef(0);
+
+  // Hotkey settings state
+  const [hotkeyOpen, setHotkeyOpen] = useState(false);
+  const [hotkeys, setHotkeys] = useState(loadHotkeys);
+
+  // Options dropdown state
+  const [showOptions, setShowOptions] = useState(false);
+  const optionsRef = useRef(null);
+
+  // Bet sizing memory: last raise as percentage of pot
+  const lastRaisePctRef = useRef(null);
+  const [favBetSizes, setFavBetSizes] = useState(() => {
+    try {
+      const stored = localStorage.getItem('app_poker_betSizes');
+      if (stored) return JSON.parse(stored);
+    } catch (e) { /* ignore */ }
+    return [null, null, null];
+  });
+
+  // Auto-rebuy state
+  const [autoRebuy, setAutoRebuy] = useState(() => {
+    try { return localStorage.getItem('app_poker_autoRebuy') === 'true'; } catch (e) { return false; }
+  });
+  const [rebuyNotification, setRebuyNotification] = useState(null);
+  const prevPhaseForRebuyRef = useRef(null);
+
+  // === Rabbit Hunt state ===
+  const [showRabbitPanel, setShowRabbitPanel] = useState(false);
+  const [playerFoldedThisHand, setPlayerFoldedThisHand] = useState(false);
+
+  // === Run It Twice state ===
+  const [runItTwice, setRunItTwice] = useState(() => {
+    try { return localStorage.getItem('app_poker_runItTwice') === 'true'; } catch (e) { return false; }
+  });
+
+  // === Sound volume (#8) ===
+  const [sfxVolume, setSfxVolume] = useState(() => {
+    try { return parseFloat(localStorage.getItem('app_poker_sfxVol') ?? '0.8'); } catch { return 0.8; }
+  });
+  useEffect(() => { localStorage.setItem('app_poker_sfxVol', sfxVolume); }, [sfxVolume]);
+
+  // === Keyboard shortcuts overlay (#9) ===
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === '?' && !e.target.matches('input,textarea')) setShowShortcuts(v => !v);
+      if (e.key === 'Escape') setShowShortcuts(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // === Show hand after winning without showdown (#6) ===
+  const [showHandPrompt, setShowHandPrompt] = useState(false);
+  const showHandTimerRef = useRef(null);
+
+  // === Auto Deal state (#11) ===
+  const [autoDeal, setAutoDeal] = useState(() => {
+    try { return localStorage.getItem('app_poker_autoDeal') === 'true'; } catch (e) { return false; }
+  });
+  const autoDealTimerRef = useRef(null);
+
+  // === Fast Mode state (#12) ===
+  const [fastMode, setFastMode] = useState(false);
+
+  // === Quick Showdown state (#13) ===
+  const [quickShowdown, setQuickShowdown] = useState(() => {
+    try {
+      const raw = localStorage.getItem('app_poker_settings');
+      if (raw) return JSON.parse(raw).quickShowdown || false;
+    } catch { /* ignore */ }
+    return false;
+  });
+
+  // === Equity display state (#17) ===
+  const [equityResults, setEquityResults] = useState(null);
+  const equityCalculatedRef = useRef(null);
+
+  // === Straddle state ===
+  // (no extra state needed beyond gameState)
+
+  // === Insurance state ===
+  const [showInsurance, setShowInsurance] = useState(false);
+  const [insuranceDismissed, setInsuranceDismissed] = useState(false);
+
+  // === Mucked Hand Reveal state ===
+  const [showMuckButton, setShowMuckButton] = useState(false);
+  const muckTimerRef = useRef(null);
+  const [muckedHands, setMuckedHands] = useState([]);
+
+  // === Time Bank state ===
+  const timeBankRef = useRef(60); // 60 seconds reserve per session
+  const [timeBankLeft, setTimeBankLeft] = useState(60);
+  const [timeBankActive, setTimeBankActive] = useState(false);
+
+  // === Dealer Voice Lines state ===
+  const [dealerVoice, setDealerVoice] = useState(null);
+  const [dealerVoiceKey, setDealerVoiceKey] = useState(0);
+  const dealerVoiceTimerRef = useRef(null);
+  const dealerVoiceFadingRef = useRef(false);
+  const prevPhaseForVoiceRef = useRef(null);
+
+  // === All-In Confirmation state ===
+  const [showAllInConfirm, setShowAllInConfirm] = useState(false);
+  const skipAllInConfirm = (() => {
+    try {
+      const raw = localStorage.getItem('app_poker_settings');
+      if (raw) return JSON.parse(raw).skipAllInConfirmation || false;
+    } catch { /* ignore */ }
+    return false;
+  })();
+
+  // === Bet History Strip state (Upgrade 4) ===
+  const [streetActions, setStreetActions] = useState([]);
+  const prevActionsRef = useRef([]);
+  const prevPhaseForStreetRef = useRef(null);
+
+  // === Community Card Hover state (Upgrade 6) ===
+  const [hoveredCardIdx, setHoveredCardIdx] = useState(null);
+
+  // === Appearance upgrades ===
+  const [potPulsing, setPotPulsing] = useState(false);
+  const prevPotRef = useRef(0);
+  const [phaseBanner, setPhaseBanner] = useState(null); // 'THE FLOP' | 'THE TURN' | etc.
+  const [cardsDealt, setCardsDealt] = useState(false);
+  const prevCardCountRef = useRef(0);
+
+  // === Winner Banner state ===
+  const [winnerBanner, setWinnerBanner] = useState(null);
+  const [winnerBannerFading, setWinnerBannerFading] = useState(false);
+  const winnerBannerTimerRef = useRef(null);
+  const winnerBannerShownRef = useRef(null);
+
+  // === Big Win Confetti state ===
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [confettiChips, setConfettiChips] = useState(0);
+  const confettiShownRef = useRef(null);
+
+  // === Session stats tracking (for SessionRecap) ===
+  const sessionStartChipsRef = useRef(null);
+  const sessionHandsRef = useRef(0);
+  const sessionBiggestPotRef = useRef(0);
+  const sessionPrevPhaseRef = useRef(null);
+
+  // Track previous phase for sound triggers
+  const prevPhaseRef = useRef(null);
+  const prevIsMyTurnRef = useRef(false);
+
+  // Derive values from server game state
+  const phase = gameState?.phase || 'WaitingForPlayers';
+  const pot = gameState?.pot || 0;
+  const communityCards = gameState?.communityCards || [];
+  const activeSeat = gameState?.activeSeatIndex ?? -1;
+  const yourSeat = gameState?.yourSeat ?? mySeat;
+  const seats = gameState?.seats || [];
+  const myPlayer = yourSeat >= 0 && seats[yourSeat] ? seats[yourSeat] : null;
+
+  // Track which hand was in progress when the player first joined the table.
+  // If they joined mid-hand, sit out until the next hand starts.
+  const joinedHandIdRef = useRef(null);
+  const sittingOutUntilNextHand = useRef(true); // start sitting out
+  const currentHandId = gameState?.handId ?? gameState?.handNumber ?? null;
+
+  if (joinedHandIdRef.current === null && currentHandId != null) {
+    // First game state received — record the in-progress hand
+    joinedHandIdRef.current = currentHandId;
+    // If the phase is already mid-hand, sit out this hand
+    sittingOutUntilNextHand.current = phase !== 'WaitingForPlayers';
+  }
+
+  // When a new hand starts (handId changes), we're no longer sitting out
+  useEffect(() => {
+    if (currentHandId != null && currentHandId !== joinedHandIdRef.current) {
+      sittingOutUntilNextHand.current = false;
+    }
+  }, [currentHandId]);
+
+  // Cards can come from the server (yourCards) or the client dealer animation (seatCards)
+  const seatCards = useGameStore((s) => s.seatCards);
+  const serverCards = gameState?.yourCards || [];
+  const clientCards = (yourSeat >= 0 && seatCards[yourSeat]) || [];
+  const rawCards = serverCards.length > 0 ? serverCards : clientCards;
+  // Hide cards if we joined mid-hand
+  const yourCards = sittingOutUntilNextHand.current ? [] : rawCards;
+  const serverThinksItsMyTurn = activeSeat === yourSeat && yourSeat >= 0;
+  const isMyTurn = serverThinksItsMyTurn && yourCards.length > 0;
+
+  // Auto-fold when the server is waiting on us but we're sitting out (joined mid-hand)
+  useEffect(() => {
+    if (!serverThinksItsMyTurn) return;
+    if (!sittingOutUntilNextHand.current) return;
+    if (!phase || phase === 'WaitingForPlayers' || phase === 'HandComplete') return;
+    sendAction('fold');
+  }, [serverThinksItsMyTurn, phase, sendAction]);
+  const myChips = myPlayer?.chipCount ?? 0;
+  const currentBetToMatch = gameState?.currentBetToMatch || 0;
+  const myCurrentBet = myPlayer?.currentBet || 0;
+  const callAmount = Math.max(0, currentBetToMatch - myCurrentBet);
+  // minRaise from server = getMinRaise() = currentBetToMatch + lastRaiseAmount (already the total to raise to)
+  const minRaiseTotal = gameState?.minRaise || (currentBetToMatch + (gameState?.bigBlind || 20));
+  const maxRaise = myChips;
+
+  // Variant info
+  const variantName = gameState?.variantName || "Texas Hold'em";
+  const holeCardCount = gameState?.holeCardCount || 2;
+  const hasDrawPhase = gameState?.hasDrawPhase || false;
+  const isStudGame = gameState?.isStudGame || false;
+  const isDrawPhase = gameState?.isDrawPhase || false;
+  const drawPhase = gameState?.drawPhase || null;
+
+  // Bomb Pot info
+  const isBombPot = gameState?.bombPot || false;
+
+  // Dealer's Choice info
+  const isDealersChoice = gameState?.dealersChoice || false;
+  const dealersChoiceVariant = gameState?.dealersChoiceVariant || null;
+  const dealersChoiceNext = gameState?.dealersChoiceNext || null;
+
+  // Ante info
+  const anteAmount = gameState?.ante || 0;
+
+  // Hand strength evaluation — memoized so it only reruns when cards change
+  const showHandStrength = yourCards.length > 0 && communityCards.length >= 3;
+  const handStrength = useMemo(
+    () => showHandStrength ? evaluateHandStrength(yourCards, communityCards) : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showHandStrength, yourCards.map(c => `${c.rank}-${c.suit}`).join(','), communityCards.map(c => `${c.rank}-${c.suit}`).join(',')]
+  );
+
+  // Outs calculation — memoized, only runs on Flop/Turn
+  const showOuts = yourCards.length > 0 && (phase === 'Flop' || phase === 'Turn');
+  const outsInfo = useMemo(
+    () => showOuts ? calculateOuts(yourCards, communityCards) : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showOuts, yourCards.map(c => `${c.rank}-${c.suit}`).join(','), communityCards.map(c => `${c.rank}-${c.suit}`).join(',')]
+  );
+
+  // Board texture analysis — memoized after flop
+  const boardTexture = useMemo(
+    () => communityCards.length >= 3 ? analyzeBoardTexture(communityCards) : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [communityCards.map(c => `${c.rank}-${c.suit}`).join(',')]
+  );
+
+  // Winning card indices for glow effect during showdown/hand complete
+  const isShowdownPhase = phase === 'Showdown' || phase === 'HandComplete';
+  const winningCardIndices = isShowdownPhase && handStrength && handStrength.bestFive.length > 0
+    ? getWinningCardIndices(yourCards, communityCards, handStrength.bestFive)
+    : null;
+
+  // Pot odds calculation
+  const potOdds = callAmount > 0 ? (pot / callAmount) : 0;
+  const potOddsDisplay = callAmount > 0 ? `${potOdds.toFixed(1)}:1` : null;
+  // Determine if pot odds are "good" relative to hand strength
+  // Good odds = pot odds ratio is favorable compared to hand strength
+  const potOddsGood = handStrength ? potOdds > (1 / Math.max(handStrength.strength, 0.05)) : potOdds > 3;
+
+  // Last aggressor from street action history
+  const lastAggressorInfo = (() => {
+    for (let i = streetActions.length - 1; i >= 0; i--) {
+      const a = streetActions[i];
+      if (a.action === 'raise' || a.action === 'bet') return a;
+    }
+    return null;
+  })();
+
+  // Stack-to-Pot Ratio (Upgrade 2)
+  const spr = pot > 0 ? (myChips / pot).toFixed(1) : null;
+  const sprColor = spr === null ? '#6b7280' : Number(spr) >= 8 ? '#4ADE80' : Number(spr) >= 3 ? '#F59E0B' : '#EF4444';
+  const sprLabel = spr === null ? '' : Number(spr) >= 8 ? 'Deep' : Number(spr) >= 3 ? 'Mid' : 'Short';
+
+  // Pre-flop hand tier (for card glow) (Upgrade 3)
+  const preflopTier = (() => {
+    if (yourCards.length < 2 || communityCards.length > 0) return null;
+    const [c1, c2] = yourCards;
+    const r1 = Math.max(c1.rank, c2.rank);
+    const r2 = Math.min(c1.rank, c2.rank);
+    const suited = c1.suit === c2.suit;
+    const isPair = r1 === r2;
+    // Premium: AA, KK, QQ, JJ, AKs, AKo
+    if ((isPair && r1 >= 11) || (r1 === 14 && r2 === 13)) return 'premium';
+    // Strong: TT-88, AQ, AJ, KQ suited
+    if ((isPair && r1 >= 8) || (r1 === 14 && r2 >= 10) || (r1 === 13 && r2 === 12 && suited)) return 'strong';
+    // Playable: 77-55, suited aces, broadway
+    if ((isPair && r1 >= 5) || (r1 === 14 && suited) || (r1 >= 11 && r2 >= 10)) return 'playable';
+    return 'marginal';
+  })();
+
+  // Straddle: player is UTG (first to act after big blind) in PreFlop
+  const bigBlind = gameState?.bigBlind || 50;
+  const straddleAmount = 2 * bigBlind;
+  // Determine if player is UTG: in PreFlop, activeSeat === yourSeat means it's our turn,
+  // and we check if we are the first actor (UTG position)
+  const isUTG = phase === 'PreFlop' && isMyTurn && gameState?.isFirstActor;
+
+  // Insurance: player is all-in and waiting for remaining community cards
+  const isPlayerAllIn = myPlayer?.isAllIn || (myPlayer?.chipCount === 0 && myPlayer?.currentBet > 0);
+  const cardsStillToCome = phase === 'PreFlop' ? 5 - communityCards.length :
+    phase === 'Flop' ? 5 - communityCards.length :
+    phase === 'Turn' ? 5 - communityCards.length : 0;
+  const showInsurancePanel = isPlayerAllIn && cardsStillToCome > 0 && !insuranceDismissed &&
+    (phase === 'Flop' || phase === 'Turn' || phase === 'PreFlop');
+  const insuranceEquity = handStrength ? Math.round(handStrength.strength * 100) : 50;
+  const insuranceCashout = Math.round(pot * (insuranceEquity / 100) * 0.9); // 90% of equity value
+
+  // Run It Twice: show when player goes all-in and community cards still to come
+  const showRunItTwice = isPlayerAllIn && cardsStillToCome > 0 &&
+    (phase === 'Flop' || phase === 'Turn' || phase === 'PreFlop');
+
+  // Session stats tracking: initialize start chips, count hands, track biggest pot
+  useEffect(() => {
+    if (myChips > 0 && sessionStartChipsRef.current === null) {
+      sessionStartChipsRef.current = myChips;
+    }
+  }, [myChips]);
+  useEffect(() => {
+    if (phase === 'PreFlop' && sessionPrevPhaseRef.current !== 'PreFlop') {
+      sessionHandsRef.current += 1;
+    }
+    sessionPrevPhaseRef.current = phase;
+  }, [phase]);
+  useEffect(() => {
+    if (pot > sessionBiggestPotRef.current) {
+      sessionBiggestPotRef.current = pot;
+    }
+  }, [pot]);
+
+  // Draw handler
+  const handleDraw = useCallback(() => {
+    sendDraw(selectedDiscards);
+  }, [sendDraw, selectedDiscards]);
+
+  // Update raise slider default when turn changes (with bet sizing memory)
+  useEffect(() => {
+    if (isMyTurn) {
+      if (lastRaisePctRef.current !== null && pot > 0) {
+        const remembered = Math.round(pot * lastRaisePctRef.current);
+        const clamped = Math.max(minRaiseTotal, Math.min(remembered, maxRaise));
+        setRaiseAmount(clamped);
+      } else {
+        setRaiseAmount(Math.min(minRaiseTotal, maxRaise));
+      }
+    }
+  }, [isMyTurn, minRaiseTotal, maxRaise, pot]);
+
+  // Upgrade 1: fire pre-action when it becomes our turn
+  const prevIsMyTurnForPreActionRef = useRef(false);
+  useEffect(() => {
+    if (isMyTurn && !prevIsMyTurnForPreActionRef.current && preAction) {
+      const action = preAction;
+      setPreAction(null);
+      if (action === 'checkFold') {
+        if (callAmount === 0) {
+          playSound('check'); sendAction('check');
+        } else {
+          playSound('fold'); sendAction('fold');
+        }
+      } else if (action === 'callAny') {
+        playSound('bet'); sendAction('call');
+      } else if (action === 'checkOnly') {
+        if (callAmount === 0) {
+          playSound('check'); sendAction('check');
+        }
+        // no action if there's a bet
+      }
+    }
+    prevIsMyTurnForPreActionRef.current = isMyTurn;
+  }, [isMyTurn, preAction, callAmount, sendAction, playSound]);
+
+  // Clear fold pending state when turn ends
+  useEffect(() => {
+    if (!isMyTurn && foldPending) {
+      clearTimeout(foldTimerRef.current);
+      setFoldPending(false);
+    }
+  }, [isMyTurn, foldPending]);
+
+  // Upgrade 7: restore bet sizing memory from localStorage or betMemoryRef on turn start
+  useEffect(() => {
+    if (isMyTurn) {
+      // Try betMemoryRef first, then localStorage
+      let stored = betMemoryRef.current;
+      if (stored === null || stored === undefined) {
+        try {
+          const pct = parseFloat(localStorage.getItem('poker_last_raise_pct'));
+          if (!isNaN(pct) && pot > 0) {
+            stored = Math.round(pot * pct);
+          }
+        } catch { /* ignore */ }
+      }
+      if (stored && stored >= minRaiseTotal && stored <= maxRaise) {
+        setRaiseAmount(stored);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMyTurn]);
+
+  // Upgrade 6: action history strip — watch seat lastAction changes
+  useEffect(() => {
+    if (!gameState?.seats) return;
+    const currentSeats = gameState.seats;
+    const prev = prevSeatsRef.current;
+    if (prev) {
+      const newEntries = [];
+      currentSeats.forEach((seat, i) => {
+        if (!seat || seat.state !== 'occupied') return;
+        const prevSeat = prev[i];
+        const action = seat.lastAction;
+        if (!action || action === 'None') return;
+        if (prevSeat && prevSeat.lastAction === action && prevSeat.currentBet === seat.currentBet) return;
+        const name = seat.playerName || `P${i + 1}`;
+        let entry = '';
+        const act = action.toLowerCase();
+        if (act.includes('fold')) entry = `${name} folded`;
+        else if (act.includes('check')) entry = `${name} checked`;
+        else if (act.includes('call')) entry = `${name} called ${seat.currentBet > 0 ? seat.currentBet.toLocaleString() : ''}`;
+        else if (act.includes('raise') || act.includes('bet')) entry = `${name} raised ${seat.currentBet > 0 ? seat.currentBet.toLocaleString() : ''}`;
+        else if (act.includes('all-in') || act.includes('allin')) entry = `${name} went all-in`;
+        else entry = `${name} ${action}`;
+        if (entry) newEntries.push(entry.trim());
+      });
+      if (newEntries.length > 0) {
+        setActionHistory(prev2 => [...newEntries, ...prev2].slice(0, 3));
+      }
+    }
+    prevSeatsRef.current = currentSeats.map(s => s ? { lastAction: s.lastAction, currentBet: s.currentBet, state: s.state } : null);
+  }, [JSON.stringify(gameState?.seats?.map(s => s?.lastAction))]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear action history on new hand/phase
+  useEffect(() => {
+    if (phase === 'WaitingForPlayers' || phase === 'PreFlop') {
+      setActionHistory([]);
+      prevSeatsRef.current = null;
+    }
+  }, [phase]);
+
+  // Close options dropdown when clicking outside
+  useEffect(() => {
+    if (!showOptions) return;
+    const handler = (e) => {
+      if (optionsRef.current && !optionsRef.current.contains(e.target)) {
+        setShowOptions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showOptions]);
+
+  // Track unread chat messages when panel is closed
+  useEffect(() => {
+    if (!chatOpen && chatMessages.length > prevChatLenRef.current) {
+      setChatUnread(u => u + (chatMessages.length - prevChatLenRef.current));
+    }
+    prevChatLenRef.current = chatMessages.length;
+  }, [chatMessages, chatOpen]);
+
+  // Sound effects for phase changes and turn
+  useEffect(() => {
+    // Play 'deal' when phase changes to PreFlop
+    if (phase === 'PreFlop' && prevPhaseRef.current !== 'PreFlop') {
+      playSound('shuffle');
+      setTimeout(() => playSound('deal'), 300);
+    }
+    // Play community card reveal sound for Flop/Turn/River
+    if (
+      (phase === 'Flop' || phase === 'Turn' || phase === 'River') &&
+      prevPhaseRef.current !== phase
+    ) {
+      playSound('community');
+    }
+    // Play 'win' when phase changes to HandComplete
+    if (phase === 'HandComplete' && prevPhaseRef.current !== 'HandComplete') {
+      playSound('win');
+    }
+    prevPhaseRef.current = phase;
+  }, [phase, playSound]);
+
+  useEffect(() => {
+    // Play 'turn' when it becomes player's turn
+    if (isMyTurn && !prevIsMyTurnRef.current) {
+      playSound('turn');
+    }
+    prevIsMyTurnRef.current = isMyTurn;
+  }, [isMyTurn, playSound]);
+
+  // Pot pulse animation when pot increases
+  useEffect(() => {
+    if (pot > prevPotRef.current && prevPotRef.current > 0) {
+      setPotPulsing(true);
+      const t = setTimeout(() => setPotPulsing(false), 600);
+      return () => clearTimeout(t);
+    }
+    prevPotRef.current = pot;
+  }, [pot]);
+
+  // Card deal animation — fires when cards go from 0 → N
+  useEffect(() => {
+    const prev = prevCardCountRef.current;
+    const curr = yourCards.length;
+    prevCardCountRef.current = curr;
+    if (curr > 0 && prev === 0) {
+      setCardsDealt(false);
+      const t = setTimeout(() => setCardsDealt(true), 20);
+      return () => clearTimeout(t);
+    }
+    if (curr === 0) setCardsDealt(false);
+  }, [yourCards.length]);
+
+  // Phase transition banner
+  useEffect(() => {
+    const bannerMap = { Flop: 'THE FLOP', Turn: 'THE TURN', River: 'THE RIVER', Showdown: 'SHOWDOWN' };
+    const label = bannerMap[phase];
+    if (label && prevPhaseRef.current !== phase) {
+      setPhaseBanner(label);
+      const t = setTimeout(() => setPhaseBanner(null), 1800);
+      return () => clearTimeout(t);
+    }
+  }, [phase]);
+
+  // === Dealer Voice Lines: trigger on phase transitions ===
+  useEffect(() => {
+    const prev = prevPhaseForVoiceRef.current;
+    let voiceLine = null;
+
+    if (phase === 'PreFlop' && prev !== 'PreFlop') {
+      voiceLine = 'Shuffle up and deal!';
+    } else if (phase === 'Flop' && prev !== 'Flop') {
+      voiceLine = 'The Flop';
+    } else if (phase === 'Turn' && prev !== 'Turn') {
+      voiceLine = 'The Turn';
+    } else if (phase === 'River' && prev !== 'River') {
+      voiceLine = 'The River';
+    } else if (phase === 'Showdown' && prev !== 'Showdown') {
+      voiceLine = 'Showdown!';
+    } else if (phase === 'HandComplete' && prev !== 'HandComplete') {
+      // Winner line
+      const winners = gameState?.handResult?.winners;
+      if (winners && winners.length > 0) {
+        voiceLine = `Winner: ${winners[0].playerName}!`;
+      }
+    }
+
+    // Check for all-in: any seat that just went all-in
+    if (!voiceLine && gameState?.seats) {
+      const allInPlayer = gameState.seats.find((s) => s?.allIn && s?.lastAction?.startsWith('All-In'));
+      if (allInPlayer && prev === phase) {
+        // Only on new all-in action, not phase change
+      }
+    }
+
+    if (voiceLine) {
+      if (dealerVoiceTimerRef.current) clearTimeout(dealerVoiceTimerRef.current);
+      dealerVoiceFadingRef.current = false;
+      setDealerVoice(voiceLine);
+      dealerVoiceTimerRef.current = setTimeout(() => {
+        dealerVoiceFadingRef.current = true;
+        setDealerVoiceKey((k) => k + 1); // force re-render for fade
+        setTimeout(() => {
+          setDealerVoice(null);
+          dealerVoiceFadingRef.current = false;
+        }, 400);
+      }, 2000);
+    }
+
+    prevPhaseForVoiceRef.current = phase;
+
+    return () => {
+      if (dealerVoiceTimerRef.current) clearTimeout(dealerVoiceTimerRef.current);
+    };
+  }, [phase, gameState?.handResult, gameState?.seats]);
+
+  // === All-in voice line: detect when someone goes all-in ===
+  const prevAllInRef = useRef(new Set());
+  useEffect(() => {
+    if (!gameState?.seats) return;
+    const currentAllIn = new Set();
+    gameState.seats.forEach((s, i) => { if (s?.allIn) currentAllIn.add(i); });
+    const newAllIns = [...currentAllIn].filter((i) => !prevAllInRef.current.has(i));
+    if (newAllIns.length > 0 && phase !== 'HandComplete' && phase !== 'WaitingForPlayers') {
+      if (dealerVoiceTimerRef.current) clearTimeout(dealerVoiceTimerRef.current);
+      dealerVoiceFadingRef.current = false;
+      setDealerVoice('All-in!');
+      dealerVoiceTimerRef.current = setTimeout(() => {
+        dealerVoiceFadingRef.current = true;
+        setDealerVoice((v) => v);
+        setTimeout(() => {
+          setDealerVoice(null);
+          dealerVoiceFadingRef.current = false;
+        }, 400);
+      }, 2000);
+    }
+    prevAllInRef.current = currentAllIn;
+  }, [gameState?.seats, phase]);
+
+  // === Big Win Confetti: trigger on big wins ===
+  const handResult = gameState?.handResult || null;
+  useEffect(() => {
+    if (!handResult?.winners || handResult === confettiShownRef.current) return;
+    const myWin = handResult.winners.find((w) => w.seatIndex === yourSeat);
+    if (myWin) {
+      const chipsWon = myWin.chipsWon || 0;
+      const lastBet = myPlayer?.currentBet || 0;
+      const isBigWin = chipsWon > 2000 || (lastBet > 0 && chipsWon >= lastBet * 5);
+      if (isBigWin) {
+        confettiShownRef.current = handResult;
+        setConfettiChips(chipsWon);
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 3500);
+      }
+    }
+  }, [handResult, yourSeat, myPlayer]);
+
+  // === Show hand after winning without showdown (#6) ===
+  useEffect(() => {
+    if (phase === 'HandComplete' && handResult?.winners?.some(w => w.seatIndex === yourSeat) &&
+        handResult?.winners?.[0]?.handName === 'Won by fold') {
+      setShowHandPrompt(true);
+      if (showHandTimerRef.current) clearTimeout(showHandTimerRef.current);
+      showHandTimerRef.current = setTimeout(() => setShowHandPrompt(false), 5000);
+    }
+    if (phase === 'PreFlop' || phase === 'WaitingForPlayers') setShowHandPrompt(false);
+    return () => { if (showHandTimerRef.current) clearTimeout(showHandTimerRef.current); };
+  }, [phase, handResult, yourSeat]);
+
+  // === Winner Banner: show after HandComplete ===
+  useEffect(() => {
+    if (phase === 'HandComplete' && handResult?.winners?.length > 0 && handResult !== winnerBannerShownRef.current) {
+      winnerBannerShownRef.current = handResult;
+      const winner = handResult.winners[0];
+      setWinnerBanner({
+        name: winner.playerName,
+        amount: winner.chipsWon || 0,
+        handName: winner.handName || 'Winner',
+      });
+      setWinnerBannerFading(false);
+      if (winnerBannerTimerRef.current) clearTimeout(winnerBannerTimerRef.current);
+      winnerBannerTimerRef.current = setTimeout(() => {
+        setWinnerBannerFading(true);
+        setTimeout(() => {
+          setWinnerBanner(null);
+          setWinnerBannerFading(false);
+        }, 600);
+      }, 3000);
+    }
+    return () => {
+      if (winnerBannerTimerRef.current) clearTimeout(winnerBannerTimerRef.current);
+    };
+  }, [phase, handResult]);
+
+  // === XP Award: record hand and award XP on hand completion ===
+  const xpRecordedRef = useRef(null);
+  useEffect(() => {
+    if (phase === 'HandComplete' && handResult && handResult !== xpRecordedRef.current) {
+      xpRecordedRef.current = handResult;
+      const myWin = (handResult.winners ?? []).find((w) => w.seatIndex === yourSeat);
+      const mySeat = gameState?.seats?.[yourSeat];
+      // Check if player voluntarily put chips in preflop (VPIP) or raised preflop (PFR)
+      const myActions = handResult?.playerActions?.[yourSeat] || gameState?.actionLog?.filter(a => a.seatIndex === yourSeat) || [];
+      const voluntaryPut = myActions.some(a => ['call','raise','bet'].includes(a?.action || a?.type));
+      const preflopRaise = myActions.some(a => (a?.action === 'raise' || a?.type === 'raise') && (a?.phase === 'PreFlop' || a?.street === 'preflop'));
+      useProgressStore.getState().recordHand({
+        won: !!myWin,
+        potSize: myWin?.chipsWon || pot || 0,
+        handName: myWin?.handName || handResult?.showdownHands?.find(h => h.seatIndex === yourSeat)?.handName || '',
+        chipsAfter: mySeat?.chips ?? mySeat?.chipCount ?? null,
+        voluntaryPut,
+        preflopRaise,
+        position: gameState?.seatPositions?.[yourSeat] || '',
+        holeCards: yourCards,
+        communityCards: communityCards,
+        actions: myActions,
+        handId: gameState?.handId || gameState?.handNumber,
+      });
+      if (mySeat?.chips != null) {
+        useProgressStore.getState().updateChips(mySeat.chips);
+      }
+    }
+  }, [phase, handResult, yourSeat, pot]);
+
+  // Show showdown overlay when hand result is available
+  useEffect(() => {
+    if (
+      (phase === 'Showdown' || phase === 'HandComplete') &&
+      handResult &&
+      handResult.showdownHands &&
+      handResult.showdownHands.length > 0
+    ) {
+      setShowShowdown(true);
+      // Auto-dismiss: 1.5s if quick showdown, else 5s (#13)
+      const showdownDelay = quickShowdown ? 1500 : 5000;
+      if (showdownTimerRef.current) clearTimeout(showdownTimerRef.current);
+      showdownTimerRef.current = setTimeout(() => {
+        setShowShowdown(false);
+      }, showdownDelay);
+    } else if (phase !== 'Showdown' && phase !== 'HandComplete') {
+      setShowShowdown(false);
+      if (showdownTimerRef.current) {
+        clearTimeout(showdownTimerRef.current);
+        showdownTimerRef.current = null;
+      }
+    }
+    return () => {
+      if (showdownTimerRef.current) clearTimeout(showdownTimerRef.current);
+    };
+  }, [phase, handResult, quickShowdown]);
+
+  // Turn timer: 30-second countdown with time bank integration
+  useEffect(() => {
+    if (isMyTurn) {
+      setTimeLeft(30);
+      resetTimerStore(30);
+      timerWarningPlayed.current = false;
+
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          const next = prev - 1;
+          setTimerStoreLeft(next);          // sync to shared store → nameplates
+          if (next <= 0) {
+            clearInterval(timerRef.current);
+            return 0;
+          }
+          return next;
+        });
+      }, 1000);
+
+      return () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+      };
+    } else {
+      setTimeLeft(30);
+      resetTimerStore(30);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+  }, [isMyTurn, resetTimerStore, setTimerStoreLeft]);
+
+  // Execute auto-action when it becomes your turn
+  useEffect(() => {
+    if (isMyTurn && autoActionRef.current) {
+      const action = autoActionRef.current;
+      autoActionRef.current = null;
+      setAutoAction(null);
+
+      if (action === 'fold') {
+        playSound('fold');
+        sendAction('fold');
+      } else if (action === 'check' && callAmount === 0) {
+        playSound('check');
+        sendAction('check');
+      } else if (action === 'check' && callAmount > 0) {
+        // Can't check, need to call — don't auto-act, let player decide
+      } else if (action === 'call') {
+        playSound('call');
+        sendAction('call');
+      } else if (action === 'callAny') {
+        playSound('call');
+        sendAction('call');
+      }
+    }
+  }, [isMyTurn, callAmount, sendAction, playSound]);
+
+  // Sync ref with state
+  useEffect(() => {
+    autoActionRef.current = autoAction;
+  }, [autoAction]);
+
+  // Clear auto-action when a new hand starts
+  useEffect(() => {
+    if (phase === 'WaitingForPlayers' || phase === 'HandComplete') {
+      setAutoAction(null);
+    }
+  }, [phase]);
+
+  // Auto-fold: simple countdown — when timer hits 0, fold immediately
+  const autoFoldedRef = useRef(false);
+  useEffect(() => {
+    if (isMyTurn && timeLeft <= 0 && !autoFoldedRef.current) {
+      autoFoldedRef.current = true;
+      console.log('[Timer] Timer expired — auto-folding');
+      playSound('fold');
+      if (callAmount === 0) {
+        sendAction('check');
+      } else {
+        sendAction('fold');
+      }
+    }
+    if (!isMyTurn) {
+      autoFoldedRef.current = false;
+    }
+  }, [timeLeft, isMyTurn, callAmount, sendAction, playSound]);
+
+  // Timer warning sound when < 5 seconds
+  useEffect(() => {
+    if (isMyTurn && timeLeft <= 5 && timeLeft > 0 && !timerWarningPlayed.current) {
+      playSound('timer');
+      timerWarningPlayed.current = true;
+      // Reset so it plays each second
+      setTimeout(() => { timerWarningPlayed.current = false; }, 900);
+    }
+  }, [timeLeft, isMyTurn, playSound]);
+
+  // Scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages]);
+
+  // Auto-rebuy: when hand completes and chips are below min buy-in
+  useEffect(() => {
+    if (autoRebuy && phase === 'HandComplete' && prevPhaseForRebuyRef.current !== 'HandComplete') {
+      const minBuyIn = gameState?.minBuyIn || 5000;
+      if (myChips < minBuyIn) {
+        const socket = getSocket();
+        if (socket?.connected) {
+          const rebuyAmount = minBuyIn;
+          socket.emit('rebuy', { amount: rebuyAmount });
+          setRebuyNotification(`Auto-rebuying ${rebuyAmount.toLocaleString()} chips`);
+          setTimeout(() => setRebuyNotification(null), 3000);
+        }
+      }
+    }
+    prevPhaseForRebuyRef.current = phase;
+  }, [phase, autoRebuy, myChips, gameState]);
+
+  // Record opponent stats when hand completes
+  const prevPhaseForStatsRef = useRef(null);
+  useEffect(() => {
+    if (phase === 'HandComplete' && prevPhaseForStatsRef.current !== 'HandComplete') {
+      recordHandStats(seats, yourSeat, gameState);
+    }
+    prevPhaseForStatsRef.current = phase;
+  }, [phase, seats, yourSeat, gameState]);
+
+  // Build bet history strip for current street (Upgrade 4)
+  useEffect(() => {
+    if (!gameState?.seats || phase === 'WaitingForPlayers') {
+      setStreetActions([]);
+      prevActionsRef.current = [];
+      return;
+    }
+    // On new street, clear
+    if (phase !== prevPhaseForStreetRef.current) {
+      setStreetActions([]);
+      prevActionsRef.current = [];
+      prevPhaseForStreetRef.current = phase;
+      return;
+    }
+    // Detect new actions from seat lastAction changes
+    const newActions = [];
+    gameState.seats.forEach((seat, i) => {
+      if (!seat || seat.state !== 'occupied') return;
+      const prevSeat = prevActionsRef.current[i];
+      const action = seat.lastAction;
+      if (!action || action === 'None') return;
+      if (prevSeat && prevSeat.lastAction === action && prevSeat.currentBet === seat.currentBet) return;
+      newActions.push({
+        player: seat.playerName || `P${i+1}`,
+        action,
+        amount: seat.currentBet > 0 ? seat.currentBet : null,
+        isMe: i === yourSeat,
+      });
+    });
+    if (newActions.length > 0) {
+      setStreetActions(prev => {
+        const combined = [...prev, ...newActions];
+        return combined.slice(-6);
+      });
+    }
+    prevActionsRef.current = gameState.seats.map(s => s ? { lastAction: s.lastAction, currentBet: s.currentBet } : null);
+  }, [gameState?.seats]);
+
+  // Clear street actions on new phase (Upgrade 4)
+  useEffect(() => {
+    setStreetActions([]);
+    prevActionsRef.current = [];
+    prevPhaseForStreetRef.current = phase;
+  }, [phase]);
+
+  // Persist auto-rebuy preference
+  useEffect(() => {
+    localStorage.setItem('app_poker_autoRebuy', autoRebuy ? 'true' : 'false');
+  }, [autoRebuy]);
+
+  // Persist Run It Twice preference
+  useEffect(() => {
+    localStorage.setItem('app_poker_runItTwice', runItTwice ? 'true' : 'false');
+  }, [runItTwice]);
+
+  // Persist Auto Deal preference (#11)
+  useEffect(() => {
+    localStorage.setItem('app_poker_autoDeal', autoDeal ? 'true' : 'false');
+  }, [autoDeal]);
+
+  // Auto Deal: auto-start next hand after HandComplete (#11)
+  useEffect(() => {
+    if (autoDeal && phase === 'HandComplete' && !isSpectating) {
+      if (autoDealTimerRef.current) clearTimeout(autoDealTimerRef.current);
+      autoDealTimerRef.current = setTimeout(() => {
+        startHand();
+      }, 2000);
+    }
+    return () => {
+      if (autoDealTimerRef.current) clearTimeout(autoDealTimerRef.current);
+    };
+  }, [autoDeal, phase, isSpectating, startHand]);
+
+  // Fast Mode: emit to server when toggled (#12)
+  useEffect(() => {
+    const socket = getSocket();
+    if (socket?.connected) {
+      socket.emit('setFastMode', { enabled: fastMode });
+    }
+  }, [fastMode]);
+
+  // Persist Quick Showdown preference (#13)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('app_poker_settings');
+      const settings = raw ? JSON.parse(raw) : {};
+      settings.quickShowdown = quickShowdown;
+      localStorage.setItem('app_poker_settings', JSON.stringify(settings));
+    } catch { /* ignore */ }
+  }, [quickShowdown]);
+
+  // === All-in Equity Simulation (#17) ===
+  useEffect(() => {
+    if (!gameState || !seats) { setEquityResults(null); return; }
+    // Check if all active (non-folded) players are all-in, or it's showdown with cards visible
+    const activePlayers = seats.filter(s => s && s.state === 'occupied' && !s.folded && !s.eliminated);
+    if (activePlayers.length < 2) { setEquityResults(null); return; }
+
+    const allAllIn = activePlayers.every(s => s.allIn || s.chipCount === 0);
+    const isShowdownPhase = phase === 'Showdown' || phase === 'HandComplete';
+    if (!allAllIn && !isShowdownPhase) { setEquityResults(null); return; }
+
+    // Only compute if we have showdown hands (cards visible)
+    const showdownHands = gameState?.handResult?.showdownHands;
+    if (!showdownHands || showdownHands.length < 2) { setEquityResults(null); return; }
+
+    // Check if we already calculated for this exact state
+    const stateKey = `${phase}-${communityCards.length}-${showdownHands.map(h => h.seatIndex).join(',')}`;
+    if (equityCalculatedRef.current === stateKey) return;
+    equityCalculatedRef.current = stateKey;
+
+    // Build inputs for simulation
+    const playerHands = showdownHands.map(h => h.holeCards || []);
+    const usedCards = new Set();
+    for (const h of showdownHands) {
+      for (const c of (h.holeCards || [])) usedCards.add(`${c.rank}-${c.suit}`);
+    }
+    for (const c of communityCards) usedCards.add(`${c.rank}-${c.suit}`);
+
+    // Build remaining deck
+    const deckRemaining = [];
+    for (let suit = 0; suit < 4; suit++) {
+      for (let rank = 2; rank <= 14; rank++) {
+        if (!usedCards.has(`${rank}-${suit}`)) {
+          deckRemaining.push({ rank, suit });
+        }
+      }
+    }
+
+    // Run simulation in the equity web worker to avoid blocking the UI
+    calculateEquity(playerHands, communityCards, deckRemaining, 1000)
+      .then((result) => {
+        const equityMap = {};
+        showdownHands.forEach((h, i) => {
+          equityMap[h.seatIndex] = result.playerEquities[i];
+        });
+        setEquityResults(equityMap);
+      })
+      .catch(() => {
+        setEquityResults(null);
+      });
+  }, [gameState, seats, phase, communityCards]);
+
+  // Reset equity when new hand starts
+  useEffect(() => {
+    if (phase === 'PreFlop' || phase === 'WaitingForPlayers') {
+      setEquityResults(null);
+      equityCalculatedRef.current = null;
+    }
+  }, [phase]);
+
+  // === Missed Blinds listener (#16) ===
+  const [missedBlindsAmount, setMissedBlindsAmount] = useState(0);
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const handler = (data) => {
+      if (data && data.amount) setMissedBlindsAmount(data.amount);
+    };
+    const postedHandler = () => setMissedBlindsAmount(0);
+    socket.on('missedBlinds', handler);
+    socket.on('missedBlindsPosted', postedHandler);
+    return () => {
+      socket.off('missedBlinds', handler);
+      socket.off('missedBlindsPosted', postedHandler);
+    };
+  }, []);
+
+  // Also read missed blinds from gameState (#16)
+  useEffect(() => {
+    if (gameState?.missedBlinds && gameState.missedBlinds > 0) {
+      setMissedBlindsAmount(gameState.missedBlinds);
+    }
+  }, [gameState?.missedBlinds]);
+
+  // === Mucked Hand Reveal: show button for 5 seconds after folding ===
+  const prevFoldedRef = useRef(false);
+  useEffect(() => {
+    const folded = myPlayer?.folded || false;
+    if (folded && !prevFoldedRef.current && yourCards.length > 0) {
+      setShowMuckButton(true);
+      if (muckTimerRef.current) clearTimeout(muckTimerRef.current);
+      muckTimerRef.current = setTimeout(() => setShowMuckButton(false), 5000);
+    }
+    if (phase === 'WaitingForPlayers' || phase === 'PreFlop') {
+      setShowMuckButton(false);
+      setMuckedHands([]);
+    }
+    prevFoldedRef.current = folded;
+    return () => { if (muckTimerRef.current) clearTimeout(muckTimerRef.current); };
+  }, [myPlayer?.folded, phase, yourCards.length]);
+
+  // Listen for mucked hand reveals from other players
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const handler = (data) => {
+      if (data && data.cards && data.playerName) {
+        const addedAt = Date.now();
+        setMuckedHands((prev) => [...prev, { playerName: data.playerName, cards: data.cards, addedAt }]);
+        // Auto-dismiss after 4 seconds
+        setTimeout(() => {
+          setMuckedHands((prev) => prev.filter((m) => m.addedAt !== addedAt));
+        }, 4000);
+      }
+    };
+    socket.on('muckedHandRevealed', handler);
+    return () => socket.off('muckedHandRevealed', handler);
+  }, []);
+
+  // Track when player folds (for rabbit hunting)
+  const prevMyPlayerRef = useRef(null);
+  useEffect(() => {
+    if (myPlayer && myPlayer.folded && prevMyPlayerRef.current && !prevMyPlayerRef.current.folded) {
+      setPlayerFoldedThisHand(true);
+    }
+    if (phase === 'PreFlop' || phase === 'WaitingForPlayers') {
+      setPlayerFoldedThisHand(false);
+      clearRabbitCards();
+      setShowRabbitPanel(false);
+    }
+    prevMyPlayerRef.current = myPlayer ? { ...myPlayer } : null;
+  }, [myPlayer, phase, clearRabbitCards]);
+
+  // Rabbit hunt socket listener
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const handler = (data) => {
+      if (data && data.cards) {
+        setRabbitCards(data.cards);
+        setShowRabbitPanel(true);
+      }
+    };
+    socket.on('rabbitHuntResult', handler);
+    return () => socket.off('rabbitHuntResult', handler);
+  }, [setRabbitCards]);
+
+  // Reset insurance dismissed flag each hand
+  useEffect(() => {
+    if (phase === 'PreFlop' || phase === 'WaitingForPlayers') {
+      setInsuranceDismissed(false);
+      setShowInsurance(false);
+    }
+  }, [phase]);
+
+  // Favorite bet size helpers
+  const saveFavBetSize = (index) => {
+    const newFavs = [...favBetSizes];
+    newFavs[index] = raiseAmount;
+    setFavBetSizes(newFavs);
+    localStorage.setItem('app_poker_betSizes', JSON.stringify(newFavs));
+  };
+
+  const loadFavBetSize = (index) => {
+    const val = favBetSizes[index];
+    if (val !== null) {
+      setRaiseAmount(Math.max(minRaiseTotal, Math.min(val, maxRaise)));
+    }
+  };
+
+  // GIF reaction buttons for chat
+  // GIF_REACTIONS and QUICK_CHATS are module-level constants above
+
+  // Pot fraction helpers
+  const potFraction = (fraction) => {
+    const amount = currentBetToMatch + Math.round(pot * fraction);
+    return Math.max(minRaiseTotal, Math.min(amount, maxRaise));
+  };
+
+  // Chip denomination breakdown helper
+  const chipDenominations = [
+    { value: 1000, color: '#0d0d0d', border: '#00D9FF', label: '1K' },
+    { value: 500, color: '#166534', border: '#4ADE80', label: '500' },
+    { value: 100, color: '#991B1B', border: '#FCA5A5', label: '100' },
+    { value: 25, color: '#1E40AF', border: '#93C5FD', label: '25' },
+    { value: 5, color: '#ffffff', border: '#999', label: '5' },
+  ];
+
+  const getChipBreakdown = (amount) => {
+    const result = [];
+    let remaining = amount;
+    for (const denom of chipDenominations) {
+      const count = Math.floor(remaining / denom.value);
+      if (count > 0) {
+        result.push({ ...denom, count });
+        remaining -= count * denom.value;
+      }
+    }
+    return result;
+  };
+
+  // Action handlers with sound effects + bet sizing memory
+  const handleAction = useCallback((type, amount) => {
+    switch (type) {
+      case 'fold':  playSound('fold');  break;
+      case 'check': playSound('check'); break;
+      case 'call':  playSound('bet');   break;
+      case 'raise': playSound('bet');   break;
+      case 'allIn': playSound('allin'); break;
+      default: break;
+    }
+    // Remember raise as % of pot for bet sizing memory
+    if (type === 'raise' && amount && pot > 0) {
+      lastRaisePctRef.current = amount / pot;
+    }
+    // Upgrade 4: track last raise amount for replay button
+    if (type === 'raise' && amount) {
+      lastRaiseRef.current = amount;
+    }
+    // Upgrade 7: save bet sizing memory
+    if (type === 'raise' && amount) {
+      betMemoryRef.current = amount;
+      if (pot > 0) {
+        localStorage.setItem('poker_last_raise_pct', (amount / pot).toFixed(2));
+      }
+    }
+    sendAction(type, amount);
+  }, [sendAction, playSound, pot]);
+
+  // Time Bank handler (Upgrade 5)
+  const handleTimeBank = useCallback(() => {
+    if (timeBankRef.current <= 0 || timeBankActive) return;
+    const bankTime = Math.min(timeBankRef.current, 30);
+    timeBankRef.current -= bankTime;
+    setTimeBankLeft(timeBankRef.current);
+    setTimeBankActive(true);
+    // Add bank time to countdown
+    setTimeLeft(prev => prev + bankTime);
+    // Deactivate after bank time used up
+    setTimeout(() => setTimeBankActive(false), bankTime * 1000);
+  }, [timeBankActive]);
+
+  // Reload hotkeys when settings panel closes
+  useEffect(() => {
+    if (!hotkeyOpen) {
+      setHotkeys(loadHotkeys());
+    }
+  }, [hotkeyOpen]);
+
+  // Keyboard shortcuts (using customizable hotkeys)
+  const handleKeyDown = useCallback((e) => {
+    if (!isMyTurn) return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    const key = e.key;
+    if (key === hotkeys.fold) {
+      handleAction('fold');
+    } else if (key === hotkeys.checkCall) {
+      e.preventDefault();
+      if (callAmount === 0) {
+        handleAction('check');
+      } else {
+        handleAction('call');
+      }
+    } else if (key === hotkeys.raise) {
+      handleAction('raise', raiseAmount);
+    } else if (key === hotkeys.allIn) {
+      handleAction('allIn');
+    }
+  }, [isMyTurn, handleAction, callAmount, raiseAmount, hotkeys]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  // Chat send handler
+  const handleSendChat = useCallback((message) => {
+    if (!message || !message.trim()) return;
+    sendChat(message.trim());
+    setChatInput('');
+  }, [sendChat]);
+
+  const handleChatKeyDown = useCallback((e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSendChat(chatInput);
+    }
+  }, [chatInput, handleSendChat]);
+
+  // Sync color blind mode from localStorage changes
+  useEffect(() => {
+    const handleStorage = () => {
+      try {
+        const raw = localStorage.getItem('app_poker_settings');
+        if (raw) setColorBlindMode(JSON.parse(raw).colorBlindMode || false);
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('storage', handleStorage);
+    // Also poll periodically in case same-tab changes
+    const interval = setInterval(handleStorage, 2000);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Touch gesture handlers
+  const handleTouchStart = useCallback((e) => {
+    if (!isTouchDevice || !isMyTurn) return;
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    // Press-and-hold detection for raise slider
+    touchTimerRef.current = setTimeout(() => {
+      setShowRaiseSlider(true);
+      touchStartRef.current = null; // cancel swipe detection
+    }, 500);
+  }, [isTouchDevice, isMyTurn]);
+
+  const handleTouchMove = useCallback((e) => {
+    if (touchTimerRef.current) {
+      clearTimeout(touchTimerRef.current);
+      touchTimerRef.current = null;
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback((e) => {
+    if (touchTimerRef.current) {
+      clearTimeout(touchTimerRef.current);
+      touchTimerRef.current = null;
+    }
+    if (!touchStartRef.current || !isMyTurn) return;
+
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - touchStartRef.current.x;
+    const dy = touch.clientY - touchStartRef.current.y;
+    const dt = Date.now() - touchStartRef.current.time;
+    touchStartRef.current = null;
+
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    // Detect double-tap (very short duration, minimal movement)
+    if (dt < 200 && absDx < 15 && absDy < 15) {
+      // Double-tap = call
+      if (callAmount === 0) {
+        handleAction('check');
+      } else {
+        handleAction('call');
+      }
+      return;
+    }
+
+    // Swipe detection (minimum distance 60px, more horizontal than vertical, within 500ms)
+    if (absDx > 60 && absDx > absDy * 1.5 && dt < 500) {
+      if (dx < 0) {
+        // Swipe left = fold
+        handleAction('fold');
+      }
+    }
+  }, [isMyTurn, callAmount, handleAction]);
+
+  // Show gesture hint on first mobile visit
+  useEffect(() => {
+    if (!isTouchDevice) return;
+    const hintKey = 'poker3d_gestureHintShown';
+    try {
+      if (!localStorage.getItem(hintKey)) {
+        setShowGestureHint(true);
+        localStorage.setItem(hintKey, 'true');
+        const timer = setTimeout(() => setShowGestureHint(false), 5000);
+        return () => clearTimeout(timer);
+      }
+    } catch { /* ignore */ }
+  }, [isTouchDevice]);
+
+  // Attach touch event listeners
+  useEffect(() => {
+    if (!isTouchDevice) return;
+    const hud = document.querySelector('.hud');
+    if (!hud) return;
+    hud.addEventListener('touchstart', handleTouchStart, { passive: true });
+    hud.addEventListener('touchmove', handleTouchMove, { passive: true });
+    hud.addEventListener('touchend', handleTouchEnd, { passive: true });
+    return () => {
+      hud.removeEventListener('touchstart', handleTouchStart);
+      hud.removeEventListener('touchmove', handleTouchMove);
+      hud.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isTouchDevice, handleTouchStart, handleTouchMove, handleTouchEnd]);
+
+  // Phase display label
+  const phaseLabel = {
+    WaitingForPlayers: 'Waiting for Players',
+    PreFlop: 'Pre-Flop',
+    Flop: 'Flop',
+    Turn: 'Turn',
+    River: 'River',
+    Showdown: 'Showdown',
+    HandComplete: 'Hand Complete',
+    // Draw game phases
+    Deal: 'Deal',
+    Bet1: 'Betting Round 1',
+    Draw1: 'Draw 1',
+    Bet2: 'Betting Round 2',
+    Draw2: 'Draw 2',
+    Bet3: 'Betting Round 3',
+    Draw3: 'Draw 3',
+    Bet4: 'Betting Round 4',
+    // Stud game phases
+    ThirdStreet: '3rd Street',
+    FourthStreet: '4th Street',
+    FifthStreet: '5th Street',
+    SixthStreet: '6th Street',
+    SeventhStreet: '7th Street',
+  }[phase] || phase;
+
+  const handleBackToLobby = useCallback(() => {
+    leaveTable();
+    setScreen('lobby');
+  }, [leaveTable, setScreen]);
+
+  const isWaiting = phase === 'WaitingForPlayers' || phase === 'HandComplete';
+  const isShowdown = phase === 'Showdown';
+  const lastHandHistory = handHistories.length > 0 ? handHistories[handHistories.length - 1] : null;
+  const winnerSeatSet = handResult ? new Set((handResult.winners ?? []).map((w) => w.seatIndex)) : new Set();
+
+  // Timer percentage for circular indicator
+  const timerPct = (timeLeft / 30) * 100;
+  const timerDanger = timeLeft <= 5;
+
+  // Quick chat presets
+  // QUICK_CHATS is a module-level constant above
+
+  // Card rendering helper for overlays
+  const renderMiniCard = (card, highlight = false) => (
+    <span
+      className={`mini-card ${highlight ? 'mini-card-highlight' : ''}`}
+      style={{ color: getCardColor(card.suit, colorBlindMode) }}
+      key={`${card.rank}-${card.suit}`}
+    >
+      {serverRankDisplay(card.rank)}{SUIT_INDEX_TO_SYMBOL[card.suit]}
+    </span>
+  );
+
+  // Check if a card is in the best five
+  const isInBestFive = (card, bestFive) => {
+    if (!bestFive || bestFive.length === 0) return false;
+    return bestFive.some((c) => c.rank === card.rank && c.suit === card.suit);
+  };
+
+  return (
+    <div className="hud">
+      {/* Top bar */}
+      <div className="hud-top">
+        <button className="hud-back" onClick={handleBackToLobby}>
+          Back to Lobby
+        </button>
+        <div className="hud-center-info">
+          <div className="hud-pot">
+            <span className="hud-pot-dot">●</span> Pot: <span>{pot.toLocaleString()}</span>
+            {anteAmount > 0 && (
+              <span className="hud-ante-badge">Ante: {anteAmount.toLocaleString()}</span>
+            )}
+            {/* SPR badge (#3) */}
+            {pot > 0 && myChips > 0 && phase !== 'WaitingForPlayers' && (() => {
+              const spr = myChips / pot;
+              const sprColor = spr < 3 ? '#ef4444' : spr < 8 ? '#f59e0b' : '#4ade80';
+              return <span className="spr-badge" style={{ color: sprColor }}>SPR {spr.toFixed(1)}</span>;
+            })()}
+          </div>
+          {/* Blind level timer (#4) */}
+          {gameState?.blindLevel && gameState?.nextBlindIn > 0 && (
+            <div className="blind-level-timer">
+              <div className="blind-level-bar">
+                <div className="blind-level-bar-fill" style={{
+                  width: `${Math.min(100, (gameState.nextBlindIn / (gameState.blindLevelDuration || 600)) * 100)}%`,
+                  background: gameState.nextBlindIn < 30 ? '#ef4444' : gameState.nextBlindIn < 60 ? '#f59e0b' : '#4ade80',
+                }} />
+              </div>
+              <span className="blind-level-label">Level {gameState.blindLevel} · Next in {Math.ceil(gameState.nextBlindIn)}s</span>
+            </div>
+          )}
+          <div className="hud-phase" data-phase={phaseLabel}>
+            {isDealersChoice && dealersChoiceVariant && (
+              <span className="dealers-choice-label">
+                {dealersChoiceVariant.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+              </span>
+            )}
+            {!isDealersChoice && variantName !== "Texas Hold'em" && (
+              <span style={{ color: '#00D9FF', marginRight: '6px', fontSize: '0.75rem' }}>
+                {variantName}
+              </span>
+            )}
+            {phaseLabel}
+            <span className="hud-blinds-info">
+              Blinds: {(gameState?.smallBlind || 25).toLocaleString()}/{bigBlind.toLocaleString()}
+              {anteAmount > 0 && ` Ante: ${anteAmount.toLocaleString()}`}
+            </span>
+            {isDealersChoice && dealersChoiceNext && (
+              <span className="dealers-choice-next">
+                Next: {dealersChoiceNext.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="hud-player">
+          {/* ⋯ Options dropdown — contains Sit Out, Training, and all settings */}
+          <div className="hud-options-wrapper" ref={optionsRef}>
+            <button
+              className={`hud-icon-btn ${showOptions ? 'hud-icon-btn-active' : ''} ${sittingOut ? 'hud-icon-btn-sitout' : ''}`}
+              onClick={() => setShowOptions(!showOptions)}
+              title="Table Options"
+            >
+              ⋯
+            </button>
+            {showOptions && (
+              <div className="hud-options-dropdown">
+                {/* Sit Out row */}
+                <div className="options-row">
+                  <span className="options-label">🪑 Sit Out</span>
+                  <button
+                    className={`options-toggle ${sittingOut ? 'options-on' : 'options-off'}`}
+                    onClick={toggleSitOut}
+                  >{sittingOut ? 'OUT' : 'IN'}</button>
+                </div>
+                {/* Training row */}
+                <div className="options-row">
+                  <span className="options-label">🎓 Training</span>
+                  <button
+                    className={`options-toggle ${trainingEnabled ? 'options-on' : 'options-off'}`}
+                    onClick={toggleTraining}
+                  >{trainingEnabled ? 'ON' : 'OFF'}</button>
+                </div>
+                <div className="options-divider" />
+                <div className="options-row">
+                  <span className="options-label">Auto Deal</span>
+                  <button
+                    className={`options-toggle ${autoDeal ? 'options-on' : 'options-off'}`}
+                    onClick={() => setAutoDeal(!autoDeal)}
+                  >{autoDeal ? 'ON' : 'OFF'}</button>
+                </div>
+                <div className="options-row">
+                  <span className="options-label">Fast Mode</span>
+                  <button
+                    className={`options-toggle ${fastMode ? 'options-on' : 'options-off'}`}
+                    onClick={() => setFastMode(!fastMode)}
+                  >{fastMode ? 'ON' : 'OFF'}</button>
+                </div>
+                <div className="options-row">
+                  <span className="options-label">Quick Show</span>
+                  <button
+                    className={`options-toggle ${quickShowdown ? 'options-on' : 'options-off'}`}
+                    onClick={() => setQuickShowdown(!quickShowdown)}
+                  >{quickShowdown ? 'ON' : 'OFF'}</button>
+                </div>
+                <div className="options-row">
+                  <span className="options-label">Auto Rebuy</span>
+                  <button
+                    className={`options-toggle ${autoRebuy ? 'options-on' : 'options-off'}`}
+                    onClick={() => setAutoRebuy(!autoRebuy)}
+                  >{autoRebuy ? 'ON' : 'OFF'}</button>
+                </div>
+                <div className="options-divider" />
+                <button className="options-action-btn options-bomb"
+                  onClick={() => { const socket = getSocket(); if (socket?.connected) socket.emit('triggerBombPot', {}); setShowOptions(false); }}>
+                  💣 Bomb Pot
+                </button>
+                <button className="options-action-btn" onClick={() => { setShowRangeChart(true); setShowOptions(false); }}>
+                  📊 Range Chart
+                </button>
+                <button className="options-action-btn" onClick={() => { setShowEquityCalc(true); setShowOptions(false); }}>
+                  🔢 Equity Calc
+                </button>
+                <div className="options-divider" />
+                {/* Sound volume (#8) */}
+                <div className="options-row options-row--volume">
+                  <span className="options-label">🔊 Sound</span>
+                  <div className="options-volume-wrap">
+                    <input
+                      type="range" min="0" max="1" step="0.05"
+                      value={sfxVolume}
+                      onChange={e => setSfxVolume(parseFloat(e.target.value))}
+                      className="options-volume-slider"
+                    />
+                    <span className="options-volume-pct">{Math.round(sfxVolume * 100)}%</span>
+                  </div>
+                </div>
+                {/* Keyboard shortcuts (#9) */}
+                <button className="options-action-btn" onClick={() => { setShowShortcuts(true); setShowOptions(false); }}>
+                  ⌨️ Shortcuts
+                </button>
+              </div>
+            )}
+          </div>
+
+          <span className="hud-name">{playerName}</span>
+          {/* Chip stack visual */}
+          <div className={`hud-chip-stack ${myChips >= 5000 ? 'chip-deep' : myChips >= 1500 ? 'chip-mid' : 'chip-short'}`}>
+            <span className="chip-coins">
+              {myChips >= 5000 ? '🪙🪙🪙' : myChips >= 1500 ? '🪙🪙' : '🪙'}
+            </span>
+            <span className="chip-amount">{myChips.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Table vignette */}
+      <div className="table-vignette" />
+
+      {/* Phase transition banner */}
+      {phaseBanner && (
+        <div className="phase-banner">
+          <span className="phase-banner-text">{phaseBanner}</span>
+        </div>
+      )}
+
+      {/* Bomb Pot Banner */}
+      {isBombPot && (
+        <div className="bomb-pot-banner">
+          BOMB POT!
+        </div>
+      )}
+
+      {/* Active player indicator — rendered inside hud-bottom (see below) */}
+
+      {/* Community cards display (center of screen, above table) */}
+      {communityCards.length > 0 && (
+        <div className="hud-community">
+          {communityCards.map((card, i) => {
+            const isWinCard = winningCardIndices && winningCardIndices.communityIndices.includes(i);
+            return (
+              <div
+                key={i}
+                className={`community-card ${isWinCard ? 'card-winner-glow' : ''}`}
+                style={{ color: getCardColor(card.suit, colorBlindMode), position: 'relative' }}
+                onMouseEnter={() => setHoveredCardIdx(i)}
+                onMouseLeave={() => setHoveredCardIdx(null)}
+              >
+                <span className="card-rank">{serverRankDisplay(card.rank)}</span>
+                <span className="card-suit">{SUIT_INDEX_TO_SYMBOL[card.suit]}</span>
+                {hoveredCardIdx === i && (outsInfo || boardTexture) && (
+                  <div className="card-hover-popup">
+                    {outsInfo && outsInfo.outs > 0 && (
+                      <>
+                        <div className="chp-row"><span className="chp-label">Outs</span><span className="chp-val">{outsInfo.outs}</span></div>
+                        <div className="chp-row"><span className="chp-label">Next</span><span className="chp-val">{outsInfo.nextCardPct}%</span></div>
+                        {phase === 'Flop' && <div className="chp-row"><span className="chp-label">River</span><span className="chp-val">{outsInfo.byRiverPct}%</span></div>}
+                        {outsInfo.draws.slice(0,2).map(d => <div key={d} className="chp-draw">{d}</div>)}
+                      </>
+                    )}
+                    {boardTexture && boardTexture.labels.length > 0 && (
+                      <div className="chp-texture">{boardTexture.labels.join(' · ')}</div>
+                    )}
+                    {!outsInfo?.outs && (!boardTexture || boardTexture.labels.length === 0) && (
+                      <div className="chp-texture">No draw info</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {/* Board Texture Badge */}
+          {boardTexture && boardTexture.labels.length > 0 && (
+            <div className="board-texture-badge">
+              {boardTexture.labels.join(' / ')}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Side Pot Breakdown — only when someone is actually all-in */}
+      {gameState?.pots && gameState.pots.length > 1 &&
+       seats?.some(s => s?.state === 'occupied' && s?.allIn) &&
+       phase !== 'WaitingForPlayers' && (
+        <div className="side-pot-breakdown">
+          {gameState.pots.map((p, i) => {
+            const accentColors = ['#00D9FF', '#6AB4FF', '#A78BFA', '#4ADE80'];
+            const accent = accentColors[i % accentColors.length];
+            const label = i === 0 ? 'Main Pot' : `Side Pot ${i}`;
+            const eligible = p.eligiblePlayers && p.eligiblePlayers.length > 0
+              ? p.eligiblePlayers.map(idx => seats[idx]?.playerName || `P${idx + 1}`)
+              : [];
+            return (
+              <div key={i} className="side-pot-item" style={{ borderLeftColor: accent }}>
+                <div className="side-pot-header">
+                  <span className="side-pot-label" style={{ color: accent }}>{label}</span>
+                  {i > 0 && <span className="side-pot-tag">ALL-IN</span>}
+                </div>
+                <div className="side-pot-amount">{p.amount.toLocaleString()}</div>
+                {eligible.length > 0 && (
+                  <div className="side-pot-players">
+                    {eligible.map((name, j) => (
+                      <span key={j} className="side-pot-player-chip">{name}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Chopped Pot Display (#19) */}
+      {gameState?.isChoppedPot && gameState?.chopDetails && (phase === 'Showdown' || phase === 'HandComplete') && (
+        <div className="chop-pot-banner">
+          <div className="chop-pot-title">Split Pot!</div>
+          <div className="chop-pot-shares">
+            {gameState.chopDetails.map((d, i) => (
+              <span key={i} className="chop-pot-share">
+                {d.playerName}: {d.share.toLocaleString()}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* All-in Equity Display (#17) */}
+      {equityResults && Object.keys(equityResults).length > 0 && (
+        <div className="equity-badges-container">
+          {seats.map((seat, i) => {
+            if (!seat || seat.state !== 'occupied' || seat.folded || equityResults[i] === undefined) return null;
+            return (
+              <div key={i} className="equity-badge" title={`${seat.playerName}: ${equityResults[i]}% equity`}>
+                <span className="equity-player-name">{seat.playerName}</span>
+                <span className="equity-pct">{equityResults[i]}%</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Missed Blinds Button (#16) */}
+      {missedBlindsAmount > 0 && !sittingOut && (phase === 'WaitingForPlayers' || phase === 'HandComplete') && (
+        <div className="missed-blinds-panel">
+          <div className="missed-blinds-text">
+            You missed blinds while sitting out.
+          </div>
+          <button
+            className="action-btn deal"
+            onClick={() => {
+              const socket = getSocket();
+              if (socket?.connected) socket.emit('postMissedBlinds');
+            }}
+            style={{ fontSize: '0.85rem' }}
+          >
+            Post Blinds: {missedBlindsAmount.toLocaleString()}
+          </button>
+        </div>
+      )}
+
+      {/* Bottom action bar */}
+      {/* Mini pot pill — floating center pill above bottom bar */}
+      {phase !== 'WaitingForPlayers' && pot > 0 && (
+        <div className={`mini-pot-pill ${potPulsing ? 'mini-pot-pill--pulse' : ''}`}>
+          <span className="mini-pot-dot">●</span>
+          <span className="mini-pot-amount">{pot.toLocaleString()}</span>
+          {gameState?.pots && gameState.pots.length > 1 && (
+            <span className="mini-pot-side">
+              {gameState.pots.slice(1).map((p, i) => (
+                <span key={i} className="mini-side-badge">Side {p.amount.toLocaleString()}</span>
+              ))}
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className={`hud-bottom ${isMyTurn ? 'hud-bottom--my-turn' : ''}`}>
+
+        {/* LEFT: turn timer pill + hand strength meter */}
+        <div className="hud-bottom-left">
+          {handStrength && yourCards.length > 0 && (
+            <div className="bottom-strength-bar">
+              <div className="bsb-track">
+                <div className="bsb-fill" style={{
+                  width: `${Math.round(handStrength.strength * 100)}%`,
+                  background: handStrength.strength < 0.33 ? '#EF4444' : handStrength.strength < 0.66 ? '#EAB308' : '#22C55E',
+                }} />
+              </div>
+              <span className="bsb-label">{handStrength.name}</span>
+            </div>
+          )}
+          {/* Timer fully on nameplates — no HUD timer elements */}
+        </div>
+
+        {/* CENTRE: action buttons panel */}
+        <div className="hud-bottom-panel">
+        {/* Player's hole cards */}
+        <div className={`hud-cards hud-cards-floating ${isMyTurn ? 'hud-cards-active' : ''} ${holeCardCount >= 4 ? 'hud-cards-many' : ''} ${preflopTier ? `hud-cards-tier-${preflopTier}` : ''} ${cardsDealt ? 'hud-cards--dealt' : ''}`}>
+          {yourCards.length > 0 ? (
+            yourCards.map((card, i) => {
+              const isSelected = selectedDiscards.includes(i);
+              const isSmall = holeCardCount >= 4;
+              const isWinHoleCard = winningCardIndices && winningCardIndices.holeIndices.includes(i);
+
+              // For stud games, show face-up indicator
+              const studInfo = gameState?.yourCardVisibility?.[i];
+              const isFaceUp = studInfo?.faceUp;
+
+              return (
+                <div
+                  key={`${card.rank}-${card.suit}-${i}`}
+                  className={`card-peek ${isWinHoleCard ? 'card-winner-glow' : ''}`}
+                  onClick={hasDrawPhase && isDrawPhase ? () => toggleDiscard(i) : undefined}
+                  title={hasDrawPhase && isDrawPhase ? (isSelected ? 'Click to keep' : 'Click to discard') : 'Hover to peek'}
+                  style={{
+                    ...(isSelected ? { transform: 'translateY(-8px)' } : {}),
+                  }}
+                >
+                  <div className="card-peek-inner">
+                    {/* Front face - card value */}
+                    <div
+                      className="card-peek-front"
+                      style={{
+                        color: getCardColor(card.suit, colorBlindMode),
+                        ...(isSelected ? { border: '2px solid #EF4444', boxShadow: '0 0 8px rgba(239, 68, 68, 0.5)' } : {}),
+                      }}
+                    >
+                      <span className="card-rank">{serverRankDisplay(card.rank)}</span>
+                      <span className="card-suit">{SUIT_INDEX_TO_SYMBOL[card.suit]}</span>
+                      {isStudGame && isFaceUp !== undefined && (
+                        <span style={{
+                          position: 'absolute',
+                          top: '-4px',
+                          right: '-4px',
+                          fontSize: '0.5rem',
+                          background: isFaceUp ? '#4ADE80' : '#666',
+                          color: '#fff',
+                          borderRadius: '50%',
+                          width: '12px',
+                          height: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}>
+                          {isFaceUp ? 'U' : 'D'}
+                        </span>
+                      )}
+                    </div>
+                    {/* Back face - red/gold pattern */}
+                    <div className="card-peek-back" />
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <>
+              {Array.from({ length: holeCardCount }, (_, i) => (
+                <div key={i} className="card-slot" style={holeCardCount >= 4 ? { width: '50px', height: '70px', fontSize: '22px' } : {}}>?</div>
+              ))}
+            </>
+          )}
+        </div>
+
+        {/* Player nameplate — rendered from HUD (not 3D scene) so position:fixed works */}
+        {myPlayer && yourSeat >= 0 && (
+          <div className="hud-nameplate-me">
+            <div className="hud-np-avatar" style={{ background: '#16a34a' }}>
+              {(playerName || 'P').charAt(0).toUpperCase()}
+            </div>
+            <div className="hud-np-info">
+              <span className="hud-np-name">{playerName}</span>
+              <span className="hud-np-chips">● {(myPlayer.chipCount ?? myPlayer.chips ?? 0).toLocaleString()} · {bigBlind > 0 ? Math.round((myPlayer.chipCount ?? myPlayer.chips ?? 0) / bigBlind) : 0}bb</span>
+            </div>
+            {gameState?.seatPositions?.[yourSeat] && (
+              <span className="hud-np-pos">{gameState.seatPositions[yourSeat]}</span>
+            )}
+          </div>
+        )}
+
+        {/* Hand Strength Meter */}
+        {showHandStrength && handStrength && (
+          <div className="hand-strength-container">
+            <div className="hand-strength-bar">
+              <div
+                className="hand-strength-fill"
+                style={{
+                  width: `${handStrength.strength * 100}%`,
+                  background: `linear-gradient(90deg,
+                    ${handStrength.strength < 0.33 ? '#EF4444' : handStrength.strength < 0.66 ? '#EAB308' : '#22C55E'},
+                    ${handStrength.strength < 0.5 ? '#EAB308' : '#22C55E'})`,
+                }}
+              />
+              <span className="hand-strength-label">{handStrength.detailedName || handStrength.name}</span>
+            </div>
+            {/* Outs Counter */}
+            {outsInfo && outsInfo.outs > 0 && (
+              <div className="outs-display">
+                <span className="outs-count">{outsInfo.outs} outs</span>
+                <span className="outs-pct">({outsInfo.nextCardPct}% next{phase === 'Flop' ? ` / ${outsInfo.byRiverPct}% river` : ''})</span>
+                <div className="outs-draws">
+                  {outsInfo.draws.map((d) => (
+                    <span key={d} className="outs-draw-tag">{d}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Action history moved to portal — rendered top-left */}
+
+        <div className="hud-actions">
+          {/* ── Always-visible action bar ── */}
+          {isSpectating ? (
+            <div className="hud-waiting" style={{ color: '#00D9FF' }}>Spectating</div>
+          ) : isWaiting ? (
+            <button className="action-btn deal" onClick={startHand}>Start Hand</button>
+          ) : hasDrawPhase && isDrawPhase ? (
+            /* Draw Phase */
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: '#00D9FF', fontSize: '0.85rem' }}>
+                Select cards to discard ({selectedDiscards.length} selected)
+              </span>
+              <button
+                className="action-btn raise"
+                onClick={handleDraw}
+                style={{ background: 'linear-gradient(135deg, #A855F7, #7C3AED)' }}
+              >
+                {selectedDiscards.length === 0 ? 'Stand Pat' : `Discard & Draw ${selectedDiscards.length}`}
+              </button>
+            </div>
+          ) : (
+            /* Normal betting — always rendered, disabled when not our turn */
+            <>
+              {/* Pre-action pills — shown above buttons while waiting */}
+              {!isMyTurn && (
+                <div className="pre-action-btns">
+                  <button className={`pre-action-btn${preAction === 'checkFold' ? ' active' : ''}`} onClick={() => setPreAction(preAction === 'checkFold' ? null : 'checkFold')}>
+                    <span className="pre-action-icon">🔄</span>
+                    <span className="pre-action-label">Check/Fold</span>
+                  </button>
+                  <button className={`pre-action-btn${preAction === 'callAny' ? ' active' : ''}`} onClick={() => setPreAction(preAction === 'callAny' ? null : 'callAny')}>
+                    <span className="pre-action-icon">✋</span>
+                    <span className="pre-action-label">Call Any</span>
+                  </button>
+                  <button className={`pre-action-btn${preAction === 'checkOnly' ? ' active' : ''}`} onClick={() => setPreAction(preAction === 'checkOnly' ? null : 'checkOnly')}>
+                    <span className="pre-action-icon">✓</span>
+                    <span className="pre-action-label">Check</span>
+                  </button>
+                </div>
+              )}
+            <div className={`hud-actions-inner ${!isMyTurn ? 'hud-actions--inactive' : ''}`}>
+              {/* Single flat row: Timer | Fold | Call | presets | Raise | All-In */}
+              <div className="action-bar-flat">
+
+                {/* FOLD */}
+                <button
+                  className={`action-btn fold ${foldPending ? 'fold-pending' : ''}`}
+                  disabled={!isMyTurn}
+                  onClick={() => {
+                    if (!foldPending) {
+                      setFoldPending(true);
+                      foldTimerRef.current = setTimeout(() => {
+                        handleAction('fold');
+                        setFoldPending(false);
+                      }, 1500);
+                    } else {
+                      clearTimeout(foldTimerRef.current);
+                      handleAction('fold');
+                      setFoldPending(false);
+                    }
+                  }}
+                >
+                  {foldPending ? 'Fold?' : 'Fold'}
+                  {isMyTurn && !foldPending && <span className="btn-key">{hotkeys.fold === ' ' ? '␣' : hotkeys.fold.toUpperCase()}</span>}
+                </button>
+
+                {/* CHECK / CALL with pot odds below */}
+                <div className="ab-call-group">
+                  {callAmount === 0 ? (
+                    <button className="action-btn check" disabled={!isMyTurn} onClick={() => handleAction('check')}>
+                      Check
+                    </button>
+                  ) : (
+                    <button className="action-btn call" disabled={!isMyTurn} onClick={() => handleAction('call')}>
+                      Call<br />{callAmount.toLocaleString()}
+                    </button>
+                  )}
+                  {/* Pot odds moved to table overlay */}
+                </div>
+
+                {/* PRESETS — flat text buttons */}
+                {isMyTurn && (
+                  <div className="ab-presets">
+                    <button className="ab-preset" onClick={() => setRaiseAmount(potFraction(1/2))}>½ Pot</button>
+                    <button className="ab-preset" onClick={() => setRaiseAmount(potFraction(2/3))}>2/3 Pot</button>
+                    <button className="ab-preset ab-preset--active" onClick={() => setRaiseAmount(potFraction(1))}>Pot</button>
+                    <button className="ab-preset" onClick={() => setRaiseAmount(Math.max(minRaiseTotal, Math.min(bigBlind * 3, maxRaise)))}>3x BB</button>
+                  </div>
+                )}
+
+                {/* RAISE */}
+                <button className="action-btn raise" disabled={!isMyTurn} onClick={() => handleAction('raise', raiseAmount)}>
+                  Raise<br />{raiseAmount.toLocaleString()}
+                </button>
+
+                {/* ALL-IN */}
+                <button
+                  className="action-btn allin"
+                  disabled={!isMyTurn}
+                  onClick={() => {
+                    if (skipAllInConfirm) handleAction('allIn');
+                    else setShowAllInConfirm(true);
+                  }}
+                >
+                  All-In
+                </button>
+
+              </div>{/* end action-bar-flat */}
+
+              {/* raise row moved to raise-panel-float below hud-bottom */}
+
+              {/* STRADDLE (UTG only, active turn) */}
+              {isUTG && isMyTurn && (
+                <button
+                  className="action-btn straddle"
+                  onClick={() => {
+                    const socket = getSocket();
+                    if (socket?.connected) socket.emit('straddle');
+                    playSound('bet');
+                  }}
+                >
+                  Straddle {straddleAmount.toLocaleString()}
+                </button>
+              )}
+
+              {/* Last aggressor badge (moved out of call-with-odds wrapper) */}
+              {lastAggressorInfo && (
+                <span className="last-aggressor-badge">← {lastAggressorInfo.player} raised</span>
+              )}
+
+              {/* Run It Twice toggle */}
+              {showRunItTwice && isMyTurn && (
+                <label className="run-it-twice-toggle">
+                  <input
+                    type="checkbox"
+                    checked={runItTwice}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setRunItTwice(enabled);
+                      const socket = getSocket();
+                      if (socket?.connected) socket.emit('runItTwice', { enabled });
+                    }}
+                  />
+                  <span className="run-it-twice-label">Run It Twice</span>
+                </label>
+              )}
+            </div>
+            </>
+          )}
+        </div>
+        </div>{/* end hud-bottom-panel */}
+      </div>
+
+      {/* Pot odds — on the table below "AMERICAN PUB POKER" */}
+      {callAmount > 0 && potOddsDisplay && createPortal(
+        <div className={`table-pot-odds ${potOddsGood ? 'table-pot-odds--good' : 'table-pot-odds--bad'}`}>
+          Pot Odds: {potOddsDisplay}
+        </div>,
+        document.body
+      )}
+
+      {/* Action history — top-left below hand strength label */}
+      {actionHistory.length > 0 && createPortal(
+        <div className="action-history-floating">
+          {actionHistory.slice(0, 3).map((a, i) => (
+            <span key={i} className={`action-hist-item ${i === 0 ? 'action-hist-latest' : ''}`}>{a}</span>
+          ))}
+        </div>,
+        document.body
+      )}
+
+      {/* Showdown Results Overlay */}
+      {showShowdown && handResult && handResult.showdownHands && handResult.showdownHands.length > 0 && (
+        <div className="showdown-overlay" onClick={() => setShowShowdown(false)}>
+          <div className="showdown-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="showdown-title">Showdown</div>
+
+            {/* Winners */}
+            {handResult.winners.map((winner) => (
+              <div key={winner.seatIndex} className="showdown-winner-row">
+                <div className="showdown-winner-badge">WINNER</div>
+                <div className="showdown-player-name showdown-winner-name">
+                  {winner.playerName}
+                </div>
+                <div className="showdown-hand-name">{winner.handName}</div>
+                <div className="showdown-chips-won">+{winner.chipsWon.toLocaleString()} chips</div>
+                {winner.bestFiveCards && winner.bestFiveCards.length > 0 && (
+                  <div className="showdown-best-cards">
+                    {winner.bestFiveCards.map((c) => renderMiniCard(c, true))}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* All showdown hands */}
+            <div className="showdown-hands">
+              {handResult.showdownHands.map((hand) => {
+                const isWinner = winnerSeatSet.has(hand.seatIndex);
+                // Compute detailed hand name client-side if possible
+                let detailedName = hand.handName;
+                if (hand.holeCards && hand.holeCards.length > 0 && communityCards.length >= 3) {
+                  const evalResult = evaluateHandStrength(hand.holeCards, communityCards);
+                  if (evalResult.detailedName) detailedName = evalResult.detailedName;
+                }
+                return (
+                  <div
+                    key={hand.seatIndex}
+                    className={`showdown-hand-row ${isWinner ? 'showdown-hand-winner' : 'showdown-hand-loser'}`}
+                  >
+                    <div className="showdown-hand-player">{hand.playerName}</div>
+                    <div className="showdown-hand-cards">
+                      {/* Hole cards */}
+                      <span className="showdown-hole-label">Hole:</span>
+                      {hand.holeCards.map((c) =>
+                        renderMiniCard(c, isInBestFive(c, hand.bestFiveCards))
+                      )}
+                    </div>
+                    <div className="showdown-hand-eval">
+                      {detailedName}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="showdown-dismiss">Click anywhere to dismiss</div>
+          </div>
+        </div>
+      )}
+
+      {/* Won by fold - show simple winner overlay */}
+      {showShowdown && handResult && (!handResult.showdownHands || handResult.showdownHands.length === 0) && (
+        <div className="showdown-overlay" onClick={() => setShowShowdown(false)}>
+          <div className="showdown-panel showdown-panel-small">
+            {handResult.winners.map((winner) => (
+              <div key={winner.seatIndex} className="showdown-winner-row">
+                <div className="showdown-winner-name">{winner.playerName}</div>
+                <div className="showdown-hand-name">{winner.handName}</div>
+                <div className="showdown-chips-won">+{winner.chipsWon.toLocaleString()} chips</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Show / Muck after folding */}
+      {showMuckButton && yourCards.length > 0 && (
+        <div className="show-muck-prompt">
+          <button className="show-muck-btn show-muck-btn--show" onClick={() => {
+            const socket = getSocket();
+            if (socket?.connected) socket.emit('showMuckedHand', { cards: yourCards });
+            setShowMuckButton(false);
+          }}>Show Hand</button>
+          <button className="show-muck-btn show-muck-btn--muck" onClick={() => setShowMuckButton(false)}>Muck</button>
+        </div>
+      )}
+
+      {/* Show hand after winning by fold (#6) */}
+      {showHandPrompt && yourCards.length > 0 && (
+        <div className="show-muck-prompt">
+          <button className="show-muck-btn show-muck-btn--show" onClick={() => {
+            const socket = getSocket();
+            if (socket?.connected) socket.emit('showMuckedHand', { cards: yourCards });
+            setShowHandPrompt(false);
+          }}>Show Hand</button>
+          <button className="show-muck-btn show-muck-btn--muck" onClick={() => setShowHandPrompt(false)}>Muck</button>
+        </div>
+      )}
+
+      {/* Run-it-twice active indicator (#7) */}
+      {gameState?.runItTwice?.active && (
+        <div className="rit-indicator">↺ Run It Twice Active</div>
+      )}
+
+      {/* Mucked hand reveals from other players */}
+      {muckedHands.length > 0 && (
+        <div className="mucked-hands-container">
+          {muckedHands.map((mh, idx) => (
+            <div key={mh.timestamp || idx} className="mucked-hand-reveal">
+              <span className="mucked-hand-player">{mh.playerName} shows:</span>
+              <div className="mucked-hand-cards">
+                {mh.cards.map((c, ci) => renderMiniCard(c, false))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Rabbit Hunt button (after hand ends, player folded) */}
+      {phase === 'HandComplete' && playerFoldedThisHand && !rabbitCards && !showShowdown && (
+        <button
+          className="rabbit-hunt-btn"
+          onClick={() => requestRabbitHunt()}
+        >
+          Show Rabbit {'\uD83D\uDC30'}
+        </button>
+      )}
+
+      {/* Rabbit Hunt overlay panel */}
+      {showRabbitPanel && rabbitCards && rabbitCards.length > 0 && (
+        <div className="rabbit-overlay" onClick={() => setShowRabbitPanel(false)}>
+          <div className="showdown-panel showdown-panel-small rabbit-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="showdown-title" style={{ color: '#00D9FF' }}>
+              {'\uD83D\uDC30'} Rabbit Hunt
+            </div>
+            <div style={{ textAlign: 'center', color: '#aaaaaa', fontSize: '0.8rem', marginBottom: '10px' }}>
+              Remaining community cards that would have been dealt:
+            </div>
+            <div className="rabbit-cards">
+              {rabbitCards.map((card, i) => (
+                <div
+                  key={i}
+                  className="community-card"
+                  style={{ color: getCardColor(card.suit, colorBlindMode), pointerEvents: 'auto' }}
+                >
+                  <span className="card-rank">{serverRankDisplay(card.rank)}</span>
+                  <span className="card-suit">{SUIT_INDEX_TO_SYMBOL[card.suit]}</span>
+                </div>
+              ))}
+            </div>
+            <div className="showdown-dismiss">Click anywhere to dismiss</div>
+          </div>
+        </div>
+      )}
+
+      {/* Insurance panel (all-in, waiting for cards) */}
+      {showInsurancePanel && !insuranceDismissed && (
+        <div className="insurance-panel">
+          <div className="insurance-title">{'\uD83D\uDEE1\uFE0F'} Insurance</div>
+          <div className="insurance-question">
+            Lock in {insuranceEquity}% equity for {insuranceCashout.toLocaleString()} chips?
+          </div>
+          <div className="insurance-details">
+            <span>Pot: {pot.toLocaleString()}</span>
+            <span>Equity: {insuranceEquity}%</span>
+          </div>
+          <div className="insurance-actions">
+            <button
+              className="insurance-btn insurance-accept"
+              onClick={() => {
+                const socket = getSocket();
+                if (socket?.connected) socket.emit('acceptInsurance', {
+                  equityPct: insuranceEquity,
+                  cashoutAmount: insuranceCashout,
+                });
+                setInsuranceDismissed(true);
+              }}
+            >
+              Accept
+            </button>
+            <button
+              className="insurance-btn insurance-decline"
+              onClick={() => setInsuranceDismissed(true)}
+            >
+              Decline
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Spectator banner */}
+      {isSpectating && (
+        <div style={{
+          position: 'fixed', top: '44px', left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(0, 217, 255, 0.15)', border: '1px solid #B388FF',
+          borderRadius: '8px', padding: '8px 24px', zIndex: 600,
+          display: 'flex', alignItems: 'center', gap: '12px',
+          color: '#00D9FF', fontSize: '0.9rem', fontWeight: 600,
+        }}>
+          Spectating
+          <button
+            onClick={() => { stopSpectating(); useGameStore.getState().setScreen('lobby'); }}
+            style={{
+              background: 'none', border: '1px solid #B388FF', color: '#00D9FF',
+              padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
+            }}
+          >
+            Leave
+          </button>
+        </div>
+      )}
+
+      {/* Right rail buttons — unified column */}
+
+      {/* Last Hand History Panel (Part 3) */}
+      {showLastHand && lastHandHistory && (
+        <div className="last-hand-panel">
+          <div className="last-hand-header">
+            <span>Hand #{lastHandHistory.handNumber}</span>
+            <button className="last-hand-close" onClick={() => setShowLastHand(false)}>X</button>
+          </div>
+
+          {/* Community cards */}
+          {lastHandHistory.communityCards && lastHandHistory.communityCards.length > 0 && (
+            <div className="last-hand-community">
+              <span className="last-hand-label">Board:</span>
+              {lastHandHistory.communityCards.map((c, i) => (
+                <span key={i} className="mini-card" style={{ color: getCardColor(c.suit, colorBlindMode) }}>
+                  {serverRankDisplay(c.rank)}{SUIT_INDEX_TO_SYMBOL[c.suit]}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Winners */}
+          <div className="last-hand-winners">
+            {lastHandHistory.winners.map((w, i) => (
+              <div key={i} className="last-hand-winner-row">
+                <span className="last-hand-winner-badge">W</span>
+                <span className="last-hand-winner-name">{w.name}</span>
+                <span className="last-hand-winner-hand">{w.handName}</span>
+                <span className="last-hand-winner-chips">+{w.chipsWon.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Player actions */}
+          <div className="last-hand-players">
+            {lastHandHistory.players.map((p) => (
+              <div key={p.seatIndex} className={`last-hand-player-row ${p.folded ? 'last-hand-folded' : ''}`}>
+                <div className="last-hand-player-info">
+                  <span className="last-hand-pname">{p.name}</span>
+                  {p.holeCards && p.holeCards.length > 0 && (
+                    <span className="last-hand-pcards">
+                      {p.holeCards.map((c, i) => (
+                        <span key={i} className="mini-card mini-card-sm" style={{ color: getCardColor(c.suit, colorBlindMode) }}>
+                          {serverRankDisplay(c.rank)}{SUIT_INDEX_TO_SYMBOL[c.suit]}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                  {p.handName && <span className="last-hand-phand">{p.handName}</span>}
+                </div>
+                <div className="last-hand-player-chips">
+                  {p.startChips.toLocaleString()} &rarr; {p.endChips.toLocaleString()}
+                </div>
+                <div className="last-hand-player-actions">
+                  {p.actions.map((a, i) => (
+                    <span key={i} className="last-hand-action">{a}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Pots */}
+          {lastHandHistory.pots && lastHandHistory.pots.length > 0 && (
+            <div className="last-hand-pots">
+              {lastHandHistory.pots.map((pot, i) => (
+                <span key={i} className="last-hand-pot">
+                  {i === 0 ? 'Main' : `Side ${i}`}: {pot.amount.toLocaleString()}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Right rail — Last Hand, Replay, React, Emote */}
+      {!isSpectating && (
+        <div className="right-rail-btns">
+          {lastHandHistory && !showShowdown && (
+            <>
+              <button className="rail-btn" onClick={() => setShowLastHand(!showLastHand)}>Last Hand</button>
+              <button className="rail-btn" onClick={() => setShowReplay(true)}>Replay</button>
+            </>
+          )}
+          <div className="rail-btn-wrap"><TableReactions /></div>
+          <div className="rail-btn-wrap"><EmoteWheel disabled={isSpectating} /></div>
+        </div>
+      )}
+
+      {/* Legacy emote position removed — now in right rail */}
+      {false && (
+        <div style={{ position: 'fixed', bottom: '70px', right: '10px', zIndex: 500 }}>
+          <EmoteWheel disabled={isSpectating} />
+        </div>
+      )}
+
+      {/* Touch gesture hint overlay (first mobile visit) */}
+      {showGestureHint && (
+        <div className="gesture-hint-overlay" onClick={() => setShowGestureHint(false)}>
+          <div className="gesture-hint-panel">
+            <div className="gesture-hint-title">Touch Controls</div>
+            <div className="gesture-hint-row">
+              <span className="gesture-hint-icon">{'\u2B05'}</span>
+              <span>Swipe Left = Fold</span>
+            </div>
+            <div className="gesture-hint-row">
+              <span className="gesture-hint-icon">{'\uD83D\uDC46\uD83D\uDC46'}</span>
+              <span>Double Tap = Call/Check</span>
+            </div>
+            <div className="gesture-hint-row">
+              <span className="gesture-hint-icon">{'\uD83D\uDC46\u23F3'}</span>
+              <span>Press & Hold = Raise</span>
+            </div>
+            <div className="gesture-hint-dismiss">Tap anywhere to dismiss</div>
+          </div>
+        </div>
+      )}
+
+      {/* Press-and-hold raise slider overlay for touch */}
+      {showRaiseSlider && isMyTurn && (
+        <div className="gesture-raise-overlay" onClick={() => setShowRaiseSlider(false)}>
+          <div className="gesture-raise-panel" onClick={(e) => e.stopPropagation()}>
+            <div style={{ color: '#00D9FF', fontWeight: 700, marginBottom: '8px' }}>Raise Amount</div>
+            <input
+              type="range"
+              min={minRaiseTotal}
+              max={maxRaise}
+              step={Math.max(1, Math.floor(minRaiseTotal / 4))}
+              value={raiseAmount}
+              onChange={(e) => setRaiseAmount(Number(e.target.value))}
+              className="raise-slider"
+              style={{ width: '100%' }}
+            />
+            <div style={{ color: '#ffffff', textAlign: 'center', margin: '6px 0' }}>
+              {raiseAmount.toLocaleString()}
+            </div>
+            <button
+              className="action-btn raise"
+              onClick={() => { handleAction('raise', raiseAmount); setShowRaiseSlider(false); }}
+              style={{ width: '100%' }}
+            >
+              Raise {raiseAmount.toLocaleString()}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating emotes above seats */}
+      {emotes.map((emote, i) => {
+        const emoteData = EMOTE_MAP[emote.emoteId];
+        if (!emoteData) return null;
+        // Position emotes at top center with offset per seat
+        const offsetX = (emote.seatIndex % 5) * 60 - 120;
+        return (
+          <div
+            key={`${emote.timestamp}-${i}`}
+            className="emote-float"
+            style={{
+              position: 'fixed',
+              top: '30%',
+              left: `calc(50% + ${offsetX}px)`,
+              zIndex: 600,
+              animation: 'emoteFloat 2s ease-out forwards',
+              fontSize: '2.5rem',
+              textShadow: '0 2px 8px rgba(0,0,0,0.5)',
+              pointerEvents: 'none',
+            }}
+          >
+            {emoteData.icon}
+            <div style={{ fontSize: '0.6rem', color: '#ccc', textAlign: 'center' }}>{emote.playerName}</div>
+          </div>
+        );
+      })}
+
+      {/* Replay viewer overlay */}
+      <Suspense fallback={null}>
+        {showReplay && lastHandHistory && (
+          <HandReplayViewer history={lastHandHistory} onClose={() => setShowReplay(false)} />
+        )}
+      </Suspense>
+
+      {/* Training overlay */}
+      {trainingEnabled && <TrainingOverlay />}
+
+      {/* Hotkey settings gear button */}
+      <button
+        className="hotkey-gear-btn"
+        onClick={() => setHotkeyOpen(true)}
+        title="Hotkey Settings"
+      >
+        {'\u2699'}
+      </button>
+
+      {/* Hotkey settings overlay */}
+      <Suspense fallback={null}>
+        <HotkeySettings open={hotkeyOpen} onClose={() => setHotkeyOpen(false)} />
+      </Suspense>
+
+      {/* Auto-rebuy notification */}
+      {rebuyNotification && (
+        <div style={{
+          position: 'fixed',
+          top: '80px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(74, 222, 128, 0.15)',
+          border: '1px solid #4ADE80',
+          borderRadius: '8px',
+          padding: '8px 20px',
+          color: '#4ADE80',
+          fontSize: '0.85rem',
+          fontWeight: 600,
+          zIndex: 600,
+          animation: 'panel-slide-in 0.25s ease-out',
+          backdropFilter: 'blur(8px)',
+        }}>
+          {rebuyNotification}
+        </div>
+      )}
+
+      {/* Chat panel — memoized sub-component, only re-renders on message/open changes */}
+      <ChatPanel
+        chatOpen={chatOpen}
+        setChatOpen={setChatOpen}
+        chatUnread={chatUnread}
+        setChatUnread={setChatUnread}
+        chatMessages={chatMessages}
+        chatInput={chatInput}
+        setChatInput={setChatInput}
+        chatEndRef={chatEndRef}
+        handleSendChat={handleSendChat}
+        handleChatKeyDown={handleChatKeyDown}
+      />
+
+      {/* Dealer Voice Line bubble */}
+      {dealerVoice && (
+        <div className={`dealer-voice ${dealerVoiceFadingRef.current ? 'dealer-voice-out' : ''}`}>
+          <span className="dealer-voice-icon">{'\u2660'}</span>
+          {dealerVoice}
+        </div>
+      )}
+
+      {/* Big Win Confetti */}
+      {showConfetti && <WinConfetti chipsWon={confettiChips} />}
+
+      {/* Session Tracker (bottom-left) */}
+      <SessionTracker />
+
+      {/* Keyboard Shortcuts Overlay (#9) */}
+      {showShortcuts && (
+        <div className="shortcuts-overlay" onClick={() => setShowShortcuts(false)}>
+          <div className="shortcuts-panel" onClick={e => e.stopPropagation()}>
+            <div className="shortcuts-title">⌨️ Keyboard Shortcuts</div>
+            <div className="shortcuts-grid">
+              {[
+                [hotkeys.fold === ' ' ? 'Space' : hotkeys.fold.toUpperCase(), 'Fold'],
+                [hotkeys.checkCall === ' ' ? 'Space' : hotkeys.checkCall.toUpperCase(), 'Check / Call'],
+                [hotkeys.raise.toUpperCase(), 'Raise'],
+                ['A', 'All-In'],
+                ['?', 'Toggle shortcuts'],
+                ['Esc', 'Close overlay'],
+              ].map(([key, label]) => (
+                <div key={key} className="shortcut-row">
+                  <kbd className="shortcut-key">{key}</kbd>
+                  <span className="shortcut-label">{label}</span>
+                </div>
+              ))}
+            </div>
+            <button className="shortcuts-close" onClick={() => setShowShortcuts(false)}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Range Chart and Equity Calc - hidden until needed, no floating buttons */}
+
+      {/* Hand Range Chart overlay */}
+      {showRangeChart && <HandRangeChart onClose={() => setShowRangeChart(false)} />}
+
+      {/* Equity Calculator, GTO, Provably Fair, Share, Coach, Voice — lazy loaded */}
+      <Suspense fallback={null}>
+        {showEquityCalc && <EquityCalculator onClose={() => setShowEquityCalc(false)} />}
+
+        {/* GTO Overlay — always mounted, toggled via visibility */}
+        <GTOOverlay
+          holeCards={yourCards}
+          communityCards={gameState?.communityCards}
+          pot={gameState?.pot}
+          callAmount={gameState?.callAmount || gameState?.toCall}
+          numOpponents={(gameState?.seats || []).filter(s => s?.playerName && !s?.folded).length - 1}
+          phase={phase}
+          visible={gtoVisible && isMyTurn}
+        />
+
+        {showProvablyFair && (
+          <ProvablyFair
+            commitment={deckCommitment}
+            revelation={deckRevelation}
+            onClose={() => setShowProvablyFair(false)}
+          />
+        )}
+
+        {showShareReplay && lastHandHistory && (
+          <ShareReplay
+            history={lastHandHistory}
+            onClose={() => setShowShareReplay(false)}
+          />
+        )}
+
+        {showPostHandCoach && lastHandHistory && (
+          <PostHandCoach
+            handHistory={lastHandHistory}
+            playerName={gameState?.seats?.[yourSeat]?.playerName || ''}
+            onClose={() => setShowPostHandCoach(false)}
+          />
+        )}
+      </Suspense>
+
+      {/* Post-Hand Analysis Panel */}
+      {(phase === 'Showdown' || phase === 'HandComplete') && handResult && (
+        <PostHandAnalysis
+          gameState={gameState}
+          yourSeat={yourSeat}
+          handHistory={lastHandHistory}
+        />
+      )}
+
+      {/* Voice Chat */}
+      <Suspense fallback={null}>
+        <VoiceChat
+          tableId={gameState?.tableId}
+          username={gameState?.seats?.[yourSeat]?.playerName || 'Player'}
+          visible={showVoiceChat}
+        />
+      </Suspense>
+
+      {/* Lazy-loaded overlays — code-split, loaded on first open */}
+      <Suspense fallback={null}>
+        <TimingTellTracker
+          gameState={gameState}
+          visible={showTimingTells}
+          onClose={() => setShowTimingTells(false)}
+        />
+        <TableCommentary
+          socket={getSocket()}
+          gameState={gameState}
+          visible={showCommentary}
+          onClose={() => setShowCommentary(false)}
+        />
+        <RangeVisualizer
+          holeCards={yourCards}
+          equity={equityResults?.[yourSeat] ?? null}
+          potOdds={callAmount > 0 ? Math.round(callAmount / (pot + callAmount) * 100) : 0}
+          visible={showRangeViz}
+          onClose={() => setShowRangeViz(false)}
+        />
+        <SpectatorPredict
+          tableId={gameState?.tableId}
+          gameState={gameState}
+          socket={getSocket()}
+          visible={showSpectatorPredict}
+          onClose={() => setShowSpectatorPredict(false)}
+        />
+        <PauseCoach
+          visible={showPauseCoach}
+          gameState={gameState}
+          yourCards={yourCards}
+          onResume={() => setShowPauseCoach(false)}
+          onClose={() => setShowPauseCoach(false)}
+        />
+        <StreamOverlay
+          gameState={gameState}
+          yourCards={yourCards}
+          visible={showStream}
+          onClose={() => setShowStream(false)}
+        />
+        <GTOSolver
+          gameState={gameState}
+          yourCards={yourCards}
+          positionLabel={gameState?.seats?.[yourSeat]?.positionLabel || ''}
+          equity={equityResults?.[yourSeat] ?? null}
+          visible={showGTOSolver}
+          onClose={() => setShowGTOSolver(false)}
+        />
+        <CoachingRail
+          gameState={gameState}
+          yourCards={yourCards}
+          equity={equityResults?.[yourSeat] ?? null}
+          isMyTurn={isMyTurn}
+          socket={getSocket()}
+          visible={showCoachingRail}
+          onClose={() => setShowCoachingRail(false)}
+        />
+        <SessionRecap
+          visible={showSessionRecap}
+          sessionStats={{
+            handsPlayed: sessionHandsRef.current,
+            netChips: myChips - (sessionStartChipsRef.current ?? myChips),
+            winRate: sessionHandsRef.current > 0 ? Math.round(((myChips - (sessionStartChipsRef.current ?? myChips)) / sessionHandsRef.current) * 10) / 10 : 0,
+            biggestPot: sessionBiggestPotRef.current,
+          }}
+          socket={getSocket()}
+          onClose={() => setShowSessionRecap(false)}
+          onOpenAnalytics={() => {}}
+          onViewReplay={() => {}}
+        />
+        <PredictionMarket
+          gameState={gameState}
+          socket={getSocket()}
+          visible={showPredictionMarket}
+          onClose={() => setShowPredictionMarket(false)}
+        />
+        <HandHeatmap
+          seats={gameState?.seats || []}
+          equityResults={equityResults || {}}
+          mySeatIndex={yourSeat}
+          communityCards={communityCards}
+          visible={showHeatmap}
+        />
+      </Suspense>
+
+      {/* Advanced tools toolbar — rendered via portal to document.body so
+          position:fixed works correctly regardless of parent transforms */}
+      {createPortal(<div className="adv-toolbar">
+        {/* Extra tools — two rows to the left of GTO buttons */}
+        <div className="adv-toolbar-extras">
+          <button className={`adv-tool-btn ${showRangeViz ? 'active' : ''}`} title="Range Matrix" onClick={() => setShowRangeViz(v => !v)}>🎯</button>
+          <button className={`adv-tool-btn ${showHeatmap ? 'active' : ''}`} title="Equity Heatmap" onClick={() => setShowHeatmap(v => !v)}>🌡</button>
+          <button className={`adv-tool-btn ${showVoiceChat ? 'active' : ''}`} title="Voice Chat" onClick={() => setShowVoiceChat(v => !v)}>🎙</button>
+          <button className={`adv-tool-btn ${showStream ? 'active' : ''}`} title="Go Live" onClick={() => setShowStream(v => !v)}>📡</button>
+          <button className={`adv-tool-btn ${showTimingTells ? 'active' : ''}`} title="Timing Tells" onClick={() => setShowTimingTells(v => !v)}>⏱</button>
+          <button className={`adv-tool-btn ${showCommentary ? 'active' : ''}`} title="Table Commentary" onClick={() => setShowCommentary(v => !v)}>🎓</button>
+          <button className={`adv-tool-btn ${showCoachingRail ? 'active' : ''}`} title="AI Coach Rail" onClick={() => setShowCoachingRail(v => !v)}>🧠</button>
+          <button className={`adv-tool-btn ${showPredictionMarket ? 'active' : ''}`} title="Prediction Market" onClick={() => setShowPredictionMarket(v => !v)}>🎲</button>
+          <button className={`adv-tool-btn ${showPauseCoach ? 'active' : ''}`} title="Pause & Coach" onClick={() => setShowPauseCoach(v => !v)} disabled={!isMyTurn}>⏸</button>
+          <button className={`adv-tool-btn ${showSpectatorPredict ? 'active' : ''}`} title="Predict Winner" onClick={() => setShowSpectatorPredict(v => !v)}>🔮</button>
+          <button className="adv-tool-btn" title="Share Hand" onClick={() => setShowShareReplay(true)} disabled={!lastHandHistory}>🔗</button>
+          <button className="adv-tool-btn" title="AI Coach" onClick={() => setShowPostHandCoach(true)} disabled={!lastHandHistory}>🤖</button>
+          <button className="adv-tool-btn" title="Provably Fair" onClick={() => setShowProvablyFair(true)}>🔐</button>
+        </div>
+        {/* GTO Overlay + GTO Solver — stay in their original right-side column */}
+        <div className="adv-toolbar-gto">
+          <button className={`adv-tool-btn ${gtoVisible ? 'active' : ''}`} title="GTO Overlay" onClick={() => setGtoVisible(v => !v)}>📊</button>
+          <button className={`adv-tool-btn ${showGTOSolver ? 'active' : ''}`} title="GTO Solver" onClick={() => setShowGTOSolver(v => !v)}>♟</button>
+        </div>
+      </div>, document.body)}
+
+      {/* All-In Confirmation Popup */}
+      {showAllInConfirm && (
+        <div className="allin-confirm-overlay" onClick={() => setShowAllInConfirm(false)}>
+          <div className="allin-confirm-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="allin-confirm-title">Go All-In?</div>
+            <div className="allin-confirm-amount">
+              {myChips.toLocaleString()} chips
+            </div>
+            <div className="allin-confirm-actions">
+              <button
+                className="allin-confirm-btn allin-confirm-yes"
+                onClick={() => {
+                  setShowAllInConfirm(false);
+                  handleAction('allIn');
+                }}
+              >
+                Confirm All-In
+              </button>
+              <button
+                className="allin-confirm-btn allin-confirm-no"
+                onClick={() => setShowAllInConfirm(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}

@@ -1,0 +1,196 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   GTOSolver.css
+   Fixed floating panel – bottom-left of screen.
+───────────────────────────────────────────────────────────────────────────── */
+
+.gto-panel {
+  position: fixed;
+  bottom: 500px;
+  left: 12px;
+  width: 220px;
+  background: rgba(5, 5, 15, 0.96);
+  border: 1px solid rgba(0, 255, 255, 0.45);
+  border-radius: 8px;
+  box-shadow: 0 0 18px rgba(0, 255, 255, 0.12), 0 4px 24px rgba(0, 0, 0, 0.7);
+  z-index: 1400;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  user-select: none;
+  overflow: hidden;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.gto-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: rgba(0, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+}
+
+.gto-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #00ffff;
+  text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+}
+
+.gto-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.gto-btn-minimize,
+.gto-btn-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 3px;
+  line-height: 1;
+  font-size: 12px;
+  color: rgba(0, 255, 255, 0.6);
+  transition: color 0.15s;
+}
+
+.gto-btn-minimize:hover,
+.gto-btn-close:hover {
+  color: #00ffff;
+}
+
+.gto-btn-close {
+  font-size: 15px;
+}
+
+/* ── Body ───────────────────────────────────────────────────────────────── */
+
+.gto-body {
+  padding: 8px 10px 10px;
+}
+
+/* Spot label */
+.gto-spot-label {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 9px;
+  color: #00ffff;
+  margin-bottom: 10px;
+  word-break: break-all;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+
+/* ── Action rows ────────────────────────────────────────────────────────── */
+
+.gto-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gto-action-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gto-action-label {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.65);
+  width: 52px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.gto-bar-track {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.gto-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.35s ease;
+}
+
+.gto-action-pct {
+  font-size: 9px;
+  font-weight: 700;
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Divider ────────────────────────────────────────────────────────────── */
+
+.gto-divider {
+  height: 1px;
+  background: rgba(0, 255, 255, 0.15);
+  margin: 9px 0;
+}
+
+/* ── EV line ────────────────────────────────────────────────────────────── */
+
+.gto-ev-line {
+  font-size: 9px;
+  font-weight: 600;
+  margin-bottom: 3px;
+  line-height: 1.4;
+}
+
+.gto-equity-hint {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 8px;
+}
+
+.gto-equity-hint strong {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* ── Confidence dots ────────────────────────────────────────────────────── */
+
+.gto-confidence {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gto-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.gto-dot--filled {
+  background: #00ffff;
+  box-shadow: 0 0 5px rgba(0, 255, 255, 0.7);
+}
+
+.gto-dot--empty {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(0, 255, 255, 0.25);
+}
+
+.gto-confidence-label {
+  font-size: 8px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-left: 2px;
+}
+
+/* ── No data fallback ───────────────────────────────────────────────────── */
+
+.gto-no-data {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.35);
+  text-align: center;
+  padding: 8px 0;
+  font-style: italic;
+}

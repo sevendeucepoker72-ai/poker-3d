@@ -1,0 +1,844 @@
+/* ========== Progress Bar (Top of Lobby) ========== */
+
+.progress-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  background: rgba(8, 8, 8, 0.95);
+  border: 1px solid #2A2A4A;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  margin-bottom: 20px;
+}
+
+.progress-bar-container:hover {
+  border-color: #4A4A6A;
+  box-shadow: 0 2px 12px rgba(128, 90, 213, 0.15);
+}
+
+.level-badge {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 3px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000000;
+  flex-shrink: 0;
+  transition: box-shadow 0.3s;
+}
+
+.level-number {
+  font-size: 1.3rem;
+  font-weight: 800;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.progress-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.progress-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.player-level-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xp-text {
+  font-size: 0.75rem;
+  color: #aaaaaa;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.xp-bar-track {
+  width: 100%;
+  height: 8px;
+  background: #1A1A2E;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.xp-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #805AD5, #D69E2E);
+  transition: width 0.6s ease-out;
+  box-shadow: 0 0 6px rgba(128, 90, 213, 0.4);
+}
+
+.currency-display {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.currency-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.chips-currency {
+  color: #4ADE80;
+}
+
+.chips-currency .currency-icon {
+  color: #4ADE80;
+  font-size: 0.7rem;
+}
+
+.stars-currency {
+  color: #FBBF24;
+}
+
+.stars-currency .currency-icon {
+  color: #FBBF24;
+  font-size: 0.9rem;
+}
+
+.currency-amount {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ========== Missions Panel ========== */
+
+.missions-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.missions-panel {
+  background: #12122A;
+  border: 1px solid #2A2A4A;
+  border-radius: 16px;
+  padding: 24px;
+  width: 90%;
+  max-width: 520px;
+  max-height: 80vh;
+  overflow-y: auto;
+  animation: slideUp 0.25s ease-out;
+}
+
+.missions-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.missions-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.missions-panel::-webkit-scrollbar-thumb {
+  background: #2A2A4A;
+  border-radius: 3px;
+}
+
+.missions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.missions-header h2 {
+  font-size: 1.2rem;
+  color: #ffffff;
+  margin: 0;
+}
+
+.missions-close-btn {
+  background: none;
+  border: none;
+  color: #aaaaaa;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.missions-close-btn:hover {
+  color: #ffffff;
+}
+
+/* ========== Daily Bonus Button ========== */
+
+.daily-bonus-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #2D1B4E, #1A2A1A);
+  border: 1px solid #805AD5;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+  color: #ffffff;
+  font-family: inherit;
+}
+
+.daily-bonus-btn::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(0, 217, 255, 0.06) 50%,
+    transparent 70%
+  );
+  animation: shimmer 2.5s infinite linear;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%) rotate(45deg); }
+  100% { transform: translateX(100%) rotate(45deg); }
+}
+
+.daily-bonus-btn:hover {
+  border-color: #D69E2E;
+  box-shadow: 0 0 16px rgba(214, 158, 46, 0.2);
+}
+
+.daily-bonus-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.daily-bonus-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  text-align: left;
+}
+
+.daily-bonus-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #00D9FF;
+}
+
+.daily-bonus-streak {
+  font-size: 0.78rem;
+  color: #aaaaaa;
+}
+
+.daily-bonus-claim {
+  padding: 6px 16px;
+  background: linear-gradient(135deg, #00D9FF, #FFA500);
+  border-radius: 6px;
+  color: #000000;
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+/* ========== Mission Cards ========== */
+
+.missions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.mission-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #1A1A2E;
+  border: 1px solid #2A2A4A;
+  border-radius: 10px;
+  transition: border-color 0.15s;
+}
+
+.mission-card.mission-complete:not(.mission-claimed) {
+  border-color: #D69E2E;
+  box-shadow: 0 0 8px rgba(214, 158, 46, 0.15);
+}
+
+.mission-card.mission-claimed {
+  opacity: 0.5;
+}
+
+.mission-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+  width: 36px;
+  text-align: center;
+}
+
+.mission-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mission-description {
+  font-size: 0.88rem;
+  color: #ffffff;
+  margin-bottom: 6px;
+}
+
+.mission-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mission-progress-track {
+  flex: 1;
+  height: 6px;
+  background: #000000;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.mission-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #805AD5, #D69E2E);
+  transition: width 0.4s ease-out;
+}
+
+.mission-progress-text {
+  font-size: 0.72rem;
+  color: #aaaaaa;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.mission-reward-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.mission-reward-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 0.7rem;
+}
+
+.mission-reward-chips {
+  color: #4ADE80;
+  font-weight: 600;
+}
+
+.mission-reward-stars {
+  color: #FBBF24;
+  font-weight: 600;
+}
+
+.mission-reward-xp {
+  color: #805AD5;
+  font-weight: 600;
+}
+
+.mission-claim-btn {
+  padding: 4px 14px;
+  background: linear-gradient(135deg, #00D9FF, #FFA500);
+  border: none;
+  border-radius: 5px;
+  color: #000000;
+  font-weight: 700;
+  font-size: 0.72rem;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: transform 0.1s, box-shadow 0.1s;
+  animation: glowPulse 1.5s ease-in-out infinite;
+}
+
+.mission-claim-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 12px rgba(0, 217, 255, 0.4);
+}
+
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(0, 217, 255, 0.3); }
+  50% { box-shadow: 0 0 12px rgba(0, 217, 255, 0.5); }
+}
+
+.mission-claimed-label {
+  font-size: 0.72rem;
+  color: #4ADE80;
+  font-weight: 600;
+}
+
+.missions-timer {
+  text-align: center;
+  font-size: 0.78rem;
+  color: #aaaaaa;
+  margin-bottom: 16px;
+  padding: 8px;
+  background: #000000;
+  border-radius: 6px;
+}
+
+/* ========== Achievements Section ========== */
+
+.achievements-section {
+  margin-bottom: 16px;
+}
+
+.achievements-section h3 {
+  font-size: 0.9rem;
+  color: #aaaaaa;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.achievements-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.achievement-badge {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1A1A2E;
+  border: 1px solid #D69E2E;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  box-shadow: 0 0 6px rgba(214, 158, 46, 0.2);
+}
+
+/* ========== Player Stats ========== */
+
+.player-stats-section h3 {
+  font-size: 0.9rem;
+  color: #aaaaaa;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 8px;
+  background: #1A1A2E;
+  border-radius: 8px;
+  border: 1px solid #2A2A4A;
+}
+
+.stat-label {
+  font-size: 0.68rem;
+  color: #aaaaaa;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ========== Achievement Popup (Toast) ========== */
+
+.achievement-popup-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 2000;
+  pointer-events: none;
+}
+
+.achievement-popup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: rgba(18, 18, 42, 0.97);
+  border-radius: 10px;
+  min-width: 280px;
+  max-width: 380px;
+  cursor: pointer;
+  pointer-events: auto;
+  animation: slideInRight 0.35s ease-out, fadeOutRight 0.35s ease-in 4.65s forwards;
+}
+
+.achievement-popup.achievement-type {
+  border: 1px solid #D69E2E;
+  box-shadow: 0 4px 20px rgba(214, 158, 46, 0.25);
+}
+
+.achievement-popup.mission-type {
+  border: 1px solid #4ADE80;
+  box-shadow: 0 4px 20px rgba(74, 222, 128, 0.2);
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(30px);
+    opacity: 0;
+  }
+}
+
+.achievement-popup-icon {
+  font-size: 1.6rem;
+  flex-shrink: 0;
+}
+
+.achievement-popup-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.achievement-popup-title {
+  font-size: 0.72rem;
+  color: #D69E2E;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.mission-type .achievement-popup-title {
+  color: #4ADE80;
+}
+
+.achievement-popup-name {
+  font-size: 0.92rem;
+  color: #ffffff;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.achievement-popup-reward {
+  display: flex;
+  gap: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.popup-reward-chips {
+  color: #4ADE80;
+}
+
+.popup-reward-xp {
+  color: #805AD5;
+}
+
+.popup-reward-stars {
+  color: #FBBF24;
+}
+
+/* ========== Level Up Popup ========== */
+
+.levelup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.levelup-modal {
+  position: relative;
+  background: linear-gradient(180deg, #1A1040, #12122A);
+  border: 2px solid #D69E2E;
+  border-radius: 20px;
+  padding: 40px 48px;
+  text-align: center;
+  box-shadow: 0 0 60px rgba(214, 158, 46, 0.3), inset 0 0 30px rgba(128, 90, 213, 0.1);
+  animation: scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  overflow: hidden;
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.levelup-particles {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.levelup-particle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00D9FF;
+  animation: particleBurst 1s var(--delay, 0s) ease-out forwards;
+}
+
+.levelup-particle:nth-child(odd) {
+  background: #805AD5;
+}
+
+.levelup-particle:nth-child(3n) {
+  background: #4ADE80;
+  width: 6px;
+  height: 6px;
+}
+
+@keyframes particleBurst {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--x, 100px), var(--y, -100px)) rotate(var(--rotation, 360deg));
+    opacity: 0;
+  }
+}
+
+.levelup-crown {
+  font-size: 3rem;
+  margin-bottom: 8px;
+  animation: crownBounce 0.6s ease-out;
+}
+
+@keyframes crownBounce {
+  0% { transform: translateY(-30px); opacity: 0; }
+  60% { transform: translateY(5px); }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+.levelup-title {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  color: #D69E2E;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.levelup-level {
+  font-size: 4.5rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, #00D9FF, #FFA500, #00D9FF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.1;
+  margin-bottom: 20px;
+  animation: levelPulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes levelPulse {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.2); }
+}
+
+.levelup-rewards {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.levelup-reward-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.levelup-reward-icon {
+  font-size: 1.2rem;
+}
+
+.levelup-reward-icon.chips-color {
+  color: #4ADE80;
+}
+
+.levelup-reward-icon.stars-color {
+  color: #FBBF24;
+}
+
+.levelup-continue-btn {
+  padding: 12px 40px;
+  background: linear-gradient(135deg, #805AD5, #6B46C1);
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  letter-spacing: 0.5px;
+}
+
+.levelup-continue-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(128, 90, 213, 0.4);
+}
+
+/* ========== Lobby Integration ========== */
+
+.lobby-daily-bonus-btn {
+  padding: 10px 24px;
+  border: 1px solid #D69E2E;
+  border-radius: 8px;
+  background: transparent;
+  color: #00D9FF;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  overflow: hidden;
+  font-family: inherit;
+}
+
+.lobby-daily-bonus-btn::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(0, 217, 255, 0.08) 50%,
+    transparent 70%
+  );
+  animation: shimmer 2.5s infinite linear;
+}
+
+.lobby-daily-bonus-btn:hover {
+  background: rgba(0, 217, 255, 0.1);
+  box-shadow: 0 0 12px rgba(0, 217, 255, 0.2);
+}
+
+/* ========== Responsive ========== */
+
+@media (max-width: 600px) {
+  .progress-bar-container {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .currency-display {
+    flex-direction: row;
+    gap: 12px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .missions-panel {
+    width: 95%;
+    padding: 16px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .levelup-modal {
+    padding: 28px 24px;
+  }
+
+  .levelup-level {
+    font-size: 3.5rem;
+  }
+}

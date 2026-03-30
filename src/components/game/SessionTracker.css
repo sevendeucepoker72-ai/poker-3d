@@ -1,0 +1,150 @@
+.session-tracker {
+  position: fixed;
+  bottom: 100px;
+  left: 10px;
+  z-index: 500;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  user-select: none;
+}
+
+.session-tracker-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(5, 5, 5, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(74, 74, 106, 0.5);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.session-tracker-collapsed:hover {
+  border-color: rgba(136, 136, 170, 0.6);
+  background: rgba(20, 20, 45, 0.9);
+}
+
+.session-profit {
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.3px;
+}
+
+.session-profit.positive {
+  color: #4ADE80;
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.3);
+}
+
+.session-profit.negative {
+  color: #EF4444;
+  text-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+}
+
+.session-profit.neutral {
+  color: #aaaaaa;
+}
+
+.session-expand-icon {
+  color: #666;
+  font-size: 0.7rem;
+  transition: transform 0.2s;
+}
+
+.session-expand-icon.expanded {
+  transform: rotate(180deg);
+}
+
+.session-tracker-panel {
+  background: rgba(5, 5, 5, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(74, 74, 106, 0.5);
+  border-radius: 10px;
+  padding: 12px 16px;
+  min-width: 220px;
+  animation: session-slide-up 0.2s ease-out;
+}
+
+@keyframes session-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.session-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.session-title {
+  color: #aaaaaa;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.session-close {
+  color: #666;
+  font-size: 0.8rem;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 2px 6px;
+}
+
+.session-close:hover {
+  color: #aaa;
+}
+
+.session-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.session-stat-label {
+  color: #6A8AAA;
+  font-size: 0.78rem;
+}
+
+.session-stat-value {
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-sparkline {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(74, 74, 106, 0.3);
+}
+
+.session-sparkline-label {
+  color: #6A8AAA;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.session-sparkline svg {
+  display: block;
+}

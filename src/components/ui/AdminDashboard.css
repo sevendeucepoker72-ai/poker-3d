@@ -1,0 +1,235 @@
+.admin-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.admin-panel {
+  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
+  border: 1px solid rgba(0, 217, 255, 0.15);
+  border-radius: 16px;
+  width: 94%;
+  max-width: 680px;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 24px;
+  color: #ffffff;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.admin-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #EF4444, #F97316);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.admin-close {
+  background: transparent;
+  border: 1px solid #555;
+  color: #aaa;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.admin-close:hover {
+  border-color: #888;
+  color: #fff;
+}
+
+.admin-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+@media (min-width: 500px) {
+  .admin-stats-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.admin-stat-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+}
+
+.admin-stat-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #00D9FF;
+  margin-bottom: 4px;
+}
+
+.admin-stat-label {
+  font-size: 0.7rem;
+  color: #aaaaaa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.admin-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #00D9FF;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0, 217, 255, 0.1);
+}
+
+.admin-server-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.admin-server-stat {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.admin-server-stat-label {
+  color: #aaaaaa;
+}
+
+.admin-server-stat-value {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.admin-user-search {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  color: #ffffff;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+  outline: none;
+}
+
+.admin-user-search:focus {
+  border-color: rgba(0, 217, 255, 0.3);
+}
+
+.admin-user-search::placeholder {
+  color: #555;
+}
+
+.admin-user-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 24px;
+}
+
+.admin-user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  transition: background 0.15s ease;
+}
+
+.admin-user-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.admin-user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 217, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #00D9FF;
+  font-size: 0.85rem;
+}
+
+.admin-user-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.admin-user-meta {
+  font-size: 0.75rem;
+  color: #aaaaaa;
+}
+
+.admin-user-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.admin-ban-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.1s ease;
+}
+
+.admin-ban-btn:hover {
+  transform: scale(1.05);
+}
+
+.admin-ban-btn.ban {
+  background: rgba(239, 68, 68, 0.2);
+  color: #EF4444;
+}
+
+.admin-ban-btn.unban {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ADE80;
+}
+
+.admin-user-banned {
+  font-size: 0.7rem;
+  color: #EF4444;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.admin-not-auth {
+  text-align: center;
+  padding: 40px;
+  color: #EF4444;
+  font-size: 1.1rem;
+}

@@ -1,0 +1,220 @@
+.spin-wheel-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.spin-wheel-panel {
+  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
+  border: 1px solid rgba(0, 217, 255, 0.2);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 420px;
+  padding: 28px;
+  color: #ffffff;
+  text-align: center;
+}
+
+.spin-wheel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.spin-wheel-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #00D9FF, #0099CC);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.spin-wheel-close {
+  background: transparent;
+  border: 1px solid #555;
+  color: #aaa;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.spin-wheel-close:hover {
+  border-color: #888;
+  color: #fff;
+}
+
+.spin-wheel-container {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  margin: 0 auto 24px;
+}
+
+.spin-wheel-disc {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  position: relative;
+  overflow: hidden;
+  border: 4px solid rgba(0, 217, 255, 0.4);
+  box-shadow: 0 0 30px rgba(0, 217, 255, 0.15), inset 0 0 20px rgba(0, 0, 0, 0.3);
+  transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+}
+
+.spin-wheel-disc.spinning {
+  /* rotation set via inline style */
+}
+
+.spin-wheel-segment {
+  position: absolute;
+  width: 50%;
+  height: 50%;
+  top: 0;
+  right: 0;
+  transform-origin: bottom left;
+  overflow: hidden;
+}
+
+.spin-wheel-segment-inner {
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 30%;
+  padding-left: 10%;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.spin-wheel-pointer {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 14px solid transparent;
+  border-right: 14px solid transparent;
+  border-top: 28px solid #00D9FF;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  z-index: 10;
+}
+
+.spin-wheel-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00D9FF, #0099CC);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #0d0d0d;
+  box-shadow: 0 0 15px rgba(0, 217, 255, 0.3);
+  z-index: 5;
+}
+
+.spin-wheel-btn {
+  padding: 14px 40px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #00D9FF, #0099CC);
+  color: #0d0d0d;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 15px rgba(0, 217, 255, 0.3);
+}
+
+.spin-wheel-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(0, 217, 255, 0.4);
+}
+
+.spin-wheel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spin-wheel-cooldown {
+  font-size: 0.8rem;
+  color: #aaaaaa;
+  margin-top: 12px;
+}
+
+/* Prize popup */
+.spin-prize-popup {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease;
+}
+
+.spin-prize-card {
+  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
+  border: 2px solid #00D9FF;
+  border-radius: 20px;
+  padding: 40px;
+  text-align: center;
+  animation: prizePopIn 0.4s ease;
+}
+
+@keyframes prizePopIn {
+  0% { transform: scale(0.5); opacity: 0; }
+  70% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.spin-prize-icon {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.spin-prize-label {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #00D9FF;
+  margin-bottom: 8px;
+}
+
+.spin-prize-desc {
+  font-size: 0.9rem;
+  color: #aaa;
+  margin-bottom: 20px;
+}
+
+.spin-prize-claim-btn {
+  padding: 10px 32px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #00D9FF, #0099CC);
+  color: #0d0d0d;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}

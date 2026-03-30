@@ -1,0 +1,259 @@
+.equity-calc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: equity-fade-in 0.2s ease-out;
+}
+
+@keyframes equity-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.equity-calc-panel {
+  background: linear-gradient(135deg, #050505, #1a1a3e);
+  border: 1px solid rgba(74, 74, 106, 0.6);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 480px;
+  width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.equity-calc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.equity-calc-title {
+  color: #ffffff;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.equity-calc-close {
+  background: none;
+  border: 1px solid rgba(74, 74, 106, 0.5);
+  border-radius: 6px;
+  color: #888;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.equity-calc-close:hover {
+  border-color: #EF4444;
+  color: #EF4444;
+}
+
+.equity-hands-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.equity-hand-group {
+  flex: 1;
+  background: rgba(8, 8, 8, 0.6);
+  border: 1px solid rgba(74, 74, 106, 0.4);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.equity-hand-label {
+  color: #aaaaaa;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.equity-card-selectors {
+  display: flex;
+  gap: 6px;
+}
+
+.equity-card-selector {
+  display: flex;
+  gap: 3px;
+}
+
+.equity-card-selector select {
+  background: rgba(5, 5, 5, 0.9);
+  border: 1px solid rgba(74, 74, 106, 0.5);
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 0.85rem;
+  padding: 4px 6px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.equity-card-selector select:hover,
+.equity-card-selector select:focus {
+  border-color: #6ABAFF;
+}
+
+.equity-card-selector select option {
+  background: #1a1a3e;
+  color: #ffffff;
+}
+
+.equity-board-section {
+  margin-bottom: 16px;
+}
+
+.equity-board-label {
+  color: #aaaaaa;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.equity-board-cards {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.equity-board-card {
+  display: flex;
+  gap: 3px;
+}
+
+.equity-board-card select {
+  background: rgba(5, 5, 5, 0.9);
+  border: 1px solid rgba(74, 74, 106, 0.5);
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 0.8rem;
+  padding: 3px 5px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.equity-board-card select:hover,
+.equity-board-card select:focus {
+  border-color: #6ABAFF;
+}
+
+.equity-board-card select option {
+  background: #1a1a3e;
+  color: #ffffff;
+}
+
+.equity-board-hint {
+  color: #555;
+  font-size: 0.7rem;
+  margin-top: 4px;
+}
+
+.equity-calc-btn {
+  width: 100%;
+  padding: 10px;
+  background: linear-gradient(135deg, #6ABAFF, #3B82F6);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 16px;
+}
+
+.equity-calc-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.equity-calc-btn:disabled {
+  background: #3a3a5a;
+  color: #666;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.equity-results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.equity-result-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.equity-result-label {
+  color: #aaaaaa;
+  font-size: 0.85rem;
+  min-width: 60px;
+  font-weight: 600;
+}
+
+.equity-result-bar-container {
+  flex: 1;
+  height: 24px;
+  background: rgba(8, 8, 8, 0.6);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.equity-result-bar {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.4s ease;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+}
+
+.equity-result-bar.hand1 {
+  background: linear-gradient(90deg, #22C55E, #4ADE80);
+}
+
+.equity-result-bar.hand2 {
+  background: linear-gradient(90deg, #3B82F6, #6ABAFF);
+}
+
+.equity-result-pct {
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  min-width: 40px;
+  text-align: right;
+}
+
+.equity-result-hand-name {
+  color: #6A8AAA;
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+
+.equity-vs {
+  color: #555;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 4px 0;
+}

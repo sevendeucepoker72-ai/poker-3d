@@ -1,0 +1,41 @@
+{
+  "name": "American Pub Poker",
+  "short_name": "Pub Poker",
+  "description": "The most advanced free online poker platform — play in 15 seconds, no download needed",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0a1a",
+  "theme_color": "#FFD700",
+  "categories": ["games", "entertainment"],
+  "lang": "en-US",
+  "icons": [
+    { "src": "/poker-icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/poker-icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Quick Play",
+      "short_name": "Play Now",
+      "description": "Jump straight into a cash game",
+      "url": "/?action=quickplay",
+      "icons": [{ "src": "/poker-icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Spin & Go",
+      "short_name": "Spin & Go",
+      "description": "3-player random prize format",
+      "url": "/?action=spingo",
+      "icons": [{ "src": "/poker-icon-192.svg", "sizes": "192x192" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/poker-icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "label": "Poker Table"
+    }
+  ]
+}

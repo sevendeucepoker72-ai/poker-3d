@@ -1,0 +1,79 @@
+/* ===== CSS Custom Properties for Theming ===== */
+
+:root {
+  --font-scale: 1;
+  --bg-primary: #000000;
+  --bg-secondary: #0d0d0d;
+  --bg-card: rgba(10, 10, 10, 0.85);
+  --bg-card-hover: rgba(18, 18, 18, 0.9);
+  --bg-input: rgba(10, 10, 10, 0.8);
+  --bg-overlay: rgba(0, 0, 0, 0.92);
+  --bg-panel: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
+
+  --text-primary: #ffffff;
+  --text-secondary: #aaaaaa;
+  --text-muted: #666666;
+
+  --accent-gold: #00D9FF;
+  --accent-neon: #00D9FF;
+  --accent-green: #4ADE80;
+  --accent-purple: #00D9FF;
+  --accent-red: #EF4444;
+
+  --border-primary: rgba(0, 217, 255, 0.12);
+  --border-secondary: rgba(0, 217, 255, 0.22);
+
+  --card-bg: rgba(10, 10, 10, 0.85);
+  --card-border: rgba(0, 217, 255, 0.15);
+
+  --scrollbar-thumb: #333;
+  --shadow-color: rgba(0, 217, 255, 0.08);
+}
+
+/* ===== Light Theme Overrides ===== */
+
+.light-theme {
+  --bg-primary: #f0f0f5;
+  --bg-secondary: #e0e0e8;
+  --bg-card: rgba(255, 255, 255, 0.85);
+  --bg-card-hover: rgba(255, 255, 255, 0.95);
+  --bg-input: rgba(255, 255, 255, 0.9);
+  --bg-overlay: rgba(120, 120, 140, 0.75);
+  --bg-panel: linear-gradient(135deg, #f5f5fa 0%, #e8e8f0 100%);
+
+  --text-primary: #222;
+  --text-secondary: #555;
+  --text-muted: #888;
+
+  --accent-gold: #c9a600;
+  --accent-green: #16a34a;
+  --accent-purple: #7c3aed;
+  --accent-red: #dc2626;
+
+  --border-primary: rgba(0, 0, 0, 0.12);
+  --border-secondary: rgba(0, 0, 0, 0.18);
+
+  --card-bg: rgba(255, 255, 255, 0.9);
+  --card-border: rgba(0, 0, 0, 0.1);
+
+  --scrollbar-thumb: #bbb;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Body background override for light theme */
+.light-theme body,
+body.light-theme {
+  background: #f0f0f5;
+}
+
+/* ===== Font Scale ===== */
+body {
+  font-size: calc(var(--font-scale, 1) * 1rem);
+}
+
+/* ===== Color Blind Mode ===== */
+.color-blind-mode .community-card,
+.color-blind-mode .card-peek-front,
+.color-blind-mode .mini-card {
+  /* Colors are set via JS getCardColor(), these are fallback overrides */
+}

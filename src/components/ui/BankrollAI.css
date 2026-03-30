@@ -1,0 +1,325 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   BankrollAI.css
+   Full-screen overlay + centred modal for bankroll analysis.
+───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Overlay ─────────────────────────────────────────────────────────────── */
+
+.bai-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 8, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 16px;
+  backdrop-filter: blur(3px);
+}
+
+/* ── Modal ───────────────────────────────────────────────────────────────── */
+
+.bai-modal {
+  background: rgba(6, 8, 20, 0.98);
+  border: 1px solid rgba(0, 255, 255, 0.5);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 820px;
+  max-height: 92vh;
+  overflow-y: auto;
+  box-shadow:
+    0 0 40px rgba(0, 255, 255, 0.14),
+    0 8px 48px rgba(0, 0, 0, 0.85);
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  color: #e2e8f0;
+}
+
+/* ── Scrollbar styling ───────────────────────────────────────────────────── */
+
+.bai-modal::-webkit-scrollbar {
+  width: 5px;
+}
+.bai-modal::-webkit-scrollbar-track {
+  background: transparent;
+}
+.bai-modal::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 255, 0.25);
+  border-radius: 3px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.bai-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+  background: rgba(0, 255, 255, 0.04);
+  border-radius: 12px 12px 0 0;
+}
+
+.bai-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bai-icon {
+  font-size: 22px;
+  color: #00ffff;
+  text-shadow: 0 0 12px rgba(0, 255, 255, 0.6);
+}
+
+.bai-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: #00ffff;
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.45);
+}
+
+.bai-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+  color: rgba(0, 255, 255, 0.55);
+  padding: 0 4px;
+  transition: color 0.15s;
+}
+.bai-close:hover {
+  color: #00ffff;
+}
+
+/* ── Content layout ─────────────────────────────────────────────────────── */
+
+.bai-content {
+  display: flex;
+  gap: 0;
+  min-height: 480px;
+}
+
+/* ── Input column ────────────────────────────────────────────────────────── */
+
+.bai-inputs {
+  flex: 0 0 220px;
+  padding: 20px 18px;
+  border-right: 1px solid rgba(0, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bai-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(0, 255, 255, 0.7);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.bai-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.bai-unit {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.bai-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  border-radius: 5px;
+  padding: 6px 8px;
+  color: #e2e8f0;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+.bai-input:focus {
+  border-color: rgba(0, 255, 255, 0.55);
+  background: rgba(0, 255, 255, 0.04);
+}
+.bai-select {
+  cursor: pointer;
+}
+.bai-select option {
+  background: #0d1117;
+}
+
+/* Radio group */
+.bai-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.bai-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+}
+.bai-radio-label input[type="radio"] {
+  accent-color: #00ffff;
+  cursor: pointer;
+}
+
+/* ── Results column ──────────────────────────────────────────────────────── */
+
+.bai-results {
+  flex: 1;
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Big ROR display */
+.bai-ror-block {
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.bai-ror-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.bai-ror-value {
+  font-size: 72px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -2px;
+  filter: drop-shadow(0 0 18px currentColor);
+  transition: color 0.3s;
+}
+
+/* Result rows */
+.bai-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bai-result-key {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.bai-result-val {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+  text-align: right;
+}
+
+.bai-val--green { color: #22C55E; }
+.bai-val--red   { color: #EF4444; }
+
+/* Direction indicators */
+.bai-dir         { font-size: 13px; font-weight: 700; }
+.bai-dir--up     { color: #22C55E; }
+.bai-dir--down   { color: #EF4444; }
+.bai-dir--ok     { color: #F59E0B; }
+
+/* ── Threshold block with progress bar ───────────────────────────────────── */
+
+.bai-threshold-block {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* ── Progress bar ────────────────────────────────────────────────────────── */
+
+.bai-progress-track {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bai-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #16a34a, #22C55E, #4ade80);
+  transition: width 0.4s ease;
+}
+
+/* ── Divider ─────────────────────────────────────────────────────────────── */
+
+.bai-divider {
+  height: 1px;
+  background: rgba(0, 255, 255, 0.12);
+  margin: 2px 0;
+}
+
+/* ── Advice ──────────────────────────────────────────────────────────────── */
+
+.bai-advice {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bai-advice-line {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── Stake chart ─────────────────────────────────────────────────────────── */
+
+.bai-chart-wrapper {
+  margin-top: 4px;
+}
+
+.bai-section-title--chart {
+  margin-bottom: 8px;
+}
+
+.bai-stake-chart {
+  width: 100%;
+  height: auto;
+  border: 1px solid rgba(0, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  display: block;
+}
+
+/* ── Responsive: stack columns on narrow viewports ───────────────────────── */
+
+@media (max-width: 560px) {
+  .bai-content {
+    flex-direction: column;
+  }
+  .bai-inputs {
+    flex: none;
+    border-right: none;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.12);
+  }
+  .bai-ror-value {
+    font-size: 52px;
+  }
+}

@@ -1,0 +1,195 @@
+.unlocks-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(0, 0, 0, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+.unlocks-panel {
+  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
+  border: 1px solid #333;
+  border-radius: 16px;
+  padding: 28px 32px;
+  max-width: 560px;
+  width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  color: #ffffff;
+}
+
+.unlocks-panel::-webkit-scrollbar {
+  width: 6px;
+}
+.unlocks-panel::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}
+
+.unlocks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  gap: 12px;
+}
+
+.unlocks-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #00D9FF;
+}
+
+.unlocks-level-badge {
+  padding: 4px 14px;
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.15), rgba(74, 222, 128, 0.05));
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  border-radius: 20px;
+  color: #4ADE80;
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-right: auto;
+}
+
+.unlocks-close {
+  background: none;
+  border: 1px solid #555;
+  color: #aaa;
+  padding: 6px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.unlocks-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-color: #888;
+}
+
+.unlocks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.unlock-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.unlock-item-unlocked {
+  background: rgba(74, 222, 128, 0.06);
+  border-color: rgba(74, 222, 128, 0.15);
+}
+
+.unlock-item-unlocked:hover {
+  background: rgba(74, 222, 128, 0.1);
+  transform: translateX(3px);
+}
+
+.unlock-item-locked {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.05);
+  opacity: 0.55;
+}
+
+.unlock-level-tag {
+  min-width: 42px;
+  text-align: center;
+}
+
+.unlock-level-tag span {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #aaaaaa;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+
+.unlock-item-unlocked .unlock-level-tag span {
+  color: #4ADE80;
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.unlock-icon {
+  font-size: 1.5rem;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(0, 217, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.unlock-icon-locked {
+  background: rgba(255, 255, 255, 0.04);
+  filter: grayscale(1);
+}
+
+.unlock-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.unlock-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 2px;
+}
+
+.unlock-item-locked .unlock-name {
+  color: #888;
+}
+
+.unlock-desc {
+  font-size: 0.75rem;
+  color: #aaaaaa;
+}
+
+.unlock-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 4px 10px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.unlock-status-yes {
+  color: #4ADE80;
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.unlock-status-no {
+  color: #aaaaaa;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+@media (max-width: 600px) {
+  .unlocks-panel {
+    padding: 18px 14px;
+  }
+
+  .unlock-item {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .unlock-desc {
+    display: none;
+  }
+}

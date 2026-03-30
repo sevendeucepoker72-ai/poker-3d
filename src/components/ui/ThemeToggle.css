@@ -1,0 +1,56 @@
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-toggle-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(10, 10, 10, 0.6);
+  backdrop-filter: blur(8px);
+  color: #00D9FF;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.theme-toggle-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 16px rgba(0, 217, 255, 0.2);
+  border-color: rgba(0, 217, 255, 0.3);
+}
+
+.theme-toggle-btn:active {
+  transform: scale(0.95);
+}
+
+/* Light theme overrides */
+.light-theme .theme-toggle-btn {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #555;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+.light-theme .theme-toggle-btn:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Icon transition */
+.theme-toggle-icon {
+  display: inline-block;
+  transition: transform 0.3s ease;
+  line-height: 1;
+}
+
+.theme-toggle-btn:hover .theme-toggle-icon {
+  transform: rotate(20deg);
+}
