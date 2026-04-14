@@ -103,7 +103,9 @@ function _doSync() {
   });
 }
 
-/** Install a beforeunload handler so we flush on tab close. */
+/** Install a beforeunload handler so we flush on tab close. Returns an unsubscribe function. */
 export function installBeforeUnloadSync() {
-  window.addEventListener('beforeunload', syncToServerNow);
+  const handler = syncToServerNow;
+  window.addEventListener('beforeunload', handler);
+  return () => window.removeEventListener('beforeunload', handler);
 }

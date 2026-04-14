@@ -18,11 +18,19 @@ export const useTableStore = create((set, get) => ({
   mySeat: -1,
   setMySeat: (seat) => set({ mySeat: seat }),
 
-  // Chat messages (last 20)
+  // Chat messages (last 50)
   chatMessages: [],
-  addChatMessage: (msg) => set((state) => ({
-    chatMessages: [...state.chatMessages, msg].slice(-20),
-  })),
+  addChatMessage: (msg) => set((state) => {
+    const updated = [...state.chatMessages, msg];
+    if (updated.length > 50) {
+      // Inject a system notice when older messages are trimmed
+      const trimmed = updated.slice(-50);
+      const hasNotice = trimmed[0]?.system && trimmed[0]?.trimNotice;
+      if (!hasNotice) trimmed.unshift({ system: true, trimNotice: true, message: '— older messages not shown —', timestamp: Date.now() });
+      return { chatMessages: trimmed };
+    }
+    return { chatMessages: updated };
+  }),
 
   // Draw game: selected cards to discard
   selectedDiscards: [],
@@ -188,7 +196,7 @@ export const useTableStore = create((set, get) => ({
   // ========== Emote System ==========
   emotes: [], // { seatIndex, emoteId, playerName, timestamp }
   addEmote: (emote) => set((state) => ({
-    emotes: [...state.emotes, { ...emote, timestamp: Date.now() }].slice(-50),
+    emotes: [...state.emotes, { ...emote, timestamp: emote.timestamp ?? Date.now() }].slice(-50),
   })),
   removeEmote: (timestamp) => set((state) => ({
     emotes: state.emotes.filter((e) => e.timestamp !== timestamp),

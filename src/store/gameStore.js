@@ -1,5 +1,19 @@
 import { create } from 'zustand';
 
+const AVATAR_STORAGE_KEY = 'poker_avatar';
+
+function loadSavedAvatar(defaults) {
+  try {
+    const raw = localStorage.getItem(AVATAR_STORAGE_KEY);
+    if (!raw) return { ...defaults };
+    const parsed = JSON.parse(raw);
+    // Merge with defaults so any new fields are included
+    return { ...defaults, ...parsed, faceShape: { ...defaults.faceShape, ...(parsed.faceShape || {}) } };
+  } catch {
+    return { ...defaults };
+  }
+}
+
 const DEFAULT_AVATAR = {
   bodyType: 'male',
   skinTone: '#C68642',
@@ -65,20 +79,27 @@ export const useGameStore = create((set, get) => ({
   chips: 10000,
   setChips: (chips) => set({ chips }),
 
-  // Avatar config
-  avatar: { ...DEFAULT_AVATAR },
+  // Avatar config — loaded from localStorage if available
+  avatar: loadSavedAvatar(DEFAULT_AVATAR),
   updateAvatar: (key, value) =>
-    set((state) => ({
-      avatar: { ...state.avatar, [key]: value },
-    })),
+    set((state) => {
+      const next = { ...state.avatar, [key]: value };
+      localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(next));
+      return { avatar: next };
+    }),
   updateFaceShape: (key, value) =>
-    set((state) => ({
-      avatar: {
+    set((state) => {
+      const next = {
         ...state.avatar,
         faceShape: { ...state.avatar.faceShape, [key]: value },
-      },
-    })),
-  resetAvatar: () => set({ avatar: { ...DEFAULT_AVATAR } }),
+      };
+      localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(next));
+      return { avatar: next };
+    }),
+  resetAvatar: () => {
+    localStorage.removeItem(AVATAR_STORAGE_KEY);
+    set({ avatar: { ...DEFAULT_AVATAR } });
+  },
 
   // Table state
   tableId: null,

@@ -14,12 +14,13 @@ import WinConfetti from './WinConfetti';
 import SessionTracker from './SessionTracker';
 import HandRangeChart from './HandRangeChart';
 import PostHandAnalysis from './PostHandAnalysis';
-import { recordHandStats } from '../../utils/opponentTracker';
+import { recordHandStats, getOpponentStats } from '../../utils/opponentTracker';
 import { useProgressStore } from '../../store/progressStore';
 import { useEquityWorker } from '../../hooks/useEquityWorker';
-import { getSocket } from '../../services/socketService';
+import { getSocket, subscribeConnectionStatus } from '../../services/socketService';
 import { useTimerStore } from '../../store/timerStore';
 import { loadHotkeys } from '../ui/HotkeySettings';
+import { useAFKTracker } from '../../hooks/useAFKTracker';
 import './GameHUD.css';
 
 // ─── Lazy-loaded overlays — only downloaded when first opened ─────────────────
@@ -108,6 +109,8 @@ const ChatPanel = React.memo(function ChatPanel({ chatOpen, setChatOpen, chatUnr
   );
 });
 
+const haptic = (pattern) => { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (_) {} };
+
 export default function GameHUD() {
   const { calculateEquity } = useEquityWorker();
 
@@ -170,12 +173,12 @@ export default function GameHUD() {
   const [raiseAmount, setRaiseAmount] = useState(0);
   const [showRaisePanel, setShowRaisePanel] = useState(false);
 
-  // Timer state (local + shared store so nameplates can read it)
+  // Timer state (local countdown derived from server timestamp)
   const [timeLeft, setTimeLeft] = useState(30);
   const timerRef = useRef(null);
   const timerWarningPlayed = useRef(false);
-  const setTimerStoreLeft  = useTimerStore((s) => s.setTimerLeft);
-  const resetTimerStore    = useTimerStore((s) => s.resetTimer);
+  const setTurnTiming  = useTimerStore((s) => s.setTurnTiming);
+  const clearTurnTiming = useTimerStore((s) => s.clearTurnTiming);
 
   // Showdown overlay state
   const [showShowdown, setShowShowdown] = useState(false);
@@ -200,6 +203,12 @@ export default function GameHUD() {
   // Action history strip (Upgrade 6)
   const [actionHistory, setActionHistory] = useState([]);
   const prevSeatsRef = useRef(null);
+  // Stable fingerprint for seat actions — only changes when actions change,
+  // avoiding the JSON.stringify-in-deps anti-pattern that re-runs every render.
+  const lastActionsFingerprint = useMemo(
+    () => (gameState?.seats || []).map((s) => s?.lastAction || '').join('|'),
+    [gameState?.seats]
+  );
 
   // Bet sizing memory (Upgrade 7)
   const betMemoryRef = useRef(null);
@@ -241,6 +250,14 @@ export default function GameHUD() {
   const touchStartRef = useRef(null);
   const touchTimerRef = useRef(null);
   const [showGestureHint, setShowGestureHint] = useState(false);
+  // Gesture flash feedback: null | 'fold' | 'call' | 'raise'
+  const [gestureFlash, setGestureFlash] = useState(null);
+  const gestureFlashTimerRef = useRef(null);
+  const flashGesture = useCallback((type) => {
+    clearTimeout(gestureFlashTimerRef.current);
+    setGestureFlash(type);
+    gestureFlashTimerRef.current = setTimeout(() => setGestureFlash(null), 450);
+  }, []);
 
   // Upgrade: fold confirmation micro-animation
   const [foldPending, setFoldPending] = useState(false);
@@ -248,6 +265,11 @@ export default function GameHUD() {
   const showBigBetConfirmRef = useRef(false);
   const [showRaiseSlider, setShowRaiseSlider] = useState(false);
   const isTouchDevice = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
+
+  // Refs so touch handlers never need to re-register when these change
+  // NOTE: these are declared here but populated after isMyTurn/callAmount are derived below
+  const isMyTurnRef = useRef(false);
+  const callAmountRef = useRef(0);
 
   // Chat state
   const [chatOpen, setChatOpen] = useState(false);
@@ -281,14 +303,20 @@ export default function GameHUD() {
   const [rebuyNotification, setRebuyNotification] = useState(null);
   const prevPhaseForRebuyRef = useRef(null);
 
+  // Connection status dot
+  const [connStatus, setConnStatus] = useState('connected');
+
+  // Unified toast queue — { id, msg, type: 'info'|'success'|'warn' }
+  const [toasts, setToasts] = useState([]);
+  const toastIdRef = useRef(0);
+
+  // Opponent stats hover popup
+  const [opponentStats, setOpponentStats] = useState(null); // { name, vpip, pfr, threeBet, af, hands }
+  const opponentStatsTimerRef = useRef(null);
+
   // === Rabbit Hunt state ===
   const [showRabbitPanel, setShowRabbitPanel] = useState(false);
   const [playerFoldedThisHand, setPlayerFoldedThisHand] = useState(false);
-
-  // === Run It Twice state ===
-  const [runItTwice, setRunItTwice] = useState(() => {
-    try { return localStorage.getItem('app_poker_runItTwice') === 'true'; } catch (e) { return false; }
-  });
 
   // === Sound volume (#8) ===
   const [sfxVolume, setSfxVolume] = useState(() => {
@@ -332,6 +360,9 @@ export default function GameHUD() {
   // === Equity display state (#17) ===
   const [equityResults, setEquityResults] = useState(null);
   const equityCalculatedRef = useRef(null);
+
+  // === Advanced toolbar collapsible groups ===
+  const [toolbarGroups, setToolbarGroups] = useState({ analysis: false, live: false, coach: false });
 
   // === Straddle state ===
   // (no extra state needed beyond gameState)
@@ -377,6 +408,8 @@ export default function GameHUD() {
 
   // === Appearance upgrades ===
   const [potPulsing, setPotPulsing] = useState(false);
+  const [potFlashing, setPotFlashing] = useState(false);
+  const potFlashTimerRef = useRef(null);
   const prevPotRef = useRef(0);
   const [phaseBanner, setPhaseBanner] = useState(null); // 'THE FLOP' | 'THE TURN' | etc.
   const [cardsDealt, setCardsDealt] = useState(false);
@@ -393,6 +426,24 @@ export default function GameHUD() {
   const [confettiChips, setConfettiChips] = useState(0);
   const confettiShownRef = useRef(null);
 
+  // === AFK tracking state ===
+  const [afkWarning, setAfkWarning] = useState(false); // true when 1-min warning active
+  const [afkWarningSecs, setAfkWarningSecs] = useState(60);
+
+  // AFK tracker is wired up after `isSeated`/`sittingOut` are derived (see below).
+  // We declare a placeholder here just so existing references compile; the real
+  // hook is invoked further down.
+
+  // Countdown within the AFK warning banner
+  useEffect(() => {
+    if (!afkWarning) return;
+    const t = setInterval(() => setAfkWarningSecs(s => {
+      if (s <= 1) { clearInterval(t); setAfkWarning(false); return 0; }
+      return s - 1;
+    }), 1000);
+    return () => clearInterval(t);
+  }, [afkWarning]);
+
   // === Session stats tracking (for SessionRecap) ===
   const sessionStartChipsRef = useRef(null);
   const sessionHandsRef = useRef(0);
@@ -403,6 +454,9 @@ export default function GameHUD() {
   const prevPhaseRef = useRef(null);
   const prevIsMyTurnRef = useRef(false);
 
+  // Tracks whether we've already sent an action this turn — prevents timer auto-fold race
+  const hasSentActionRef = useRef(false);
+
   // Derive values from server game state
   const phase = gameState?.phase || 'WaitingForPlayers';
   const pot = gameState?.pot || 0;
@@ -411,18 +465,44 @@ export default function GameHUD() {
   const yourSeat = gameState?.yourSeat ?? mySeat;
   const seats = gameState?.seats || [];
   const myPlayer = yourSeat >= 0 && seats[yourSeat] ? seats[yourSeat] : null;
+  const isSeated = myPlayer != null;
+
+  // AFK tracker — installed here so `isSeated` and `sittingOut` are in scope.
+  const { isAFK } = useAFKTracker({
+    active: isSeated && !sittingOut,
+    onAFK: () => {
+      const socket = getSocket();
+      socket?.emit('playerAFK');
+    },
+    onBack: () => {
+      const socket = getSocket();
+      socket?.emit('playerBack');
+      setAfkWarning(false);
+    },
+    onWarning: (secsLeft) => {
+      setAfkWarning(true);
+      setAfkWarningSecs(secsLeft);
+    },
+  });
 
   // Track which hand was in progress when the player first joined the table.
-  // If they joined mid-hand, sit out until the next hand starts.
+  // Default to NOT sitting out — only flip to true if we positively detect that
+  // we joined mid-hand AND missed the deal (no hole cards arriving).
   const joinedHandIdRef = useRef(null);
-  const sittingOutUntilNextHand = useRef(true); // start sitting out
+  const sittingOutUntilNextHand = useRef(false);
   const currentHandId = gameState?.handId ?? gameState?.handNumber ?? null;
 
+  // Record the first observed hand id. We only flag mid-hand sit-out if the
+  // player joins after the deal AND has no hole cards. Refs are mutated during
+  // render here so the very first JSX evaluation sees the correct values.
   if (joinedHandIdRef.current === null && currentHandId != null) {
-    // First game state received — record the in-progress hand
     joinedHandIdRef.current = currentHandId;
-    // If the phase is already mid-hand, sit out this hand
-    sittingOutUntilNextHand.current = phase !== 'WaitingForPlayers';
+    const joinedMidHand =
+      phase !== 'WaitingForPlayers' &&
+      phase !== 'HandComplete' &&
+      yourSeat >= 0 &&
+      (!gameState?.yourCards || gameState.yourCards.length === 0);
+    sittingOutUntilNextHand.current = joinedMidHand;
   }
 
   // When a new hand starts (handId changes), we're no longer sitting out
@@ -432,15 +512,27 @@ export default function GameHUD() {
     }
   }, [currentHandId]);
 
+  // If the server sent us hole cards we were already dealt into this hand (reconnect).
+  // Clear the sit-out flag so the action bar activates — don't penalise reconnects.
+  const serverCards = gameState?.yourCards || [];
+  useEffect(() => {
+    if (serverCards.length > 0 && sittingOutUntilNextHand.current) {
+      sittingOutUntilNextHand.current = false;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverCards.length]);
+
   // Cards can come from the server (yourCards) or the client dealer animation (seatCards)
   const seatCards = useGameStore((s) => s.seatCards);
-  const serverCards = gameState?.yourCards || [];
   const clientCards = (yourSeat >= 0 && seatCards[yourSeat]) || [];
   const rawCards = serverCards.length > 0 ? serverCards : clientCards;
   // Hide cards if we joined mid-hand
   const yourCards = sittingOutUntilNextHand.current ? [] : rawCards;
   const serverThinksItsMyTurn = activeSeat === yourSeat && yourSeat >= 0;
   const isMyTurn = serverThinksItsMyTurn && yourCards.length > 0;
+
+  // Keep refs in sync immediately after derivation (no render lag)
+  isMyTurnRef.current = isMyTurn;
 
   // Auto-fold when the server is waiting on us but we're sitting out (joined mid-hand)
   useEffect(() => {
@@ -453,6 +545,7 @@ export default function GameHUD() {
   const currentBetToMatch = gameState?.currentBetToMatch || 0;
   const myCurrentBet = myPlayer?.currentBet || 0;
   const callAmount = Math.max(0, currentBetToMatch - myCurrentBet);
+  callAmountRef.current = callAmount;
   // minRaise from server = getMinRaise() = currentBetToMatch + lastRaiseAmount (already the total to raise to)
   const minRaiseTotal = gameState?.minRaise || (currentBetToMatch + (gameState?.bigBlind || 20));
   const maxRaise = myChips;
@@ -560,10 +653,6 @@ export default function GameHUD() {
   const insuranceEquity = handStrength ? Math.round(handStrength.strength * 100) : 50;
   const insuranceCashout = Math.round(pot * (insuranceEquity / 100) * 0.9); // 90% of equity value
 
-  // Run It Twice: show when player goes all-in and community cards still to come
-  const showRunItTwice = isPlayerAllIn && cardsStillToCome > 0 &&
-    (phase === 'Flop' || phase === 'Turn' || phase === 'PreFlop');
-
   // Session stats tracking: initialize start chips, count hands, track biggest pot
   useEffect(() => {
     if (myChips > 0 && sessionStartChipsRef.current === null) {
@@ -587,18 +676,36 @@ export default function GameHUD() {
     sendDraw(selectedDiscards);
   }, [sendDraw, selectedDiscards]);
 
-  // Update raise slider default when turn changes (with bet sizing memory)
+  // Initialize raise amount when turn starts — single effect, reads all memory sources
+  const prevIsMyTurnForRaiseRef = useRef(false);
   useEffect(() => {
-    if (isMyTurn) {
-      if (lastRaisePctRef.current !== null && pot > 0) {
-        const remembered = Math.round(pot * lastRaisePctRef.current);
-        const clamped = Math.max(minRaiseTotal, Math.min(remembered, maxRaise));
-        setRaiseAmount(clamped);
+    if (isMyTurn && !prevIsMyTurnForRaiseRef.current) {
+      // Try bet sizing memory in order: in-memory ref → localStorage → pot fraction → minRaise
+      let amount = null;
+      if (betMemoryRef.current != null && pot > 0) {
+        const pct = betMemoryRef.current / pot;
+        amount = Math.round(pot * pct);
       } else {
-        setRaiseAmount(Math.min(minRaiseTotal, maxRaise));
+        try {
+          const pct = parseFloat(localStorage.getItem('poker_last_raise_pct'));
+          if (!isNaN(pct) && pot > 0) amount = Math.round(pot * pct);
+        } catch { /* ignore */ }
+      }
+      if (amount != null && amount >= minRaiseTotal && amount <= maxRaise) {
+        setRaiseAmount(amount);
+      } else {
+        setRaiseAmount(Math.max(minRaiseTotal, Math.min(minRaiseTotal, maxRaise)));
       }
     }
+    prevIsMyTurnForRaiseRef.current = isMyTurn;
   }, [isMyTurn, minRaiseTotal, maxRaise, pot]);
+
+  // Clear "checkOnly" pre-action when someone bets (check is no longer available)
+  useEffect(() => {
+    if (preAction === 'checkOnly' && callAmount > 0) {
+      setPreAction(null);
+    }
+  }, [callAmount, preAction]);
 
   // Upgrade 1: fire pre-action when it becomes our turn
   const prevIsMyTurnForPreActionRef = useRef(false);
@@ -624,33 +731,38 @@ export default function GameHUD() {
     prevIsMyTurnForPreActionRef.current = isMyTurn;
   }, [isMyTurn, preAction, callAmount, sendAction, playSound]);
 
-  // Clear fold pending state when turn ends
+  // Close raise slider and all-in confirm when turn ends
   useEffect(() => {
-    if (!isMyTurn && foldPending) {
+    if (!isMyTurn) {
+      setShowRaiseSlider(false);
+      setShowAllInConfirm(false);
       clearTimeout(foldTimerRef.current);
       setFoldPending(false);
     }
-  }, [isMyTurn, foldPending]);
-
-  // Upgrade 7: restore bet sizing memory from localStorage or betMemoryRef on turn start
-  useEffect(() => {
-    if (isMyTurn) {
-      // Try betMemoryRef first, then localStorage
-      let stored = betMemoryRef.current;
-      if (stored === null || stored === undefined) {
-        try {
-          const pct = parseFloat(localStorage.getItem('poker_last_raise_pct'));
-          if (!isNaN(pct) && pot > 0) {
-            stored = Math.round(pot * pct);
-          }
-        } catch { /* ignore */ }
-      }
-      if (stored && stored >= minRaiseTotal && stored <= maxRaise) {
-        setRaiseAmount(stored);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMyTurn]);
+
+  // Reset all local UI state when leaving table (gameState becomes null)
+  useEffect(() => {
+    if (gameState === null) {
+      setShowConfetti(false);
+      setWinnerBanner(null);
+      setWinnerBannerFading(false);
+      setPreAction(null);
+      setAutoAction(null);
+      setShowShowdown(false);
+      setFoldPending(false);
+      setRaiseAmount(0);
+      setShowRaiseSlider(false);
+      setShowAllInConfirm(false);
+      setShowLastHand(false);
+      setPhaseBanner(null);
+      setCardsDealt(false);
+      hasSentActionRef.current = false;
+      autoFoldedRef.current = false;
+    }
+  }, [gameState]);
+
+  // (Upgrade 7 merged into the raise initialization effect above)
 
   // Upgrade 6: action history strip — watch seat lastAction changes
   useEffect(() => {
@@ -681,7 +793,8 @@ export default function GameHUD() {
       }
     }
     prevSeatsRef.current = currentSeats.map(s => s ? { lastAction: s.lastAction, currentBet: s.currentBet, state: s.state } : null);
-  }, [JSON.stringify(gameState?.seats?.map(s => s?.lastAction))]); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastActionsFingerprint]);
 
   // Clear action history on new hand/phase
   useEffect(() => {
@@ -691,7 +804,7 @@ export default function GameHUD() {
     }
   }, [phase]);
 
-  // Close options dropdown when clicking outside
+  // Close options dropdown when clicking/tapping outside
   useEffect(() => {
     if (!showOptions) return;
     const handler = (e) => {
@@ -700,7 +813,11 @@ export default function GameHUD() {
       }
     };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('touchstart', handler, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('touchstart', handler);
+    };
   }, [showOptions]);
 
   // Track unread chat messages when panel is closed
@@ -740,12 +857,16 @@ export default function GameHUD() {
     prevIsMyTurnRef.current = isMyTurn;
   }, [isMyTurn, playSound]);
 
-  // Pot pulse animation when pot increases
+  // Pot pulse + amount flash animation when pot increases
   useEffect(() => {
     if (pot > prevPotRef.current && prevPotRef.current > 0) {
       setPotPulsing(true);
-      const t = setTimeout(() => setPotPulsing(false), 600);
-      return () => clearTimeout(t);
+      const t1 = setTimeout(() => setPotPulsing(false), 600);
+      // Flash the pot amount green when chips are added
+      clearTimeout(potFlashTimerRef.current);
+      setPotFlashing(true);
+      potFlashTimerRef.current = setTimeout(() => setPotFlashing(false), 500);
+      return () => { clearTimeout(t1); clearTimeout(potFlashTimerRef.current); };
     }
     prevPotRef.current = pot;
   }, [pot]);
@@ -881,14 +1002,50 @@ export default function GameHUD() {
 
   // === Winner Banner: show after HandComplete ===
   useEffect(() => {
+    // Clear immediately when a new hand starts — don't let stale banners bleed in
+    if (phase === 'PreFlop' || phase === 'WaitingForPlayers') {
+      if (winnerBannerTimerRef.current) { clearTimeout(winnerBannerTimerRef.current); winnerBannerTimerRef.current = null; }
+      setWinnerBanner(null);
+      setWinnerBannerFading(false);
+      return;
+    }
     if (phase === 'HandComplete' && handResult?.winners?.length > 0 && handResult !== winnerBannerShownRef.current) {
       winnerBannerShownRef.current = handResult;
-      const winner = handResult.winners[0];
-      setWinnerBanner({
-        name: winner.playerName,
-        amount: winner.chipsWon || 0,
-        handName: winner.handName || 'Winner',
-      });
+
+      // Build per-pot lines if potBreakdown available, else fall back to totals
+      const potBreakdown = handResult.potBreakdown;
+      let lines;
+      if (potBreakdown && potBreakdown.length > 0) {
+        // Flatten winnerAmounts across pots, labeled by pot name
+        lines = potBreakdown.flatMap(pot =>
+          (pot.winnerAmounts || []).map(wa => {
+            const winnerInfo = handResult.winners.find(w => w.seatIndex === wa.seatIndex);
+            return {
+              name: winnerInfo?.playerName || `Seat ${wa.seatIndex + 1}`,
+              amount: wa.amount,
+              potName: pot.name,
+              handName: winnerInfo?.handName || '',
+            };
+          })
+        );
+        // Deduplicate identical lines (can occur when same player wins multiple splits in same pot)
+        const seen = new Set();
+        lines = lines.filter(l => {
+          const key = `${l.name}-${l.potName}-${l.amount}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      } else {
+        lines = handResult.winners.map(w => ({
+          name: w.playerName,
+          amount: w.chipsWon || 0,
+          potName: 'Main Pot',
+          handName: w.handName || '',
+        }));
+      }
+
+      setWinnerBanner({ lines });
       setWinnerBannerFading(false);
       if (winnerBannerTimerRef.current) clearTimeout(winnerBannerTimerRef.current);
       winnerBannerTimerRef.current = setTimeout(() => {
@@ -897,7 +1054,7 @@ export default function GameHUD() {
           setWinnerBanner(null);
           setWinnerBannerFading(false);
         }, 600);
-      }, 3000);
+      }, 3500);
     }
     return () => {
       if (winnerBannerTimerRef.current) clearTimeout(winnerBannerTimerRef.current);
@@ -915,10 +1072,13 @@ export default function GameHUD() {
       const myActions = handResult?.playerActions?.[yourSeat] || gameState?.actionLog?.filter(a => a.seatIndex === yourSeat) || [];
       const voluntaryPut = myActions.some(a => ['call','raise','bet'].includes(a?.action || a?.type));
       const preflopRaise = myActions.some(a => (a?.action === 'raise' || a?.type === 'raise') && (a?.phase === 'PreFlop' || a?.street === 'preflop'));
+      const raiseCount = myActions.filter(a => (a?.action === 'raise' || a?.type === 'raise')).length;
+      // Use actual showdown hand name even on losses (for bestHand tracking)
+      const myShowdownHand = handResult?.showdownHands?.find(h => h.seatIndex === yourSeat)?.handName || '';
       useProgressStore.getState().recordHand({
         won: !!myWin,
-        potSize: myWin?.chipsWon || pot || 0,
-        handName: myWin?.handName || handResult?.showdownHands?.find(h => h.seatIndex === yourSeat)?.handName || '',
+        potSize: pot || 0,  // always use full pot for XP calc, not just chipsWon
+        handName: myWin?.handName || myShowdownHand,
         chipsAfter: mySeat?.chips ?? mySeat?.chipCount ?? null,
         voluntaryPut,
         preflopRaise,
@@ -927,6 +1087,7 @@ export default function GameHUD() {
         communityCards: communityCards,
         actions: myActions,
         handId: gameState?.handId || gameState?.handNumber,
+        raiseCount,
       });
       if (mySeat?.chips != null) {
         useProgressStore.getState().updateChips(mySeat.chips);
@@ -950,6 +1111,15 @@ export default function GameHUD() {
         setShowShowdown(false);
       }, showdownDelay);
     } else if (phase !== 'Showdown' && phase !== 'HandComplete') {
+      // New hand started — clear immediately so it can't block action buttons
+      setShowShowdown(false);
+      if (showdownTimerRef.current) {
+        clearTimeout(showdownTimerRef.current);
+        showdownTimerRef.current = null;
+      }
+    }
+    // Also force-close if a new hand has started (PreFlop) regardless of other conditions
+    if (phase === 'PreFlop') {
       setShowShowdown(false);
       if (showdownTimerRef.current) {
         clearTimeout(showdownTimerRef.current);
@@ -961,37 +1131,46 @@ export default function GameHUD() {
     };
   }, [phase, handResult, quickShowdown]);
 
-  // Turn timer: 30-second countdown with time bank integration
+  // Sync server turn timestamp to shared timer store (for all seat pod rings)
+  const serverTurnStartedAt = gameState?.turnStartedAt || 0;
+  const serverTurnTimeout   = gameState?.turnTimeout || 30000;
+  useEffect(() => {
+    if (serverTurnStartedAt > 0) {
+      setTurnTiming(serverTurnStartedAt, serverTurnTimeout);
+    } else {
+      clearTurnTiming();
+    }
+  }, [serverTurnStartedAt, serverTurnTimeout, setTurnTiming, clearTurnTiming]);
+
+  // Turn timer: hero countdown derived from server timestamp
   useEffect(() => {
     if (isMyTurn) {
-      setTimeLeft(30);
-      resetTimerStore(30);
       timerWarningPlayed.current = false;
+      timerStartedRef.current = false;
 
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          const next = prev - 1;
-          setTimerStoreLeft(next);          // sync to shared store → nameplates
-          if (next <= 0) {
-            clearInterval(timerRef.current);
-            return 0;
-          }
-          return next;
-        });
-      }, 1000);
+      const tick = () => {
+        timerStartedRef.current = true;
+        const elapsed = Date.now() - (serverTurnStartedAt || Date.now());
+        const remaining = Math.max(0, Math.ceil((serverTurnTimeout - elapsed) / 1000));
+        setTimeLeft(remaining);
+        if (remaining <= 0) {
+          clearInterval(timerRef.current);
+        }
+      };
+      tick(); // immediate first tick
+      timerRef.current = setInterval(tick, 1000);
 
       return () => {
         if (timerRef.current) clearInterval(timerRef.current);
       };
     } else {
       setTimeLeft(30);
-      resetTimerStore(30);
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
     }
-  }, [isMyTurn, resetTimerStore, setTimerStoreLeft]);
+  }, [isMyTurn, serverTurnStartedAt, serverTurnTimeout]);
 
   // Execute auto-action when it becomes your turn
   useEffect(() => {
@@ -1023,17 +1202,21 @@ export default function GameHUD() {
     autoActionRef.current = autoAction;
   }, [autoAction]);
 
-  // Clear auto-action when a new hand starts
+  // Clear auto-action and pre-action when a new hand starts
   useEffect(() => {
-    if (phase === 'WaitingForPlayers' || phase === 'HandComplete') {
+    if (phase === 'WaitingForPlayers' || phase === 'HandComplete' || phase === 'PreFlop') {
       setAutoAction(null);
+      setPreAction(null);
     }
   }, [phase]);
 
-  // Auto-fold: simple countdown — when timer hits 0, fold immediately
+  // Auto-fold: simple countdown — when timer hits 0, fold immediately.
+  // timerStartedRef guards against a React race where timeLeft is still 0 from the
+  // previous turn when isMyTurn first becomes true (setTimeLeft(30) is async).
   const autoFoldedRef = useRef(false);
+  const timerStartedRef = useRef(false); // true only after the first interval tick
   useEffect(() => {
-    if (isMyTurn && timeLeft <= 0 && !autoFoldedRef.current) {
+    if (isMyTurn && timeLeft <= 0 && timerStartedRef.current && !autoFoldedRef.current && !hasSentActionRef.current) {
       autoFoldedRef.current = true;
       console.log('[Timer] Timer expired — auto-folding');
       playSound('fold');
@@ -1045,6 +1228,8 @@ export default function GameHUD() {
     }
     if (!isMyTurn) {
       autoFoldedRef.current = false;
+      hasSentActionRef.current = false;
+      timerStartedRef.current = false;
     }
   }, [timeLeft, isMyTurn, callAmount, sendAction, playSound]);
 
@@ -1074,8 +1259,7 @@ export default function GameHUD() {
         if (socket?.connected) {
           const rebuyAmount = minBuyIn;
           socket.emit('rebuy', { amount: rebuyAmount });
-          setRebuyNotification(`Auto-rebuying ${rebuyAmount.toLocaleString()} chips`);
-          setTimeout(() => setRebuyNotification(null), 3000);
+          addToast(`♻ Auto-rebuying ${rebuyAmount.toLocaleString()} chips`, 'success');
         }
       }
     }
@@ -1136,15 +1320,39 @@ export default function GameHUD() {
     prevPhaseForStreetRef.current = phase;
   }, [phase]);
 
+  // Connection status subscription
+  useEffect(() => {
+    const unsub = subscribeConnectionStatus((status) => setConnStatus(status));
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, []);
+
+  // Opponent stats popup — triggered by 'viewOpponentStats' custom event from table seats
+  useEffect(() => {
+    const handler = (e) => {
+      const name = e.detail;
+      const stats = getOpponentStats(name);
+      setOpponentStats(stats && stats.hands > 0 ? { name, ...stats } : { name, hands: 0 });
+      clearTimeout(opponentStatsTimerRef.current);
+      opponentStatsTimerRef.current = setTimeout(() => setOpponentStats(null), 6000);
+    };
+    window.addEventListener('viewOpponentStats', handler);
+    return () => {
+      window.removeEventListener('viewOpponentStats', handler);
+      clearTimeout(opponentStatsTimerRef.current);
+    };
+  }, []);
+
+  // Toast helper — auto-dismisses after `duration` ms
+  const addToast = useCallback((msg, type = 'info', duration = 3000) => {
+    const id = ++toastIdRef.current;
+    setToasts(q => [...q, { id, msg, type }]);
+    setTimeout(() => setToasts(q => q.filter(t => t.id !== id)), duration);
+  }, []);
+
   // Persist auto-rebuy preference
   useEffect(() => {
     localStorage.setItem('app_poker_autoRebuy', autoRebuy ? 'true' : 'false');
   }, [autoRebuy]);
-
-  // Persist Run It Twice preference
-  useEffect(() => {
-    localStorage.setItem('app_poker_runItTwice', runItTwice ? 'true' : 'false');
-  }, [runItTwice]);
 
   // Persist Auto Deal preference (#11)
   useEffect(() => {
@@ -1357,7 +1565,10 @@ export default function GameHUD() {
 
   // Pot fraction helpers
   const potFraction = (fraction) => {
-    const amount = currentBetToMatch + Math.round(pot * fraction);
+    // Standard NL pot-sized raise: raise to (pot + callAmount + callAmount) × fraction
+    // i.e., after you call, the pot would be (pot + callAmount), then you raise that amount
+    const potAfterCall = pot + callAmount;
+    const amount = callAmount + Math.round(potAfterCall * fraction);
     return Math.max(minRaiseTotal, Math.min(amount, maxRaise));
   };
 
@@ -1385,12 +1596,13 @@ export default function GameHUD() {
 
   // Action handlers with sound effects + bet sizing memory
   const handleAction = useCallback((type, amount) => {
+    hasSentActionRef.current = true; // mark action sent — stops auto-fold timer race
     switch (type) {
-      case 'fold':  playSound('fold');  break;
-      case 'check': playSound('check'); break;
-      case 'call':  playSound('bet');   break;
-      case 'raise': playSound('bet');   break;
-      case 'allIn': playSound('allin'); break;
+      case 'fold':  haptic(200);              playSound('fold');  break;
+      case 'check': haptic(50);               playSound('check'); break;
+      case 'call':  haptic(80);               playSound('bet');   break;
+      case 'raise': haptic([50, 30, 50]);     playSound('bet');   break;
+      case 'allIn': haptic([100,50,200]);     playSound('allin'); break;
       default: break;
     }
     // Remember raise as % of pot for bet sizing memory
@@ -1489,17 +1701,18 @@ export default function GameHUD() {
     };
   }, []);
 
-  // Touch gesture handlers
+  // Touch gesture handlers — use refs so handlers are stable and never re-register
   const handleTouchStart = useCallback((e) => {
-    if (!isTouchDevice || !isMyTurn) return;
+    if (!isTouchDevice || !isMyTurnRef.current) return;
+    // Don't intercept touches on action buttons, overlays, cards, or interactive UI
+    if (e.target.closest('.action-btn, .pre-action-btn, .ab-preset, .chat-toggle, .adv-tool-btn, .hud-cards, .card-peek, .card-slot, .raise-quick-btn, .raise-nudge-btn, .rail-btn, .rail-btn-wrap, .showdown-overlay, .showdown-panel, .winner-banner, .phase-banner, .gesture-hint-overlay, .allin-confirm-overlay, .gesture-raise-overlay')) return;
     const touch = e.touches[0];
     touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-    // Press-and-hold detection for raise slider
     touchTimerRef.current = setTimeout(() => {
       setShowRaiseSlider(true);
-      touchStartRef.current = null; // cancel swipe detection
+      touchStartRef.current = null;
     }, 500);
-  }, [isTouchDevice, isMyTurn]);
+  }, [isTouchDevice]); // stable — reads isMyTurn via ref
 
   const handleTouchMove = useCallback((e) => {
     if (touchTimerRef.current) {
@@ -1513,36 +1726,47 @@ export default function GameHUD() {
       clearTimeout(touchTimerRef.current);
       touchTimerRef.current = null;
     }
-    if (!touchStartRef.current || !isMyTurn) return;
-
+    if (!touchStartRef.current || !isMyTurnRef.current) return;
+    if (e.target.closest('.action-btn, .pre-action-btn, .ab-preset, .chat-toggle, .adv-tool-btn, .hud-cards, .card-peek, .card-slot, .raise-quick-btn, .raise-nudge-btn, .rail-btn, .rail-btn-wrap, .showdown-overlay, .showdown-panel, .winner-banner, .phase-banner, .gesture-hint-overlay, .allin-confirm-overlay, .gesture-raise-overlay')) {
+      touchStartRef.current = null;
+      return;
+    }
     const touch = e.changedTouches[0];
     const dx = touch.clientX - touchStartRef.current.x;
     const dy = touch.clientY - touchStartRef.current.y;
     const dt = Date.now() - touchStartRef.current.time;
     touchStartRef.current = null;
-
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
-
-    // Detect double-tap (very short duration, minimal movement)
+    // Tap — check or call
     if (dt < 200 && absDx < 15 && absDy < 15) {
-      // Double-tap = call
-      if (callAmount === 0) {
+      if (callAmountRef.current === 0) {
+        flashGesture('call');
         handleAction('check');
       } else {
+        flashGesture('call');
         handleAction('call');
       }
       return;
     }
-
-    // Swipe detection (minimum distance 60px, more horizontal than vertical, within 500ms)
+    // Horizontal swipe — fold (left) or call/check (right)
     if (absDx > 60 && absDx > absDy * 1.5 && dt < 500) {
       if (dx < 0) {
-        // Swipe left = fold
+        flashGesture('fold');
         handleAction('fold');
+      } else {
+        flashGesture('call');
+        if (callAmountRef.current === 0) handleAction('check');
+        else handleAction('call');
       }
+      return;
     }
-  }, [isMyTurn, callAmount, handleAction]);
+    // Swipe UP — open raise slider
+    if (dy < -70 && absDy > absDx * 1.5 && dt < 500) {
+      flashGesture('raise');
+      setShowRaiseSlider(true);
+    }
+  }, [handleAction, flashGesture]); // stable — reads isMyTurn/callAmount via refs
 
   // Show gesture hint on first mobile visit
   useEffect(() => {
@@ -1571,7 +1795,7 @@ export default function GameHUD() {
       hud.removeEventListener('touchmove', handleTouchMove);
       hud.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [isTouchDevice, handleTouchStart, handleTouchMove, handleTouchEnd]);
+  }, [isTouchDevice, handleTouchStart, handleTouchMove, handleTouchEnd]); // stable refs — won't re-register
 
   // Phase display label
   const phaseLabel = {
@@ -1635,6 +1859,38 @@ export default function GameHUD() {
 
   return (
     <div className="hud">
+      {/* ── Winner Banner ── */}
+      {winnerBanner && (
+        <div className={`winner-banner${winnerBannerFading ? ' winner-banner-out' : ''}`}>
+          {winnerBanner.lines.length === 1 ? (
+            // Single winner — compact inline format
+            <>
+              <span className="winner-banner-name">{winnerBanner.lines[0].name}</span>
+              <span> wins </span>
+              <span className="winner-banner-amount">+{winnerBanner.lines[0].amount.toLocaleString()}</span>
+              {winnerBanner.lines[0].handName && winnerBanner.lines[0].handName !== 'Won by fold' && (
+                <span className="winner-banner-hand"> — {winnerBanner.lines[0].handName}</span>
+              )}
+            </>
+          ) : (
+            // Multi-pot — stacked lines
+            <div className="winner-banner-multipot">
+              {winnerBanner.lines.map((line, i) => (
+                <div key={i} className="winner-banner-pot-line">
+                  <span className="winner-banner-pot-name">{line.potName}:</span>
+                  <span className="winner-banner-name"> {line.name}</span>
+                  <span> </span>
+                  <span className="winner-banner-amount">+{line.amount.toLocaleString()}</span>
+                  {line.handName && line.handName !== 'Won by fold' && (
+                    <span className="winner-banner-hand"> — {line.handName}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Top bar */}
       <div className="hud-top">
         <button className="hud-back" onClick={handleBackToLobby}>
@@ -1642,7 +1898,7 @@ export default function GameHUD() {
         </button>
         <div className="hud-center-info">
           <div className="hud-pot">
-            <span className="hud-pot-dot">●</span> Pot: <span>{pot.toLocaleString()}</span>
+            <span className="hud-pot-dot">●</span> Pot: <span className={potFlashing ? 'hud-pot-amount--flash' : ''}>{pot.toLocaleString()}</span>
             {anteAmount > 0 && (
               <span className="hud-ante-badge">Ante: {anteAmount.toLocaleString()}</span>
             )}
@@ -1651,6 +1907,20 @@ export default function GameHUD() {
               const spr = myChips / pot;
               const sprColor = spr < 3 ? '#ef4444' : spr < 8 ? '#f59e0b' : '#4ade80';
               return <span className="spr-badge" style={{ color: sprColor }}>SPR {spr.toFixed(1)}</span>;
+            })()}
+            {/* Side pot breakdown — shown only when 2+ pots exist (all-in situation) */}
+            {(() => {
+              const pots = gameState?.pots;
+              if (!pots || pots.length < 2) return null;
+              return (
+                <div className="side-pot-row">
+                  {pots.map((p, i) => (
+                    <span key={p.name} className={`side-pot-pill ${i === 0 ? 'side-pot-pill--main' : 'side-pot-pill--side side-pot-pill--new'}`}>
+                      {p.name}: {p.amount.toLocaleString()}
+                    </span>
+                  ))}
+                </div>
+              );
             })()}
           </div>
           {/* Blind level timer (#4) */}
@@ -1689,6 +1959,20 @@ export default function GameHUD() {
           </div>
         </div>
         <div className="hud-player">
+          {/* Connection status dot */}
+          <span
+            className={`conn-dot conn-dot--${connStatus}`}
+            title={connStatus === 'connected' ? 'Connected' : connStatus === 'reconnecting' ? 'Reconnecting…' : 'Disconnected'}
+          />
+          {/* Sit Out quick-access button */}
+          <button
+            className={`sit-out-quick-btn ${sittingOut ? 'sit-out-quick-btn--active' : ''}`}
+            onClick={toggleSitOut}
+            title={sittingOut ? 'Sitting Out — click to return' : 'Sit Out (auto-fold each hand)'}
+          >
+            {sittingOut ? '🪑 Sitting Out' : '🪑 Sit Out'}
+          </button>
+
           {/* ⋯ Options dropdown — contains Sit Out, Training, and all settings */}
           <div className="hud-options-wrapper" ref={optionsRef}>
             <button
@@ -1914,6 +2198,28 @@ export default function GameHUD() {
         </div>
       )}
 
+      {/* AFK Warning Banner */}
+      {afkWarning && !isAFK && (
+        <div className="afk-warning-banner">
+          <span className="afk-warning-icon">⚠️</span>
+          <span>You'll be marked away in <strong>{afkWarningSecs}s</strong> due to inactivity</span>
+          <button className="afk-warning-dismiss" onClick={() => setAfkWarning(false)}>I'm here</button>
+        </div>
+      )}
+
+      {/* AFK "You're Away" indicator */}
+      {isAFK && (
+        <div className="afk-away-banner">
+          <span>🌙</span>
+          <span>You're away — hands will be auto-folded</span>
+          <button className="afk-back-btn" onClick={() => {
+            const socket = getSocket();
+            socket?.emit('playerBack');
+            setAfkWarning(false);
+          }}>I'm back</button>
+        </div>
+      )}
+
       {/* Missed Blinds Button (#16) */}
       {missedBlindsAmount > 0 && !sittingOut && (phase === 'WaitingForPlayers' || phase === 'HandComplete') && (
         <div className="missed-blinds-panel">
@@ -1936,10 +2242,11 @@ export default function GameHUD() {
       {/* Bottom action bar */}
       {/* Mini pot pill — floating center pill above bottom bar */}
       {phase !== 'WaitingForPlayers' && pot > 0 && (
-        <div className={`mini-pot-pill ${potPulsing ? 'mini-pot-pill--pulse' : ''}`}>
+        <div className={`mini-pot-pill ${potPulsing ? 'mini-pot-pill--pulse' : ''} ${potFlashing ? 'mini-pot-pill--collecting' : ''}`}>
           <span className="mini-pot-dot">●</span>
           <span className="mini-pot-amount">{pot.toLocaleString()}</span>
-          {gameState?.pots && gameState.pots.length > 1 && (
+          {gameState?.pots && gameState.pots.length > 1 &&
+           seats?.some(s => s?.state === 'occupied' && s?.allIn) && (
             <span className="mini-pot-side">
               {gameState.pots.slice(1).map((p, i) => (
                 <span key={i} className="mini-side-badge">Side {p.amount.toLocaleString()}</span>
@@ -1950,6 +2257,15 @@ export default function GameHUD() {
       )}
 
       <div className={`hud-bottom ${isMyTurn ? 'hud-bottom--my-turn' : ''}`}>
+        {/* Turn timer progress bar — thin strip at very top of action bar */}
+        {isMyTurn && (
+          <div className="action-timer-strip">
+            <div
+              className={`action-timer-strip-fill ${timeLeft <= 5 ? 'action-timer-strip--danger' : ''}`}
+              style={{ width: `${(timeLeft / 30) * 100}%` }}
+            />
+          </div>
+        )}
 
         {/* LEFT: turn timer pill + hand strength meter */}
         <div className="hud-bottom-left">
@@ -2066,6 +2382,9 @@ export default function GameHUD() {
                 }}
               />
               <span className="hand-strength-label">{handStrength.detailedName || handStrength.name}</span>
+              <span className={`hand-quality-badge hand-quality-badge--${handStrength.strength >= 0.6 ? 'strong' : handStrength.strength >= 0.3 ? 'marginal' : 'weak'}`}>
+                {handStrength.strength >= 0.6 ? 'Strong' : handStrength.strength >= 0.3 ? 'Marginal' : 'Weak'}
+              </span>
             </div>
             {/* Outs Counter */}
             {outsInfo && outsInfo.outs > 0 && (
@@ -2082,7 +2401,6 @@ export default function GameHUD() {
           </div>
         )}
 
-        {/* Action history moved to portal — rendered top-left */}
 
         <div className="hud-actions">
           {/* ── Always-visible action bar ── */}
@@ -2107,8 +2425,8 @@ export default function GameHUD() {
           ) : (
             /* Normal betting — always rendered, disabled when not our turn */
             <>
-              {/* Pre-action pills — shown above buttons while waiting */}
-              {!isMyTurn && (
+              {/* Pre-action pills — shown above buttons while waiting (not during showdown/hand end) */}
+              {!isMyTurn && phase !== 'Showdown' && phase !== 'HandComplete' && (
                 <div className="pre-action-btns">
                   <button className={`pre-action-btn${preAction === 'checkFold' ? ' active' : ''}`} onClick={() => setPreAction(preAction === 'checkFold' ? null : 'checkFold')}>
                     <span className="pre-action-icon">🔄</span>
@@ -2128,18 +2446,17 @@ export default function GameHUD() {
               {/* Single flat row: Timer | Fold | Call | presets | Raise | All-In */}
               <div className="action-bar-flat">
 
-                {/* FOLD */}
+                {/* FOLD — instant on small bets, confirmation required for large commitments */}
                 <button
                   className={`action-btn fold ${foldPending ? 'fold-pending' : ''}`}
                   disabled={!isMyTurn}
                   onClick={() => {
-                    if (!foldPending) {
+                    const bigBet = myChips > 0 && callAmount > myChips * 0.25;
+                    if (bigBet && !foldPending) {
+                      // First tap: show confirmation, wait for second tap
                       setFoldPending(true);
-                      foldTimerRef.current = setTimeout(() => {
-                        handleAction('fold');
-                        setFoldPending(false);
-                      }, 1500);
                     } else {
+                      // Second tap (or small bet): fold immediately
                       clearTimeout(foldTimerRef.current);
                       handleAction('fold');
                       setFoldPending(false);
@@ -2158,7 +2475,13 @@ export default function GameHUD() {
                     </button>
                   ) : (
                     <button className="action-btn call" disabled={!isMyTurn} onClick={() => handleAction('call')}>
-                      Call<br />{callAmount.toLocaleString()}
+                      Call
+                      <span className="action-amount-sub">{callAmount.toLocaleString()}</span>
+                      {potOddsDisplay && (
+                        <span className="action-odds-sub">
+                          {potOddsDisplay}&nbsp;·&nbsp;{Math.round(100 / (potOdds + 1))}%
+                        </span>
+                      )}
                     </button>
                   )}
                   {/* Pot odds moved to table overlay */}
@@ -2174,9 +2497,10 @@ export default function GameHUD() {
                   </div>
                 )}
 
-                {/* RAISE */}
-                <button className="action-btn raise" disabled={!isMyTurn} onClick={() => handleAction('raise', raiseAmount)}>
+                {/* RAISE — always opens the slider so users can adjust amount before confirming */}
+                <button className="action-btn raise" disabled={!isMyTurn} onClick={() => setShowRaiseSlider(v => !v)}>
                   Raise<br />{raiseAmount.toLocaleString()}
+                  <span className="raise-chevron">{showRaiseSlider ? '▼' : '▲'}</span>
                 </button>
 
                 {/* ALL-IN */}
@@ -2214,22 +2538,6 @@ export default function GameHUD() {
                 <span className="last-aggressor-badge">← {lastAggressorInfo.player} raised</span>
               )}
 
-              {/* Run It Twice toggle */}
-              {showRunItTwice && isMyTurn && (
-                <label className="run-it-twice-toggle">
-                  <input
-                    type="checkbox"
-                    checked={runItTwice}
-                    onChange={(e) => {
-                      const enabled = e.target.checked;
-                      setRunItTwice(enabled);
-                      const socket = getSocket();
-                      if (socket?.connected) socket.emit('runItTwice', { enabled });
-                    }}
-                  />
-                  <span className="run-it-twice-label">Run It Twice</span>
-                </label>
-              )}
             </div>
             </>
           )}
@@ -2261,22 +2569,48 @@ export default function GameHUD() {
           <div className="showdown-panel" onClick={(e) => e.stopPropagation()}>
             <div className="showdown-title">Showdown</div>
 
-            {/* Winners */}
-            {handResult.winners.map((winner) => (
-              <div key={winner.seatIndex} className="showdown-winner-row">
-                <div className="showdown-winner-badge">WINNER</div>
-                <div className="showdown-player-name showdown-winner-name">
-                  {winner.playerName}
+            {/* Winners — per-pot if available, otherwise totals */}
+            {handResult.potBreakdown && handResult.potBreakdown.some(p => (p.winnerAmounts || []).length > 0) ? (
+              handResult.potBreakdown.map((pot, pi) => (
+                <div key={pi} className="showdown-pot-section">
+                  <div className="showdown-pot-label">{pot.name}</div>
+                  {(pot.winnerAmounts || []).map((wa, wi) => {
+                    const winnerInfo = handResult.winners.find(w => w.seatIndex === wa.seatIndex);
+                    return (
+                      <div key={wi} className="showdown-winner-row">
+                        <div className="showdown-winner-badge">WIN</div>
+                        <div className="showdown-player-name showdown-winner-name">
+                          {winnerInfo?.playerName || `Seat ${wa.seatIndex + 1}`}
+                        </div>
+                        {winnerInfo?.handName && <div className="showdown-hand-name">{winnerInfo.handName}</div>}
+                        <div className="showdown-chips-won">+{wa.amount.toLocaleString()} chips</div>
+                        {winnerInfo?.bestFiveCards && winnerInfo.bestFiveCards.length > 0 && (
+                          <div className="showdown-best-cards">
+                            {winnerInfo.bestFiveCards.map((c) => renderMiniCard(c, true))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="showdown-hand-name">{winner.handName}</div>
-                <div className="showdown-chips-won">+{winner.chipsWon.toLocaleString()} chips</div>
-                {winner.bestFiveCards && winner.bestFiveCards.length > 0 && (
-                  <div className="showdown-best-cards">
-                    {winner.bestFiveCards.map((c) => renderMiniCard(c, true))}
+              ))
+            ) : (
+              handResult.winners.map((winner) => (
+                <div key={winner.seatIndex} className="showdown-winner-row">
+                  <div className="showdown-winner-badge">WINNER</div>
+                  <div className="showdown-player-name showdown-winner-name">
+                    {winner.playerName}
                   </div>
-                )}
-              </div>
-            ))}
+                  <div className="showdown-hand-name">{winner.handName}</div>
+                  <div className="showdown-chips-won">+{winner.chipsWon.toLocaleString()} chips</div>
+                  {winner.bestFiveCards && winner.bestFiveCards.length > 0 && (
+                    <div className="showdown-best-cards">
+                      {winner.bestFiveCards.map((c) => renderMiniCard(c, true))}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
 
             {/* All showdown hands */}
             <div className="showdown-hands">
@@ -2353,16 +2687,11 @@ export default function GameHUD() {
         </div>
       )}
 
-      {/* Run-it-twice active indicator (#7) */}
-      {gameState?.runItTwice?.active && (
-        <div className="rit-indicator">↺ Run It Twice Active</div>
-      )}
-
       {/* Mucked hand reveals from other players */}
       {muckedHands.length > 0 && (
         <div className="mucked-hands-container">
           {muckedHands.map((mh, idx) => (
-            <div key={mh.timestamp || idx} className="mucked-hand-reveal">
+            <div key={mh.addedAt ?? idx} className="mucked-hand-reveal">
               <span className="mucked-hand-player">{mh.playerName} shows:</span>
               <div className="mucked-hand-cards">
                 {mh.cards.map((c, ci) => renderMiniCard(c, false))}
@@ -2534,7 +2863,7 @@ export default function GameHUD() {
             <div className="last-hand-pots">
               {lastHandHistory.pots.map((pot, i) => (
                 <span key={i} className="last-hand-pot">
-                  {i === 0 ? 'Main' : `Side ${i}`}: {pot.amount.toLocaleString()}
+                  {pot.name || (i === 0 ? 'Main Pot' : `Side Pot ${i}`)}: {pot.amount.toLocaleString()}
                 </span>
               ))}
             </div>
@@ -2563,45 +2892,84 @@ export default function GameHUD() {
         </div>
       )}
 
+      {/* Gesture flash — brief full-screen color flash on swipe/tap gestures */}
+      {gestureFlash && (
+        <div
+          className={`gesture-flash-overlay gesture-flash-overlay--${gestureFlash}`}
+          key={`flash-${Date.now()}`}
+        >
+          <div className="gesture-flash-label">
+            {gestureFlash === 'fold' ? 'Fold' : gestureFlash === 'raise' ? 'Raise ↑' : 'Call'}
+          </div>
+        </div>
+      )}
+
       {/* Touch gesture hint overlay (first mobile visit) */}
       {showGestureHint && (
         <div className="gesture-hint-overlay" onClick={() => setShowGestureHint(false)}>
           <div className="gesture-hint-panel">
             <div className="gesture-hint-title">Touch Controls</div>
-            <div className="gesture-hint-row">
-              <span className="gesture-hint-icon">{'\u2B05'}</span>
-              <span>Swipe Left = Fold</span>
+            <div className="gesture-hint-row--new">
+              <span className="gesture-hint-icon--lg">👆</span>
+              <span className="gesture-hint-text"><strong>Tap</strong> — Check / Call</span>
             </div>
-            <div className="gesture-hint-row">
-              <span className="gesture-hint-icon">{'\uD83D\uDC46\uD83D\uDC46'}</span>
-              <span>Double Tap = Call/Check</span>
+            <div className="gesture-hint-row--new">
+              <span className="gesture-hint-icon--lg">⬅️</span>
+              <span className="gesture-hint-text"><strong>Swipe Left</strong> — Fold</span>
             </div>
-            <div className="gesture-hint-row">
-              <span className="gesture-hint-icon">{'\uD83D\uDC46\u23F3'}</span>
-              <span>Press & Hold = Raise</span>
+            <div className="gesture-hint-row--new">
+              <span className="gesture-hint-icon--lg">➡️</span>
+              <span className="gesture-hint-text"><strong>Swipe Right</strong> — Check / Call</span>
+            </div>
+            <div className="gesture-hint-row--new">
+              <span className="gesture-hint-icon--lg">⬆️</span>
+              <span className="gesture-hint-text"><strong>Swipe Up</strong> — Open Raise</span>
+            </div>
+            <div className="gesture-hint-row--new">
+              <span className="gesture-hint-icon--lg">🤚</span>
+              <span className="gesture-hint-text"><strong>Hold</strong> — Open Raise</span>
             </div>
             <div className="gesture-hint-dismiss">Tap anywhere to dismiss</div>
           </div>
         </div>
       )}
 
-      {/* Press-and-hold raise slider overlay for touch */}
+      {/* Raise slider overlay for touch */}
       {showRaiseSlider && isMyTurn && (
         <div className="gesture-raise-overlay" onClick={() => setShowRaiseSlider(false)}>
           <div className="gesture-raise-panel" onClick={(e) => e.stopPropagation()}>
-            <div style={{ color: '#00D9FF', fontWeight: 700, marginBottom: '8px' }}>Raise Amount</div>
-            <input
-              type="range"
-              min={minRaiseTotal}
-              max={maxRaise}
-              step={Math.max(1, Math.floor(minRaiseTotal / 4))}
-              value={raiseAmount}
-              onChange={(e) => setRaiseAmount(Number(e.target.value))}
-              className="raise-slider"
-              style={{ width: '100%' }}
-            />
-            <div style={{ color: '#ffffff', textAlign: 'center', margin: '6px 0' }}>
+            <div style={{ color: '#00D9FF', fontWeight: 700, marginBottom: '10px', textAlign: 'center' }}>Raise Amount</div>
+            {/* Quick-pick presets */}
+            <div className="raise-quick-presets">
+              {[
+                { label: 'Min', fn: () => minRaiseTotal },
+                { label: '½P', fn: () => potFraction(0.5) },
+                { label: '¾P', fn: () => potFraction(0.75) },
+                { label: 'Pot', fn: () => potFraction(1) },
+                { label: '2x', fn: () => potFraction(2) },
+              ].map(({ label, fn }) => (
+                <button key={label} className="raise-quick-btn" onClick={() => setRaiseAmount(Math.max(minRaiseTotal, Math.min(fn(), maxRaise)))}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {/* Slider with nudge buttons */}
+            <div className="raise-slider-row">
+              <button className="raise-nudge-btn" onClick={() => setRaiseAmount(a => Math.max(minRaiseTotal, a - bigBlind))}>−</button>
+              <input
+                type="range"
+                min={minRaiseTotal}
+                max={maxRaise}
+                step={Math.max(1, Math.floor(minRaiseTotal / 4))}
+                value={Math.max(minRaiseTotal, Math.min(raiseAmount || minRaiseTotal, maxRaise))}
+                onChange={(e) => setRaiseAmount(Number(e.target.value))}
+                className="raise-slider"
+              />
+              <button className="raise-nudge-btn" onClick={() => setRaiseAmount(a => Math.min(maxRaise, a + bigBlind))}>+</button>
+            </div>
+            <div className="raise-amount-display">
               {raiseAmount.toLocaleString()}
+              {pot > 0 && <span className="raise-pot-pct"> ({Math.round(raiseAmount / pot * 100)}% pot)</span>}
             </div>
             <button
               className="action-btn raise"
@@ -2619,7 +2987,7 @@ export default function GameHUD() {
         const emoteData = EMOTE_MAP[emote.emoteId];
         if (!emoteData) return null;
         // Position emotes at top center with offset per seat
-        const offsetX = (emote.seatIndex % 5) * 60 - 120;
+        const offsetX = (emote.seatIndex / 8) * 400 - 200;
         return (
           <div
             key={`${emote.timestamp}-${i}`}
@@ -2665,25 +3033,32 @@ export default function GameHUD() {
         <HotkeySettings open={hotkeyOpen} onClose={() => setHotkeyOpen(false)} />
       </Suspense>
 
-      {/* Auto-rebuy notification */}
-      {rebuyNotification && (
-        <div style={{
-          position: 'fixed',
-          top: '80px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'rgba(74, 222, 128, 0.15)',
-          border: '1px solid #4ADE80',
-          borderRadius: '8px',
-          padding: '8px 20px',
-          color: '#4ADE80',
-          fontSize: '0.85rem',
-          fontWeight: 600,
-          zIndex: 600,
-          animation: 'panel-slide-in 0.25s ease-out',
-          backdropFilter: 'blur(8px)',
-        }}>
-          {rebuyNotification}
+      {/* Unified toast stack (replaces inline rebuy notification) */}
+      {toasts.length > 0 && (
+        <div className="toast-stack">
+          {toasts.map(t => (
+            <div key={t.id} className={`toast-item toast-item--${t.type}`}>
+              {t.msg}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Opponent quick-stats popup */}
+      {opponentStats && (
+        <div className="opp-stats-popup" onClick={() => setOpponentStats(null)}>
+          <div className="opp-stats-name">{opponentStats.name}</div>
+          {opponentStats.hands > 0 ? (
+            <div className="opp-stats-grid">
+              <div className="opp-stat"><span className="opp-stat-label">VPIP</span><span className="opp-stat-val">{opponentStats.vpip ?? '--'}%</span></div>
+              <div className="opp-stat"><span className="opp-stat-label">PFR</span><span className="opp-stat-val">{opponentStats.pfr ?? '--'}%</span></div>
+              <div className="opp-stat"><span className="opp-stat-label">3-Bet</span><span className="opp-stat-val">{opponentStats.threeBet ?? '--'}%</span></div>
+              <div className="opp-stat"><span className="opp-stat-label">Agg</span><span className="opp-stat-val">{opponentStats.af?.toFixed(1) ?? '--'}</span></div>
+              <div className="opp-stat opp-stat--full"><span className="opp-stat-label">Hands</span><span className="opp-stat-val">{opponentStats.hands}</span></div>
+            </div>
+          ) : (
+            <div className="opp-stats-no-data">No data yet</div>
+          )}
         </div>
       )}
 
@@ -2890,26 +3265,56 @@ export default function GameHUD() {
       {/* Advanced tools toolbar — rendered via portal to document.body so
           position:fixed works correctly regardless of parent transforms */}
       {createPortal(<div className="adv-toolbar">
-        {/* Extra tools — two rows to the left of GTO buttons */}
-        <div className="adv-toolbar-extras">
-          <button className={`adv-tool-btn ${showRangeViz ? 'active' : ''}`} title="Range Matrix" onClick={() => setShowRangeViz(v => !v)}>🎯</button>
-          <button className={`adv-tool-btn ${showHeatmap ? 'active' : ''}`} title="Equity Heatmap" onClick={() => setShowHeatmap(v => !v)}>🌡</button>
-          <button className={`adv-tool-btn ${showVoiceChat ? 'active' : ''}`} title="Voice Chat" onClick={() => setShowVoiceChat(v => !v)}>🎙</button>
-          <button className={`adv-tool-btn ${showStream ? 'active' : ''}`} title="Go Live" onClick={() => setShowStream(v => !v)}>📡</button>
-          <button className={`adv-tool-btn ${showTimingTells ? 'active' : ''}`} title="Timing Tells" onClick={() => setShowTimingTells(v => !v)}>⏱</button>
-          <button className={`adv-tool-btn ${showCommentary ? 'active' : ''}`} title="Table Commentary" onClick={() => setShowCommentary(v => !v)}>🎓</button>
-          <button className={`adv-tool-btn ${showCoachingRail ? 'active' : ''}`} title="AI Coach Rail" onClick={() => setShowCoachingRail(v => !v)}>🧠</button>
-          <button className={`adv-tool-btn ${showPredictionMarket ? 'active' : ''}`} title="Prediction Market" onClick={() => setShowPredictionMarket(v => !v)}>🎲</button>
-          <button className={`adv-tool-btn ${showPauseCoach ? 'active' : ''}`} title="Pause & Coach" onClick={() => setShowPauseCoach(v => !v)} disabled={!isMyTurn}>⏸</button>
-          <button className={`adv-tool-btn ${showSpectatorPredict ? 'active' : ''}`} title="Predict Winner" onClick={() => setShowSpectatorPredict(v => !v)}>🔮</button>
-          <button className="adv-tool-btn" title="Share Hand" onClick={() => setShowShareReplay(true)} disabled={!lastHandHistory}>🔗</button>
-          <button className="adv-tool-btn" title="AI Coach" onClick={() => setShowPostHandCoach(true)} disabled={!lastHandHistory}>🤖</button>
-          <button className="adv-tool-btn" title="Provably Fair" onClick={() => setShowProvablyFair(true)}>🔐</button>
+        {/* ── Analysis group ─────────────────────────────────── */}
+        <div className="adv-toolbar-group">
+          <button
+            className={`adv-group-header ${toolbarGroups.analysis ? 'adv-group-header--open' : ''}`}
+            onClick={() => setToolbarGroups(g => ({ ...g, analysis: !g.analysis }))}
+            title="Analysis tools"
+          >📊 {toolbarGroups.analysis ? '▾' : '▸'}</button>
+          {toolbarGroups.analysis && (
+            <div className="adv-group-items">
+              <button className={`adv-tool-btn ${showRangeViz ? 'active' : ''}`} title="Range Matrix" onClick={() => setShowRangeViz(v => !v)}>🎯</button>
+              <button className={`adv-tool-btn ${showHeatmap ? 'active' : ''}`} title="Equity Heatmap" onClick={() => setShowHeatmap(v => !v)}>🌡</button>
+              <button className={`adv-tool-btn ${showTimingTells ? 'active' : ''}`} title="Timing Tells" onClick={() => setShowTimingTells(v => !v)}>⏱</button>
+              <button className={`adv-tool-btn ${showSpectatorPredict ? 'active' : ''}`} title="Predict Winner" onClick={() => setShowSpectatorPredict(v => !v)}>🔮</button>
+              <button className={`adv-tool-btn ${gtoVisible ? 'active' : ''}`} title="GTO Overlay" onClick={() => setGtoVisible(v => !v)}>📈</button>
+              <button className={`adv-tool-btn ${showGTOSolver ? 'active' : ''}`} title="GTO Solver" onClick={() => setShowGTOSolver(v => !v)}>♟</button>
+              <button className="adv-tool-btn" title="Provably Fair" onClick={() => setShowProvablyFair(true)}>🔐</button>
+            </div>
+          )}
         </div>
-        {/* GTO Overlay + GTO Solver — stay in their original right-side column */}
-        <div className="adv-toolbar-gto">
-          <button className={`adv-tool-btn ${gtoVisible ? 'active' : ''}`} title="GTO Overlay" onClick={() => setGtoVisible(v => !v)}>📊</button>
-          <button className={`adv-tool-btn ${showGTOSolver ? 'active' : ''}`} title="GTO Solver" onClick={() => setShowGTOSolver(v => !v)}>♟</button>
+        {/* ── Coach group ─────────────────────────────────────── */}
+        <div className="adv-toolbar-group">
+          <button
+            className={`adv-group-header ${toolbarGroups.coach ? 'adv-group-header--open' : ''}`}
+            onClick={() => setToolbarGroups(g => ({ ...g, coach: !g.coach }))}
+            title="Coaching tools"
+          >🧠 {toolbarGroups.coach ? '▾' : '▸'}</button>
+          {toolbarGroups.coach && (
+            <div className="adv-group-items">
+              <button className={`adv-tool-btn ${showCoachingRail ? 'active' : ''}`} title="AI Coach Rail" onClick={() => setShowCoachingRail(v => !v)}>🧠</button>
+              <button className={`adv-tool-btn ${showCommentary ? 'active' : ''}`} title="Table Commentary" onClick={() => setShowCommentary(v => !v)}>🎓</button>
+              <button className={`adv-tool-btn ${showPauseCoach ? 'active' : ''}`} title="Pause & Coach" onClick={() => setShowPauseCoach(v => !v)} disabled={!isMyTurn}>⏸</button>
+              <button className="adv-tool-btn" title="AI Coach" onClick={() => setShowPostHandCoach(true)} disabled={!lastHandHistory}>🤖</button>
+            </div>
+          )}
+        </div>
+        {/* ── Live group ──────────────────────────────────────── */}
+        <div className="adv-toolbar-group">
+          <button
+            className={`adv-group-header ${toolbarGroups.live ? 'adv-group-header--open' : ''}`}
+            onClick={() => setToolbarGroups(g => ({ ...g, live: !g.live }))}
+            title="Live & Social"
+          >📡 {toolbarGroups.live ? '▾' : '▸'}</button>
+          {toolbarGroups.live && (
+            <div className="adv-group-items">
+              <button className={`adv-tool-btn ${showVoiceChat ? 'active' : ''}`} title="Voice Chat" onClick={() => setShowVoiceChat(v => !v)}>🎙</button>
+              <button className={`adv-tool-btn ${showStream ? 'active' : ''}`} title="Go Live" onClick={() => setShowStream(v => !v)}>📺</button>
+              <button className={`adv-tool-btn ${showPredictionMarket ? 'active' : ''}`} title="Prediction Market" onClick={() => setShowPredictionMarket(v => !v)}>🎲</button>
+              <button className="adv-tool-btn" title="Share Hand" onClick={() => setShowShareReplay(true)} disabled={!lastHandHistory}>🔗</button>
+            </div>
+          )}
         </div>
       </div>, document.body)}
 

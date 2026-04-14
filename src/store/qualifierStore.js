@@ -205,21 +205,23 @@ export const qualifierActions = {
   },
 
   register: (qualifierId, playerName) => {
-    _qualifiers = _qualifiers.map((q) =>
-      q.id === qualifierId
-        ? { ...q, registrants: [...new Set([...(q.registrants || []), playerName])], registered: (q.registered || 0) + 1 }
-        : q
-    );
+    _qualifiers = _qualifiers.map((q) => {
+      if (q.id !== qualifierId) return q;
+      const existing = q.registrants || [];
+      if (existing.includes(playerName)) return q; // already registered, don't double-count
+      return { ...q, registrants: [...existing, playerName], registered: (q.registered || 0) + 1 };
+    });
     saveToStorage(_qualifiers);
     notify();
   },
 
   removeRegistrant: (qualifierId, playerName) => {
-    _qualifiers = _qualifiers.map((q) =>
-      q.id === qualifierId
-        ? { ...q, registrants: (q.registrants || []).filter((r) => r !== playerName), registered: Math.max(0, (q.registered || 1) - 1) }
-        : q
-    );
+    _qualifiers = _qualifiers.map((q) => {
+      if (q.id !== qualifierId) return q;
+      const existing = q.registrants || [];
+      if (!existing.includes(playerName)) return q; // not registered, nothing to remove
+      return { ...q, registrants: existing.filter((r) => r !== playerName), registered: Math.max(0, (q.registered || 0) - 1) };
+    });
     saveToStorage(_qualifiers);
     notify();
   },

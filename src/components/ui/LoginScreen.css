@@ -112,6 +112,16 @@
   border: 2px dashed rgba(0, 80, 100, 0.5);
 }
 
+.login-logo-img {
+  display: block;
+  width: 300px;
+  height: 300px;
+  object-fit: contain;
+  margin: 0 auto 12px;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.7));
+}
+
 .login-title {
   font-size: 1.6rem;
   font-weight: 800;
@@ -467,6 +477,46 @@
 .login-guest-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ── Input error border ── */
+.login-input-wrap--error .login-input {
+  border-color: rgba(239, 68, 68, 0.5) !important;
+}
+
+/* ── Lockout banner ── */
+.login-lockout-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #F87171;
+  font-size: 0.85rem;
+}
+
+.login-lockout-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+/* ── Forgot password link ── */
+.login-forgot-row {
+  text-align: center;
+  margin-top: -4px;
+}
+
+.login-forgot-link {
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 0.8rem;
+  cursor: default;
+  font-family: inherit;
+  padding: 0;
+  pointer-events: none;
 }
 
 /* Responsive */

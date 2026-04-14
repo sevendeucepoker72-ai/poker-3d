@@ -98,9 +98,36 @@ function OverviewTab({ progress, handHistories }) {
 function LeaksTab({ progress }) {
   const vpip = (progress?.vpip != null && progress.vpip > 0) ? progress.vpip : null;
   const pfr = (progress?.pfr != null && progress.pfr > 0) ? progress.pfr : null;
-  const aggFactor = pfr != null && pfr > 0 ? +(vpip / pfr).toFixed(1) : null;
-  const bluffPct = null; // not tracked yet
-  const foldToSteal = null; // not tracked yet
+
+  // Aggression factor from street action counts: (bets+raises) / calls
+  const aggFactor = useMemo(() => {
+    const sa = progress?.streetActions;
+    if (!sa) return null;
+    let bets = 0, raises = 0, calls = 0;
+    for (const s of Object.values(sa)) {
+      bets += s.bets || 0;
+      raises += s.raises || 0;
+      calls += s.calls || 0;
+    }
+    if (calls === 0) return bets + raises > 0 ? 999 : null;
+    return +((bets + raises) / calls).toFixed(1);
+  }, [progress]);
+
+  // Bluff %, computed from bluffWins / handsWon
+  const bluffPct = useMemo(() => {
+    const hw = progress?.handsWon;
+    const bw = progress?.bluffWins;
+    if (!hw || hw < 5) return null;
+    return Math.round(((bw || 0) / hw) * 100);
+  }, [progress]);
+
+  // Fold to steal, computed from blind fold tracking
+  const foldToSteal = useMemo(() => {
+    const bh = progress?.blindHands;
+    const bf = progress?.blindFolded;
+    if (!bh || bh < 10) return null;
+    return Math.round(((bf || 0) / bh) * 100);
+  }, [progress]);
 
   const leaks = [
     {

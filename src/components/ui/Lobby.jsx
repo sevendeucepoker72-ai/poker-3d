@@ -1313,8 +1313,14 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <div className="upc-top">
           {/* Avatar with XP progress ring (upgrade #2) */}
           <ProgressRing pct={xpPercent} size={58} stroke={3} color={homeRankInfo.info.color}>
-            <div className={`lobby-player-avatar lobby-player-avatar--${chipTier} upc-avatar-inner`}>
-              {(nameInput || 'P').charAt(0).toUpperCase()}
+            <div
+              className={`lobby-player-avatar lobby-player-avatar--${chipTier} upc-avatar-inner`}
+              style={avatar?.seatColor ? { background: avatar.seatColor } : avatar?.skinTone ? { background: avatar.skinTone } : {}}
+            >
+              {avatar?.photo
+                ? <img src={avatar.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />
+                : (nameInput || 'P').charAt(0).toUpperCase()
+              }
             </div>
           </ProgressRing>
           <div className="upc-identity">
@@ -1698,7 +1704,15 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     <div className="lobby-tab-content lobby-tab-fade" key="profile">
       {/* Player Info Card */}
       <div className="lobby-profile-card">
-        <div className="lobby-profile-avatar">{(nameInput || 'P').charAt(0).toUpperCase()}</div>
+        <div
+          className="lobby-profile-avatar"
+          style={avatar?.seatColor ? { background: avatar.seatColor } : avatar?.skinTone ? { background: avatar.skinTone } : {}}
+        >
+          {avatar?.photo
+            ? <img src={avatar.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />
+            : (nameInput || 'P').charAt(0).toUpperCase()
+          }
+        </div>
         <div className="lobby-profile-details">
           <div className="lobby-profile-name">
             <input
@@ -2181,7 +2195,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       {showAdminDashboard && <AdminDashboard onClose={() => setShowAdminDashboard(false)} />}
       {showExportData && <ExportData onClose={() => setShowExportData(false)} />}
       {showHandQuiz && <HandQuiz onClose={() => setShowHandQuiz(false)} />}
-      {showAdvancedAnalytics && <AdvancedAnalytics onClose={() => setShowAdvancedAnalytics(false)} />}
+      {showAdvancedAnalytics && <AdvancedAnalytics progress={progress} handHistories={handHistories || []} onClose={() => setShowAdvancedAnalytics(false)} />}
       {showStakingMarketplace && <StakingMarketplace onClose={() => setShowStakingMarketplace(false)} />}
       {showTournamentBracket && <TournamentBracket onClose={() => setShowTournamentBracket(false)} />}
       {showTournamentDirector && <TournamentDirector onClose={() => setShowTournamentDirector(false)} />}

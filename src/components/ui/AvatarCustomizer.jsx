@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import AvatarModel from '../avatar/AvatarModel';
@@ -9,12 +10,46 @@ import {
 } from '../../utils/avatarConfig';
 import './AvatarCustomizer.css';
 
+/* Upgrade #6: Preset seat-circle colors */
+const SEAT_COLORS = [
+  '#6366f1','#8b5cf6','#ec4899','#f59e0b',
+  '#10b981','#3b82f6','#ef4444','#06b6d4',
+  '#84cc16','#f97316','#e11d48','#0ea5e9',
+];
+
 export default function AvatarCustomizer() {
   const avatar = useGameStore((s) => s.avatar);
   const updateAvatar = useGameStore((s) => s.updateAvatar);
   const updateFaceShape = useGameStore((s) => s.updateFaceShape);
   const resetAvatar = useGameStore((s) => s.resetAvatar);
   const setScreen = useGameStore((s) => s.setScreen);
+
+  /* Upgrade #1: photo upload — center-crop & resize to 80×80 JPEG */
+  const fileInputRef = useRef(null);
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const SIZE = 80;
+        const canvas = document.createElement('canvas');
+        canvas.width = SIZE; canvas.height = SIZE;
+        const ctx = canvas.getContext('2d');
+        const minDim = Math.min(img.width, img.height);
+        const sx = (img.width - minDim) / 2;
+        const sy = (img.height - minDim) / 2;
+        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, SIZE, SIZE);
+        updateAvatar('photo', canvas.toDataURL('image/jpeg', 0.75));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const seatPreview = avatar.seatColor || avatar.skinTone || '#6366f1';
 
   return (
     <div className="customizer">
@@ -42,6 +77,63 @@ export default function AvatarCustomizer() {
       {/* Controls Panel */}
       <div className="customizer-panel">
         <h2>Create Your Avatar</h2>
+
+        {/* Upgrade #1: Photo upload */}
+        <Section title="Seat Photo">
+          <div className="photo-upload-row">
+            <div
+              className="photo-preview"
+              style={{ background: seatPreview }}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {avatar.photo
+                ? <img src={avatar.photo} alt="avatar" className="photo-preview__img" />
+                : <span className="photo-preview__placeholder">📷</span>
+              }
+            </div>
+            <div className="photo-upload-actions">
+              <button className="btn-upload" onClick={() => fileInputRef.current?.click()}>
+                Upload Photo
+              </button>
+              {avatar.photo && (
+                <button className="btn-remove-photo" onClick={() => updateAvatar('photo', null)}>
+                  Remove
+                </button>
+              )}
+              <span className="photo-hint">Shown as your seat icon at the table</span>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handlePhotoUpload}
+            />
+          </div>
+        </Section>
+
+        {/* Upgrade #6: Seat circle color */}
+        <Section title="Seat Color">
+          <div className="color-row">
+            {SEAT_COLORS.map((color) => (
+              <button
+                key={color}
+                className={`color-swatch ${avatar.seatColor === color ? 'active' : ''}`}
+                style={{ backgroundColor: color }}
+                onClick={() => updateAvatar('seatColor', color)}
+              />
+            ))}
+            <label className="color-swatch color-swatch--custom" title="Custom color" style={{ background: avatar.seatColor && !SEAT_COLORS.includes(avatar.seatColor) ? avatar.seatColor : '#444' }}>
+              <span>+</span>
+              <input
+                type="color"
+                value={avatar.seatColor || '#6366f1'}
+                onChange={(e) => updateAvatar('seatColor', e.target.value)}
+                style={{ opacity: 0, position: 'absolute', width: 0, height: 0 }}
+              />
+            </label>
+          </div>
+        </Section>
 
         {/* Body Type */}
         <Section title="Body Type">

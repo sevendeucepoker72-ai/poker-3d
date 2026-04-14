@@ -81,7 +81,12 @@ function resolveMarket(marketId, gameState) {
 export default function PredictionMarket({ gameState: gameStateRaw, socket, visible, onClose }) {
   const gameState = useThrottle(gameStateRaw, 500);
   const [expanded, setExpanded]     = useState(false);
-  const [balance, setBalance]       = useState(STARTING_BALANCE);
+  const [balance, setBalance] = useState(() => {
+    try {
+      const stored = localStorage.getItem('prediction_market_balance');
+      return stored !== null ? Number(stored) : STARTING_BALANCE;
+    } catch { return STARTING_BALANCE; }
+  });
   const [activeMarkets, setActiveMarkets] = useState([]);
   const [positions, setPositions]   = useState({}); // marketId → { outcome, amount, potentialWin }
   const [resolved, setResolved]     = useState({}); // marketId → { outcome, result, payout }
@@ -169,7 +174,11 @@ export default function PredictionMarket({ gameState: gameStateRaw, socket, visi
       });
 
       setResolved(r => ({ ...r, ...newResolved }));
-      setBalance(b => b + balanceDelta);
+      setBalance(b => {
+        const next = b + balanceDelta;
+        try { localStorage.setItem('prediction_market_balance', String(next)); } catch {}
+        return next;
+      });
       if (newToasts.length > 0) {
         setToasts(t => [...t, ...newToasts]);
         setTimeout(() => setToasts(t => t.slice(newToasts.length)), 3500);
@@ -222,7 +231,11 @@ export default function PredictionMarket({ gameState: gameStateRaw, socket, visi
     // Payout: stake * (100 / odds) — return on investment
     const potentialWin = Math.round(amount * (100 / odds));
 
-    setBalance(b => b - amount);
+    setBalance(b => {
+      const next = b - amount;
+      try { localStorage.setItem('prediction_market_balance', String(next)); } catch {}
+      return next;
+    });
     setPositions(prev => ({ ...prev, [market.id]: { outcome, amount, potentialWin } }));
     updateOdds(market.id, outcome, amount);
     closeStakeInput(market.id);

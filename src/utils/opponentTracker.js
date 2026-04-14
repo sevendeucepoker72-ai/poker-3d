@@ -108,6 +108,23 @@ export function recordHandStats(seats, mySeatIndex, gameState) {
     return phase === 'PreFlop' || phase === 'preflop';
   });
 
+  // Count aggressive/passive actions per player across all streets
+  const aggressiveByPlayer = new Map();
+  const passiveByPlayer = new Map();
+  for (const action of actionHistory) {
+    const seatIndex = action.seatIndex ?? action.seat;
+    if (seatIndex === undefined || seatIndex === null || seatIndex === mySeatIndex) continue;
+    const seat = seats[seatIndex];
+    if (!seat || !seat.playerName) continue;
+    const type = (action.type || action.action || '').toLowerCase();
+    const name = seat.playerName;
+    if (type === 'bet' || type === 'raise' || type === 'allin' || type === 'all-in') {
+      aggressiveByPlayer.set(name, (aggressiveByPlayer.get(name) || 0) + 1);
+    } else if (type === 'call' || type === 'check') {
+      passiveByPlayer.set(name, (passiveByPlayer.get(name) || 0) + 1);
+    }
+  }
+
   // Record each opponent
   for (let i = 0; i < seats.length; i++) {
     if (i === mySeatIndex) continue;
@@ -121,6 +138,8 @@ export function recordHandStats(seats, mySeatIndex, gameState) {
 
     const stats = statsMap.get(seat.playerName);
     stats.handsObserved += 1;
+    stats.aggressiveActions += aggressiveByPlayer.get(seat.playerName) || 0;
+    stats.passiveActions += passiveByPlayer.get(seat.playerName) || 0;
 
     if (hasPreflopActions) {
       if (vpipPlayers.has(seat.playerName)) {

@@ -32,7 +32,6 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
   const [maxSeats, setMaxSeats] = useState(6);
   const [tableName, setTableName] = useState(`${playerName}'s Home Game`);
   const [straddle, setStraddle] = useState(false);
-  const [runItTwice, setRunItTwice] = useState(false);
   const [bombPot, setBombPot] = useState(false);
 
   // Join-by-invite-code mode
@@ -75,7 +74,6 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
       minBuyIn: bb * 20,
       maxSeats,
       straddle,
-      runItTwice,
       bombPot,
     });
   }
@@ -170,7 +168,6 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
               {[
                 { label: 'Straddle', val: straddle, set: setStraddle },
-                { label: 'Run-It-Twice', val: runItTwice, set: setRunItTwice },
                 { label: 'Bomb Pot', val: bombPot, set: setBombPot },
               ].map(({ label, val, set }) => (
                 <button key={label} onClick={() => set(!val)} style={{

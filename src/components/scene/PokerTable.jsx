@@ -734,9 +734,17 @@ export default function PokerTable() {
   const gameState = useTableStore((s) => s.gameState);
   const mySeat = useTableStore((s) => s.mySeat);
 
-  // Shared turn timer (written by GameHUD, read here for nameplate ring)
-  const timerLeft  = useTimerStore((s) => s.timerLeft);
-  const timerTotal = useTimerStore((s) => s.timerTotal);
+  // Shared turn timer (server timestamp, written by GameHUD)
+  const turnStartedAt = useTimerStore((s) => s.turnStartedAt);
+  const turnTimeout   = useTimerStore((s) => s.turnTimeout);
+  const [timerTick, setTimerTick] = useState(0);
+  const activeIdx = gameState?.activeSeatIndex ?? -1;
+  useEffect(() => {
+    if (activeIdx < 0 || !turnStartedAt) return;
+    setTimerTick(t => t + 1);
+    const id = setInterval(() => setTimerTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [activeIdx, turnStartedAt]);
 
   // Theme from progress
   const progress = useProgressStore((s) => s.progress);
@@ -749,6 +757,7 @@ export default function PokerTable() {
   const activeSeatIndex = gameState?.activeSeatIndex ?? -1;
   const handResult = gameState?.handResult || null;
   const pot = gameState?.pot || 0;
+  const phase = gameState?.phase || '';
 
   // Determine winners from hand result
   const winnerSeats = useMemo(() => {
@@ -923,8 +932,8 @@ export default function PokerTable() {
             {/* All-in red pulsing glow */}
             {isAllIn && !isFolded && !isActive && <AllInGlow position={seat.pos} />}
 
-            {/* Winner gold pulsing highlight */}
-            {isWinner && winnerInfoMap[i] && (
+            {/* Winner gold pulsing highlight — only during HandComplete */}
+            {isWinner && winnerInfoMap[i] && (phase === 'HandComplete' || phase === 'Showdown') && (
               <WinnerHighlight
                 position={seat.pos}
                 handName={winnerInfoMap[i].handName}
@@ -932,8 +941,8 @@ export default function PokerTable() {
               />
             )}
 
-            {/* Action bubble floating above player */}
-            {serverSeat?.playerName && serverSeat.state === 'occupied' && serverSeat.lastAction && serverSeat.lastAction !== 'None' && (
+            {/* Action bubble floating above player — suppress at start of new hand */}
+            {serverSeat?.playerName && serverSeat.state === 'occupied' && serverSeat.lastAction && serverSeat.lastAction !== 'None' && phase !== 'PreFlop' && (
               <ActionBubbleManager
                 position={seat.pos}
                 action={serverSeat.lastAction}
@@ -954,10 +963,10 @@ export default function PokerTable() {
                 dealerButtonSeat={dealerButtonSeat}
                 bigBlind={gameState?.bigBlind || 50}
                 occupiedSeats={occupiedSeats}
-                handName={winnerInfoMap[i]?.handName || null}
+                handName={(phase === 'HandComplete' || phase === 'Showdown') ? (winnerInfoMap[i]?.handName || null) : null}
                 onClickNameplate={handleNameplateClick}
-                timerLeft={isActive ? timerLeft : null}
-                timerTotal={isActive ? timerTotal : 30}
+                timerLeft={(() => { void timerTick; if (!isActive || !turnStartedAt) return null; const el = Date.now() - turnStartedAt; return Math.max(0, Math.ceil((turnTimeout - el) / 1000)); })()}
+                timerTotal={Math.ceil(turnTimeout / 1000)}
               />
             )}
 

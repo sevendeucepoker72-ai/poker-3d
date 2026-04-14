@@ -472,11 +472,13 @@ export default function useSoundEffects() {
   // Cleanup ambient on unmount
   useEffect(() => {
     return () => {
-      if (ambientRef.current) {
-        try {
-          ambientRef.current.hum.stop();
-          ambientRef.current.lfo.stop();
-        } catch (e) { /* ignore */ }
+      const amb = ambientRef.current;
+      if (amb) {
+        try { amb.hum?.stop?.(); } catch (e) { /* oscillator already stopped */ }
+        try { amb.lfo?.stop?.(); } catch (e) { /* oscillator already stopped */ }
+        try { amb.hum?.disconnect?.(); } catch {}
+        try { amb.lfo?.disconnect?.(); } catch {}
+        ambientRef.current = null;
       }
     };
   }, []);

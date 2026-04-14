@@ -112,7 +112,13 @@ export default function PostHandAnalysis({ gameState, yourSeat, handHistory, onD
     const result = [];
     if (yourCards.length < 2) return result;
 
-    const preflopStrength = Math.min(1, (yourCards[0]?.rank || 2) / 14 * 0.55 + (yourCards[1]?.rank || 2) / 14 * 0.35);
+    const r0 = yourCards[0]?.rank || 2;
+    const r1 = yourCards[1]?.rank || 2;
+    const suited = yourCards[0]?.suit === yourCards[1]?.suit ? 0.06 : 0;
+    const gap = Math.abs(r0 - r1);
+    const connected = gap === 0 ? 0.08 : gap === 1 ? 0.05 : gap === 2 ? 0.02 : 0; // pair/connector bonus
+    const rankStrength = (r0 / 14) * 0.50 + (r1 / 14) * 0.30;
+    const preflopStrength = Math.min(1, rankStrength + suited + connected);
     const preflopOptimal = getOptimalAction(preflopStrength, potOdds, callAmount);
     const preflopActual = classifyAction(actionsPerStreet.Preflop?.[actionsPerStreet.Preflop.length - 1]);
     result.push({

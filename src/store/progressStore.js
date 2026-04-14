@@ -86,14 +86,33 @@ function saveProgress(progress) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
     // Also sync stats for AdvancedAnalytics leaks tab
+    // Compute aggression factor from street action counts: (bets+raises) / calls
+    const sa = progress.streetActions || {};
+    let totalBets = 0, totalRaises = 0, totalCalls = 0;
+    for (const street of ['preflop','flop','turn','river']) {
+      const s = sa[street] || {};
+      totalBets += s.bets || 0;
+      totalRaises += s.raises || 0;
+      totalCalls += s.calls || 0;
+    }
+    const aggressionFactor = totalCalls > 0
+      ? +((totalBets + totalRaises) / totalCalls).toFixed(1)
+      : (totalBets + totalRaises > 0 ? 999 : 0);
+
+    const handsWon = progress.handsWon || 0;
+    const blindHands = progress.blindHands || 0;
+    const blindFolded = progress.blindFolded || 0;
+
     localStorage.setItem('poker_player_stats', JSON.stringify({
       vpip: progress.vpip || 0,
       pfr: progress.pfr || 0,
       handsPlayed: progress.handsPlayed || 0,
       winRate: progress.winRate || 0,
-      aggressionFactor: progress.pfr > 0 ? ((progress.vpip || 0) / (progress.pfr || 1)).toFixed(1) : 0,
+      aggressionFactor,
       bestStreak: progress.bestStreak || 0,
       biggestPot: progress.biggestPot || 0,
+      bluffPct: handsWon > 0 ? Math.round(((progress.bluffWins || 0) / handsWon) * 100) : null,
+      foldToSteal: blindHands >= 10 ? Math.round((blindFolded / blindHands) * 100) : null,
     }));
   } catch { /* storage full — ignore */ }
 }
@@ -187,6 +206,10 @@ function defaultProgress() {
     pfr: 0,
     vpipHands: 0,
     pfrHands: 0,
+    bluffWins: 0,
+    blindFolded: 0,
+    blindHands: 0,
+    lastHandAt: 0,
     vipTier: 'Bronze',
     vipXp: 0,
     // Position stats: { BTN: {played,won}, SB: {played,won}, ... }
@@ -258,16 +281,18 @@ export const useProgressStore = create((set, get) => ({
 
     const levelsGained = info.level - oldLevel;
     if (levelsGained > 0) {
+      const bonusChips = levelsGained * 200;
       // Trigger level-up popup
       set({
         levelUpData: {
           newLevel: info.level,
-          bonusChips: levelsGained * 200,
+          bonusChips,
           bonusStars: levelsGained >= 2 ? levelsGained * 5 : 0,
         },
       });
-      // Award bonus chips for leveling up
-      const withBonus = { ...updated, chips: (updated.chips || 0) + levelsGained * 200 };
+      // Award bonus chips — read latest progress to avoid overwrite races
+      const latest = get().progress;
+      const withBonus = { ...latest, chips: (latest.chips || 0) + bonusChips };
       saveProgress(withBonus);
       set({ progress: withBonus });
     }
@@ -276,9 +301,10 @@ export const useProgressStore = create((set, get) => ({
   },
 
   /** Record a completed hand — awards XP and updates all stats. */
-  recordHand: ({ won, potSize, handName, chipsAfter, voluntaryPut, preflopRaise, position, holeCards, communityCards, actions, handId }) => {
+  recordHand: ({ won, potSize, handName, chipsAfter, voluntaryPut, preflopRaise, position, holeCards, communityCards, actions, handId, raiseCount }) => {
     const prev = get().progress || defaultProgress();
-    const xpEarned = won ? 50 + Math.floor(potSize / 100) : 15;
+    // XP based on actual pot size (not just chipsWon) so losers don't get inflated XP
+    const xpEarned = won ? 50 + Math.floor((potSize || 0) / 100) : 15;
 
     // Reset handsToday if the date changed
     const today = new Date().toDateString();
@@ -288,6 +314,7 @@ export const useProgressStore = create((set, get) => ({
     const newBestStreak = Math.max(prev.bestStreak || 0, newStreak);
 
     // Track best hand (rank order: High Card < Pair < ... < Royal Flush)
+    // Update regardless of win/loss — the hand was held at showdown
     const HAND_RANKS = ['High Card','Pair','Two Pair','Three of a Kind','Straight','Flush','Full House','Four of a Kind','Straight Flush','Royal Flush'];
     let newBestHand = prev.bestHand || '';
     if (handName && HAND_RANKS.indexOf(handName) > HAND_RANKS.indexOf(newBestHand)) {
@@ -302,6 +329,14 @@ export const useProgressStore = create((set, get) => ({
     const newVpipHands = (prev.vpipHands || 0) + (voluntaryPut ? 1 : 0);
     const newPfrHands = (prev.pfrHands || 0) + (preflopRaise ? 1 : 0);
     const totalHands = (prev.handsPlayed || 0) + 1;
+
+    // Blind defense tracking (fold to steal)
+    const isBlind = position === 'SB' || position === 'BB';
+    const newBlindHands = (prev.blindHands || 0) + (isBlind ? 1 : 0);
+    const newBlindFolded = (prev.blindFolded || 0) + (isBlind && !voluntaryPut ? 1 : 0);
+
+    // Bluff win tracking (won with High Card = opponent(s) folded or hero had best high card)
+    const newBluffWins = (prev.bluffWins || 0) + (won && handName === 'High Card' ? 1 : 0);
 
     // Net chips
     const chipsDelta = chipsAfter != null ? chipsAfter - (prev.chips || 0) : 0;
@@ -325,6 +360,10 @@ export const useProgressStore = create((set, get) => ({
       pfrHands: newPfrHands,
       vpip: totalHands > 0 ? Math.round((newVpipHands / totalHands) * 100) : 0,
       pfr: totalHands > 0 ? Math.round((newPfrHands / totalHands) * 100) : 0,
+      bluffWins: newBluffWins,
+      blindHands: newBlindHands,
+      blindFolded: newBlindFolded,
+      lastHandAt: Date.now(),
     };
     if (updated.handsPlayed > 0) {
       updated.winRate = Math.round((updated.handsWon / updated.handsPlayed) * 100);
@@ -406,6 +445,7 @@ export const useProgressStore = create((set, get) => ({
     }
     updated.missionsPlayCount = (updated.missionsPlayCount || 0) + 1;
     if (won) updated.missionsWinCount = (updated.missionsWinCount || 0) + 1;
+    if (raiseCount > 0) updated.missionsRaiseCount = (updated.missionsRaiseCount || 0) + raiseCount;
     updated.sessionBiggestPot = Math.max(updated.sessionBiggestPot || 0, potSize || 0);
     // Update mission progress
     const missions = [...(updated.dailyMissions || [])];
@@ -430,7 +470,13 @@ export const useProgressStore = create((set, get) => ({
     saveProgress(updated);
     set({ progress: updated });
 
-    // Show achievement popups
+    // Show achievement popups and apply rewards
+    const achievementChips = newlyUnlocked.length * 1000;
+    if (achievementChips > 0) {
+      updated.chips = (updated.chips || 0) + achievementChips;
+      saveProgress(updated);
+      set({ progress: updated });
+    }
     for (const ach of newlyUnlocked) {
       get().addNotification({ type: 'achievement', message: `${ach.name} - ${ach.desc}`, reward: { xp: 100, chips: 1000 } });
     }
@@ -472,15 +518,16 @@ export const useProgressStore = create((set, get) => ({
     set({ progress: updated });
   },
 
-  // Notification queue for popups
+  // Notification queue for popups (capped at 50 to prevent unbounded growth)
   notifications: [],
   addNotification: (notification) =>
-    set((state) => ({
-      notifications: [
+    set((state) => {
+      const next = [
         ...state.notifications,
         { ...notification, id: ++notificationIdCounter },
-      ],
-    })),
+      ];
+      return { notifications: next.length > 50 ? next.slice(-50) : next };
+    }),
   dismissNotification: (id) =>
     set((state) => ({
       notifications: state.notifications.filter((n) => n.id !== id),

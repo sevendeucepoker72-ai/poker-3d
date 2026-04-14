@@ -69,9 +69,12 @@ export default function SpectatorPredict({ tableId, gameState, socket, visible, 
       if (correct) showToast('Correct! +1 streak');
       else showToast('Wrong — streak reset');
     };
+    // 'handResult' is the actual server event; 'hand:result'/'hand:winners' kept for compatibility
+    socket.on('handResult', handleResult);
     socket.on('hand:result', handleResult);
     socket.on('hand:winners', handleResult);
     return () => {
+      socket.off('handResult', handleResult);
       socket.off('hand:result', handleResult);
       socket.off('hand:winners', handleResult);
     };

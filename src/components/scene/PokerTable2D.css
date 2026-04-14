@@ -1,0 +1,1428 @@
+/* ============================================================
+   PokerTable2D.css — PokerStars / PokerBros style 2D table
+   ============================================================ */
+
+/* ── Scene wrapper ────────────────────────────────────────── */
+.table2d-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Background ───────────────────────────────────────────── */
+.table2d-bg {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 40%, #1a2235 0%, #0a0f1a 70%, #060a12 100%);
+  z-index: 0;
+}
+
+/* ── Table oval (felt) ────────────────────────────────────── */
+.table2d-felt {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  /* Reserve ~88px on each side / ~120px top+bottom for pods so the seat
+   * ellipse never extends past the viewport edge on any device. */
+  width: min(calc(100vw - 160px), calc((100vh - 240px) * 2.35), 920px);
+  aspect-ratio: 2.35 / 1;
+  min-width: 160px;
+  border-radius: 50%;
+  z-index: 1;
+
+  /* Layered oval: outer shadow → rail → felt */
+  background:
+    radial-gradient(ellipse at 50% 35%, #1a4a7a 0%, #0e2f56 55%, #071830 100%);
+  box-shadow:
+    /* Outer glow */
+    0 0 60px 10px rgba(0,0,0,0.8),
+    /* Rail border */
+    0 0 0 14px #2a1f0f,
+    0 0 0 18px #4a3418,
+    0 0 0 22px #2a1f0f,
+    /* Deep shadow */
+    0 12px 80px 20px rgba(0,0,0,0.9);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* inner felt edge highlight */
+.table2d-felt::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.06);
+  pointer-events: none;
+}
+
+/* ── Table logo ────────────────────────────────────────────── */
+.table2d-felt__logo {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  color: rgba(255,255,255,0.12);
+  text-transform: uppercase;
+  user-select: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* ── Pot display ───────────────────────────────────────────── */
+.table2d-pot {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 20px;
+  padding: 3px 10px 3px 7px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: #e2e8f0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.table2d-pot__icon {
+  color: #fbbf24;
+  font-size: 0.55rem;
+}
+
+.table2d-pot__amount {
+  color: #ffffff;
+}
+
+.table2d-pot__side {
+  background: rgba(99,102,241,0.3);
+  border: 1px solid rgba(99,102,241,0.5);
+  border-radius: 10px;
+  padding: 0px 6px;
+  font-size: 0.68rem;
+  color: #a5b4fc;
+  margin-left: 3px;
+}
+
+/* ── Community cards ──────────────────────────────────────── */
+.table2d-community {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+}
+
+.table2d-card-slot {
+  width: 46px;
+  height: 64px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.table2d-card-slot--filled {
+  background: transparent;
+  border: none;
+}
+
+/* ── Phase label ───────────────────────────────────────────── */
+.table2d-phase {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.25);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-top: 4px;
+}
+
+/* ============================================================
+   2D Playing Cards
+   ============================================================ */
+.card2d {
+  width: 46px;
+  height: 64px;
+  border-radius: 6px;
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.15);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.2);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  user-select: none;
+  color: var(--card-color, #2d2d3f);
+  font-family: 'Georgia', serif;
+}
+
+.card2d--small {
+  width: 28px;
+  height: 38px;
+  border-radius: 4px;
+}
+
+.card2d--back {
+  background: linear-gradient(135deg, #1a237e 0%, #283593 50%, #1a237e 100%);
+  border-color: rgba(255,255,255,0.2);
+  color: transparent;
+}
+
+.card2d__back-pattern {
+  position: absolute;
+  inset: 3px;
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(255,255,255,0.06) 0px,
+      rgba(255,255,255,0.06) 2px,
+      transparent 2px,
+      transparent 8px
+    );
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+.card2d__corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  gap: 0;
+}
+
+.card2d__corner--tl {
+  top: 3px;
+  left: 4px;
+}
+
+.card2d__corner--br {
+  bottom: 3px;
+  right: 4px;
+  transform: rotate(180deg);
+}
+
+.card2d__rank {
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.card2d--small .card2d__rank {
+  font-size: 0.55rem;
+}
+
+.card2d__suit {
+  font-size: 0.55rem;
+  line-height: 1;
+}
+
+.card2d--small .card2d__suit {
+  font-size: 0.4rem;
+}
+
+.card2d__center-suit {
+  font-size: 1.3rem;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.card2d--small .card2d__center-suit {
+  font-size: 0.85rem;
+}
+
+/* ============================================================
+   Seat Pods
+   ============================================================ */
+.seat-pod {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  z-index: 10;
+  cursor: pointer;
+  transition: filter 0.2s;
+}
+
+.seat-pod--folded {
+  filter: grayscale(0.7) brightness(0.55);
+}
+
+/* ── Avatar circle wrapper ────────────────────────────────── */
+.seat-pod__avatar-wrap {
+  position: relative;
+  width: 50px;
+  height: 50px;
+  flex-shrink: 0;
+}
+
+/* Timer ring SVG */
+.seat-pod__timer-ring {
+  position: absolute;
+  inset: -3px;
+  width: calc(100% + 6px);
+  height: calc(100% + 6px);
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Avatar circle */
+.seat-pod__avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #ffffff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  border: 2px solid rgba(255,255,255,0.2);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  position: relative;
+  z-index: 1;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.seat-pod__avatar--empty {
+  background: rgba(255,255,255,0.06) !important;
+  border: 2px dashed rgba(255,255,255,0.15) !important;
+  color: rgba(255,255,255,0.3) !important;
+  font-size: 1.4rem;
+  font-weight: 300;
+}
+
+/* Active seat glow */
+.seat-pod--active .seat-pod__avatar {
+  border-color: #4ade80;
+  box-shadow:
+    0 0 0 3px rgba(74,222,128,0.3),
+    0 0 20px 5px rgba(74,222,128,0.4),
+    0 2px 12px rgba(0,0,0,0.5);
+  animation: seat-active-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes seat-active-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(74,222,128,0.25), 0 0 16px 4px rgba(74,222,128,0.3), 0 2px 12px rgba(0,0,0,0.5); }
+  50%       { box-shadow: 0 0 0 4px rgba(74,222,128,0.50), 0 0 28px 8px rgba(74,222,128,0.55), 0 2px 12px rgba(0,0,0,0.5); }
+}
+
+/* Hero seat */
+.seat-pod--hero .seat-pod__avatar {
+  border-color: rgba(0,217,255,0.6);
+}
+
+/* All-in */
+.seat-pod--allin .seat-pod__avatar {
+  border-color: #f87171;
+  animation: seat-allin-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes seat-allin-pulse {
+  0%, 100% { border-color: #f87171; }
+  50%       { border-color: #ef4444; box-shadow: 0 0 18px 6px rgba(239,68,68,0.5); }
+}
+
+/* ── Hole cards (small, near seat) ───────────────────────── */
+.seat-pod__cards {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  z-index: 0;
+}
+
+.seat-pod__cards .card2d--small:first-child {
+  transform: rotate(-8deg) translateX(3px);
+}
+
+.seat-pod__cards .card2d--small:last-child {
+  transform: rotate(8deg) translateX(-3px);
+}
+
+/* ── Nameplate ────────────────────────────────────────────── */
+.seat-pod__nameplate {
+  background: rgba(6, 10, 20, 0.88);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 3px 8px;
+  min-width: 90px;
+  max-width: 120px;
+  text-align: center;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.seat-pod__name {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
+}
+
+.seat-pod__chips {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.65rem;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.seat-pod__pos {
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(55,65,81,0.7);
+  color: #9ca3af;
+}
+
+.seat-pod__pos--btn, .seat-pod__pos--btnsb {
+  background: rgba(234,179,8,0.25);
+  color: #fbbf24;
+}
+
+.seat-pod__pos--sb {
+  background: rgba(241,245,249,0.12);
+  color: #f1f5f9;
+}
+
+.seat-pod__pos--bb {
+  background: rgba(245,158,11,0.2);
+  color: #fcd34d;
+}
+
+.seat-pod__allin-badge {
+  font-size: 0.55rem;
+  font-weight: 800;
+  color: #fca5a5;
+  letter-spacing: 0.05em;
+  animation: allin-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes allin-pulse {
+  0%, 100% { color: #fca5a5; }
+  50%       { color: #ef4444; }
+}
+
+/* ── Dealer button ────────────────────────────────────────── */
+.dealer-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f5f5f5, #e0e0e0);
+  border: 2px solid #9e9e9e;
+  color: #212121;
+  font-size: 0.65rem;
+  font-weight: 900;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  z-index: 20;
+  letter-spacing: -0.5px;
+}
+
+/* ── Bet chip ─────────────────────────────────────────────── */
+.chip-bet {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(0,0,0,0.7);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 12px;
+  padding: 2px 6px 2px 4px;
+  white-space: nowrap;
+}
+
+.chip-bet__disc {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ff9800, #e65100);
+  border: 1px solid rgba(255,255,255,0.3);
+  flex-shrink: 0;
+}
+
+.chip-bet__amount {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #fcd34d;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ── Action bubble ────────────────────────────────────────── */
+.seat-pod__action-bubble {
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.75);
+  border: 1px solid rgba(255,255,255,0.15);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: action-bubble-anim 1.8s ease-out forwards;
+  z-index: 30;
+}
+
+@keyframes action-bubble-anim {
+  0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  60%  { opacity: 1; transform: translateX(-50%) translateY(-8px); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-16px); }
+}
+
+.bubble--fold   { color: #f87171; border-color: rgba(248,113,113,0.3); }
+.bubble--check  { color: #60a5fa; border-color: rgba(96,165,250,0.3); }
+.bubble--call   { color: #4ade80; border-color: rgba(74,222,128,0.3); }
+.bubble--raise  { color: #fbbf24; border-color: rgba(251,191,36,0.3); }
+.bubble--bet    { color: #fbbf24; border-color: rgba(251,191,36,0.3); }
+.bubble--allin  { color: #f87171; border-color: rgba(248,113,113,0.4); background: rgba(153,27,27,0.4); }
+
+/* ── Empty seat label ─────────────────────────────────────── */
+.seat-pod__label {
+  font-size: 0.6rem;
+  color: rgba(255,255,255,0.25);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-weight: 500;
+}
+
+/* ── Winner highlight ─────────────────────────────────────── */
+.seat-pod--winner .seat-pod__avatar {
+  border-color: #00d9ff;
+  box-shadow:
+    0 0 0 3px rgba(0,217,255,0.35),
+    0 0 24px 8px rgba(0,217,255,0.5),
+    0 2px 12px rgba(0,0,0,0.5);
+  animation: seat-winner-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes seat-winner-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(0,217,255,0.25), 0 0 18px 5px rgba(0,217,255,0.35), 0 2px 12px rgba(0,0,0,0.5); }
+  50%       { box-shadow: 0 0 0 4px rgba(0,217,255,0.55), 0 0 32px 12px rgba(0,217,255,0.65), 0 2px 12px rgba(0,0,0,0.5); }
+}
+
+/* Avatar photo fills the circle */
+.seat-pod__avatar-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+/* Win pulse burst on avatar */
+.seat-pod__avatar--win {
+  animation: avatar-win-pulse 0.6s ease-out 3;
+}
+
+@keyframes avatar-win-pulse {
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.8); }
+  50%  { transform: scale(1.18); box-shadow: 0 0 0 8px rgba(255, 215, 0, 0); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
+}
+
+/* Fold shake on avatar */
+.seat-pod__avatar--fold {
+  animation: avatar-fold-shake 0.4s ease-in-out 1;
+}
+
+@keyframes avatar-fold-shake {
+  0%   { transform: translateX(0) rotate(0deg); }
+  20%  { transform: translateX(-4px) rotate(-3deg); }
+  40%  { transform: translateX(4px) rotate(3deg); }
+  60%  { transform: translateX(-3px) rotate(-2deg); }
+  80%  { transform: translateX(3px) rotate(2deg); }
+  100% { transform: translateX(0) rotate(0deg); }
+}
+
+.seat-pod__winner-label {
+  position: absolute;
+  top: -52px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.seat-pod__winner-text {
+  font-size: 0.65rem;
+  font-weight: 900;
+  color: #00d9ff;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 12px rgba(0,217,255,0.8);
+  display: block;
+}
+
+.seat-pod__winner-hand {
+  font-size: 0.58rem;
+  color: #fbbf24;
+  font-weight: 700;
+  display: block;
+  white-space: nowrap;
+}
+
+.seat-pod__winner-amount {
+  font-size: 0.6rem;
+  color: #4ade80;
+  font-weight: 700;
+  display: block;
+}
+
+/* ── Responsive seat pod sizing via CSS custom property ─────── */
+/* --sp: scale factor applied to avatar / text at each breakpoint */
+.table2d-scene {
+  --sp: 1;
+}
+@media (max-width: 768px)  { .table2d-scene { --sp: 0.78; } }
+@media (max-width: 480px)  { .table2d-scene { --sp: 0.62; } }
+@media (max-height: 500px) and (orientation: landscape) { .table2d-scene { --sp: 0.58; } }
+
+/* Avatar + wrap — scale with --sp */
+.seat-pod__avatar-wrap {
+  width:  calc(50px * var(--sp));
+  height: calc(50px * var(--sp));
+}
+.seat-pod__avatar {
+  width:  calc(50px * var(--sp));
+  height: calc(50px * var(--sp));
+  font-size: calc(1.2rem * var(--sp));
+}
+
+/* Nameplate text */
+.seat-pod__nameplate {
+  min-width: calc(90px  * var(--sp));
+  max-width: calc(120px * var(--sp));
+}
+.seat-pod__name   { font-size: calc(0.72rem * var(--sp)); }
+.seat-pod__chips  { font-size: calc(0.65rem * var(--sp)); }
+.seat-pod__stats  { font-size: calc(0.6rem  * var(--sp)); }
+
+/* Community cards in felt center */
+.table2d-card-slot {
+  width:  calc(44px * var(--sp));
+  height: calc(64px * var(--sp));
+}
+.card2d {
+  width:  calc(44px * var(--sp));
+  height: calc(64px * var(--sp));
+}
+.card2d__rank        { font-size: calc(0.65rem * var(--sp)); }
+.card2d__center-suit { font-size: calc(1.1rem  * var(--sp)); }
+
+/* Hide verbose stats on small screens */
+@media (max-width: 480px) {
+  .seat-pod__stats,
+  .seat-pod__bb-badge { display: none; }
+  .table2d-theme-btn,
+  .table2d-emoji-btn  { padding: 4px 8px; font-size: 0.65rem; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .seat-pod__stats,
+  .seat-pod__bb-badge,
+  .table2d-theme-btn,
+  .table2d-emoji-btn,
+  .table2d-emoji-picker { display: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UPGRADE STYLES (all 10)
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── 1. Card deal animation ─────────────────────────────── */
+.card2d--deal {
+  animation: card-deal 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes card-deal {
+  0% {
+    opacity: 0;
+    transform: translate(0, -60px) scale(0.6) rotate(-12deg);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(0, 4px) scale(1.04) rotate(1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+}
+
+/* ── 2 & 3. Chip stack ──────────────────────────────────── */
+.chip-stack {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-6px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  z-index: 15;
+  pointer-events: none;
+  animation: chip-slide-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes chip-slide-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.8); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(-6px) scale(1); }
+}
+
+.chip-stack__tower {
+  position: relative;
+  width: 24px;
+  height: 44px;
+  /* Upgrade #5: subtle tower lean */
+  transform: rotate(-1.5deg);
+  transform-origin: bottom center;
+}
+
+/* ── Upgrade #1: 3D radial gradient disc ── */
+.chip-stack__disc {
+  position: absolute;
+  left: 0;
+  width: 24px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--chip-s, #999);
+  background-color: var(--chip-c, #888);
+  /* Upgrade #1: lighting gradient — highlight top-left, shadow bottom-right */
+  background-image:
+    radial-gradient(ellipse at 38% 28%, rgba(255,255,255,0.50) 0%, transparent 55%),
+    radial-gradient(ellipse at 62% 78%, rgba(0,0,0,0.30) 0%, transparent 48%);
+  /* Upgrade #4: bevel + depth shadows */
+  box-shadow:
+    0 3px 7px rgba(0,0,0,0.65),
+    0 1px 0 rgba(255,255,255,0.18) inset,
+    0 -1px 0 rgba(0,0,0,0.45) inset;
+  overflow: hidden;
+}
+
+/* Upgrade #2: edge-spot ring (alternating stripe/gap around perimeter) */
+.chip-stack__disc::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background-image: repeating-conic-gradient(
+    var(--chip-s, #999) 0deg 18deg,
+    transparent 18deg 36deg
+  );
+  opacity: 0.55;
+  -webkit-mask: radial-gradient(ellipse at center, transparent 52%, black 56%, black 76%, transparent 80%);
+  mask: radial-gradient(ellipse at center, transparent 52%, black 56%, black 76%, transparent 80%);
+}
+
+/* Upgrade #3: center ring */
+.chip-stack__disc::after {
+  content: '';
+  position: absolute;
+  inset: 2.5px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.22);
+  box-shadow: inset 0 0 2px rgba(0,0,0,0.25);
+}
+
+/* ── Upgrade #7: casino plaque ── */
+.chip-stack__plaque {
+  position: absolute;
+  left: -5px;
+  width: 34px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1.5px solid var(--chip-s, #999);
+  background-color: var(--chip-c, #888);
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 50%, rgba(0,0,0,0.25) 100%);
+  box-shadow:
+    0 3px 8px rgba(0,0,0,0.7),
+    0 1px 0 rgba(255,255,255,0.2) inset,
+    0 -1px 0 rgba(0,0,0,0.4) inset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.chip-stack__plaque::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 1.5px;
+  border: 0.8px solid rgba(255,255,255,0.18);
+}
+
+/* Upgrade #6: denomination label on plaque */
+.chip-stack__plaque-label {
+  position: relative;
+  z-index: 1;
+  font-size: 5px;
+  font-weight: 900;
+  color: rgba(255,255,255,0.9);
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Upgrade: improved amount badge */
+.chip-stack__amount {
+  font-size: 0.6rem;
+  font-weight: 800;
+  color: #fff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0,0,0,1);
+  background: linear-gradient(135deg, rgba(0,0,0,0.75), rgba(20,20,20,0.85));
+  border: 0.8px solid rgba(255,255,255,0.12);
+  padding: 1px 5px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+}
+
+/* ── 7. Pot chips in felt center ────────────────────────── */
+.pot-chips {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  justify-content: center;
+  margin: 4px 0;
+  height: 30px;
+}
+
+.pot-chips__stack {
+  position: relative;
+  width: 22px;
+  height: 36px;
+}
+
+.pot-chips__disc {
+  position: absolute;
+  left: 0;
+  width: 22px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--chip-s, #999);
+  background-color: var(--chip-c, #888);
+  background-image:
+    radial-gradient(ellipse at 38% 28%, rgba(255,255,255,0.48) 0%, transparent 55%),
+    radial-gradient(ellipse at 62% 78%, rgba(0,0,0,0.28) 0%, transparent 48%);
+  box-shadow:
+    0 3px 7px rgba(0,0,0,0.65),
+    0 1px 0 rgba(255,255,255,0.18) inset,
+    0 -1px 0 rgba(0,0,0,0.4) inset;
+  overflow: hidden;
+}
+
+.pot-chips__disc::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background-image: repeating-conic-gradient(
+    var(--chip-s, #999) 0deg 18deg,
+    transparent 18deg 36deg
+  );
+  opacity: 0.5;
+  -webkit-mask: radial-gradient(ellipse at center, transparent 52%, black 56%, black 76%, transparent 80%);
+  mask: radial-gradient(ellipse at center, transparent 52%, black 56%, black 76%, transparent 80%);
+}
+
+.pot-chips__disc::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+/* ── 6. Phase banner flash ──────────────────────────────── */
+.table2d-phase-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: clamp(1.2rem, 3vw, 2rem);
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #ffffff;
+  text-shadow:
+    0 0 20px rgba(255,255,255,0.6),
+    0 2px 8px rgba(0,0,0,0.8);
+  pointer-events: none;
+  white-space: nowrap;
+  animation: phase-banner 1.8s ease-in-out forwards;
+  z-index: 50;
+}
+
+@keyframes phase-banner {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+  15%  { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+  35%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  75%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.05); }
+}
+
+/* ── 4. Theme cycle button ──────────────────────────────── */
+.table2d-theme-btn {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  background: rgba(10,10,26,0.82);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+  color: #ccc;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+  z-index: 30;
+  transition: all 0.2s;
+  backdrop-filter: blur(6px);
+}
+.table2d-theme-btn:hover {
+  border-color: rgba(255,255,255,0.4);
+  color: #fff;
+  background: rgba(20,20,40,0.9);
+}
+
+/* ── 8. Emoji avatar picker ─────────────────────────────── */
+.table2d-emoji-btn {
+  position: absolute;
+  bottom: 12px;
+  left: 100px;
+  background: rgba(10,10,26,0.82);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+  font-size: 1.1rem;
+  padding: 2px 10px;
+  cursor: pointer;
+  z-index: 30;
+  transition: all 0.2s;
+  backdrop-filter: blur(6px);
+}
+.table2d-emoji-btn:hover {
+  border-color: rgba(0,217,255,0.5);
+  background: rgba(0,217,255,0.08);
+}
+
+.table2d-emoji-picker {
+  position: absolute;
+  bottom: 44px;
+  left: 100px;
+  background: rgba(10,10,26,0.95);
+  border: 1px solid rgba(0,217,255,0.3);
+  border-radius: 12px;
+  padding: 10px;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+  animation: card-deal 0.2s ease-out;
+}
+
+.table2d-emoji-picker__title {
+  font-size: 0.68rem;
+  color: #00D9FF;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.table2d-emoji-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.table2d-emoji-option {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  font-size: 1.2rem;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.table2d-emoji-option:hover {
+  background: rgba(0,217,255,0.15);
+  border-color: rgba(0,217,255,0.4);
+  transform: scale(1.15);
+}
+.table2d-emoji-option--reset {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #888;
+}
+
+/* ── 5. Hover card preview ──────────────────────────────── */
+.seat-pod--hovered .seat-pod__cards {
+  transform: translateX(-50%) translateY(-4px) scale(1.12);
+  filter: brightness(1.15);
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.seat-pod__cards {
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+/* ── 9. BB tooltip on hover ─────────────────────────────── */
+.seat-pod__bb-tooltip {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #94a3b8;
+  background: rgba(0,0,0,0.7);
+  padding: 1px 6px;
+  border-radius: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: card-deal 0.15s ease-out;
+}
+
+/* ── 10. Sit-here button on empty seats ─────────────────── */
+.seat-pod__sit-btn {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #4ade80;
+  background: rgba(74,222,128,0.12);
+  border: 1px solid rgba(74,222,128,0.4);
+  border-radius: 10px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.seat-pod__sit-btn:hover {
+  background: rgba(74,222,128,0.25);
+  border-color: #4ade80;
+  transform: scale(1.05);
+}
+
+/* Avatar on occupied hover — subtle scale */
+.seat-pod--hovered .seat-pod__avatar {
+  transform: scale(1.06);
+  transition: transform 0.15s ease;
+}
+.seat-pod__avatar {
+  transition: transform 0.15s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TABLE & NAMEPLATE UPGRADE STYLES v3
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Logo on felt ─────────────────────────────────────────── */
+.table2d-logo-img {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  opacity: 0.45;
+  pointer-events: none;
+}
+.table2d-logo-fallback {
+  display: none; /* shown via JS onError */
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.35);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ── Community cards on felt ──────────────────────────────── */
+.table2d-community {
+  display: flex;
+  flex-direction: row;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  margin: 4px 0 2px;
+}
+.table2d-community .table2d-card-slot {
+  /* Reuse existing card-slot sizing */
+}
+
+/* ── Pot area (chips + label) ─────────────────────────────── */
+.table2d-pot-area {
+  position: absolute;
+  right: 18%;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.table2d-pot-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.75);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.table2d-pot-label strong {
+  color: #fcd34d;
+  font-weight: 800;
+}
+
+/* ── Hero YOU badge ───────────────────────────────────────── */
+.seat-pod__you-badge {
+  font-size: 0.52rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #00D9FF;
+  background: rgba(0,217,255,0.12);
+  border: 1px solid rgba(0,217,255,0.35);
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin-top: 2px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ── Hero seat glow strip ─────────────────────────────────── */
+.seat-pod--hero .seat-pod__avatar {
+  border: 2px solid rgba(0,217,255,0.6);
+  box-shadow:
+    0 0 0 2px rgba(0,217,255,0.15),
+    0 0 14px 4px rgba(0,217,255,0.25),
+    0 2px 8px rgba(0,0,0,0.5);
+}
+
+/* ── All-in pulse ring ────────────────────────────────────── */
+.seat-pod--allin .seat-pod__avatar-wrap::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid #ef4444;
+  animation: allin-ring-pulse 1.6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+@keyframes allin-ring-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.08); box-shadow: 0 0 12px 4px rgba(239,68,68,0.5); }
+}
+
+/* ── Sitting-out / Away state ─────────────────────────────── */
+.seat-pod--sitout {
+  opacity: 0.6;
+}
+.seat-pod--sitout .seat-pod__avatar {
+  filter: grayscale(0.8);
+  opacity: 0.7;
+}
+.seat-pod__away-badge {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.44rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  background: rgba(15,15,30,0.9);
+  border: 1px solid rgba(148,163,184,0.3);
+  border-radius: 4px;
+  padding: 0 4px;
+  white-space: nowrap;
+  z-index: 10;
+}
+.seat-pod__nameplate--sitout {
+  opacity: 0.45;
+  filter: grayscale(0.7);
+}
+.seat-pod__sitout-text {
+  font-size: 0.52rem;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+/* ── Fold-dim nameplate ───────────────────────────────────── */
+.seat-pod--folded .seat-pod__nameplate {
+  opacity: 0.32;
+  filter: grayscale(0.65);
+  transition: opacity 0.4s ease, filter 0.4s ease;
+}
+.seat-pod--folded .seat-pod__avatar {
+  opacity: 0.45;
+  filter: grayscale(0.6);
+  transition: opacity 0.4s ease, filter 0.4s ease;
+}
+
+/* ── Name row (dot + name + rank + streak) ────────────────── */
+.seat-pod__name-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  justify-content: center;
+  max-width: 100%;
+  overflow: hidden;
+}
+.seat-pod__note-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 4px rgba(0,0,0,0.5);
+  cursor: pointer;
+}
+.seat-pod__rank-icon {
+  font-size: 0.65rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.seat-pod__streak {
+  font-size: 0.65rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* ── Always-visible BB badge ──────────────────────────────── */
+.seat-pod__bb-badge {
+  font-size: 0.52rem;
+  font-weight: 700;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.3);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* ── VPIP/PFR mini-stat ───────────────────────────────────── */
+.seat-pod__stats {
+  font-size: 0.5rem;
+  color: #64748b;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* ── Thinking dots animation ──────────────────────────────── */
+.seat-pod__thinking {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 0;
+}
+.thinking-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #4ade80;
+  animation: thinking-bounce 1.1s ease-in-out infinite;
+}
+.thinking-dot:nth-child(2) { animation-delay: 0.18s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.36s; }
+@keyframes thinking-bounce {
+  0%, 80%, 100% { transform: scale(0.7); opacity: 0.4; }
+  40%            { transform: scale(1.2); opacity: 1; }
+}
+
+/* ── Persistent action pill ───────────────────────────────── */
+.seat-pod__action-pill {
+  font-size: 0.48rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 6px;
+  text-align: center;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.75;
+  letter-spacing: 0.02em;
+}
+.apl--fold   { color: #f87171; background: rgba(248,113,113,0.12); border: 1px solid rgba(248,113,113,0.25); }
+.apl--check  { color: #60a5fa; background: rgba(96,165,250,0.1);   border: 1px solid rgba(96,165,250,0.2); }
+.apl--call   { color: #4ade80; background: rgba(74,222,128,0.1);   border: 1px solid rgba(74,222,128,0.2); }
+.apl--raise  { color: #fbbf24; background: rgba(251,191,36,0.1);   border: 1px solid rgba(251,191,36,0.2); }
+.apl--bet    { color: #fbbf24; background: rgba(251,191,36,0.1);   border: 1px solid rgba(251,191,36,0.2); }
+.apl--all    { color: #fca5a5; background: rgba(239,68,68,0.15);   border: 1px solid rgba(239,68,68,0.3); }
+
+/* ── Chip delta flash ─────────────────────────────────────── */
+.seat-pod__chip-delta {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  font-weight: 900;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 40;
+  border-radius: 8px;
+  padding: 2px 7px;
+  animation: chip-delta-float 1.2s ease-out forwards;
+}
+@keyframes chip-delta-float {
+  0%   { opacity: 1;   transform: translateX(-50%) translateY(0); }
+  40%  { opacity: 1;   transform: translateX(-50%) translateY(-14px); }
+  100% { opacity: 0;   transform: translateX(-50%) translateY(-28px); }
+}
+.chip-delta--gain {
+  color: #4ade80;
+  background: rgba(74,222,128,0.15);
+  border: 1px solid rgba(74,222,128,0.4);
+  text-shadow: 0 0 8px rgba(74,222,128,0.6);
+}
+.chip-delta--loss {
+  color: #f87171;
+  background: rgba(248,113,113,0.15);
+  border: 1px solid rgba(248,113,113,0.4);
+  text-shadow: 0 0 8px rgba(248,113,113,0.6);
+}
+
+/* ── Mobile upgrade pass 2 ────────────────────────────────── */
+/* touch-action on interactive table elements */
+.seat-pod,
+.seat-pod__sit-btn,
+.table2d-theme-btn,
+.table2d-emoji-btn,
+.table2d-emoji-option {
+  touch-action: manipulation;
+}
+
+/* Larger tap target on seat pods (hidden padding) */
+.seat-pod {
+  padding: 4px;
+}
+
+/* Disable sticky hover on touch */
+@media (hover: none) {
+  .seat-pod__sit-btn:hover {
+    background: rgba(74,222,128,0.15);
+    border-color: rgba(74,222,128,0.5);
+    transform: none;
+  }
+  .seat-pod--hovered .seat-pod__avatar {
+    transform: none;
+  }
+  .seat-pod--hovered .seat-pod__cards .card2d {
+    transform: none;
+    filter: none;
+  }
+  .table2d-theme-btn:hover,
+  .table2d-emoji-btn:hover {
+    opacity: 1;
+    transform: none;
+  }
+  .seat-pod__sit-btn:active  { transform: scale(0.95); background: rgba(74,222,128,0.3); }
+  .table2d-theme-btn:active,
+  .table2d-emoji-btn:active  { transform: scale(0.92); }
+  .right-rail-btns           { display: none !important; }
+  .adv-toolbar               { display: none !important; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE UPGRADE PASS 2 — touch targets, landscape, safe-area
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── touch-action on interactive table elements ── */
+.seat-pod,
+.seat-pod__sit-btn,
+.table2d-theme-btn,
+.table2d-emoji-btn,
+.table2d-emoji-option {
+  touch-action: manipulation;
+}
+
+/* ── Larger tap target on seat pods (hidden 44px hit area) ── */
+.seat-pod {
+  position: absolute;
+  /* Ensure minimum 44×44 tap target via padding trick */
+  padding: 4px;
+}
+.seat-pod__avatar-wrap {
+  /* Keep visible size but allow outer padding to absorb taps */
+  position: relative;
+}
+
+/* ── Disable sticky hover on touch ── */
+@media (hover: none) {
+  .seat-pod__sit-btn:hover {
+    background: rgba(74,222,128,0.15);
+    border-color: rgba(74,222,128,0.5);
+    transform: none;
+  }
+  .seat-pod--hovered .seat-pod__avatar {
+    transform: none;
+  }
+  .seat-pod--hovered .seat-pod__cards .card2d {
+    transform: none;
+    filter: none;
+  }
+  .table2d-theme-btn:hover,
+  .table2d-emoji-btn:hover {
+    opacity: 1;
+    transform: none;
+  }
+  /* Active press states */
+  .seat-pod__sit-btn:active {
+    transform: scale(0.95);
+    background: rgba(74,222,128,0.3);
+  }
+  .table2d-theme-btn:active,
+  .table2d-emoji-btn:active {
+    transform: scale(0.92);
+  }
+}
+

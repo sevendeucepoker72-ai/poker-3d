@@ -1,11 +1,16 @@
 import { useProgressStore } from '../../store/progressStore';
+import { useTableStore } from '../../store/tableStore';
 import './Progression.css';
+
+const ACTIVE_PHASES = new Set(['PreFlop', 'Flop', 'Turn', 'River', 'Showdown']);
 
 export default function LevelUpPopup() {
   const levelUpData = useProgressStore((s) => s.levelUpData);
   const clearLevelUp = useProgressStore((s) => s.clearLevelUp);
+  const gamePhase = useTableStore((s) => s.gameState?.phase);
 
-  if (!levelUpData) return null;
+  // Defer the popup until the hand is over so it never blocks player actions
+  if (!levelUpData || ACTIVE_PHASES.has(gamePhase)) return null;
 
   return (
     <div className="levelup-overlay" onClick={clearLevelUp}>

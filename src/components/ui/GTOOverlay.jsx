@@ -78,44 +78,32 @@ export default function GTOOverlay({
       const knownCards = [...holeCards, ...communityCards];
       const deckRemaining = buildDeck(knownCards);
 
-      // simulateEquity expects full hole cards for every player.
-      // Deal random hands to each opponent per iteration (true Monte Carlo).
+      // Deal random hands to each opponent, then run all 500 iterations
+      // in a single worker call (avoids 500 message round-trips).
       const opponents = Math.max(1, numOpponents || 1);
       const iters = 500;
 
-      // Build all scenarios on the main thread (cheap shuffles only),
-      // then dispatch one worker call per scenario and await all results.
-      const scenarios = [];
-      for (let i = 0; i < iters; i++) {
-        const d = [...deckRemaining];
-        for (let j = d.length - 1; j > 0; j--) {
-          const k = Math.floor(Math.random() * (j + 1));
-          [d[j], d[k]] = [d[k], d[j]];
-        }
-        const playerHands = [holeCards];
-        let ptr = 0;
-        for (let op = 0; op < opponents; op++) {
-          playerHands.push([d[ptr], d[ptr + 1]]);
-          ptr += 2;
-        }
-        const deckAfterDeal = d.slice(ptr);
-        scenarios.push({ playerHands, deckAfterDeal });
+      // Build player hands for one representative scenario; the worker will
+      // randomize community cards internally over `iters` iterations.
+      const d = [...deckRemaining];
+      for (let j = d.length - 1; j > 0; j--) {
+        const k = Math.floor(Math.random() * (j + 1));
+        [d[j], d[k]] = [d[k], d[j]];
       }
+      const playerHands = [holeCards];
+      let ptr = 0;
+      for (let op = 0; op < opponents; op++) {
+        playerHands.push([d[ptr], d[ptr + 1]]);
+        ptr += 2;
+      }
+      const deckAfterDeal = d.slice(ptr);
 
       try {
-        const promises = scenarios.map(({ playerHands, deckAfterDeal }) =>
-          calculateEquity(playerHands, communityCards, deckAfterDeal, 1)
-        );
-        const results = await Promise.all(promises);
+        const result = await calculateEquity(playerHands, communityCards, deckAfterDeal, iters);
 
         if (token.cancelled) return;
 
-        let heroWins = 0;
-        for (const result of results) {
-          heroWins += result.playerEquities[0] / 100;
-        }
-        const equityPct = Math.round((heroWins / iters) * 100);
-
+        const equityPct = Math.round(result.playerEquities[0]);
         if (!token.cancelled) {
           setEquity(equityPct);
           setCalculating(false);

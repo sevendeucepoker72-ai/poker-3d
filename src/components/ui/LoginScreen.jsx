@@ -4,6 +4,8 @@ import { useTableStore } from '../../store/tableStore';
 import { getSocket } from '../../services/socketService';
 import './LoginScreen.css';
 
+const USERNAME_REGEX = /^[a-zA-Z0-9_-]{3,20}$/;
+
 function EyeIcon({ open }) {
   return open ? (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -20,8 +22,8 @@ function StrengthMeter({ password }) {
   const score = (() => {
     if (!password) return 0;
     let s = 0;
-    if (password.length >= 6) s++;
-    if (password.length >= 10) s++;
+    if (password.length >= 8) s++;
+    if (password.length >= 12) s++;
     if (/[A-Z]/.test(password)) s++;
     if (/[0-9]/.test(password)) s++;
     if (/[^A-Za-z0-9]/.test(password)) s++;
@@ -42,45 +44,75 @@ function StrengthMeter({ password }) {
   );
 }
 
+function LockoutBanner({ secs }) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  const display = m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`;
+  return (
+    <div className="login-lockout-banner">
+      <span className="login-lockout-icon">🔒</span>
+      Too many failed attempts. Try again in <strong>{display}</strong>
+    </div>
+  );
+}
+
 export default function LoginScreen() {
   const [mode, setMode] = useState('login');
   const [flipping, setFlipping] = useState(false);
   const [username, setUsername] = useState(() => {
-    try { return localStorage.getItem('poker_remember_username') || ''; } catch { return ''; }
+    try { return localStorage.getItem('poker_remember_phone') || ''; } catch { return ''; }
   });
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [rememberMe, setRememberMe] = useState(() => {
-    try { return !!localStorage.getItem('poker_remember_username'); } catch { return false; }
+    try { return !!localStorage.getItem('poker_remember_phone'); } catch { return false; }
   });
   const [keepSignedIn, setKeepSignedIn] = useState(() => {
     try { return localStorage.getItem('poker_keep_signed_in') === '1'; } catch { return false; }
   });
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({ username: '', password: '', confirmPassword: '' });
   const [loading, setLoading] = useState(false);
+  const [lockoutSecs, setLockoutSecs] = useState(0);
   const [usernameAvail, setUsernameAvail] = useState(null); // null | true | false
   const checkTimerRef = useRef(null);
+  const passwordRef = useRef(null);
 
   const login = useGameStore((s) => s.login);
   const tables = useTableStore((s) => s.tables);
   const totalOnline = tables.reduce((sum, t) => sum + (t.playerCount || 0), 0);
 
-  // Socket listeners
+  // Lockout countdown
+  useEffect(() => {
+    if (lockoutSecs <= 0) return;
+    const t = setInterval(() => setLockoutSecs(s => {
+      if (s <= 1) { clearInterval(t); return 0; }
+      return s - 1;
+    }), 1000);
+    return () => clearInterval(t);
+  }, [lockoutSecs]);
+
+  // Refs so socket handlers always see latest values without re-registering listeners
+  const stateRef = useRef({});
+  stateRef.current = { username, rememberMe, keepSignedIn, login };
+
+  // Socket listeners — registered once, use stateRef for fresh values
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
 
     const handleLoginResult = (result) => {
+      const { username: uname, rememberMe: rm, keepSignedIn: ksi, login: doLogin } = stateRef.current;
       setLoading(false);
       if (result.success) {
-        if (rememberMe) {
-          localStorage.setItem('poker_remember_username', username.trim());
+        if (rm) {
+          localStorage.setItem('poker_remember_phone', uname.trim());
         } else {
-          localStorage.removeItem('poker_remember_username');
+          localStorage.removeItem('poker_remember_phone');
         }
-        if (keepSignedIn) {
+        if (ksi) {
           localStorage.setItem('poker_keep_signed_in', '1');
           localStorage.setItem('poker_auth_token', result.token);
           sessionStorage.removeItem('poker_auth_token');
@@ -90,16 +122,26 @@ export default function LoginScreen() {
           sessionStorage.setItem('poker_auth_token', result.token);
         }
         localStorage.setItem('poker_username', result.userData.username);
-        login(result.userData, result.token);
+        doLogin(result.userData, result.token);
       } else {
-        setError(result.error || 'Login failed');
+        // Handle lockout
+        if (result.lockoutSecs) {
+          setLockoutSecs(result.lockoutSecs);
+          setError('');
+        } else {
+          setError(result.error || 'Login failed');
+        }
+        // Clear password and focus it on failure
+        setPassword('');
+        setTimeout(() => passwordRef.current?.focus(), 50);
       }
     };
 
     const handleRegisterResult = (result) => {
+      const { keepSignedIn: ksi, login: doLogin } = stateRef.current;
       setLoading(false);
       if (result.success) {
-        if (keepSignedIn) {
+        if (ksi) {
           localStorage.setItem('poker_keep_signed_in', '1');
           localStorage.setItem('poker_auth_token', result.token);
           sessionStorage.removeItem('poker_auth_token');
@@ -109,14 +151,15 @@ export default function LoginScreen() {
           sessionStorage.setItem('poker_auth_token', result.token);
         }
         localStorage.setItem('poker_username', result.userData.username);
-        login(result.userData, result.token);
+        doLogin(result.userData, result.token);
       } else {
         setError(result.error || 'Registration failed');
       }
     };
 
     const handleCheckUsername = (result) => {
-      if (result.username === username.trim()) setUsernameAvail(result.available);
+      const { username: uname } = stateRef.current;
+      if (result.username === uname.trim()) setUsernameAvail(result.available);
     };
 
     socket.on('loginResult', handleLoginResult);
@@ -127,13 +170,13 @@ export default function LoginScreen() {
       socket.off('registerResult', handleRegisterResult);
       socket.off('checkUsernameResult', handleCheckUsername);
     };
-  }, [login, username, rememberMe, keepSignedIn]);
+  }, []);
 
   // Debounced username availability check (register mode only)
   const checkUsername = useCallback((val) => {
     clearTimeout(checkTimerRef.current);
     setUsernameAvail(null);
-    if (mode !== 'register' || val.trim().length < 2) return;
+    if (mode !== 'register' || val.trim().length < 3) return;
     checkTimerRef.current = setTimeout(() => {
       const socket = getSocket();
       socket?.emit('checkUsername', { username: val.trim() });
@@ -142,26 +185,52 @@ export default function LoginScreen() {
 
   const handleUsernameChange = (e) => {
     setUsername(e.target.value);
+    setFieldErrors(fe => ({ ...fe, username: '' }));
     checkUsername(e.target.value);
+  };
+
+  const handlePasswordChange = (e) => {
+    setPassword(e.target.value);
+    setFieldErrors(fe => ({ ...fe, password: '' }));
+  };
+
+  const handleConfirmChange = (e) => {
+    setConfirmPassword(e.target.value);
+    setFieldErrors(fe => ({ ...fe, confirmPassword: '' }));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     setError('');
+    const fe = { username: '', password: '', confirmPassword: '' };
+
+    if (lockoutSecs > 0) return;
+
     const socket = getSocket();
     if (!socket?.connected) { setError('Not connected to server. Please wait...'); return; }
 
     if (mode === 'login') {
-      if (!username.trim() || !password) { setError('Please enter username and password'); return; }
+      if (!username.trim()) { fe.username = 'Username is required'; }
+      if (!password) { fe.password = 'Password is required'; }
+      if (fe.username || fe.password) { setFieldErrors(fe); return; }
       setLoading(true);
-      socket.emit('login', { username: username.trim(), password });
+      socket.emit('login', { phone: username.trim(), password });
     } else {
-      if (!username.trim() || !password || !confirmPassword) { setError('Please fill in all fields'); return; }
-      if (password !== confirmPassword) { setError('Passwords do not match'); return; }
-      if (username.trim().length < 2) { setError('Username must be at least 2 characters'); return; }
-      if (password.length < 3) { setError('Password must be at least 3 characters'); return; }
+      const trimmedUser = username.trim();
+      if (!USERNAME_REGEX.test(trimmedUser)) {
+        fe.username = 'Username: 3-20 chars, letters/numbers/_ or -';
+      }
+      if (!password || password.length < 8) {
+        fe.password = 'Password must be at least 8 characters';
+      }
+      if (!confirmPassword) {
+        fe.confirmPassword = 'Please confirm your password';
+      } else if (password !== confirmPassword) {
+        fe.confirmPassword = 'Passwords do not match';
+      }
+      if (fe.username || fe.password || fe.confirmPassword) { setFieldErrors(fe); return; }
       setLoading(true);
-      socket.emit('register', { username: username.trim(), password });
+      socket.emit('register', { username: trimmedUser, password });
     }
   };
 
@@ -170,7 +239,7 @@ export default function LoginScreen() {
     const socket = getSocket();
     if (!socket?.connected) { setError('Not connected to server. Please wait...'); return; }
     setLoading(true);
-    socket.emit('register', { username: guestName, password: `guest_${Date.now()}` });
+    socket.emit('register', { username: guestName, password: `guest_${Date.now()}_Xk9` });
   };
 
   const toggleMode = () => {
@@ -178,8 +247,10 @@ export default function LoginScreen() {
     setTimeout(() => {
       setMode(m => m === 'login' ? 'register' : 'login');
       setError('');
+      setFieldErrors({ username: '', password: '', confirmPassword: '' });
       setConfirmPassword('');
       setUsernameAvail(null);
+      setLockoutSecs(0);
       setFlipping(false);
     }, 220);
   };
@@ -219,7 +290,11 @@ export default function LoginScreen() {
 
           {/* Branding */}
           <div className="login-branding">
-            <div className="login-chip-icon">🃏</div>
+            <img
+              src={`${import.meta.env.BASE_URL}logo.png`}
+              alt="American Pub Poker"
+              className="login-logo-img"
+            />
             <h1 className="login-title">American Pub Poker</h1>
             <p className="login-subtitle">
               {mode === 'login' ? 'Welcome back to the table' : 'Create your account'}
@@ -231,7 +306,7 @@ export default function LoginScreen() {
             {/* Username */}
             <div className="login-field">
               <label className="login-label">Username</label>
-              <div className="login-input-wrap">
+              <div className={`login-input-wrap${fieldErrors.username ? ' login-input-wrap--error' : ''}`}>
                 <span className="login-field-icon">👤</span>
                 <input
                   type="text"
@@ -243,14 +318,17 @@ export default function LoginScreen() {
                   autoFocus
                   autoComplete="username"
                 />
-                {mode === 'register' && availIcon && (
+                {mode === 'register' && availIcon && !fieldErrors.username && (
                   <span className="login-avail-icon" style={{ color: availColor }}>{availIcon}</span>
                 )}
               </div>
-              {mode === 'register' && usernameAvail === false && (
+              {fieldErrors.username && (
+                <span className="login-field-hint login-field-hint--error">{fieldErrors.username}</span>
+              )}
+              {!fieldErrors.username && mode === 'register' && usernameAvail === false && (
                 <span className="login-field-hint login-field-hint--error">Username already taken</span>
               )}
-              {mode === 'register' && usernameAvail === true && (
+              {!fieldErrors.username && mode === 'register' && usernameAvail === true && (
                 <span className="login-field-hint login-field-hint--ok">Username available!</span>
               )}
             </div>
@@ -258,20 +336,24 @@ export default function LoginScreen() {
             {/* Password */}
             <div className="login-field">
               <label className="login-label">Password</label>
-              <div className="login-input-wrap">
+              <div className={`login-input-wrap${fieldErrors.password ? ' login-input-wrap--error' : ''}`}>
                 <span className="login-field-icon">🔒</span>
                 <input
+                  ref={passwordRef}
                   type={showPassword ? 'text' : 'password'}
                   className="login-input login-input--icon login-input--eye"
                   placeholder="Enter your password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={handlePasswordChange}
                   autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 />
                 <button type="button" className="login-eye-btn" onClick={() => setShowPassword(v => !v)}>
                   <EyeIcon open={showPassword} />
                 </button>
               </div>
+              {fieldErrors.password && (
+                <span className="login-field-hint login-field-hint--error">{fieldErrors.password}</span>
+              )}
               {mode === 'register' && <StrengthMeter password={password} />}
             </div>
 
@@ -279,20 +361,23 @@ export default function LoginScreen() {
             {mode === 'register' && (
               <div className="login-field">
                 <label className="login-label">Confirm Password</label>
-                <div className="login-input-wrap">
+                <div className={`login-input-wrap${fieldErrors.confirmPassword ? ' login-input-wrap--error' : ''}`}>
                   <span className="login-field-icon">🔒</span>
                   <input
                     type={showConfirm ? 'text' : 'password'}
                     className="login-input login-input--icon login-input--eye"
                     placeholder="Confirm your password"
                     value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    onChange={handleConfirmChange}
                     autoComplete="new-password"
                   />
                   <button type="button" className="login-eye-btn" onClick={() => setShowConfirm(v => !v)}>
                     <EyeIcon open={showConfirm} />
                   </button>
                 </div>
+                {fieldErrors.confirmPassword && (
+                  <span className="login-field-hint login-field-hint--error">{fieldErrors.confirmPassword}</span>
+                )}
               </div>
             )}
 
@@ -320,9 +405,10 @@ export default function LoginScreen() {
               </div>
             )}
 
-            {error && <div className="login-error">{error}</div>}
+            {lockoutSecs > 0 && <LockoutBanner secs={lockoutSecs} />}
+            {error && !lockoutSecs && <div className="login-error">{error}</div>}
 
-            <button type="submit" className="login-submit-btn" disabled={loading}>
+            <button type="submit" className="login-submit-btn" disabled={loading || lockoutSecs > 0}>
               {loading && <span className="login-spinner" />}
               {mode === 'login' ? 'Sign In' : 'Create Account'}
             </button>
@@ -331,6 +417,12 @@ export default function LoginScreen() {
             <button type="button" className="login-guest-btn" onClick={handleGuestPlay} disabled={loading}>
               Play as Guest
             </button>
+
+            {mode === 'login' && (
+              <div className="login-forgot-row">
+                <button type="button" className="login-forgot-link" tabIndex={-1} onClick={() => alert('Password reset is not available yet. Please contact support.')}>Forgot password?</button>
+              </div>
+            )}
           </form>
 
           {/* Toggle */}

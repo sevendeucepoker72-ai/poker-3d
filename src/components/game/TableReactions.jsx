@@ -44,7 +44,7 @@ export default function TableReactions() {
 
       const id = Date.now() + Math.random();
       // Offset position based on seatIndex if available
-      const seatOffset = (data.seatIndex != null) ? (data.seatIndex % 6) * 50 - 125 : (Math.random() * 200 - 100);
+      const seatOffset = (data.seatIndex != null) ? (data.seatIndex / 8) * 400 - 200 : (Math.random() * 200 - 100);
 
       setFloatingReactions((prev) => [
         ...prev,
@@ -59,7 +59,7 @@ export default function TableReactions() {
       // Remove after animation completes
       setTimeout(() => {
         setFloatingReactions((prev) => prev.filter((r) => r.id !== id));
-      }, 1900);
+      }, 1800);
     };
 
     socket.on('tableReaction', handler);

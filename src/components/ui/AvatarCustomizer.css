@@ -164,6 +164,95 @@
   color: #CCC;
 }
 
+/* Photo upload */
+.photo-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.photo-preview {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid #2A2A4A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: border-color 0.15s;
+}
+
+.photo-preview:hover {
+  border-color: #00D9FF;
+}
+
+.photo-preview__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.photo-preview__placeholder {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.photo-upload-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.btn-upload {
+  padding: 6px 14px;
+  border: 1px solid #00D9FF;
+  border-radius: 6px;
+  background: transparent;
+  color: #00D9FF;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-upload:hover {
+  background: rgba(0, 217, 255, 0.12);
+}
+
+.btn-remove-photo {
+  padding: 4px 10px;
+  border: 1px solid #4A4A6A;
+  border-radius: 6px;
+  background: transparent;
+  color: #999;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.btn-remove-photo:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.photo-hint {
+  font-size: 0.7rem;
+  color: #666;
+}
+
+/* Custom color swatch */
+.color-swatch--custom {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  color: #ccc;
+  overflow: hidden;
+}
+
 /* Scrollbar */
 .customizer-panel::-webkit-scrollbar {
   width: 6px;

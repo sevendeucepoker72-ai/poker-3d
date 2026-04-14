@@ -15,7 +15,7 @@ class ErrorBoundary extends Component {
   }
 }
 import { useProgressStore } from './store/progressStore';
-import { connectToServer, getSocket } from './services/socketService';
+import { connectToServer, getSocket, subscribeConnectionStatus } from './services/socketService';
 import { initPersistence, syncToServer, installBeforeUnloadSync } from './services/persistenceService';
 import LoadingScreen from './components/ui/LoadingScreen';
 import LoginScreen from './components/ui/LoginScreen';
@@ -33,7 +33,7 @@ import MultiTableTabs from './components/game/MultiTableTabs';
 import PlayerNotes from './components/ui/PlayerNotes';
 import BottomNav from './components/ui/BottomNav';
 import PWAInstallPrompt from './components/ui/PWAInstallPrompt';
-import { setOnOpenPlayerNotes } from './components/scene/PokerTable';
+import { setOnOpenPlayerNotes } from './components/scene/PokerTable2D';
 import KeyboardShortcuts from './components/ui/KeyboardShortcuts';
 import Tutorial from './components/ui/Tutorial';
 import HandReplayViewer from './components/replay/HandReplayViewer';
@@ -62,6 +62,7 @@ function ChunkLoader() {
 
 export default function App() {
   const screen = useGameStore((s) => s.screen);
+  const [connStatus, setConnStatus] = useState('disconnected');
   const [loading, setLoading] = useState(true);
   const [loadingExiting, setLoadingExiting] = useState(false);
   // Shared replay link — show viewer without requiring login
@@ -126,14 +127,26 @@ export default function App() {
 
   // Install persistence: flush to server on tab close + sync every 30s
   useEffect(() => {
-    installBeforeUnloadSync();
+    const cleanupBeforeUnload = installBeforeUnloadSync();
     const interval = setInterval(syncToServer, 30_000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (typeof cleanupBeforeUnload === 'function') cleanupBeforeUnload();
+    };
+  }, []);
+
+  // Track connection status for UI banner
+  useEffect(() => {
+    const unsubscribe = subscribeConnectionStatus((status) => setConnStatus(status));
+    return unsubscribe;
   }, []);
 
   // Connect to server on mount and wire up event listeners
   useEffect(() => {
     const socket = connectToServer();
+    const emoteTimeouts = new Set();
+    const quickGameTimeouts = new Set();
+    const tournamentTimeouts = new Set();
 
     socket.on('connect', () => useTableStore.getState().setConnected(true));
     socket.on('disconnect', () => useTableStore.getState().setConnected(false));
@@ -151,10 +164,13 @@ export default function App() {
           // Partial delta — merge into current state
           const prev = useTableStore.getState().gameState;
           state = prev ? { ...prev, ...data.delta } : data.delta;
-          // Clear stale hole cards when a NEW hand starts (handId changed)
-          // but the delta doesn't include fresh cards yet
-          if (data.delta?.handId && prev?.handId && data.delta.handId !== prev.handId && !data.delta.yourCards) {
-            state.yourCards = [];
+          // Clear stale hole cards whenever handId changes, regardless of
+          // whether the delta itself includes fresh cards (they'll arrive in
+          // a subsequent message). This prevents old cards leaking into a new hand.
+          if (data.delta?.handId != null && prev?.handId != null && data.delta.handId !== prev.handId) {
+            if (!data.delta.yourCards) state.yourCards = [];
+            if (!data.delta.selectedDiscards) state.selectedDiscards = [];
+            if (!data.delta.handResult) state.handResult = null;
           }
           useTableStore.getState().setGameState(state);
         }
@@ -216,7 +232,11 @@ export default function App() {
     // Quick game over
     socket.on('quickGameOver', (data) => {
       setQuickGameResult(data);
-      setTimeout(() => setQuickGameResult(null), 5000);
+      const t = setTimeout(() => {
+        quickGameTimeouts.delete(t);
+        setQuickGameResult(null);
+      }, 5000);
+      quickGameTimeouts.add(t);
     });
 
     // Quick game started notification
@@ -288,11 +308,14 @@ export default function App() {
     // Emote events
     socket.on('emote', (data) => {
       const store = useTableStore.getState();
-      store.addEmote(data);
-      // Auto-remove after 2.5 seconds
-      setTimeout(() => {
-        useTableStore.getState().removeEmote(data.timestamp || Date.now());
+      const timestamp = Date.now();
+      store.addEmote({ ...data, timestamp });
+      // Auto-remove after 2.5 seconds using the same timestamp
+      const t = setTimeout(() => {
+        emoteTimeouts.delete(t);
+        useTableStore.getState().removeEmote(timestamp);
       }, 2500);
+      emoteTimeouts.add(t);
     });
 
     // Spectator mode acknowledgment
@@ -339,7 +362,11 @@ export default function App() {
           winner: winner?.playerName || 'Unknown',
           message: `Tournament Complete! ${winner?.playerName} wins ${winner?.payout?.toLocaleString() || 0} chips!`,
         });
-        setTimeout(() => setQuickGameResult(null), 8000);
+        const t = setTimeout(() => {
+          tournamentTimeouts.delete(t);
+          setQuickGameResult(null);
+        }, 8000);
+        tournamentTimeouts.add(t);
       }
     });
 
@@ -385,49 +412,93 @@ export default function App() {
       socket.off('playerEliminated');
       socket.off('tournamentFinished');
       socket.off('additionalTableJoined');
+      // Clear any pending timeouts from inside listeners to prevent leaks
+      emoteTimeouts.forEach(clearTimeout); emoteTimeouts.clear();
+      quickGameTimeouts.forEach(clearTimeout); quickGameTimeouts.clear();
+      tournamentTimeouts.forEach(clearTimeout); tournamentTimeouts.clear();
     };
   }, []);
 
   // Auto-login with saved token
   useEffect(() => {
-    const localToken = localStorage.getItem('poker_auth_token');
-    const sessionToken = sessionStorage.getItem('poker_auth_token');
+    let localToken = null;
+    let sessionToken = null;
+    try { localToken   = localStorage.getItem('poker_auth_token'); }   catch { /* private mode */ }
+    try { sessionToken = sessionStorage.getItem('poker_auth_token'); } catch { /* private mode */ }
     const savedToken = localToken || sessionToken;
     if (!savedToken) return;
 
     const socket = getSocket();
     if (!socket) return;
 
+    let timeoutId = null;
+    let cancelled = false;
+
+    const clearStoredToken = () => {
+      try { localStorage.removeItem('poker_auth_token'); }   catch {}
+      try { localStorage.removeItem('poker_keep_signed_in'); } catch {}
+      try { sessionStorage.removeItem('poker_auth_token'); } catch {}
+    };
+
     const handleAutoLoginResult = (result) => {
+      if (cancelled) return;
+      clearTimeout(timeoutId);
       socket.off('loginResult', handleAutoLoginResult);
-      if (result.success && result.userData) {
-        // Refresh token in same storage location it came from
-        if (localToken) {
-          localStorage.setItem('poker_auth_token', result.token);
-          localStorage.setItem('poker_keep_signed_in', '1');
-        } else {
-          sessionStorage.setItem('poker_auth_token', result.token);
-        }
+      if (result?.success && result.userData) {
+        try {
+          if (localToken) {
+            localStorage.setItem('poker_auth_token', result.token);
+            localStorage.setItem('poker_keep_signed_in', '1');
+          } else {
+            sessionStorage.setItem('poker_auth_token', result.token);
+          }
+        } catch {}
         useGameStore.getState().login(result.userData, result.token);
       } else {
-        // Token invalid — clear it
-        localStorage.removeItem('poker_auth_token');
-        localStorage.removeItem('poker_keep_signed_in');
-        sessionStorage.removeItem('poker_auth_token');
+        clearStoredToken();
       }
     };
 
     const tryAutoLogin = () => {
+      if (cancelled) return;
       socket.on('loginResult', handleAutoLoginResult);
       socket.emit('tokenLogin', { token: savedToken });
+
+      // If no response within 5 seconds, give up and show login screen
+      timeoutId = setTimeout(() => {
+        if (cancelled) return;
+        socket.off('loginResult', handleAutoLoginResult);
+        clearStoredToken();
+      }, 5000);
     };
 
     if (socket.connected) {
       tryAutoLogin();
     } else {
       socket.on('connect', tryAutoLogin);
-      return () => socket.off('connect', tryAutoLogin);
     }
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+      socket.off('connect', tryAutoLogin);
+      socket.off('loginResult', handleAutoLoginResult);
+    };
+  }, []);
+
+  // Handle seat reconnection after token login
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleReconnected = (data) => {
+      // Server has re-joined us to our reserved table/seat
+      // The broadcastGameState after reconnect will update table state via existing handlers
+      console.log('[App] Reconnected to reserved seat', data);
+    };
+
+    socket.on('reconnectedToTable', handleReconnected);
+    return () => socket.off('reconnectedToTable', handleReconnected);
   }, []);
 
   const handleSpinComplete = () => {
@@ -557,6 +628,16 @@ export default function App() {
 
   return (
     <div className={`screen-transition ${transitionClass}`}>
+      {(connStatus === 'disconnected' || connStatus === 'error') && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
+          background: connStatus === 'error' ? 'rgba(220,38,38,0.95)' : 'rgba(180,83,9,0.95)',
+          color: '#fff', textAlign: 'center', fontSize: '0.8rem', fontWeight: 600,
+          padding: '6px 12px', letterSpacing: '0.03em',
+        }}>
+          {connStatus === 'error' ? '⚠ Connection error — retrying…' : '⚠ Reconnecting to server…'}
+        </div>
+      )}
       <Suspense fallback={<ChunkLoader />}>
         <Lobby activeTab={activeNavTab} onTabChange={handleNavTabChange} pwaAction={pwaAction} />
       </Suspense>

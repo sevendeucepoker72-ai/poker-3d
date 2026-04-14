@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useProgressStore } from '../../store/progressStore';
 import { useGameStore } from '../../store/gameStore';
 import { createPortal } from 'react-dom';
+import { getSocket } from '../../services/socketService';
 import './BattlePass.css';
 
 const SEASON_NAME = 'Season 1: The River';
@@ -39,8 +40,13 @@ const TIERS = buildTiers();
 
 export default function BattlePass({ onClose }) {
   const progress = useProgressStore((s) => s.progress);
-  const [hasPremium] = useState(() => {
-    try { return localStorage.getItem('app_bp_premium') === 'true'; } catch { return false; }
+  // Premium stored in both localStorage (for instant UI) AND user stats (server-side source of truth)
+  const [hasPremium, setHasPremium] = useState(() => {
+    // Check server-side source first (synced from user stats on login), fall back to localStorage
+    try {
+      if (progress?.battlePassPremium) return true;
+      return localStorage.getItem('app_bp_premium') === 'true';
+    } catch { return false; }
   });
   const [claimedTiers, setClaimedTiers] = useState(() => {
     try { return JSON.parse(localStorage.getItem('app_bp_claimed') || '[]'); } catch { return []; }
@@ -163,7 +169,23 @@ export default function BattlePass({ onClose }) {
               <strong>Upgrade to Premium</strong>
               <span>Unlock exclusive cosmetics, Stars, and milestone rewards for 950 Stars</span>
             </div>
-            <button className="bp-upgrade-btn" onClick={() => { localStorage.setItem('app_bp_premium', 'true'); window.location.reload(); }}>
+            <button className="bp-upgrade-btn" onClick={() => {
+              const socket = typeof getSocket === 'function' ? getSocket() : null;
+              if (socket) {
+                socket.emit('purchaseBattlePass', {}, (ack) => {
+                  if (ack?.success) {
+                    localStorage.setItem('app_bp_premium', 'true');
+                    setHasPremium(true);
+                  } else {
+                    alert(ack?.error || 'Purchase failed — not enough Stars');
+                  }
+                });
+              } else {
+                // Offline fallback
+                localStorage.setItem('app_bp_premium', 'true');
+                setHasPremium(true);
+              }
+            }}>
               ⭐ Go Premium · 950 Stars
             </button>
           </div>

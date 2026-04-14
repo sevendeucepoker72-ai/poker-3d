@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useGameStore } from '../../store/gameStore';
 import { useQualifiers, qualifierActions, DEFAULT_BLIND_STRUCTURE } from '../../store/qualifierStore';
@@ -194,19 +194,20 @@ export default function AdminDashboard({ onClose }) {
   const [chipAdj, setChipAdj] = useState({ userId: null, amount: '', reason: '' });
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [broadcastSent, setBroadcastSent] = useState(false);
+  const broadcastCooldownRef = useRef(0);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
 
   useEffect(() => {
     const socket = getSocket();
-    if (!socket) return;
-    socket.emit('getAdminStats');
+    if (!socket) { setLoading(false); return; }
     const handleStats = (data) => {
       if (data.error) { setIsAdmin(false); setLoading(false); return; }
       setIsAdmin(true); setStats(data); setUsers(data.users || []);
       setActiveTables(data.tables || []); setLoading(false);
     };
     socket.on('adminStats', handleStats);
-    return () => socket.off('adminStats', handleStats);
+    socket.emit('getAdminStats');
+    return () => { socket.off('adminStats', handleStats); };
   }, []);
 
   const handleBan = (id) => { getSocket()?.emit('banUser', { userId: id }); setUsers((p) => p.map((u) => u.id === id ? { ...u, banned: true } : u)); };
@@ -222,6 +223,9 @@ export default function AdminDashboard({ onClose }) {
   };
   const handleBroadcast = () => {
     if (!broadcastMsg.trim()) return;
+    const now = Date.now();
+    if (now - broadcastCooldownRef.current < 10000) return; // 10s cooldown
+    broadcastCooldownRef.current = now;
     getSocket()?.emit('adminBroadcast', { message: broadcastMsg });
     setBroadcastSent(true); setBroadcastMsg('');
     setTimeout(() => setBroadcastSent(false), 3000);
@@ -894,6 +898,68 @@ export default function AdminDashboard({ onClose }) {
   };
 
   // ════════════════════════════════════════════════════════
+  // TOURNAMENT SIMULATION TAB
+  // ════════════════════════════════════════════════════════
+  const [simStatus, setSimStatus] = useState(null);
+  const [simPlayerCount, setSimPlayerCount] = useState(200);
+  const [simTurbo, setSimTurbo] = useState(false);
+
+  const startSim = () => {
+    const socket = getSocket();
+    if (!socket) return;
+    socket.emit('startSimulatedTournament', { playerCount: simPlayerCount, turbo: simTurbo });
+    socket.once('simulatedTournamentStarted', (data) => {
+      setSimStatus(data);
+    });
+  };
+
+  const renderTournamentSim = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <h3 style={{ color: '#00D9FF', margin: 0 }}>Multi-Table Tournament Simulation</h3>
+      <p style={{ color: '#888', fontSize: '0.85rem', margin: 0 }}>
+        Launch a simulated tournament with AI bots. You'll be seated at one table and play against
+        AI opponents. Tables combine automatically as players are eliminated.
+      </p>
+
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+        <label style={{ color: '#aaa', fontSize: '0.85rem' }}>
+          Players:
+          <input type="number" value={simPlayerCount} onChange={e => setSimPlayerCount(Number(e.target.value))}
+            min={18} max={500} step={9}
+            style={{ marginLeft: 8, width: 80, padding: '6px 10px', borderRadius: 6,
+              background: 'rgba(255,255,255,0.06)', border: '1px solid #333', color: '#fff' }}
+          />
+        </label>
+        <label style={{ color: '#aaa', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={simTurbo} onChange={e => setSimTurbo(e.target.checked)} />
+          Turbo Mode (fast AI)
+        </label>
+      </div>
+
+      <button onClick={startSim} style={{
+        padding: '12px 24px', borderRadius: 8, fontWeight: 700, fontSize: '1rem',
+        background: 'linear-gradient(135deg, #00D9FF, #00D9FFbb)', color: '#0a0a1a',
+        border: 'none', cursor: 'pointer', width: 'fit-content',
+      }}>
+        Launch {simPlayerCount}-Player Tournament
+      </button>
+
+      {simStatus && (
+        <div style={{
+          padding: 16, borderRadius: 10, background: 'rgba(74,222,128,0.08)',
+          border: '1px solid rgba(74,222,128,0.3)', color: '#4ADE80',
+        }}>
+          <strong>Tournament Started!</strong><br/>
+          ID: {simStatus.tournamentId?.slice(0, 8)}<br/>
+          Tables: {simStatus.tableCount}<br/>
+          Players: {simStatus.playerCount}<br/>
+          Mode: {simStatus.turbo ? 'Turbo' : 'Normal'}
+        </div>
+      )}
+    </div>
+  );
+
+  // ════════════════════════════════════════════════════════
   // RENDER
   // ════════════════════════════════════════════════════════
   const tabs = [
@@ -902,6 +968,7 @@ export default function AdminDashboard({ onClose }) {
     { key: 'codes',      label: `Codes & Promos (${allCodes.length})` },
     { key: 'tables',     label: `Tables (${activeTables.length})` },
     { key: 'users',      label: `Users (${users.length})` },
+    { key: 'tournament', label: 'Tournament Sim' },
   ];
 
   const panelContent = (
@@ -929,6 +996,7 @@ export default function AdminDashboard({ onClose }) {
           {adminTab === 'codes'       && renderCodes()}
           {adminTab === 'tables'      && renderTables()}
           {adminTab === 'users'       && renderUsers()}
+          {adminTab === 'tournament'  && renderTournamentSim()}
         </>
       )}
     </div>

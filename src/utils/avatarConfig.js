@@ -82,17 +82,17 @@ export function serializeAvatar(avatar) {
 }
 
 export const DEFAULT_AVATAR = {
-  body: 'male',
-  skinTone: '#FFDBB4',
-  hair: 'short',
+  bodyType: 'male',
+  skinTone: '#C68642',
+  hairStyle: 'short',
   hairColor: '#2C1B0E',
   eyeColor: '#4A90D9',
-  top: 'tshirt',
+  topStyle: 'tshirt',
   topColor: '#1A1A2E',
-  bottom: 'jeans',
+  bottomStyle: 'jeans',
   bottomColor: '#2D3A4A',
   accessory: 'none',
-  face: { jawWidth: 0.5, noseLength: 0.5, cheekHeight: 0.5, browHeight: 0.5, lipFullness: 0.5, eyeSize: 0.5 },
+  faceShape: { jawWidth: 0.5, noseLength: 0.5, cheekHeight: 0.5, browHeight: 0.5, lipFullness: 0.5, eyeSize: 0.5 },
 };
 
 export function deserializeAvatar(json) {
