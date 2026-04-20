@@ -817,8 +817,23 @@ export default function PokerTable2D() {
         </div>
       )}
 
-      {/* ── Seat pods ─────────────────────────────────────── */}
-      {SEAT_ANGLES.map((angle, i) => {
+      {/* ── Seat pods ───────────────────────────────────────
+          Hero rotation: the GameHUD bottom anchor draws the hero's cards +
+          nameplate at the BOTTOM of the screen unconditionally. If we render
+          each seat at its raw `SEAT_ANGLES[seatIndex]`, the hero's avatar
+          ends up wherever the server placed them (e.g. top-right) while
+          their cards sit at the bottom — the user sees a disconnected label
+          floating over someone else's seat.
+          Fix: rotate the whole map so the hero's seat ALWAYS maps to the
+          bottom (angle π/2). Everyone else shifts clockwise around the oval
+          relative to them. Spectators / unseated players get no rotation. */}
+      {SEAT_ANGLES.map((rawAngle, i) => {
+        // Shift so the hero lands on π/2 (bottom of the ellipse in screen-y).
+        // `delta` is added to every seat's angle. If hero isn't seated yet
+        // (yourSeat < 0), delta=0 → legacy behavior for spectators.
+        const heroAngle = yourSeat >= 0 ? SEAT_ANGLES[yourSeat] : Math.PI / 2;
+        const delta = (Math.PI / 2) - heroAngle;
+        const angle = rawAngle + delta;
         const x = Math.cos(angle);
         const y = Math.sin(angle);
         const seat = seats[i];
