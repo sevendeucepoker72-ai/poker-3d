@@ -3172,24 +3172,13 @@ export default function GameHUD() {
           </div>
         )}
 
-        {/* Hand Strength Meter */}
+        {/* Hand-strength info merged into the top-center `.hand-strength-portal`
+            pill per user request ("pair of sevens queen kicker on top left
+            + pair weak up top middle — combine these"). The .hand-strength-bar
+            block here was the duplicate. This container is kept only for the
+            Outs Counter + draws info below, which isn't shown by the pill. */}
         {showHandStrength && handStrength && (
           <div className="hand-strength-container">
-            <div className="hand-strength-bar">
-              <div
-                className="hand-strength-fill"
-                style={{
-                  width: `${handStrength.strength * 100}%`,
-                  background: `linear-gradient(90deg,
-                    ${handStrength.strength < 0.33 ? '#EF4444' : handStrength.strength < 0.66 ? '#EAB308' : handStrength.strength >= 0.85 ? '#FFD700' : '#22C55E'},
-                    ${handStrength.strength < 0.5 ? '#EAB308' : handStrength.strength >= 0.85 ? '#FFA500' : '#22C55E'})`,
-                }}
-              />
-              <span className="hand-strength-label">{handStrength.detailedName || handStrength.name}</span>
-              <span className={`hand-quality-badge hand-quality-badge--${handStrength.strength >= 0.6 ? 'strong' : handStrength.strength >= 0.3 ? 'marginal' : 'weak'}`}>
-                {handStrength.strength >= 0.6 ? 'Strong' : handStrength.strength >= 0.3 ? 'Marginal' : 'Weak'}
-              </span>
-            </div>
             {/* Outs Counter */}
             {outsInfo && outsInfo.outs > 0 && (
               <div className="outs-display">
@@ -3642,7 +3631,11 @@ export default function GameHUD() {
               }}
             />
           </div>
-          <span className="hsp-label">{handStrength.name}</span>
+          {/* Combined display: detailed name (e.g. "Pair of Sevens, Queen
+              kicker") in place of the short name ("Pair"). The standalone
+              top-left .hand-strength-container rendered the exact same
+              info; now we show it only once — in this pill. */}
+          <span className="hsp-label">{handStrength.detailedName || handStrength.name}</span>
           <span className="hsp-tier">
             {handStrength.strength < 0.2 ? 'Weak' :
              handStrength.strength < 0.4 ? 'Light' :
