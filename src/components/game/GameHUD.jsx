@@ -3385,29 +3385,27 @@ export default function GameHUD() {
           via matchMedia inside the component, so it's an inert no-op on
           tablet/desktop. Absorbs session-tracker, last-hand, reactions,
           and the pre-action queue into one surface. */}
+      {/* `progress` isn't in GameHUD's scope — derive sessionStats strictly
+          from refs + local state to avoid a ReferenceError that would
+          crash the entire HUD tree. */}
       <MobileMoreSheet
         preAction={preAction}
         setPreAction={setPreAction}
         lastHand={lastHandHistory}
         sessionStats={{
-          hands: sessionHandsRef.current,
-          /* Derive "won" from progress.stats if available, else 0. */
-          won: (progress?.stats?.handsWon || 0),
-          biggestPot: sessionBiggestPotRef.current || 0,
-          pl: (progress?.chips ?? myChips) - (sessionStartChipsRef.current ?? (progress?.chips ?? myChips)),
+          hands: sessionHandsRef?.current || 0,
+          won: 0, /* wire up later from gameStore selector if needed */
+          biggestPot: sessionBiggestPotRef?.current || 0,
+          pl: (myChips || 0) - (sessionStartChipsRef?.current || myChips || 0),
         }}
         handStrength={handStrength}
-        isMyTurn={isMyTurn}
-        /* Emote/reactions: the EmoteWheel component self-manages its open
-           state via internal click on its trigger button, so we scroll to
-           / focus its rail-btn-wrap as a hint when the user taps
-           "Reactions" from the sheet. No state var to flip. */
+        isMyTurn={!!isMyTurn}
         onOpenReactions={() => {
           const trigger = document.querySelector('.rail-btn-wrap .emote-wheel-trigger, .emote-wheel-trigger');
-          trigger?.click();
+          trigger?.click?.();
         }}
-        onOpenChat={() => setChatOpen(true)}
-        onOpenSettings={() => setShowOptions(true)}
+        onOpenChat={() => setChatOpen?.(true)}
+        onOpenSettings={() => setShowOptions?.(true)}
       />
 
       {/* Hand strength identifier — moved out of the action bar per user

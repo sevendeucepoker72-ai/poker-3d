@@ -6254,21 +6254,29 @@ html.kb-open .table-pot-odds {
 }
 
 /* U15 — desaturate non-active seat pods while a hand is in progress so
-   the player's eye is drawn to the seat currently deciding. Applied
-   whenever any seat is active (.seat-pod--active present in the tree).
-   Hero seat stays at full opacity so the user can always see themselves
-   clearly. Animations and chip-stack movement are preserved. */
-@media (max-width: 720px) {
-  body:has(.seat-pod--active) .seat-pod:not(.seat-pod--active):not(.seat-pod--my-player):not(.seat-pod--winner):not(.seat-pod--empty) {
-    opacity: 0.55;
-    filter: saturate(0.7);
+   the player's eye is drawn to the seat currently deciding.
+   SCOPE: phone portrait ONLY (was erroneously applied at <=720px which
+   covered tablet and narrow desktop windows). Also, the class name
+   for the hero seat is `.seat-pod--hero`, NOT `.seat-pod--my-player`
+   — the prior selector dimmed the user's OWN seat, breaking gameplay.
+   Also requires `body:has()` which is supported in Chrome 105+ /
+   Safari 15.4+; older browsers silently no-op (fine — the rule is
+   purely cosmetic enhancement). */
+@media (max-width: 480px) and (orientation: portrait) {
+  body:has(.seat-pod--active) .seat-pod:not(.seat-pod--active):not(.seat-pod--hero):not(.seat-pod--winner):not(.seat-pod--empty) {
+    opacity: 0.6;
+    filter: saturate(0.75);
     transition: opacity 0.3s ease, filter 0.3s ease;
   }
   body:has(.seat-pod--active) .seat-pod--active {
-    opacity: 1;
     transform: scale(1.03);
-    transition: transform 0.25s ease, opacity 0.25s ease;
+    transition: transform 0.25s ease;
     z-index: 3;
+  }
+  /* Hero seat always full opacity/saturation regardless of who's active. */
+  .seat-pod--hero {
+    opacity: 1 !important;
+    filter: none !important;
   }
 }
 
@@ -6342,28 +6350,29 @@ html.kb-open .table-pot-odds {
   }
 }
 
-/* U6 — hide the floating `hud-cards-floating` hole-card row on portrait
-   phone. The hero's seat pod already renders the hole cards; the floating
-   row was a desktop-era duplicate that took ~80px of vertical space above
-   the action bar, pushing community cards up into the logo. */
+/* U6 — REVERTED. Initially hid .hud-cards-floating on portrait assuming
+   the hero's seat pod rendered the hole cards. It doesn't — for the
+   hero, `PokerTable2D.jsx` only renders the "YOU" badge (line 530) and
+   opponent-card slots are guarded by `!isMyPlayer` (line 486). The
+   hero's own hole cards live EXCLUSIVELY in `.hud-cards-floating`
+   (rendered by GameHUD). Hiding it on mobile left the hero unable to
+   see their own cards — gameplay-breaking bug.
+   Keep the row visible, just shrink it on portrait so it doesn't
+   dominate the action bar area. */
 @media (max-width: 480px) and (orientation: portrait) {
-  .hud-cards-floating { display: none !important; }
-  /* Because the floating cards are gone, the hud-bottom-panel can be
-     more compact — the active-player ring on the seat pod is now the
-     sole visual cue for your hole cards. */
-  .hud-bottom-panel { min-height: 0 !important; padding-top: 2px !important; }
+  .hud-cards-floating {
+    transform: scale(0.82);
+    transform-origin: bottom center;
+    margin-bottom: -6px;
+  }
 }
 
-/* U16 — emphasize the seat-pod timer ring on mobile since we hid the
-   bottom action-timer-strip (no longer needed when the avatar ring
-   already shows countdown). Wider stroke, accent glow, red pulse <5s.
-   Ring is at .seat-pod__timer-ring (PokerTable2D). */
-@media (max-width: 720px) {
+/* U16 — timer-ring glow emphasis. Scoped to portrait phone only to
+   avoid unintended resizing at tablet/narrow desktop widths; keeps the
+   SVG's natural width/height so layout is identical to desktop. */
+@media (max-width: 480px) and (orientation: portrait) {
   .seat-pod__timer-ring {
-    width: 100% !important;
-    height: 100% !important;
-    inset: -3px !important;
-    filter: drop-shadow(0 0 6px currentColor);
+    filter: drop-shadow(0 0 5px currentColor);
   }
   .seat-pod__timer-ring circle {
     stroke-width: 4 !important;
