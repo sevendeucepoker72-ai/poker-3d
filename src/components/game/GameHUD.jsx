@@ -2816,37 +2816,11 @@ export default function GameHUD() {
 
         {/* LEFT: turn timer pill + hand strength meter */}
         <div className="hud-bottom-left">
-          {/* Strength meter stays visible through HandComplete (previously
-              vanished at showdown, which is exactly when equity sanity-check
-              matters most). Resets with the next PreFlop when hole cards flip. */}
-          {handStrength && yourCards.length > 0 && (
-            <div className="bottom-strength-bar">
-              <div className="bsb-track">
-                <div className="bsb-fill" style={{
-                  width: `${Math.round(handStrength.strength * 100)}%`,
-                  /* 5-point gradient with sharper breakpoints. Previous 4-point
-                     version flattened 0.5–0.66 into a washed-out yellow-green. */
-                  background:
-                    handStrength.strength < 0.2 ? '#DC2626' :
-                    handStrength.strength < 0.4 ? '#F97316' :
-                    handStrength.strength < 0.7 ? '#EAB308' :
-                    handStrength.strength < 0.9 ? '#22C55E' : '#FFD700',
-                }} />
-              </div>
-              <span className="bsb-label">{handStrength.name}</span>
-              <span className={`bsb-tier bsb-tier--${
-                handStrength.strength < 0.2 ? 'weak' :
-                handStrength.strength < 0.4 ? 'light' :
-                handStrength.strength < 0.7 ? 'medium' :
-                handStrength.strength < 0.9 ? 'strong' : 'monster'
-              }`}>
-                {handStrength.strength < 0.2 ? 'Weak' :
-                 handStrength.strength < 0.4 ? 'Light' :
-                 handStrength.strength < 0.7 ? 'Medium' :
-                 handStrength.strength < 0.9 ? 'Strong' : 'Monster'}
-              </span>
-            </div>
-          )}
+          {/* Hand strength identifier moved out of the action bar to a
+              portal-mounted pill above the table — see
+              `hand-strength-portal` render further down. Keeping this slot
+              intentionally empty preserves the action bar's flex layout so
+              the centre column stays centred. */}
           {/* Timer fully on nameplates — no HUD timer elements */}
         </div>
 
@@ -3405,6 +3379,53 @@ export default function GameHUD() {
         </div>
         </div>{/* end hud-bottom-panel */}
       </div>
+
+      {/* Hand strength identifier — moved out of the action bar per user
+          feedback. Portalled into <body> so it floats above the table as a
+          compact, color-coded pill ("Pair of Queens · Light") regardless of
+          which element contains the HUD. Positioned top-centre of the table
+          area via `.hand-strength-portal` CSS; hidden on handComplete so it
+          doesn't linger on the next-hand overlay. */}
+      {handStrength && yourCards.length > 0 && !myPlayer?.folded && phase !== 'HandComplete' && createPortal(
+        <div
+          className={`hand-strength-portal hand-strength-portal--${
+            handStrength.strength < 0.2 ? 'weak' :
+            handStrength.strength < 0.4 ? 'light' :
+            handStrength.strength < 0.7 ? 'medium' :
+            handStrength.strength < 0.9 ? 'strong' : 'monster'
+          }`}
+          role="status"
+          aria-live="polite"
+          aria-label={`Your hand: ${handStrength.name}, ${
+            handStrength.strength < 0.2 ? 'weak' :
+            handStrength.strength < 0.4 ? 'light' :
+            handStrength.strength < 0.7 ? 'medium' :
+            handStrength.strength < 0.9 ? 'strong' : 'monster'
+          } at ${Math.round(handStrength.strength * 100)} percent`}
+        >
+          <div className="hsp-bar">
+            <div
+              className="hsp-fill"
+              style={{
+                width: `${Math.round(handStrength.strength * 100)}%`,
+                background:
+                  handStrength.strength < 0.2 ? '#DC2626' :
+                  handStrength.strength < 0.4 ? '#F97316' :
+                  handStrength.strength < 0.7 ? '#EAB308' :
+                  handStrength.strength < 0.9 ? '#22C55E' : '#FFD700',
+              }}
+            />
+          </div>
+          <span className="hsp-label">{handStrength.name}</span>
+          <span className="hsp-tier">
+            {handStrength.strength < 0.2 ? 'Weak' :
+             handStrength.strength < 0.4 ? 'Light' :
+             handStrength.strength < 0.7 ? 'Medium' :
+             handStrength.strength < 0.9 ? 'Strong' : 'Monster'}
+          </span>
+        </div>,
+        document.body
+      )}
 
       {/* Pot odds — on the table below "AMERICAN PUB POKER" */}
       {callAmount > 0 && potOddsDisplay && createPortal(

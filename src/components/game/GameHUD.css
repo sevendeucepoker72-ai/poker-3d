@@ -3354,31 +3354,115 @@
   100% { transform: scale(1); opacity: 1; }
 }
 
-/* ── Upgrade 6: Hand strength meter in bottom bar ────────── */
-.bottom-strength-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 90px;
-  margin-top: 8px;
+/* ── Hand-strength identifier (portal, above-table placement) ──
+   User feedback: the color-coded hand identifier was living inside
+   the action bar where it visually competed with the fold/call/raise
+   buttons. Pulled it into a floating pill that hovers top-centre above
+   the table, sized by viewport, with tier-specific color + subtle glow.
+   .bottom-strength-bar / .bsb-* classes are retained as legacy aliases
+   in case third-party themes target them. */
+.hand-strength-portal {
+  position: fixed;
+  top: 56px;            /* Clear of hud-top row (logo + pot) */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 180;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  min-width: 220px;
+  max-width: min(460px, calc(100vw - 24px));
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(11, 15, 25, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  box-shadow:
+    0 6px 24px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  font-family: inherit;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: border-color 0.25s, box-shadow 0.25s, transform 0.2s;
 }
-.bsb-track {
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(255,255,255,0.08);
+.hand-strength-portal .hsp-bar {
+  flex: 0 0 80px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
-  width: 90px;
 }
-.bsb-fill {
+.hand-strength-portal .hsp-fill {
   height: 100%;
-  border-radius: 2px;
+  border-radius: 3px;
   transition: width 0.3s ease, background 0.3s ease;
+  box-shadow: 0 0 8px currentColor;
 }
-.bsb-label {
-  font-size: 0.62rem;
-  color: #8888aa;
+.hand-strength-portal .hsp-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #e5e7eb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+  flex: 1 1 auto;
+}
+.hand-strength-portal .hsp-tier {
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  flex: 0 0 auto;
   white-space: nowrap;
 }
+/* Tier color variants — the accent colour drives the border, pill
+   background + glow. Fill color is picked inline on .hsp-fill. */
+.hand-strength-portal--weak    { border-color: rgba(239, 68, 68, 0.55); box-shadow: 0 6px 24px rgba(220, 38, 38, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+.hand-strength-portal--weak    .hsp-tier { color: #FCA5A5; background: rgba(239, 68, 68, 0.18); }
+.hand-strength-portal--light   { border-color: rgba(249, 115, 22, 0.55); box-shadow: 0 6px 24px rgba(234, 88, 12, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+.hand-strength-portal--light   .hsp-tier { color: #FDBA74; background: rgba(249, 115, 22, 0.2); }
+.hand-strength-portal--medium  { border-color: rgba(234, 179, 8, 0.6); box-shadow: 0 6px 24px rgba(202, 138, 4, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+.hand-strength-portal--medium  .hsp-tier { color: #FDE68A; background: rgba(234, 179, 8, 0.22); }
+.hand-strength-portal--strong  { border-color: rgba(34, 197, 94, 0.6); box-shadow: 0 6px 24px rgba(22, 163, 74, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+.hand-strength-portal--strong  .hsp-tier { color: #86EFAC; background: rgba(34, 197, 94, 0.22); }
+.hand-strength-portal--monster { border-color: rgba(253, 224, 71, 0.75); box-shadow: 0 6px 28px rgba(234, 179, 8, 0.55), 0 0 0 1px rgba(253, 224, 71, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12); animation: hspMonsterPulse 1.4s ease-in-out infinite alternate; }
+.hand-strength-portal--monster .hsp-tier { color: #FEF3C7; background: rgba(253, 224, 71, 0.28); text-shadow: 0 0 6px rgba(255, 215, 0, 0.7); }
+@keyframes hspMonsterPulse {
+  from { filter: brightness(0.96); }
+  to   { filter: brightness(1.18) drop-shadow(0 0 14px rgba(255, 215, 0, 0.45)); }
+}
+
+/* Mobile — shrink + tighter placement so it doesn't eat the community-card row. */
+@media (max-width: 720px) {
+  .hand-strength-portal {
+    top: 44px;
+    min-width: 180px;
+    max-width: calc(100vw - 16px);
+    padding: 4px 10px;
+    gap: 6px;
+  }
+  .hand-strength-portal .hsp-bar { flex-basis: 54px; height: 5px; }
+  .hand-strength-portal .hsp-label { font-size: 0.72rem; max-width: 140px; }
+  .hand-strength-portal .hsp-tier { font-size: 0.58rem; padding: 1px 6px; }
+}
+@media (max-width: 480px) {
+  .hand-strength-portal {
+    top: 38px;
+    min-width: 160px;
+    padding: 3px 8px;
+  }
+  .hand-strength-portal .hsp-bar { flex-basis: 44px; }
+  .hand-strength-portal .hsp-label { font-size: 0.68rem; max-width: 110px; }
+}
+
+/* Legacy inline aliases — keep the old selectors resolving to nothing so
+   nothing renders if the old JSX is still cached in a browser, but do
+   not style them (avoid accidental double-render). */
+.bottom-strength-bar { display: none !important; }
 
 /* ── Upgrade 7: Keyboard hints on buttons ────────────────── */
 .btn-key {
