@@ -334,8 +334,22 @@ const SeatPod = memo(function SeatPod({
     }
   }, [chips, isOccupied, isSittingOut]);
 
-  /* ── Empty seat ─────────────────────────────────────────── */
-  if (!serverSeat || (!isOccupied && !isSittingOut)) {
+  const {
+    playerName, name: _name, currentBet, allIn, folded,
+    holeCards = [], lastAction, eliminated,
+  } = serverSeat || {};
+  const name = playerName || _name || '';
+
+  /* ── Empty / vacatable seat ─────────────────────────────────
+     Renders an "Open" placeholder for any seat that isn't actively
+     playing: truly empty seats, and also seats where the server
+     still has an `eliminated` flag set from a prior bust that hasn't
+     been cleaned up yet. Previously `if (eliminated) return null`
+     skipped rendering entirely, so the seat position was physically
+     missing from the oval — visually the table looked like it had
+     fewer than 9 seats. Treating eliminated-but-still-there as "Open"
+     matches player intuition: a busted-out seat is available to sit. */
+  if (!serverSeat || (!isOccupied && !isSittingOut) || eliminated) {
     return (
       <div
         className="seat-pod seat-pod--empty"
@@ -359,14 +373,6 @@ const SeatPod = memo(function SeatPod({
       </div>
     );
   }
-
-  const {
-    playerName, name: _name, currentBet, allIn, folded,
-    holeCards = [], lastAction, eliminated,
-  } = serverSeat;
-  const name = playerName || _name || '';
-
-  if (eliminated) return null;
 
   const isFolded = !!folded;
   const posLabel = getPositionLabel(seatIndex, dealerButtonSeat, occupiedSeats);
