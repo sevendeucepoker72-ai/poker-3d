@@ -280,6 +280,36 @@
   width: 100%;
 }
 
+/* Training-mode badge in top-left (duplicate-audit #10). Subtle
+   purple glow so it's obvious but not competing with pot/chip info.
+   Tap toggles training off without having to hunt through Options. */
+.hud-training-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  margin-left: 8px;
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.3), rgba(109, 40, 217, 0.25));
+  border: 1px solid rgba(167, 139, 250, 0.55);
+  border-radius: 999px;
+  color: #DDD6FE;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.35);
+  transition: transform 0.12s, box-shadow 0.2s;
+  animation: trainingBadgePulse 2s ease-in-out infinite alternate;
+}
+.hud-training-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 14px rgba(139, 92, 246, 0.6);
+}
+@keyframes trainingBadgePulse {
+  from { filter: brightness(0.92); }
+  to   { filter: brightness(1.18); }
+}
+
 /* Queue-action chips inside Options menu — the three pre-action
    toggles (Check/Fold, Call Any, Check) formerly exclusive to the
    floating ⋯ MoreSheet. Small, tappable, active-pill styled like

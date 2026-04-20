@@ -2447,6 +2447,26 @@ export default function GameHUD() {
         <button className="hud-back" onClick={handleBackToLobby}>
           Back to Lobby
         </button>
+        {/* Duplicate-audit #10: Training mode is a dedicated practice
+            mode that changes AI behavior + shows coaching tips. Users
+            enabled it via Options but had no visible indicator they
+            were in it — easy to forget. Small glowing pill next to
+            Back button so it's always visible but unobtrusive. Click
+            to turn it back off. */}
+        {trainingEnabled && (
+          <button
+            className="hud-training-badge"
+            onClick={() => {
+              const socket = getSocket();
+              setTrainingEnabled(false);
+              if (socket?.connected) socket.emit('setTrainingMode', { enabled: false });
+            }}
+            title="Training mode is ON. Click to turn off."
+            aria-label="Training mode active, click to disable"
+          >
+            🎓 Training
+          </button>
+        )}
         <div className="hud-center-info">
           <div className="hud-pot">
             <span className="hud-pot-dot">●</span> Pot: <span className={potFlashing ? 'hud-pot-amount--flash' : ''}>{pot.toLocaleString()}</span>
@@ -2536,14 +2556,10 @@ export default function GameHUD() {
             </button>
             {showOptions && (
               <div className="hud-options-dropdown">
-                {/* Sit Out row */}
-                <div className="options-row">
-                  <span className="options-label">🪑 Sit Out</span>
-                  <button
-                    className={`options-toggle ${sittingOut ? 'options-on' : 'options-off'}`}
-                    onClick={toggleSitOut}
-                  >{sittingOut ? 'OUT' : 'IN'}</button>
-                </div>
+                {/* Duplicate-audit #3: Sit Out row removed — the quick-access
+                    "🪑 Sit Out" button directly above the Options gear
+                    already toggles the same `sittingOut` state. Leaving
+                    both rendered was confusing redundant UI. */}
                 {/* Training row */}
                 <div className="options-row">
                   <span className="options-label">🎓 Training</span>
@@ -2947,21 +2963,11 @@ export default function GameHUD() {
       )}
 
       {/* Bottom action bar */}
-      {/* Mini pot pill — floating center pill above bottom bar */}
-      {phase !== 'WaitingForPlayers' && pot > 0 && (
-        <div className={`mini-pot-pill ${potPulsing ? 'mini-pot-pill--pulse' : ''} ${potFlashing ? 'mini-pot-pill--collecting' : ''}`}>
-          <span className="mini-pot-dot">●</span>
-          <span className="mini-pot-amount">{pot.toLocaleString()}</span>
-          {gameState?.pots && gameState.pots.length > 1 &&
-           seats?.some(s => s?.state === 'occupied' && s?.allIn) && (
-            <span className="mini-pot-side">
-              {gameState.pots.slice(1).map((p, i) => (
-                <span key={i} className="mini-side-badge">Side {p.amount.toLocaleString()}</span>
-              ))}
-            </span>
-          )}
-        </div>
-      )}
+      {/* Duplicate-audit #6: Mini pot pill removed — the top-bar .hud-pot
+          (line ~2451) already shows the pot amount in large friendly
+          numbers, always visible. Two floating pots showing the same
+          number above each other was pure redundancy. Side-pot labels
+          are still surfaced via the .side-pot-breakdown chip row. */}
 
       <div className={`hud-bottom ${isMyTurn ? 'hud-bottom--my-turn' : ''}`}>
         {/* Turn timer progress bar — thin strip at very top of action bar */}
@@ -3868,87 +3874,22 @@ export default function GameHUD() {
 
       {/* Right rail buttons — unified column */}
 
-      {/* Last Hand History Panel (Part 3) */}
-      {showLastHand && lastHandHistory && (
-        <div className="last-hand-panel">
-          <div className="last-hand-header">
-            <span>Hand #{lastHandHistory.handNumber}</span>
-            <button className="last-hand-close" onClick={() => setShowLastHand(false)}>X</button>
-          </div>
-
-          {/* Community cards */}
-          {lastHandHistory.communityCards && lastHandHistory.communityCards.length > 0 && (
-            <div className="last-hand-community">
-              <span className="last-hand-label">Board:</span>
-              {lastHandHistory.communityCards.map((c, i) => (
-                <span key={i} className="mini-card" style={{ color: getCardColor(c.suit, colorBlindMode) }}>
-                  {serverRankDisplay(c.rank)}{SUIT_INDEX_TO_SYMBOL[c.suit]}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Winners */}
-          <div className="last-hand-winners">
-            {lastHandHistory.winners.map((w, i) => (
-              <div key={i} className="last-hand-winner-row">
-                <span className="last-hand-winner-badge">W</span>
-                <span className="last-hand-winner-name">{w.name}</span>
-                <span className="last-hand-winner-hand">{w.handName}</span>
-                <span className="last-hand-winner-chips">+{w.chipsWon.toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Player actions */}
-          <div className="last-hand-players">
-            {lastHandHistory.players.map((p) => (
-              <div key={p.seatIndex} className={`last-hand-player-row ${p.folded ? 'last-hand-folded' : ''}`}>
-                <div className="last-hand-player-info">
-                  <span className="last-hand-pname">{p.name}</span>
-                  {p.holeCards && p.holeCards.length > 0 && (
-                    <span className="last-hand-pcards">
-                      {p.holeCards.map((c, i) => (
-                        <span key={i} className="mini-card mini-card-sm" style={{ color: getCardColor(c.suit, colorBlindMode) }}>
-                          {serverRankDisplay(c.rank)}{SUIT_INDEX_TO_SYMBOL[c.suit]}
-                        </span>
-                      ))}
-                    </span>
-                  )}
-                  {p.handName && <span className="last-hand-phand">{p.handName}</span>}
-                </div>
-                <div className="last-hand-player-chips">
-                  {p.startChips.toLocaleString()} &rarr; {p.endChips.toLocaleString()}
-                </div>
-                <div className="last-hand-player-actions">
-                  {p.actions.map((a, i) => (
-                    <span key={i} className="last-hand-action">{a}</span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Pots */}
-          {lastHandHistory.pots && lastHandHistory.pots.length > 0 && (
-            <div className="last-hand-pots">
-              {lastHandHistory.pots.map((pot, i) => (
-                <span key={i} className="last-hand-pot">
-                  {pot.name || (i === 0 ? 'Main Pot' : `Side Pot ${i}`)}: {pot.amount.toLocaleString()}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Duplicate-audit #1: Static Last-Hand summary panel removed. It was
+          rendering the same hand recap that HandReplayViewer (opened by
+          the rail Replay button) already shows interactively with a
+          timeline scrubber. Users had two rail buttons ("Last Hand" +
+          "Replay") opening overlapping views of the same data; now the
+          single rail button opens the interactive version. */}
 
       {/* Right rail — Last Hand, Replay, React, Emote */}
       {!isSpectating && (
         <div className="right-rail-btns">
           {lastHandHistory && !showShowdown && (
             <>
-              <button className="rail-btn" onClick={() => setShowLastHand(!showLastHand)}>Last Hand</button>
-              <button className="rail-btn" onClick={() => setShowReplay(true)}>Replay</button>
+              {/* Single rail button — opens HandReplayViewer directly
+                  (was "Last Hand" static panel + separate "Replay"
+                  button; consolidated per duplicate-audit #1). */}
+              <button className="rail-btn" onClick={() => setShowReplay(true)}>🃏 Last Hand</button>
             </>
           )}
           <div className="rail-btn-wrap"><TableReactions /></div>
