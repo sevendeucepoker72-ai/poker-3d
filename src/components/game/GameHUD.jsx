@@ -10,7 +10,10 @@ import { calculateOuts, analyzeBoardTexture } from '../../utils/outsCalculator';
 import useSoundEffects from '../../hooks/useSoundEffects';
 import TrainingOverlay from './TrainingOverlay';
 import EmoteWheel, { EMOTE_MAP } from './EmoteWheel';
-import MobileMoreSheet from './MobileMoreSheet';
+/* MobileMoreSheet import removed — its floating ⋯ FAB was merged into
+   the top-right Options dropdown per user request. The component file
+   is kept in the tree in case the bottom-sheet pattern is needed
+   elsewhere later, but nothing imports it now. */
 import WinConfetti from './WinConfetti';
 import SessionTracker from './SessionTracker';
 import HandRangeChart from './HandRangeChart';
@@ -2617,6 +2620,42 @@ export default function GameHUD() {
                 >
                   ⚙ Hotkey Settings
                 </button>
+                {/* Pre-action queue — formerly on the floating ⋯ MoreSheet,
+                    now a compact 3-pill row inline in Options. Each chip
+                    toggles its pre-action (click-again to clear). Active
+                    pill gets a cyan ring to mirror the Queue badge pattern
+                    the MoreSheet used. */}
+                <div className="options-queue-row" role="radiogroup" aria-label="Queue next action">
+                  <span className="options-label">⚡ Queue Action</span>
+                  <div className="options-queue-chips">
+                    {[
+                      { key: 'checkFold', icon: '🔄', label: 'Check/Fold' },
+                      { key: 'callAny',   icon: '✋', label: 'Call Any' },
+                      { key: 'checkOnly', icon: '✓', label: 'Check' },
+                    ].map(({ key, icon, label }) => {
+                      const active = preAction === key;
+                      return (
+                        <button
+                          key={key}
+                          role="radio"
+                          aria-checked={active}
+                          className={`options-queue-chip ${active ? 'options-queue-chip--active' : ''}`}
+                          onClick={() => setPreAction(active ? null : key)}
+                        >
+                          <span className="options-queue-icon">{icon}</span>
+                          <span className="options-queue-label">{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {preAction && (
+                    <button
+                      className="options-action-btn"
+                      onClick={() => setPreAction(null)}
+                      style={{ marginTop: 4, fontSize: '0.68rem', color: '#FCA5A5' }}
+                    >✕ Clear queued action</button>
+                  )}
+                </div>
                 {/* Table felt theme picker. Four swatches inline — tap
                     to apply. Driven via the `poker:set-theme` window
                     event so PokerTable2D (sibling) picks up the change
@@ -3501,32 +3540,12 @@ export default function GameHUD() {
         </div>{/* end hud-bottom-panel */}
       </div>
 
-      {/* Mobile U1 + U2 + U11: ⋯ More sheet. Self-gates to phone portrait
-          via matchMedia inside the component, so it's an inert no-op on
-          tablet/desktop. Absorbs session-tracker, last-hand, reactions,
-          and the pre-action queue into one surface. */}
-      {/* `progress` isn't in GameHUD's scope — derive sessionStats strictly
-          from refs + local state to avoid a ReferenceError that would
-          crash the entire HUD tree. */}
-      <MobileMoreSheet
-        preAction={preAction}
-        setPreAction={setPreAction}
-        lastHand={lastHandHistory}
-        sessionStats={{
-          hands: sessionHandsRef?.current || 0,
-          won: 0, /* wire up later from gameStore selector if needed */
-          biggestPot: sessionBiggestPotRef?.current || 0,
-          pl: (myChips || 0) - (sessionStartChipsRef?.current || myChips || 0),
-        }}
-        handStrength={handStrength}
-        isMyTurn={!!isMyTurn}
-        onOpenReactions={() => {
-          const trigger = document.querySelector('.rail-btn-wrap .emote-wheel-trigger, .emote-wheel-trigger');
-          trigger?.click?.();
-        }}
-        onOpenChat={() => setChatOpen?.(true)}
-        onOpenSettings={() => setShowOptions?.(true)}
-      />
+      {/* Floating ⋯ More FAB + MobileMoreSheet removed per user request:
+          "put the three dot menu at the bottom right into the options
+          menu". The pre-action queue (the MoreSheet's only genuinely
+          unique feature) is now an entry inside the top-right Options
+          dropdown as "⚡ Queue Action". Last Hand / Stats / Tools were
+          already reachable via the existing rail buttons + Options. */}
 
       {/* Hand strength identifier — moved out of the action bar per user
           feedback. Portalled into <body> so it floats above the table as a
