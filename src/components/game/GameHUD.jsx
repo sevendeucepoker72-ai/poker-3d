@@ -1815,29 +1815,47 @@ export default function GameHUD() {
     }
   }, [phase]);
 
-  // === Missed Blinds listener (#16) ===
+  // === Missed Blinds listener (refactored for audit findings) ===
   const [missedBlindsAmount, setMissedBlindsAmount] = useState(0);
+  const [missedBlindsType, setMissedBlindsType] = useState(null); // 'small' | 'big' | 'both' | null
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
     const handler = (data) => {
-      if (data && data.amount) setMissedBlindsAmount(data.amount);
+      if (data && data.amount) {
+        setMissedBlindsAmount(data.amount);
+        if (data.type) setMissedBlindsType(data.type);
+      }
     };
-    const postedHandler = () => setMissedBlindsAmount(0);
+    const postedHandler = () => { setMissedBlindsAmount(0); setMissedBlindsType(null); };
+    const errorHandler = (data) => {
+      // Audit fix: surface server-side refusal to the player. Previously
+      // insufficient_chips silently failed; now a toast explains why.
+      if (data?.message) {
+        try { addToast(data.message, data.code === 'insufficient_chips' ? 'error' : 'warn', 3500); } catch {}
+      }
+    };
     socket.on('missedBlinds', handler);
     socket.on('missedBlindsPosted', postedHandler);
+    socket.on('missedBlindsError', errorHandler);
     return () => {
       socket.off('missedBlinds', handler);
       socket.off('missedBlindsPosted', postedHandler);
+      socket.off('missedBlindsError', errorHandler);
     };
   }, []);
 
-  // Also read missed blinds from gameState (#16)
+  // Sync from gameState (canonical source after server broadcast).
   useEffect(() => {
     if (gameState?.missedBlinds && gameState.missedBlinds > 0) {
       setMissedBlindsAmount(gameState.missedBlinds);
+      if (gameState.missedBlindType) setMissedBlindsType(gameState.missedBlindType);
+    } else if (gameState && !gameState.missedBlinds) {
+      // Explicitly cleared by server — clear locally too.
+      setMissedBlindsAmount(0);
+      setMissedBlindsType(null);
     }
-  }, [gameState?.missedBlinds]);
+  }, [gameState?.missedBlinds, gameState?.missedBlindType]);
 
   // === Mucked Hand Reveal: show button for 5 seconds after folding ===
   const prevFoldedRef = useRef(false);
@@ -2765,24 +2783,44 @@ export default function GameHUD() {
         </div>
       )}
 
-      {/* Missed Blinds Button (#16) */}
-      {/* Missed-blinds prompt — previously shown in BOTH HandComplete and
-          WaitingForPlayers, which flickered for <1s across the phase boundary.
-          Tied to amount > 0 + not sitting out; phase no longer gates it. */}
-      {missedBlindsAmount > 0 && !sittingOut && phase !== 'PreFlop' && phase !== 'Flop' && phase !== 'Turn' && phase !== 'River' && phase !== 'Showdown' && (
+      {/* Missed Blinds Button — audit refactor.
+          Previously hidden during PreFlop/Flop/Turn/River/Showdown, which
+          meant it was hidden for ~95% of the time a hand was in progress,
+          and specifically hidden exactly when the player needed to post
+          to re-enter (TDA Rule 6-10 violation: "player cannot receive
+          cards until dead blind is posted"). Now visible in EVERY phase
+          as long as they owe, and the button shows a clear disabled state
+          when chips are insufficient rather than silently failing. */}
+      {missedBlindsAmount > 0 && !sittingOut && (
         <div className="missed-blinds-panel">
           <div className="missed-blinds-text">
-            You missed blinds while sitting out.
+            {missedBlindsType === 'both'
+              ? 'You missed both blinds while sitting out.'
+              : missedBlindsType === 'small'
+                ? 'You missed your small blind while sitting out.'
+                : 'You missed your big blind while sitting out.'}
+            <small style={{ display: 'block', opacity: 0.75, marginTop: 2 }}>
+              Post to re-enter the rotation. Dead money — doesn't count toward any call.
+            </small>
           </div>
           <button
             className="action-btn deal"
+            disabled={myChips < missedBlindsAmount}
             onClick={() => {
               const socket = getSocket();
-              if (socket?.connected) socket.emit('postMissedBlinds');
+              if (!socket?.connected) return;
+              if (myChips < missedBlindsAmount) {
+                try { addToast('Not enough chips — rebuy first, then post.', 'error', 3000); } catch {}
+                return;
+              }
+              socket.emit('postMissedBlinds');
             }}
             style={{ fontSize: '0.85rem' }}
+            aria-label={`Post dead blinds of ${missedBlindsAmount.toLocaleString()} chips to re-enter the hand rotation${myChips < missedBlindsAmount ? ' — not enough chips' : ''}`}
           >
-            Post Blinds: {missedBlindsAmount.toLocaleString()}
+            {myChips < missedBlindsAmount
+              ? `Need ${(missedBlindsAmount - myChips).toLocaleString()} more chips`
+              : `Post Blinds: ${missedBlindsAmount.toLocaleString()}`}
           </button>
         </div>
       )}

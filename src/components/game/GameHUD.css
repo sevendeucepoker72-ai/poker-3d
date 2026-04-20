@@ -6269,9 +6269,16 @@ html.kb-open .table-pot-odds {
     transition: opacity 0.3s ease, filter 0.3s ease;
   }
   body:has(.seat-pod--active) .seat-pod--active {
-    transform: scale(1.03);
-    transition: transform 0.25s ease;
+    /* DO NOT use `transform: scale(...)` here — the base `.seat-pod` rule
+       uses `transform: translate(-50%, -50%)` for centering, and any
+       override of `transform` drops the translate, making the pod jump
+       to its top-left corner. Use outline + box-shadow for emphasis. */
     z-index: 3;
+    outline: 2px solid rgba(34, 211, 238, 0.7);
+    outline-offset: 4px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.18), 0 8px 24px rgba(34, 211, 238, 0.35);
+    transition: box-shadow 0.25s ease, outline-color 0.25s ease;
   }
   /* Hero seat always full opacity/saturation regardless of who's active. */
   .seat-pod--hero {
@@ -6365,6 +6372,30 @@ html.kb-open .table-pot-odds {
     transform-origin: bottom center;
     margin-bottom: -6px;
   }
+}
+
+/* Missed-blind debt badge on seat pods. Renders only when the seat
+   owes dead blinds. Observers see it; owed player sees it too. */
+.seat-pod__owed-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: linear-gradient(180deg, #DC2626, #991B1B);
+  color: #FEE2E2;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.45);
+  z-index: 5;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  animation: owedBadgePulse 1.4s ease-in-out infinite alternate;
+}
+@keyframes owedBadgePulse {
+  from { box-shadow: 0 2px 6px rgba(220, 38, 38, 0.3); }
+  to   { box-shadow: 0 2px 12px rgba(220, 38, 38, 0.7); }
 }
 
 /* U16 — timer-ring glow emphasis. Scoped to portrait phone only to

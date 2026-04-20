@@ -338,8 +338,14 @@ const SeatPod = memo(function SeatPod({
   const {
     playerName, name: _name, currentBet, allIn, folded,
     holeCards = [], lastAction, eliminated,
+    missedBlind, deadBlindOwedChips,
   } = serverSeat || {};
   const name = playerName || _name || '';
+  // Show a small red badge on any seat currently owing dead blinds, so
+  // observers can instantly see who skipped their turn and why they
+  // aren't being dealt in. Only render if owed > 0 (non-null missedBlind
+  // can linger before reset).
+  const hasDeadBlindDebt = (deadBlindOwedChips || 0) > 0;
 
   /* ── Empty / vacatable seat ─────────────────────────────────
      Renders an "Open" placeholder for any seat that isn't actively
@@ -528,6 +534,15 @@ const SeatPod = memo(function SeatPod({
 
       {/* Hero YOU badge */}
       {isMyPlayer && <div className="seat-pod__you-badge">YOU</div>}
+      {hasDeadBlindDebt && (
+        <div
+          className="seat-pod__owed-badge"
+          title={`Owes ${(deadBlindOwedChips || 0).toLocaleString()} in dead blinds (${missedBlind})`}
+          aria-label={`${name || 'Player'} owes dead blinds from sitting out`}
+        >
+          🎯 {(deadBlindOwedChips || 0).toLocaleString()}
+        </div>
+      )}
 
       {/* Nameplate — hidden for hero (GameHUD already shows it) */}
       {!isMyPlayer && (
