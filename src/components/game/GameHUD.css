@@ -3946,10 +3946,13 @@
 /* Action history — hidden in bottom bar (moved to portal) */
 .hud-bottom .action-history-strip { display: none; }
 
-/* Action history — floating top-left */
+/* Action history — floating top-left.
+   Nudged 30px down per user request — top 100 → 130. This clears the
+   new Training-mode badge + compact hud-top row and prevents the
+   feed from crowding the pot/SPR display on narrower viewports. */
 .action-history-floating {
   position: fixed;
-  top: 100px;
+  top: 130px;
   left: 10px;
   display: flex;
   flex-direction: column;
