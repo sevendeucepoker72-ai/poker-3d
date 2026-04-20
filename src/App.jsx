@@ -197,6 +197,39 @@ export default function App() {
   const [transitionClass, setTransitionClass] = useState('');
   const prevScreenRef = useRef(screen);
 
+  // PWA audit #5: Android back-button handling. In an installed PWA the
+  // hardware/gesture back button normally EXITS the app — which is
+  // jarring mid-hand. Push a synthetic history entry on table entry,
+  // then intercept popstate to show a leave-confirm toast instead of
+  // letting the navigation proceed. On lobby back press, the app
+  // exits normally (expected behaviour).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (screen !== 'table') return;
+    // Push a guard entry so back pops *this* synthetic one instead of
+    // exiting the PWA's history stack.
+    const guard = { __pokerGuard: true, at: Date.now() };
+    try { window.history.pushState(guard, ''); } catch { /* ignore */ }
+    const onPopState = (e) => {
+      // Still on table → user wants to leave. Confirm if mid-hand.
+      const inLiveHand = useTableStore.getState().gameState?.phase &&
+        !['WaitingForPlayers', 'HandComplete', 'Showdown'].includes(
+          useTableStore.getState().gameState.phase
+        );
+      if (inLiveHand) {
+        const ok = window.confirm('Leave the table mid-hand? Your hand will be auto-folded.');
+        if (!ok) {
+          // Re-push guard so the next back press is still caught.
+          try { window.history.pushState(guard, ''); } catch {}
+          return;
+        }
+      }
+      useGameStore.getState().setScreen?.('lobby');
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [screen]);
+
   // Handle screen transitions
   useEffect(() => {
     const prevScreen = prevScreenRef.current;
@@ -1100,26 +1133,47 @@ export default function App() {
   return (
     <div className={`screen-transition ${transitionClass}`}>
       {(connStatus === 'disconnected' || connStatus === 'error') && (
-        // Wrapper captures NO clicks so it can't swallow taps meant for the
-        // game UI underneath. Only the inner pill opts back into interaction.
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
-          pointerEvents: 'none',
-          display: 'flex', justifyContent: 'center',
-          paddingTop: 'max(env(safe-area-inset-top, 0px), 6px)',
-        }}>
+        // PWA audit #7: bumped size + added a bottom mirror so the
+        // indicator is unmissable during live play. Top banner catches
+        // desktop/landscape; bottom pill is thumb-reachable on mobile
+        // portrait where the top of the screen is a dead zone.
+        <>
           <div style={{
-            pointerEvents: 'auto',
-            background: connStatus === 'error' ? 'rgba(220,38,38,0.95)' : 'rgba(180,83,9,0.95)',
-            color: '#fff', fontSize: '0.8rem', fontWeight: 600,
-            padding: '6px 14px', letterSpacing: '0.03em',
-            borderRadius: '0 0 10px 10px',
-            maxWidth: 'min(92vw, 560px)',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+            position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
+            pointerEvents: 'none',
+            display: 'flex', justifyContent: 'center',
+            paddingTop: 'max(env(safe-area-inset-top, 0px), 6px)',
           }}>
-            {connStatus === 'error' ? '⚠ Connection error — retrying…' : '⚠ Reconnecting to server…'}
+            <div style={{
+              pointerEvents: 'auto',
+              background: connStatus === 'error' ? 'rgba(220,38,38,0.97)' : 'rgba(234,88,12,0.97)',
+              color: '#fff', fontSize: '0.92rem', fontWeight: 700,
+              padding: '10px 18px', letterSpacing: '0.03em',
+              borderRadius: '0 0 12px 12px',
+              maxWidth: 'min(92vw, 560px)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.1)',
+              animation: 'connWarnPulse 1.5s ease-in-out infinite alternate',
+            }}>
+              {connStatus === 'error' ? '⚠ Connection error — retrying…' : '⚠ Reconnecting to server…'}
+            </div>
           </div>
-        </div>
+          <div style={{
+            position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 110px)',
+            left: '50%', transform: 'translateX(-50%)',
+            zIndex: 99999, pointerEvents: 'none',
+          }}>
+            <div style={{
+              background: connStatus === 'error' ? 'rgba(220,38,38,0.95)' : 'rgba(234,88,12,0.95)',
+              color: '#fff', fontSize: '0.78rem', fontWeight: 700,
+              padding: '6px 14px', borderRadius: '999px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.5)',
+              whiteSpace: 'nowrap',
+            }}>
+              ● Offline — reconnecting
+            </div>
+          </div>
+          <style>{`@keyframes connWarnPulse { from { filter: brightness(0.92) } to { filter: brightness(1.15) } }`}</style>
+        </>
       )}
       <Suspense fallback={<ChunkLoader />}>
         <Lobby activeTab={activeNavTab} onTabChange={handleNavTabChange} pwaAction={pwaAction} waitlistContext={waitlistContext} />

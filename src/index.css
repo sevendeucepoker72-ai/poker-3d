@@ -12,7 +12,13 @@ body {
 
 #root {
   width: 100vw;
+  /* PWA audit #12: Android Chrome retracts the URL bar as you scroll,
+     which makes `100vh` a larger value and pushes the action bar below
+     the visible area. Use `100dvh` (dynamic viewport height) when
+     supported so the HUD always fits the ACTUAL viewport, and the old
+     `100vh` stays as a fallback for older browsers. */
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
