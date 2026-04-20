@@ -2617,6 +2617,31 @@ export default function GameHUD() {
                 >
                   ⚙ Hotkey Settings
                 </button>
+                {/* Customize Avatar — moved into Options per user request.
+                    AvatarCustomizer is a full-screen 3D view (Canvas +
+                    OrbitControls), not an overlay, so clicking it leaves
+                    the table. Same confirmation pattern as Back to Lobby
+                    for mid-hand exits so a stray tap doesn't auto-fold
+                    a live hand. */}
+                <button
+                  className="options-action-btn"
+                  onClick={() => {
+                    const inLiveHand = phase && phase !== 'WaitingForPlayers'
+                      && phase !== 'HandComplete' && phase !== 'Showdown';
+                    const mySeatObj = gameState?.seats?.[yourSeat];
+                    const chipsAtRisk = (mySeatObj?.currentBet || 0) > 0;
+                    if (inLiveHand && (isMyTurn || chipsAtRisk)) {
+                      const ok = typeof window !== 'undefined'
+                        && window.confirm('Customize avatar? You\'ll leave the table and your hand will be auto-folded.');
+                      if (!ok) return;
+                    }
+                    setShowOptions(false);
+                    leaveTable();
+                    setScreen('customizer');
+                  }}
+                >
+                  🧑 Customize Avatar
+                </button>
               </div>
             )}
           </div>
