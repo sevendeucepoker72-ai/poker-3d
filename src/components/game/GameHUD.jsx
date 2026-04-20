@@ -356,6 +356,17 @@ export default function GameHUD() {
 
   // === Rabbit Hunt state ===
   const [showRabbitPanel, setShowRabbitPanel] = useState(false);
+  // Client-side rabbit-hunt throttle. Timestamp (ms) until the next request is
+  // allowed. 0 = ready. Cleared at start of each hand.
+  const [rabbitHuntCooldownUntil, setRabbitHuntCooldownUntil] = useState(0);
+  // Re-render once per second while the cooldown is active so the countdown
+  // label in the button updates.
+  const [, setRabbitTick] = useState(0);
+  useEffect(() => {
+    if (rabbitHuntCooldownUntil <= Date.now()) return;
+    const id = setInterval(() => setRabbitTick((n) => n + 1), 500);
+    return () => clearInterval(id);
+  }, [rabbitHuntCooldownUntil]);
   const [playerFoldedThisHand, setPlayerFoldedThisHand] = useState(false);
 
   // === Sound volume (#8) ===
@@ -430,6 +441,10 @@ export default function GameHUD() {
 
   // === All-In Confirmation state ===
   const [showAllInConfirm, setShowAllInConfirm] = useState(false);
+  // Stale-modal guard: close automatically if the player stops being active
+  // (lost turn, disconnect mid-decision) or after 10 seconds — prevents a
+  // frozen overlay from blocking action buttons on the next hand.
+  const allInConfirmTimerRef = useRef(null);
   const skipAllInConfirm = (() => {
     try {
       const raw = sessionStorage.getItem('app_poker_settings');
@@ -506,6 +521,26 @@ export default function GameHUD() {
   const seats = gameState?.seats || [];
   const myPlayer = yourSeat >= 0 && seats[yourSeat] ? seats[yourSeat] : null;
   const isSeated = myPlayer != null;
+
+  // Persist sit-out preference across a refresh or reconnect. Without this,
+  // an intentionally sat-out player gets re-seated on every reload because
+  // `sittingOut` lives only in the in-memory store. On mount (first time we
+  // see a seat), if the stored flag is TRUE and we aren't already sitting
+  // out, replay the toggle. On every change, mirror to sessionStorage.
+  const sittingOutPersistDidRestore = useRef(false);
+  useEffect(() => {
+    if (sittingOutPersistDidRestore.current || !isSeated) return;
+    sittingOutPersistDidRestore.current = true;
+    try {
+      if (sessionStorage.getItem('app_poker_sittingOut') === '1' && !sittingOut) {
+        toggleSitOut && toggleSitOut();
+      }
+    } catch { /* ignore */ }
+  }, [isSeated, sittingOut, toggleSitOut]);
+  useEffect(() => {
+    try { sessionStorage.setItem('app_poker_sittingOut', sittingOut ? '1' : '0'); }
+    catch { /* ignore */ }
+  }, [sittingOut]);
 
   // AFK tracker — installed here so `isSeated` and `sittingOut` are in scope.
   const { isAFK } = useAFKTracker({
@@ -1343,6 +1378,28 @@ export default function GameHUD() {
     }
   }, [timeLeft, isMyTurn, callAmount, sendAction, playSound]);
 
+  // All-In confirm modal watchdog — clear on turn end or after 10s idle.
+  useEffect(() => {
+    if (!showAllInConfirm) {
+      if (allInConfirmTimerRef.current) {
+        clearTimeout(allInConfirmTimerRef.current);
+        allInConfirmTimerRef.current = null;
+      }
+      return;
+    }
+    if (!isMyTurn) {
+      // Turn ended (timeout, disconnect, server advanced hand) — close modal.
+      setShowAllInConfirm(false);
+      return;
+    }
+    allInConfirmTimerRef.current = setTimeout(() => {
+      setShowAllInConfirm(false);
+    }, 10000);
+    return () => {
+      if (allInConfirmTimerRef.current) clearTimeout(allInConfirmTimerRef.current);
+    };
+  }, [showAllInConfirm, isMyTurn]);
+
   // Hotkey-hints fade manager: reset on each new turn, begin fade after 24s,
   // fully hide at 30s. Cleans up on unmount or turn change.
   useEffect(() => {
@@ -1676,15 +1733,26 @@ export default function GameHUD() {
     if (phase === 'PreFlop' || phase === 'WaitingForPlayers') {
       setInsuranceDismissed(false);
       setShowInsurance(false);
+      // Also reset the rabbit-hunt cooldown — fresh hand gets a fresh request.
+      setRabbitHuntCooldownUntil(0);
     }
   }, [phase]);
 
-  // Favorite bet size helpers
+  // Favorite bet size helpers. Storage key retained for backward compat with
+  // existing users; all raise-memory state (favs + last pct) will migrate to
+  // the unified `app_poker_raiseMemory` blob on next save.
+  const RAISE_MEM_KEY = 'app_poker_raiseMemory';
   const saveFavBetSize = (index) => {
     const newFavs = [...favBetSizes];
     newFavs[index] = raiseAmount;
     setFavBetSizes(newFavs);
     sessionStorage.setItem('app_poker_betSizes', JSON.stringify(newFavs));
+    // Unified blob (mirror) — single source of truth going forward.
+    try {
+      const mem = JSON.parse(sessionStorage.getItem(RAISE_MEM_KEY) || '{}');
+      mem.favSizes = newFavs;
+      sessionStorage.setItem(RAISE_MEM_KEY, JSON.stringify(mem));
+    } catch { /* ignore */ }
   };
 
   const loadFavBetSize = (index) => {
@@ -1692,6 +1760,29 @@ export default function GameHUD() {
     if (val !== null) {
       setRaiseAmount(Math.max(minRaiseTotal, Math.min(val, maxRaise)));
     }
+  };
+
+  // Delete / reset — previously users had no way to clear a slot they'd
+  // accidentally filled with a bad size. Right-click / long-press on a fav
+  // slot calls clearFavBetSize; the toolbar "Reset Sizes" menu clears all.
+  const clearFavBetSize = (index) => {
+    const newFavs = [...favBetSizes];
+    newFavs[index] = null;
+    setFavBetSizes(newFavs);
+    sessionStorage.setItem('app_poker_betSizes', JSON.stringify(newFavs));
+    try {
+      const mem = JSON.parse(sessionStorage.getItem(RAISE_MEM_KEY) || '{}');
+      mem.favSizes = newFavs;
+      sessionStorage.setItem(RAISE_MEM_KEY, JSON.stringify(mem));
+    } catch { /* ignore */ }
+  };
+  const clearAllFavBetSizes = () => {
+    const newFavs = [null, null, null];
+    setFavBetSizes(newFavs);
+    sessionStorage.setItem('app_poker_betSizes', JSON.stringify(newFavs));
+    try {
+      sessionStorage.removeItem(RAISE_MEM_KEY);
+    } catch { /* ignore */ }
   };
 
   // GIF reaction buttons for chat
@@ -1777,10 +1868,41 @@ export default function GameHUD() {
     }
   }, [hotkeyOpen]);
 
-  // Keyboard shortcuts (using customizable hotkeys)
+  // Keyboard shortcuts (using customizable hotkeys).
+  // Guards, in order:
+  //  1. Input/textarea focused → user is typing, don't fire actions.
+  //  2. Any contenteditable element focused → same reasoning.
+  //  3. `chatOpen` true AND event target is inside chat panel → focus trap.
+  //  4. Escape ALWAYS handled regardless of turn — closes any open modal.
+  //  5. On touch devices with an external BT keyboard, require a chord key
+  //     (Ctrl/Alt/Meta/Shift) to avoid accidental taps on the on-screen
+  //     keyboard triggering fold/call by coincidence. (Re-uses the
+  //     isTouchDevice flag declared earlier in the component.)
   const handleKeyDown = useCallback((e) => {
-    if (!isMyTurn) return;
+    // #3: Escape always closes an open raise slider or all-in confirm first.
+    if (e.key === 'Escape') {
+      if (showRaiseSlider) {
+        setShowRaiseSlider(false);
+        e.preventDefault();
+        return;
+      }
+      if (showAllInConfirm) {
+        setShowAllInConfirm(false);
+        e.preventDefault();
+        return;
+      }
+    }
+    // #4: focus trap — input/textarea/contentEditable suppress hotkeys.
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.target?.isContentEditable) return;
+
+    if (!isMyTurn) return;
+
+    // #7: touch device + no modifier → ignore. Physical BT keyboard users
+    // almost always type with modifiers for chorded commands, so this is a
+    // cheap way to skip the stray taps while still letting power users hit
+    // Ctrl+F for fold, Cmd+C for call, etc. if they want.
+    if (isTouchDevice && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) return;
 
     const key = e.key;
     if (key === hotkeys.fold) {
@@ -1797,7 +1919,7 @@ export default function GameHUD() {
     } else if (key === hotkeys.allIn) {
       handleAction('allIn');
     }
-  }, [isMyTurn, handleAction, callAmount, raiseAmount, hotkeys]);
+  }, [isMyTurn, handleAction, callAmount, raiseAmount, hotkeys, showRaiseSlider, showAllInConfirm, isTouchDevice]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -2030,6 +2152,25 @@ export default function GameHUD() {
                 </div>
               ))}
             </div>
+          )}
+          {/* Verify Deck chip — shows when the server has revealed this hand's
+              seed so the player can inspect the provably-fair proof. Previously
+              the ProvablyFair overlay was only reachable via a deeply-nested
+              toolbar button; most users never saw that it existed. */}
+          {deckRevelation && (
+            <button
+              type="button"
+              className="winner-banner-verify"
+              onClick={(e) => { e.stopPropagation(); setShowProvablyFair(true); }}
+              style={{
+                marginLeft: 10, padding: '2px 10px', borderRadius: 999,
+                background: 'rgba(0,217,255,0.12)', color: '#00D9FF',
+                border: '1px solid rgba(0,217,255,0.35)',
+                fontSize: '0.75rem', cursor: 'pointer',
+              }}
+            >
+              🔐 Verify Deck
+            </button>
           )}
         </div>
       )}
@@ -3016,13 +3157,24 @@ export default function GameHUD() {
         </div>
       )}
 
-      {/* Rabbit Hunt button (after hand ends, player folded) */}
+      {/* Rabbit Hunt button (after hand ends, player folded).
+          Tracks a 20s client-side cooldown so the user can't spam requests
+          (server throttles too, but silently — the button just looked broken
+          between taps). Cooldown resets on next hand. */}
       {phase === 'HandComplete' && playerFoldedThisHand && !rabbitCards && !showShowdown && (
         <button
           className="rabbit-hunt-btn"
-          onClick={() => requestRabbitHunt()}
+          disabled={rabbitHuntCooldownUntil > Date.now()}
+          style={rabbitHuntCooldownUntil > Date.now() ? { opacity: 0.55, cursor: 'default' } : undefined}
+          onClick={() => {
+            if (rabbitHuntCooldownUntil > Date.now()) return;
+            requestRabbitHunt();
+            setRabbitHuntCooldownUntil(Date.now() + 20000);
+          }}
         >
-          Show Rabbit {'\uD83D\uDC30'}
+          {rabbitHuntCooldownUntil > Date.now()
+            ? `Rabbit (${Math.ceil((rabbitHuntCooldownUntil - Date.now()) / 1000)}s)`
+            : `Show Rabbit \uD83D\uDC30`}
         </button>
       )}
 
@@ -3639,9 +3791,23 @@ export default function GameHUD() {
         </div>
       </div>, document.body)}
 
-      {/* All-In Confirmation Popup */}
+      {/* All-In Confirmation Popup.
+          Two UX fixes vs. the previous version:
+            • Overlay click no longer auto-dismisses — this is a high-stakes
+              decision, an errant tap outside the card shouldn't silently
+              discard the confirm. User must use the Cancel button.
+            • Stale modal guard: if the player's turn ends without resolving
+              the dialog (e.g. disconnect mid-confirm), we auto-close after 10s
+              OR on `!isMyTurn`, so the next turn's action buttons aren't hidden
+              behind a frozen overlay. */}
       {showAllInConfirm && (
-        <div className="allin-confirm-overlay" onClick={() => setShowAllInConfirm(false)}>
+        <div
+          className="allin-confirm-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Go all-in confirmation"
+          onClick={(e) => { e.stopPropagation(); /* intentionally non-dismissive */ }}
+        >
           <div className="allin-confirm-panel" onClick={(e) => e.stopPropagation()}>
             <div className="allin-confirm-title">Go All-In?</div>
             <div className="allin-confirm-amount">
