@@ -2604,9 +2604,18 @@ export default function GameHUD() {
                   </div>
                   <span className="options-volume-label">{sfxVolume === 0 ? 'Muted' : sfxVolume < 0.3 ? 'Low' : sfxVolume < 0.7 ? 'Medium' : 'Loud'}</span>
                 </div>
-                {/* Keyboard shortcuts (#9) */}
+                {/* Keyboard shortcuts (#9) — read-only reference list */}
                 <button className="options-action-btn" onClick={() => { setShowShortcuts(true); setShowOptions(false); }}>
                   ⌨️ Shortcuts
+                </button>
+                {/* Hotkey Settings — moved here from the standalone floating
+                    ⚙ gear per user request. Opens the editable HotkeySettings
+                    panel where each action's key can be remapped. */}
+                <button
+                  className="options-action-btn"
+                  onClick={() => { setHotkeyOpen(true); setShowOptions(false); }}
+                >
+                  ⚙ Hotkey Settings
                 </button>
               </div>
             )}
@@ -3998,14 +4007,10 @@ export default function GameHUD() {
       {/* Training overlay */}
       {trainingEnabled && <TrainingOverlay />}
 
-      {/* Hotkey settings gear button */}
-      <button
-        className="hotkey-gear-btn"
-        onClick={() => setHotkeyOpen(true)}
-        title="Hotkey Settings"
-      >
-        {'\u2699'}
-      </button>
+      {/* Floating Hotkey gear button removed — moved into Options menu
+          per user request ("move hotkey settings up into the options
+          menu"). The overlay itself still renders conditionally below,
+          opened via the new Options > Hotkey Settings item. */}
 
       {/* Hotkey settings overlay */}
       <OverlayBoundary name="Hotkey Settings" onClose={() => setHotkeyOpen(false)}>
