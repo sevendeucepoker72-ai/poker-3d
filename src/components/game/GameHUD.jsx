@@ -2617,6 +2617,40 @@ export default function GameHUD() {
                 >
                   ⚙ Hotkey Settings
                 </button>
+                {/* Table felt theme picker. Four swatches inline — tap
+                    to apply. Driven via the `poker:set-theme` window
+                    event so PokerTable2D (sibling) picks up the change
+                    without prop-drilling. Matches the emoji-picker
+                    plumbing. Active swatch gets a cyan ring. */}
+                <div className="options-theme-row" role="radiogroup" aria-label="Table felt color">
+                  <span className="options-label">🎨 Table Felt</span>
+                  <div className="options-theme-swatches">
+                    {[
+                      { key: 'blue',    label: '🔵 Speed',    preview: 'linear-gradient(135deg, #1a3a6e, #0f2447)' },
+                      { key: 'green',   label: '🟢 Classic',  preview: 'linear-gradient(135deg, #2e7d52, #1a5438)' },
+                      { key: 'black',   label: '⬛ Midnight', preview: 'linear-gradient(135deg, #1a1a2e, #0d0d1a)' },
+                      { key: 'crimson', label: '🔴 Crimson',  preview: 'linear-gradient(135deg, #7c1d1d, #4a0f0f)' },
+                    ].map(({ key, label, preview }) => {
+                      const active = (sessionStorage.getItem('app_poker_theme') || 'blue') === key;
+                      return (
+                        <button
+                          key={key}
+                          role="radio"
+                          aria-checked={active}
+                          className={`options-theme-swatch ${active ? 'options-theme-swatch--active' : ''}`}
+                          title={label}
+                          style={{ background: preview }}
+                          onClick={() => {
+                            window.dispatchEvent(new CustomEvent('poker:set-theme', { detail: { key } }));
+                            /* Don't close the Options menu — let the user
+                               compare themes live. Close with the gear
+                               toggle or tap outside when satisfied. */
+                          }}
+                        >{active ? '✓' : ''}</button>
+                      );
+                    })}
+                  </div>
+                </div>
                 {/* Pick Avatar Emoji — quick in-game seat-emoji swap.
                     The picker itself lives inside PokerTable2D (it needs
                     the hero emoji state + sessionStorage wiring); we open

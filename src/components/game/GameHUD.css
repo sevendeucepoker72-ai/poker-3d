@@ -280,6 +280,44 @@
   width: 100%;
 }
 
+/* Table-theme picker inside Options menu (moved from floating
+   .table2d-theme-btn). Four gradient swatches in a row, click to
+   apply — no accept/cancel step. Active one gets a cyan ring + check. */
+.options-theme-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+}
+.options-theme-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.options-theme-swatch {
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s, border-color 0.18s, box-shadow 0.18s;
+  padding: 0;
+}
+.options-theme-swatch:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.options-theme-swatch--active {
+  border-color: rgba(0, 217, 255, 0.8) !important;
+  box-shadow: 0 0 0 2px rgba(0, 217, 255, 0.35), 0 4px 10px rgba(0, 217, 255, 0.25);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
 .options-action-btn:hover {
   background: rgba(40, 40, 70, 0.8);
   border-color: #6ABAFF;

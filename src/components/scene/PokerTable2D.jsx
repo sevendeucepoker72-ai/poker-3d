@@ -733,17 +733,43 @@ export default function PokerTable2D() {
     return () => ro.disconnect();
   }, []);
 
-  /* ── Table theme ──────────────────────────────────────────── */
+  /* ── Table theme ──────────────────────────────────────────────
+     Default felt changed from 🟢 Classic green → 🔵 Speed blue per user
+     request ("CHANGE THE BASE DEFAULT FELT COLOR TO THE BLUE ONE").
+     Existing users with a saved preference in sessionStorage keep
+     whatever they last picked — only the fresh-install default shifts. */
   const [themeKey, setThemeKey] = useState(() => {
-    try { return sessionStorage.getItem('app_poker_theme') || 'green'; } catch { return 'green'; }
+    try { return sessionStorage.getItem('app_poker_theme') || 'blue'; } catch { return 'blue'; }
   });
-  const theme = TABLE_THEMES[themeKey] || TABLE_THEMES.green;
+  const theme = TABLE_THEMES[themeKey] || TABLE_THEMES.blue;
 
   const cycleTheme = useCallback(() => {
     const next = THEME_KEYS[(THEME_KEYS.indexOf(themeKey) + 1) % THEME_KEYS.length];
     setThemeKey(next);
     try { sessionStorage.setItem('app_poker_theme', next); } catch {}
   }, [themeKey]);
+
+  // Theme picker wired through the same window-event pattern as the
+  // emoji picker so GameHUD's Options menu can drive it without needing
+  // to prop-drill between sibling components. `poker:set-theme` with
+  // detail:{ key } jumps directly to a chosen theme; `poker:cycle-theme`
+  // advances by one (matches the old cycle button's behavior).
+  useEffect(() => {
+    const onSet = (e) => {
+      const key = e?.detail?.key;
+      if (key && TABLE_THEMES[key]) {
+        setThemeKey(key);
+        try { sessionStorage.setItem('app_poker_theme', key); } catch {}
+      }
+    };
+    const onCycle = () => cycleTheme();
+    window.addEventListener('poker:set-theme', onSet);
+    window.addEventListener('poker:cycle-theme', onCycle);
+    return () => {
+      window.removeEventListener('poker:set-theme', onSet);
+      window.removeEventListener('poker:cycle-theme', onCycle);
+    };
+  }, [cycleTheme]);
 
   /* ── Hero emoji avatar ────────────────────────────────────── */
   const [heroEmoji, setHeroEmoji] = useState(() => {
@@ -920,9 +946,11 @@ export default function PokerTable2D() {
         </div>
       )}
 
-      <button className="table2d-theme-btn" onClick={cycleTheme} title="Change table theme">
-        {theme.name}
-      </button>
+      {/* Floating .table2d-theme-btn REMOVED per user request — the table
+          theme cycle button was cluttering the bottom-left corner. Now
+          accessible from GameHUD's Options menu as a proper theme picker.
+          We still listen for `poker:set-theme` / `poker:cycle-theme`
+          window events (see useEffect above) to receive the selection. */}
 
       {/* Floating .table2d-emoji-btn REMOVED per user request — the emoji
           picker is now triggered from the Options menu in GameHUD via a
