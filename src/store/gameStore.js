@@ -65,32 +65,45 @@ export const useGameStore = create((set, get) => ({
   oauthIdToken: null,
   oauthTokenExpiry: null,
 
-  login: (userData, token) => set({
-    isLoggedIn: true,
-    userId: userData.id,
-    authToken: token,
-    playerName: userData.displayName || userData.username,
-    phone: userData.phone || '',
-    needsUsername: userData.needsUsername || false,
-    chips: userData.chips,
-    screen: userData.needsUsername ? 'chooseUsername' : 'lobby',
-  }),
+  login: (userData, token) => {
+    // Invalidate the cached progress blob so the UI can't render a stale
+    // level from a prior session before the server's `playerProgress`
+    // event arrives. The cache reappears with fresh values on first
+    // setProgress call triggered by the server. Fixes "level 5 everytime
+    // I relogin" symptom where cached sessionStorage level overrode the
+    // authoritative DB level for a visible window.
+    try { sessionStorage.removeItem('poker_player_progress'); } catch {}
+    set({
+      isLoggedIn: true,
+      userId: userData.id,
+      authToken: token,
+      playerName: userData.displayName || userData.username,
+      phone: userData.phone || '',
+      needsUsername: userData.needsUsername || false,
+      chips: userData.chips,
+      screen: userData.needsUsername ? 'chooseUsername' : 'lobby',
+    });
+  },
 
   // OAuth2 SSO login
-  oauthLogin: (tokens, userData) => set({
-    isLoggedIn: true,
-    userId: userData.id,
-    authToken: tokens.access_token,
-    oauthAccessToken: tokens.access_token,
-    oauthRefreshToken: tokens.refresh_token,
-    oauthIdToken: tokens.id_token || null,
-    oauthTokenExpiry: Date.now() + (tokens.expires_in * 1000),
-    playerName: userData.displayName || userData.username,
-    phone: userData.phone || '',
-    needsUsername: userData.needsUsername || false,
-    chips: userData.chips,
-    screen: userData.needsUsername ? 'chooseUsername' : 'lobby',
-  }),
+  oauthLogin: (tokens, userData) => {
+    // Same cache-invalidation as login — see comment there.
+    try { sessionStorage.removeItem('poker_player_progress'); } catch {}
+    set({
+      isLoggedIn: true,
+      userId: userData.id,
+      authToken: tokens.access_token,
+      oauthAccessToken: tokens.access_token,
+      oauthRefreshToken: tokens.refresh_token,
+      oauthIdToken: tokens.id_token || null,
+      oauthTokenExpiry: Date.now() + (tokens.expires_in * 1000),
+      playerName: userData.displayName || userData.username,
+      phone: userData.phone || '',
+      needsUsername: userData.needsUsername || false,
+      chips: userData.chips,
+      screen: userData.needsUsername ? 'chooseUsername' : 'lobby',
+    });
+  },
 
   logout: () => {
     const idToken = get().oauthIdToken;

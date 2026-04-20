@@ -263,15 +263,36 @@ export const useProgressStore = create((set, get) => ({
 
   setProgress: (incoming) => {
     const prev = get().progress || defaultProgress();
-    // Merge incoming server data with local data (local wins for persistence)
     const merged = { ...prev, ...incoming };
-    // Re-derive level info from totalXp to stay consistent
-    if (merged.totalXp != null) {
+
+    // CRITICAL FIX: the server is authoritative for level/xp (it's
+    // guarded by the `hydrated` flag + SQL GREATEST()). Previously this
+    // path re-derived level from a stale `totalXp` in the sessionStorage
+    // cache — overwriting the real server level with whatever the
+    // client's XP curve computed (e.g. server level=9 got stomped to
+    // level=5 by stale totalXp). Root cause of "level keeps resetting
+    // every login".
+    //
+    // Priority order now:
+    //   1. If server sent an explicit `level`, ADOPT IT and back-compute
+    //      totalXp from the client's level curve so the derived math
+    //      agrees going forward.
+    //   2. Else, if we have a totalXp (pre-server-auth flow), derive.
+    //   3. Else, keep previous values.
+    if (incoming.level != null) {
+      merged.level = incoming.level;
+      merged.xp = incoming.xp != null ? incoming.xp : (merged.xp || 0);
+      // Reconcile totalXp so a subsequent XP gain on client lands on
+      // the correct curve position for this level.
+      merged.totalXp = totalXpForLevel(incoming.level) + (merged.xp || 0);
+      merged.xpToNextLevel = xpRequiredForLevel(incoming.level);
+    } else if (merged.totalXp != null) {
       const info = levelFromTotalXp(merged.totalXp);
       merged.level = info.level;
       merged.xp = info.xp;
       merged.xpToNextLevel = info.xpToNextLevel;
     }
+
     saveProgress(merged);
     set({ progress: merged });
   },
