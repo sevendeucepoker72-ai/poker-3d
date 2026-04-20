@@ -2617,6 +2617,20 @@ export default function GameHUD() {
                 >
                   ⚙ Hotkey Settings
                 </button>
+                {/* Pick Avatar Emoji — quick in-game seat-emoji swap.
+                    The picker itself lives inside PokerTable2D (it needs
+                    the hero emoji state + sessionStorage wiring); we open
+                    it here via a window CustomEvent so GameHUD doesn't
+                    need to prop-drill into a sibling component. */}
+                <button
+                  className="options-action-btn"
+                  onClick={() => {
+                    setShowOptions(false);
+                    window.dispatchEvent(new CustomEvent('poker:open-emoji-picker'));
+                  }}
+                >
+                  😀 Pick Avatar Emoji
+                </button>
                 {/* Customize Avatar — moved into Options per user request.
                     AvatarCustomizer is a full-screen 3D view (Canvas +
                     OrbitControls), not an overlay, so clicking it leaves

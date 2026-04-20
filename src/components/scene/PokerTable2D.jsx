@@ -757,6 +757,24 @@ export default function PokerTable2D() {
     try { sessionStorage.setItem('app_poker_emoji', emoji); } catch {}
   }, []);
 
+  // Expose the picker toggle so GameHUD's Options menu can open it after
+  // we remove the floating .table2d-emoji-btn. Using a custom window event
+  // to avoid importing a shared state slice / prop-drilling through the
+  // PokerTable2D → GameHUD boundary (siblings, not parent/child).
+  useEffect(() => {
+    const open  = () => setShowEmojiPicker(true);
+    const close = () => setShowEmojiPicker(false);
+    const toggle = () => setShowEmojiPicker((v) => !v);
+    window.addEventListener('poker:open-emoji-picker', open);
+    window.addEventListener('poker:close-emoji-picker', close);
+    window.addEventListener('poker:toggle-emoji-picker', toggle);
+    return () => {
+      window.removeEventListener('poker:open-emoji-picker', open);
+      window.removeEventListener('poker:close-emoji-picker', close);
+      window.removeEventListener('poker:toggle-emoji-picker', toggle);
+    };
+  }, []);
+
   /* ── Phase banner ─────────────────────────────────────────── */
   const [phaseBanner, setPhaseBanner] = useState(null);
   const phaseBannerTimerRef = useRef(null);
@@ -906,34 +924,36 @@ export default function PokerTable2D() {
         {theme.name}
       </button>
 
-      {/* ── Hero emoji avatar picker ───────────────────────── */}
-      {yourSeat >= 0 && (
-        <button
-          className="table2d-emoji-btn"
-          onClick={() => setShowEmojiPicker(v => !v)}
-          title="Change avatar"
-        >
-          {heroEmoji || '👤'}
-        </button>
-      )}
-      {showEmojiPicker && (
-        <div className="table2d-emoji-picker">
-          <div className="table2d-emoji-picker__title">Pick Avatar</div>
-          <div className="table2d-emoji-picker__grid">
-            {EMOJI_OPTIONS.map(e => (
-              <button key={e} className="table2d-emoji-option" onClick={() => pickEmoji(e)}>
-                {e}
+      {/* Floating .table2d-emoji-btn REMOVED per user request — the emoji
+          picker is now triggered from the Options menu in GameHUD via a
+          `poker:open-emoji-picker` window event. The picker itself still
+          renders here (so it has access to the local heroEmoji state +
+          pickEmoji handler); a click outside dismisses it. */}
+      {showEmojiPicker && yourSeat >= 0 && (
+        <>
+          <div className="table2d-emoji-backdrop" onClick={() => setShowEmojiPicker(false)} aria-hidden="true" />
+          <div className="table2d-emoji-picker" role="dialog" aria-label="Pick an avatar emoji">
+            <div className="table2d-emoji-picker__title">Pick Avatar</div>
+            <div className="table2d-emoji-picker__grid">
+              {EMOJI_OPTIONS.map(e => (
+                <button
+                  key={e}
+                  className={`table2d-emoji-option ${heroEmoji === e ? 'table2d-emoji-option--active' : ''}`}
+                  onClick={() => pickEmoji(e)}
+                >
+                  {e}
+                </button>
+              ))}
+              <button
+                className="table2d-emoji-option table2d-emoji-option--reset"
+                onClick={() => pickEmoji('')}
+                title="Use initial letter"
+              >
+                A
               </button>
-            ))}
-            <button
-              className="table2d-emoji-option table2d-emoji-option--reset"
-              onClick={() => pickEmoji('')}
-              title="Use initial letter"
-            >
-              A
-            </button>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* ── Seat pods ───────────────────────────────────────
