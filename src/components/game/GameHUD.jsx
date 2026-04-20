@@ -338,9 +338,16 @@ export default function GameHUD() {
     return [null, null, null];
   });
 
-  // Auto-rebuy state
+  // Auto-rebuy state. Defaults ON — in testing mode / live-room mode,
+  // players never want to see the "you're broke" prompt. If they bust,
+  // the next hand starts with a fresh min-buyin stack. Server-side has a
+  // matching free-reload in autoStartNextHand.
   const [autoRebuy, setAutoRebuy] = useState(() => {
-    try { return sessionStorage.getItem('app_poker_autoRebuy') === 'true'; } catch (e) { return false; }
+    try {
+      const raw = sessionStorage.getItem('app_poker_autoRebuy');
+      if (raw === null) return true;
+      return raw === 'true';
+    } catch (e) { return true; }
   });
   const [rebuyNotification, setRebuyNotification] = useState(null);
   const prevPhaseForRebuyRef = useRef(null);
