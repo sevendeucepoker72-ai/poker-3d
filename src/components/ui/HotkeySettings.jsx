@@ -32,7 +32,7 @@ function getKeyDisplay(key) {
 
 export function loadHotkeys() {
   try {
-    const stored = localStorage.getItem('app_poker_hotkeys');
+    const stored = sessionStorage.getItem('app_poker_hotkeys');
     if (stored) {
       const parsed = JSON.parse(stored);
       return { ...DEFAULT_HOTKEYS, ...parsed };
@@ -44,7 +44,7 @@ export function loadHotkeys() {
 }
 
 export function saveHotkeys(hotkeys) {
-  localStorage.setItem('app_poker_hotkeys', JSON.stringify(hotkeys));
+  sessionStorage.setItem('app_poker_hotkeys', JSON.stringify(hotkeys));
 }
 
 export default function HotkeySettings({ open, onClose }) {

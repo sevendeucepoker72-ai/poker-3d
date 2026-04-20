@@ -19,13 +19,22 @@ export default function AchievementPopup() {
 
   if (notifications.length === 0) return null;
 
+  // Cap visible toasts at 3 — if more are in the queue, the older ones have
+  // already auto-dismissed; this just prevents a freak burst from painting 20
+  // stacked popups and covering the whole screen mid-hand.
+  const visible = notifications.slice(-3);
+
   return (
-    <div className="achievement-popup-container">
-      {notifications.map((notification) => (
+    // pointerEvents:'none' on the wrapper so the entire container can't swallow
+    // clicks to the game UI (check/call/raise buttons) — only the individual
+    // toasts opt back into clicks.
+    <div className="achievement-popup-container" style={{ pointerEvents: 'none' }}>
+      {visible.map((notification) => (
         <div
           key={notification.id}
           className={`achievement-popup ${notification.type === 'achievement' ? 'achievement-type' : 'mission-type'}`}
           onClick={() => dismissNotification(notification.id)}
+          style={{ pointerEvents: 'auto' }}
         >
           <div className="achievement-popup-icon">
             {notification.type === 'achievement' ? '\u{1F3C6}' : '\u{2705}'}

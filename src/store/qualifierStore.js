@@ -31,7 +31,7 @@ const DEFAULT_QUALIFIERS = [
     maxPlayers: 999,
     registered: 0,
     registrants: [],
-    scheduledAt: '2026-04-19T12:00:00.000Z',
+    scheduledAt: '2026-04-26T12:00:00.000Z',
     color: '#00D9FF',
     active: true,
     promotionId: null,
@@ -116,19 +116,75 @@ function getOccurrenceDates(recurrence) {
 
 function loadFromStorage() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch (_) {}
   return null;
 }
 
 function saveToStorage(qualifiers) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(qualifiers)); } catch (_) {}
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(qualifiers)); } catch (_) {}
+}
+
+// ── Auto-advance past-due default qualifiers ────────────────────────────────
+// If the weekly/monthly qualifier's scheduledAt is in the past (because the
+// event didn't run or wasn't rescheduled), advance it to the next occurrence.
+// This prevents "Sun 19 Apr — Starting soon" from persisting after Apr 19.
+function nextSundayUTC(from = new Date(), hour = 12, minute = 0) {
+  const d = new Date(from);
+  d.setUTCHours(hour, minute, 0, 0);
+  // If today is Sunday and the time has already passed, roll to next Sunday
+  const isSunday = d.getUTCDay() === 0;
+  if (!isSunday || d <= from) {
+    const daysUntilSunday = (7 - d.getUTCDay()) % 7 || 7;
+    d.setUTCDate(d.getUTCDate() + daysUntilSunday);
+  }
+  return d.toISOString();
+}
+
+function nextThirdSundayUTC(from = new Date(), hour = 11, minute = 0) {
+  let year = from.getUTCFullYear();
+  let month = from.getUTCMonth();
+  while (true) {
+    const day = get3rdSundayUTC(year, month);
+    const candidate = new Date(Date.UTC(year, month, day, hour, minute, 0));
+    if (candidate > from) return candidate.toISOString();
+    // Roll to next month
+    month++;
+    if (month > 11) { month = 0; year++; }
+  }
+}
+
+function advancePastDueDefaults(qualifiers) {
+  const now = new Date();
+  let changed = false;
+  const updated = qualifiers.map((q) => {
+    if (!q?.scheduledAt || q.templateId) return q; // skip instances of templates
+    const scheduled = new Date(q.scheduledAt);
+    if (isNaN(scheduled.getTime()) || scheduled > now) return q;
+    if (q.id === 'weekly-qualifier') {
+      changed = true;
+      return { ...q, scheduledAt: nextSundayUTC(now, 12, 0), registered: 0, registrants: [] };
+    }
+    if (q.id === 'monthly-qualifier') {
+      changed = true;
+      return { ...q, scheduledAt: nextThirdSundayUTC(now, 11, 0), registered: 0, registrants: [] };
+    }
+    return q;
+  });
+  return { qualifiers: updated, changed };
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 let _qualifiers = loadFromStorage() || DEFAULT_QUALIFIERS;
+{
+  const { qualifiers, changed } = advancePastDueDefaults(_qualifiers);
+  if (changed) {
+    _qualifiers = qualifiers;
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(_qualifiers)); } catch {}
+  }
+}
 const _subscribers = new Set();
 
 function notify() {

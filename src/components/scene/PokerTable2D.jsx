@@ -19,6 +19,7 @@ import {
 import { getPlayerTag, COLOR_TAGS } from '../ui/PlayerNotes';
 import { getRankInfo } from '../ui/RankBadge';
 import { getOpponentStats } from '../../utils/opponentTracker';
+import { useAvatar, PlayerAvatar } from '../../hooks/useAvatar';
 import './PokerTable2D.css';
 
 /* ── Player-notes callback (App.jsx sets this) ─────────────── */
@@ -490,11 +491,11 @@ const SeatPod = memo(function SeatPod({
         )}
         <div
           className={`seat-pod__avatar${isWinner ? ' seat-pod__avatar--win' : ''}${isFolded ? ' seat-pod__avatar--fold' : ''}`}
-          style={{ background: avatarColor }}
+          style={avatarPhoto ? { background: avatarColor } : { background: 'transparent' }}
         >
           {avatarPhoto
             ? <img src={avatarPhoto} alt={name} className="seat-pod__avatar-photo" />
-            : avatarContent
+            : <PlayerAvatar playerId={name} name={name} size={42} style={{ border: '2px solid rgba(255,255,255,0.15)' }} />
           }
         </div>
         {isSittingOut && <div className="seat-pod__away-badge">AWAY</div>}
@@ -674,26 +675,26 @@ export default function PokerTable2D() {
 
   /* ── Table theme ──────────────────────────────────────────── */
   const [themeKey, setThemeKey] = useState(() => {
-    try { return localStorage.getItem('app_poker_theme') || 'green'; } catch { return 'green'; }
+    try { return sessionStorage.getItem('app_poker_theme') || 'green'; } catch { return 'green'; }
   });
   const theme = TABLE_THEMES[themeKey] || TABLE_THEMES.green;
 
   const cycleTheme = useCallback(() => {
     const next = THEME_KEYS[(THEME_KEYS.indexOf(themeKey) + 1) % THEME_KEYS.length];
     setThemeKey(next);
-    try { localStorage.setItem('app_poker_theme', next); } catch {}
+    try { sessionStorage.setItem('app_poker_theme', next); } catch {}
   }, [themeKey]);
 
   /* ── Hero emoji avatar ────────────────────────────────────── */
   const [heroEmoji, setHeroEmoji] = useState(() => {
-    try { return localStorage.getItem('app_poker_emoji') || ''; } catch { return ''; }
+    try { return sessionStorage.getItem('app_poker_emoji') || ''; } catch { return ''; }
   });
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const pickEmoji = useCallback((emoji) => {
     setHeroEmoji(emoji);
     setShowEmojiPicker(false);
-    try { localStorage.setItem('app_poker_emoji', emoji); } catch {}
+    try { sessionStorage.setItem('app_poker_emoji', emoji); } catch {}
   }, []);
 
   /* ── Phase banner ─────────────────────────────────────────── */

@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useProgressStore } from '../../store/progressStore';
 import { useGameStore } from '../../store/gameStore';
 import { createPortal } from 'react-dom';
 import { getSocket } from '../../services/socketService';
+import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 import './BattlePass.css';
 
 const SEASON_NAME = 'Season 1: The River';
@@ -40,17 +41,17 @@ const TIERS = buildTiers();
 
 export default function BattlePass({ onClose }) {
   const progress = useProgressStore((s) => s.progress);
-  // Premium stored in both localStorage (for instant UI) AND user stats (server-side source of truth)
+  // Premium stored in both sessionStorage (for instant UI) AND user stats (server-side source of truth)
   const [hasPremium, setHasPremium] = useState(() => {
-    // Check server-side source first (synced from user stats on login), fall back to localStorage
+    // Check server-side source first (synced from user stats on login), fall back to sessionStorage
     try {
       if (progress?.battlePassPremium) return true;
-      return localStorage.getItem('app_bp_premium') === 'true';
+      return sessionStorage.getItem('app_bp_premium') === 'true';
     } catch { return false; }
   });
-  const [claimedTiers, setClaimedTiers] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('app_bp_claimed') || '[]'); } catch { return []; }
-  });
+  // Server is the source of truth for claimed tiers (user_battle_pass_claims).
+  // `progress.battlePassClaimed` is hydrated by durableState on login.
+  const claimedTiers = progress?.battlePassClaimed || [];
 
   const currentXP = progress?.totalXp ?? 0;
   const currentTier = Math.min(TOTAL_TIERS, Math.floor(currentXP / XP_PER_TIER));
@@ -60,24 +61,72 @@ export default function BattlePass({ onClose }) {
   const [scrollTier, setScrollTier] = useState(Math.max(1, currentTier - 2));
   const visibleTiers = TIERS.slice(scrollTier - 1, scrollTier + 9);
 
+  // Track active listeners so unmounting mid-claim doesn't leave ghost handlers
+  // on the shared socket. Also prevents listener buildup if the user spams Claim.
+  const activeListenersRef = useRef(new Set());
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      const sock = getSocket();
+      if (sock) {
+        activeListenersRef.current.forEach((fn) => sock.off('battlePassTierClaimed', fn));
+      }
+      activeListenersRef.current.clear();
+    };
+  }, []);
+
+  // Hardware back button closes the modal (not the app) on Android/iOS
+  useBackButtonClose(true, onClose);
+
   const claimable = useMemo(
     () => TIERS.filter(t => t.tier <= currentTier && !claimedTiers.includes(t.tier)),
     [currentTier, claimedTiers]
   );
 
   function claimTier(tier) {
-    if (!claimedTiers.includes(tier)) {
-      const next = [...claimedTiers, tier];
-      setClaimedTiers(next);
-      localStorage.setItem('app_bp_claimed', JSON.stringify(next));
-    }
+    if (claimedTiers.includes(tier)) return;
+    const socket = getSocket();
+    if (!socket) return;
+    // Optimistic: local immediate update; server will re-broadcast durableState
+    // on success. On failure, next durableState hydration will correct.
+    const onResult = (res) => {
+      socket.off('battlePassTierClaimed', onResult);
+      activeListenersRef.current.delete(onResult);
+      if (!mountedRef.current) return;
+      if (!res?.success && res?.error !== 'already_claimed') {
+        console.warn('claimBattlePassTier failed:', res?.error);
+      }
+      // Always refresh from server
+      socket.emit('getDurableState', { seasonId: 'season_1_the_river' });
+    };
+    activeListenersRef.current.add(onResult);
+    socket.on('battlePassTierClaimed', onResult);
+    socket.emit('claimBattlePassTier', { seasonId: 'season_1_the_river', tierId: tier });
   }
 
+  const [claimingAll, setClaimingAll] = useState(false);
+
   function claimAll() {
-    const allClaimable = claimable.map(t => t.tier);
-    const next = [...new Set([...claimedTiers, ...allClaimable])];
-    setClaimedTiers(next);
-    localStorage.setItem('app_bp_claimed', JSON.stringify(next));
+    if (claimingAll) return; // debounce — user can't mash button to spam server
+    const socket = getSocket();
+    if (!socket) return;
+    setClaimingAll(true);
+    for (const t of claimable) {
+      socket.emit('claimBattlePassTier', { seasonId: 'season_1_the_river', tierId: t.tier });
+    }
+    const tid = setTimeout(() => {
+      socket.emit('getDurableState', { seasonId: 'season_1_the_river' });
+      if (mountedRef.current) setClaimingAll(false);
+    }, 800);
+    // Hook into our unmount cleanup (mounted state already tracked above)
+    // via a tiny ref check — if component unmounts first, clear the timer.
+    const unmountInterval = setInterval(() => {
+      if (!mountedRef.current) {
+        clearTimeout(tid);
+        clearInterval(unmountInterval);
+      }
+    }, 200);
   }
 
   return createPortal(
@@ -91,8 +140,13 @@ export default function BattlePass({ onClose }) {
           </div>
           <div className="bp-header-right">
             {claimable.length > 0 && (
-              <button className="bp-claim-all-btn" onClick={claimAll}>
-                Claim All ({claimable.length})
+              <button
+                className="bp-claim-all-btn"
+                onClick={claimAll}
+                disabled={claimingAll}
+                style={{ opacity: claimingAll ? 0.6 : 1, cursor: claimingAll ? 'default' : 'pointer' }}
+              >
+                {claimingAll ? 'Claiming…' : `Claim All (${claimable.length})`}
               </button>
             )}
             <button className="bp-close" onClick={onClose}>✕</button>
@@ -171,20 +225,22 @@ export default function BattlePass({ onClose }) {
             </div>
             <button className="bp-upgrade-btn" onClick={() => {
               const socket = typeof getSocket === 'function' ? getSocket() : null;
-              if (socket) {
-                socket.emit('purchaseBattlePass', {}, (ack) => {
-                  if (ack?.success) {
-                    localStorage.setItem('app_bp_premium', 'true');
-                    setHasPremium(true);
-                  } else {
-                    alert(ack?.error || 'Purchase failed — not enough Stars');
-                  }
-                });
-              } else {
-                // Offline fallback
-                localStorage.setItem('app_bp_premium', 'true');
-                setHasPremium(true);
+              // Premium MUST go through the server so Stars get deducted and
+              // the entitlement persists. Previously an offline fallback set
+              // `app_bp_premium=true` locally — user saw premium UI but server
+              // never granted the rewards, causing a sync mismatch on next login.
+              if (!socket?.connected) {
+                alert('Not connected to server. Please try again when the connection indicator is green.');
+                return;
               }
+              socket.emit('purchaseBattlePass', {}, (ack) => {
+                if (ack?.success) {
+                  sessionStorage.setItem('app_bp_premium', 'true');
+                  setHasPremium(true);
+                } else {
+                  alert(ack?.error || 'Purchase failed — not enough Stars');
+                }
+              });
             }}>
               ⭐ Go Premium · 950 Stars
             </button>

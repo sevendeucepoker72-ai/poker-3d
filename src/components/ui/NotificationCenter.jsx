@@ -8,26 +8,26 @@ const MAX_STORED = 50;
 
 function loadStoredNotifs() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY + '_list');
+    const raw = sessionStorage.getItem(STORAGE_KEY + '_list');
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
 
 function saveStoredNotifs(list) {
   try {
-    localStorage.setItem(STORAGE_KEY + '_list', JSON.stringify(list.slice(0, MAX_STORED)));
+    sessionStorage.setItem(STORAGE_KEY + '_list', JSON.stringify(list.slice(0, MAX_STORED)));
   } catch {}
 }
 
 function loadReadIds() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
 
 function saveReadIds(ids) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(ids)); } catch {}
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(ids)); } catch {}
 }
 
 function timeAgo(ts) {

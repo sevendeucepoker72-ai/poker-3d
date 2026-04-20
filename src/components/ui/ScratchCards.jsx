@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { getSocket } from '../../services/socketService';
+import { useProgressStore } from '../../store/progressStore';
 import './ScratchCards.css';
 
 const SYMBOLS = [
@@ -15,15 +16,15 @@ const HANDS_KEY = 'poker_hands_since_scratch';
 
 export function checkScratchCardEarned() {
   try {
-    let hands = parseInt(localStorage.getItem(HANDS_KEY) || '0', 10);
+    let hands = parseInt(sessionStorage.getItem(HANDS_KEY) || '0', 10);
     hands += 1;
     if (hands >= 10) {
-      const cards = parseInt(localStorage.getItem(CARDS_KEY) || '0', 10);
-      localStorage.setItem(CARDS_KEY, String(cards + 1));
-      localStorage.setItem(HANDS_KEY, '0');
+      const cards = parseInt(sessionStorage.getItem(CARDS_KEY) || '0', 10);
+      sessionStorage.setItem(CARDS_KEY, String(cards + 1));
+      sessionStorage.setItem(HANDS_KEY, '0');
       return true;
     }
-    localStorage.setItem(HANDS_KEY, String(hands));
+    sessionStorage.setItem(HANDS_KEY, String(hands));
     return false;
   } catch {
     return false;
@@ -32,7 +33,7 @@ export function checkScratchCardEarned() {
 
 function getAvailableCards() {
   try {
-    return parseInt(localStorage.getItem(CARDS_KEY) || '0', 10);
+    return parseInt(sessionStorage.getItem(CARDS_KEY) || '0', 10);
   } catch {
     return 0;
   }
@@ -42,7 +43,7 @@ function useCard() {
   try {
     const cards = getAvailableCards();
     if (cards > 0) {
-      localStorage.setItem(CARDS_KEY, String(cards - 1));
+      sessionStorage.setItem(CARDS_KEY, String(cards - 1));
       return true;
     }
     return false;
@@ -99,20 +100,67 @@ function generateGrid() {
 }
 
 export default function ScratchCards({ onClose }) {
-  const [cardsAvailable, setCardsAvailable] = useState(getAvailableCards());
+  // Server is the source of truth for card count. Fall back to sessionStorage for
+  // existing players until their next durableState hydration.
+  const serverCards = useProgressStore((s) => s.progress?.scratchCardsAvailable);
+  const cardsAvailable = serverCards != null ? serverCards : getAvailableCards();
   const [grid, setGrid] = useState(null);
   const [revealed, setRevealed] = useState(new Set());
   const [result, setResult] = useState(null);
   const [gameActive, setGameActive] = useState(false);
+  const [pendingReveal, setPendingReveal] = useState(null); // server reward awaiting animation
 
   const startNewCard = useCallback(() => {
-    if (!useCard()) return;
-    setCardsAvailable((c) => c - 1);
-    setGrid(generateGrid());
-    setRevealed(new Set());
-    setResult(null);
-    setGameActive(true);
-  }, []);
+    if (cardsAvailable <= 0) return;
+    const socket = getSocket();
+    if (!socket) return;
+
+    const onRevealed = (res) => {
+      socket.off('scratchCardRevealed', onRevealed);
+      if (!res?.success) {
+        alert(res?.error === 'no_cards_available' ? 'No scratch cards available.' : 'Could not reveal');
+        return;
+      }
+
+      // Pick a matching-3 SYMBOLS tile based on reward type for the animation.
+      const reward = res.reward || {};
+      let winnerSymbol;
+      if (reward.stars) {
+        winnerSymbol = SYMBOLS.find((s) => s.prizeType === 'xp') || SYMBOLS[1];
+      } else if (reward.item) {
+        winnerSymbol = SYMBOLS.find((s) => s.name === 'Diamond') || SYMBOLS[3];
+      } else {
+        winnerSymbol = SYMBOLS[0]; // chips
+      }
+
+      setPendingReveal({ winnerSymbol, reward });
+
+      // Pre-render a grid with 3 of the winner symbol.
+      const positions = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+      for (let i = positions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [positions[i], positions[j]] = [positions[j], positions[i]];
+      }
+      const winPositions = new Set(positions.slice(0, 3));
+      const newGrid = [];
+      for (let i = 0; i < 9; i++) {
+        if (winPositions.has(i)) {
+          newGrid.push({ ...winnerSymbol, isWinner: true });
+        } else {
+          const others = SYMBOLS.filter((s) => s.icon !== winnerSymbol.icon);
+          newGrid.push({ ...others[Math.floor(Math.random() * others.length)], isWinner: false });
+        }
+      }
+
+      setGrid(newGrid);
+      setRevealed(new Set());
+      setResult(null);
+      setGameActive(true);
+    };
+
+    socket.on('scratchCardRevealed', onRevealed);
+    socket.emit('claimScratchCard');
+  }, [cardsAvailable]);
 
   const revealCell = useCallback((index) => {
     if (!gameActive || revealed.has(index)) return;
@@ -121,34 +169,20 @@ export default function ScratchCards({ onClose }) {
     newRevealed.add(index);
     setRevealed(newRevealed);
 
-    // Check if all cells are revealed
-    if (newRevealed.size === 9) {
-      // Check for matches
-      const counts = {};
-      grid.forEach((cell) => {
-        counts[cell.icon] = (counts[cell.icon] || 0) + 1;
+    // When all cells revealed, show the server-determined reward.
+    if (newRevealed.size === 9 && pendingReveal) {
+      const { winnerSymbol, reward } = pendingReveal;
+      setResult({
+        win: true,
+        prize: reward.chips || reward.stars || 0,
+        prizeType: reward.stars ? 'stars' : reward.item ? 'item' : 'chips',
+        icon: winnerSymbol.icon,
+        name: winnerSymbol.name,
+        serverLabel: reward.label,
       });
-
-      let won = null;
-      for (const [icon, count] of Object.entries(counts)) {
-        if (count >= 3) {
-          won = grid.find((c) => c.icon === icon);
-          break;
-        }
-      }
-
-      if (won) {
-        setResult({ win: true, prize: won.prize, prizeType: won.prizeType, icon: won.icon, name: won.name });
-        const socket = getSocket();
-        if (socket) {
-          socket.emit('claimSpinReward', { type: won.prizeType, value: won.prize, label: `Scratch Card: ${won.name}` });
-        }
-      } else {
-        setResult({ win: false });
-      }
       setGameActive(false);
     }
-  }, [gameActive, revealed, grid]);
+  }, [gameActive, revealed, pendingReveal]);
 
   const matchedIcon = result?.win ? result.icon : null;
 

@@ -19,6 +19,8 @@ import { connectToServer, getSocket, subscribeConnectionStatus } from './service
 import { initPersistence, syncToServer, installBeforeUnloadSync } from './services/persistenceService';
 import LoadingScreen from './components/ui/LoadingScreen';
 import LoginScreen from './components/ui/LoginScreen';
+import AuthCallback from './components/ui/AuthCallback';
+import { isAuthCallback as checkIsAuthCallback, refreshAccessToken } from './services/authService';
 // Heavy screens loaded lazily — only when the user first navigates to them
 const Lobby = lazy(() => import('./components/ui/Lobby'));
 const AvatarCustomizer = lazy(() => import('./components/ui/AvatarCustomizer'));
@@ -55,6 +57,100 @@ function getPWAAction() {
   return new URLSearchParams(window.location.search).get('action') || null;
 }
 
+/**
+ * Deep-link from player app (americanpub.poker). Two shapes:
+ *   1. Waitlist hand-off: ?context=waitlist&gameId=...&position=...&venue=...&startTime=...&token=...
+ *      App auto-auths and joins Beginner's Table with waitlist banner.
+ *   2. General "Play Online": ?token=...
+ *      App auto-auths only; user lands on the normal lobby signed in.
+ * Returns null when neither applies.
+ */
+function parseDeepLinkContext() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (!token) return null;
+
+    const ctx = (params.get('context') === 'waitlist')
+      ? {
+          source: 'waitlist',
+          token,
+          gameId: params.get('gameId') || null,
+          position: Number(params.get('position')) || null,
+          venue: params.get('venue') || null,
+          startTime: params.get('startTime') || null,
+        }
+      : { source: 'general', token };
+
+    // Scrub the token + context params from the URL bar immediately so the
+    // ticket doesn't sit in window.location / history / referrer / page title.
+    // The parsed context stays in React state.
+    try {
+      const cleanPath = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, document.title, cleanPath || '/');
+    } catch { /* ignore */ }
+
+    return ctx;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Username chooser — shown after first phone login
+function ChooseUsernameScreen() {
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = () => {
+    if (!name.trim() || name.trim().length < 2) { setError('Name must be at least 2 characters'); return; }
+    setLoading(true);
+    setError('');
+    const socket = getSocket();
+    if (!socket) { setError('Not connected'); setLoading(false); return; }
+    socket.emit('setDisplayName', { name: name.trim() });
+    socket.once('setDisplayNameResult', (data) => {
+      setLoading(false);
+      if (data.success) {
+        useGameStore.getState().setPlayerName(data.displayName);
+        useGameStore.getState().setScreen('lobby');
+      } else {
+        setError(data.error || 'Failed to set name');
+      }
+    });
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#0a1628', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui' }}>
+      <div style={{ width: 360, padding: 32, background: '#111827', borderRadius: 16, border: '1px solid rgba(0,217,255,0.2)' }}>
+        <h2 style={{ color: '#00D9FF', margin: '0 0 8px', textAlign: 'center' }}>Choose Your Name</h2>
+        <p style={{ color: '#888', fontSize: '0.85rem', textAlign: 'center', margin: '0 0 24px' }}>
+          This is how other players will see you at the table.
+        </p>
+        <input
+          type="text" value={name} onChange={e => setName(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+          placeholder="Enter display name" maxLength={20} autoFocus
+          style={{
+            width: '100%', padding: '14px 16px', borderRadius: 10, fontSize: '1rem',
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(0,217,255,0.3)',
+            color: '#fff', outline: 'none', boxSizing: 'border-box',
+          }}
+        />
+        {error && <div style={{ color: '#F87171', fontSize: '0.8rem', marginTop: 8 }}>{error}</div>}
+        <button onClick={handleSubmit} disabled={loading} style={{
+          width: '100%', padding: '14px', marginTop: 16, borderRadius: 10,
+          background: 'linear-gradient(135deg, #00D9FF, #00D9FFbb)',
+          color: '#0a0a1a', border: 'none', cursor: 'pointer',
+          fontWeight: 700, fontSize: '1rem', opacity: loading ? 0.6 : 1,
+        }}>
+          {loading ? 'Setting...' : 'Continue'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Thin fallback shown while a lazy chunk loads
 function ChunkLoader() {
   return <div style={{ position:'fixed', inset:0, background:'#000000', display:'flex', alignItems:'center', justifyContent:'center', color:'#aaaaaa', fontFamily:'system-ui', fontSize:'0.9rem' }}>Loading…</div>;
@@ -62,18 +158,38 @@ function ChunkLoader() {
 
 export default function App() {
   const screen = useGameStore((s) => s.screen);
+  const isLoggedIn = useGameStore((s) => s.isLoggedIn);
   const [connStatus, setConnStatus] = useState('disconnected');
   const [loading, setLoading] = useState(true);
   const [loadingExiting, setLoadingExiting] = useState(false);
+  // OAuth2 callback detection
+  const [isOAuthCallback] = useState(() => checkIsAuthCallback());
   // Shared replay link — show viewer without requiring login
   const [sharedReplay] = useState(() => parseReplayParam());
   // PWA shortcut action — auto-trigger after login
   const [pwaAction] = useState(() => getPWAAction());
+  // Deep-link from player app (americanpub.poker). Either a waitlist hand-off
+  // (auto-seat at Beginner's + banner) or a general play ticket (auth-only).
+  const [deepLinkContext] = useState(() => parseDeepLinkContext());
+  const waitlistContext = deepLinkContext?.source === 'waitlist' ? deepLinkContext : null;
+  const [deepLinkTimedOut, setDeepLinkTimedOut] = useState(false);
   const [showSpinReveal, setShowSpinReveal] = useState(false);
   const [spinMultiplier, setSpinMultiplier] = useState(2);
   const [quickGameResult, setQuickGameResult] = useState(null);
   const [notesPlayer, setNotesPlayer] = useState(null);
-  const [activeNavTab, setActiveNavTab] = useState('home');
+  // Active nav tab — persisted in sessionStorage so a screen transition
+  // (lobby → table → lobby) or a tab-close-and-reopen doesn't reset the user
+  // to "home". Bounded to known tabs; unknown values fall back to 'home'.
+  const [activeNavTab, setActiveNavTab] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('poker_active_nav_tab');
+      const KNOWN = new Set(['home', 'play', 'friends', 'shop', 'profile']);
+      return KNOWN.has(saved) ? saved : 'home';
+    } catch { return 'home'; }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem('poker_active_nav_tab', activeNavTab); } catch { /* ignore */ }
+  }, [activeNavTab]);
 
   // Transition state
   const [displayedScreen, setDisplayedScreen] = useState(screen);
@@ -150,6 +266,21 @@ export default function App() {
 
     socket.on('connect', () => useTableStore.getState().setConnected(true));
     socket.on('disconnect', () => useTableStore.getState().setConnected(false));
+
+    // Re-authenticate on every socket connect (initial + reconnect). Railway
+    // restarts, brief network drops, and phone-locks all produce a new socket
+    // id on the server, so the authSessions entry for the old id is gone —
+    // we have to redo the handshake or any in-game action we emit next will
+    // be rejected as unauthenticated. Uses the stored OAuth access token.
+    socket.on('connect', () => {
+      const token = (() => { try { return sessionStorage.getItem('poker_auth_token'); } catch { return null; } })();
+      if (!token) return;
+      // Only re-emit if we already have an authenticated session — otherwise
+      // the initial login flow (handled below) will take care of it.
+      const st = useGameStore.getState();
+      if (!st.isLoggedIn) return;
+      socket.emit('oauthLogin', { accessToken: token });
+    });
 
     // Handle both full state and delta patches from the server
     socket.on('gameState', (data) => {
@@ -253,6 +384,28 @@ export default function App() {
     socket.on('playerProgress', (progress) => {
       useProgressStore.getState().setProgress(progress);
       initPersistence(progress);
+      // First playerProgress after login → pull durable state (inventory, BP claims, prefs…)
+      if (!socket.__durableFetched) {
+        socket.__durableFetched = true;
+        socket.emit('getDurableState', { seasonId: 'season_1_the_river' });
+      }
+    });
+
+    // Full durable-state snapshot (inventory + BP claims + customization + prefs + stars)
+    socket.on('durableState', (payload) => {
+      useProgressStore.getState().setDurableState(payload || {});
+      // Also hydrate the avatar store from server customization so the user's
+      // look follows them across devices.
+      const c = payload?.customization;
+      if (c && Object.keys(c).length > 0) {
+        const current = useGameStore.getState().avatar;
+        useGameStore.setState({ avatar: { ...current, ...c, faceShape: { ...(current.faceShape || {}), ...(c.faceShape || {}) } } });
+      }
+    });
+
+    // Partial inventory update after buy/equip
+    socket.on('inventoryUpdated', (payload) => {
+      useProgressStore.getState().setInventory(payload?.inventory || []);
     });
 
     socket.on('achievementUnlocked', (data) => {
@@ -287,7 +440,9 @@ export default function App() {
       // Progress update will come via playerProgress event
     });
 
-    // Hand history from server
+    // Hand history from server — kept in memory only (server is source of
+    // truth; it broadcasts durableState on reconnect so we rehydrate). No
+    // sessionStorage mirror per the "no sessionStorage" policy.
     socket.on('handHistory', (history) => {
       useTableStore.getState().addHandHistory(history);
     });
@@ -400,6 +555,8 @@ export default function App() {
       socket.off('dailyBonusClaimed');
       socket.off('missionClaimed');
       socket.off('handHistory');
+      socket.off('durableState');
+      socket.off('inventoryUpdated');
       socket.off('deckCommitment');
       socket.off('deckSeedRevealed');
       socket.off('stakingUpdated');
@@ -419,72 +576,145 @@ export default function App() {
     };
   }, []);
 
-  // Auto-login with saved token
+  // Auto-login: try OAuth refresh token first, then legacy token
   useEffect(() => {
-    let localToken = null;
-    let sessionToken = null;
-    try { localToken   = localStorage.getItem('poker_auth_token'); }   catch { /* private mode */ }
-    try { sessionToken = sessionStorage.getItem('poker_auth_token'); } catch { /* private mode */ }
-    const savedToken = localToken || sessionToken;
-    if (!savedToken) return;
+    // Skip auto-login if we're handling an OAuth callback
+    if (isOAuthCallback) return;
 
+    let cancelled = false;
     const socket = getSocket();
     if (!socket) return;
 
-    let timeoutId = null;
-    let cancelled = false;
-
-    const clearStoredToken = () => {
-      try { localStorage.removeItem('poker_auth_token'); }   catch {}
-      try { localStorage.removeItem('poker_keep_signed_in'); } catch {}
+    const clearStoredTokens = () => {
+      try { sessionStorage.removeItem('poker_auth_token'); } catch {}
+      try { sessionStorage.removeItem('poker_keep_signed_in'); } catch {}
+      try { sessionStorage.removeItem('poker_oauth_refresh'); } catch {}
+      try { sessionStorage.removeItem('poker_oauth_id_token'); } catch {}
+      try { sessionStorage.removeItem('poker_token_expiry'); } catch {}
       try { sessionStorage.removeItem('poker_auth_token'); } catch {}
     };
 
-    const handleAutoLoginResult = (result) => {
-      if (cancelled) return;
-      clearTimeout(timeoutId);
-      socket.off('loginResult', handleAutoLoginResult);
-      if (result?.success && result.userData) {
-        try {
-          if (localToken) {
-            localStorage.setItem('poker_auth_token', result.token);
-            localStorage.setItem('poker_keep_signed_in', '1');
+    // Attempt OAuth refresh token flow
+    const oauthRefresh = sessionStorage.getItem('poker_oauth_refresh');
+    if (oauthRefresh) {
+      let oauthResultListener = null;
+      let oauthConnectHandler = null;
+      let oauthTimeoutId = null;
+
+      refreshAccessToken(oauthRefresh)
+        .then((tokens) => {
+          if (cancelled) return;
+          sessionStorage.setItem('poker_auth_token', tokens.access_token);
+          sessionStorage.setItem('poker_oauth_refresh', tokens.refresh_token);
+          sessionStorage.setItem('poker_oauth_id_token', tokens.id_token || '');
+          sessionStorage.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000));
+
+          const handleResult = (result) => {
+            if (cancelled) return;
+            socket.off('loginResult', handleResult);
+            oauthResultListener = null;
+            if (oauthTimeoutId) {
+              clearTimeout(oauthTimeoutId);
+              oauthTimeoutId = null;
+            }
+            if (result?.success && result.userData) {
+              useGameStore.getState().oauthLogin(tokens, result.userData);
+            } else {
+              clearStoredTokens();
+            }
+          };
+
+          const doAuth = () => {
+            if (cancelled) return;
+            oauthConnectHandler = null;
+            socket.emit('oauthLogin', { accessToken: tokens.access_token });
+            // Start the 8s watchdog ONLY after we actually emit — previously the
+            // timer started at setup time, so a slow `connect` could eat the
+            // whole budget before the emit ever fired.
+            oauthTimeoutId = setTimeout(() => {
+              if (cancelled) return;
+              oauthTimeoutId = null;
+              if (oauthResultListener) {
+                socket.off('loginResult', oauthResultListener);
+                oauthResultListener = null;
+              }
+            }, 8000);
+          };
+
+          oauthResultListener = handleResult;
+          socket.on('loginResult', handleResult);
+          if (socket.connected) {
+            doAuth();
           } else {
-            sessionStorage.setItem('poker_auth_token', result.token);
+            oauthConnectHandler = doAuth;
+            socket.once('connect', doAuth);
           }
-        } catch {}
-        useGameStore.getState().login(result.userData, result.token);
-      } else {
-        clearStoredToken();
-      }
-    };
+        })
+        .catch(() => {
+          if (cancelled) return;
+          // Refresh failed — clear OAuth tokens and try legacy
+          sessionStorage.removeItem('poker_oauth_refresh');
+          sessionStorage.removeItem('poker_oauth_id_token');
+          sessionStorage.removeItem('poker_token_expiry');
+          tryLegacyAutoLogin();
+        });
 
-    const tryAutoLogin = () => {
-      if (cancelled) return;
-      socket.on('loginResult', handleAutoLoginResult);
-      socket.emit('tokenLogin', { token: savedToken });
-
-      // If no response within 5 seconds, give up and show login screen
-      timeoutId = setTimeout(() => {
-        if (cancelled) return;
-        socket.off('loginResult', handleAutoLoginResult);
-        clearStoredToken();
-      }, 5000);
-    };
-
-    if (socket.connected) {
-      tryAutoLogin();
-    } else {
-      socket.on('connect', tryAutoLogin);
+      return () => {
+        cancelled = true;
+        if (oauthTimeoutId) clearTimeout(oauthTimeoutId);
+        if (oauthResultListener) socket.off('loginResult', oauthResultListener);
+        if (oauthConnectHandler) socket.off('connect', oauthConnectHandler);
+      };
     }
 
-    return () => {
-      cancelled = true;
-      clearTimeout(timeoutId);
-      socket.off('connect', tryAutoLogin);
-      socket.off('loginResult', handleAutoLoginResult);
-    };
-  }, []);
+    // Legacy token auto-login (existing HS256 JWT)
+    function tryLegacyAutoLogin() {
+      let localToken = null;
+      let sessionToken = null;
+      try { localToken   = sessionStorage.getItem('poker_auth_token'); }   catch {}
+      try { sessionToken = sessionStorage.getItem('poker_auth_token'); } catch {}
+      const savedToken = localToken || sessionToken;
+      if (!savedToken) return;
+
+      let timeoutId = null;
+
+      const handleAutoLoginResult = (result) => {
+        if (cancelled) return;
+        clearTimeout(timeoutId);
+        socket.off('loginResult', handleAutoLoginResult);
+        if (result?.success && result.userData) {
+          try {
+            if (localToken) {
+              sessionStorage.setItem('poker_auth_token', result.token);
+              sessionStorage.setItem('poker_keep_signed_in', '1');
+            } else {
+              sessionStorage.setItem('poker_auth_token', result.token);
+            }
+          } catch {}
+          useGameStore.getState().login(result.userData, result.token);
+        } else {
+          clearStoredTokens();
+        }
+      };
+
+      const doLogin = () => {
+        if (cancelled) return;
+        socket.on('loginResult', handleAutoLoginResult);
+        socket.emit('tokenLogin', { token: savedToken });
+        timeoutId = setTimeout(() => {
+          if (cancelled) return;
+          socket.off('loginResult', handleAutoLoginResult);
+          clearStoredTokens();
+        }, 5000);
+      };
+
+      if (socket.connected) doLogin();
+      else socket.once('connect', doLogin);
+    }
+
+    tryLegacyAutoLogin();
+    return () => { cancelled = true; };
+  }, [isOAuthCallback]);
 
   // Handle seat reconnection after token login
   useEffect(() => {
@@ -501,9 +731,121 @@ export default function App() {
     return () => socket.off('reconnectedToTable', handleReconnected);
   }, []);
 
+  // OAuth2 token refresh timer — refresh 5 minutes before expiry
+  useEffect(() => {
+    const expiry = useGameStore.getState().oauthTokenExpiry;
+    if (!expiry) return;
+
+    const refreshAt = expiry - 5 * 60 * 1000;
+    const delay = refreshAt - Date.now();
+    if (delay <= 0) return;
+
+    const timer = setTimeout(async () => {
+      const refresh = sessionStorage.getItem('poker_oauth_refresh');
+      if (!refresh) return;
+      try {
+        const tokens = await refreshAccessToken(refresh);
+        sessionStorage.setItem('poker_auth_token', tokens.access_token);
+        sessionStorage.setItem('poker_oauth_refresh', tokens.refresh_token);
+        sessionStorage.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000));
+        const state = useGameStore.getState();
+        state.setAuth(state.userId, tokens.access_token);
+      } catch {
+        // Refresh failed; user will need to re-login when token expires
+      }
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [useGameStore((s) => s.oauthTokenExpiry)]);
+
+  // Deep-link from player app. If it's a waitlist hand-off, emit
+  // joinWithWaitlistContext so the server auto-seats the player at Beginner's
+  // Table with the banner. If it's a general play ticket, emit authWithTicket
+  // so the server just authenticates and drops the user into the normal lobby.
+  //
+  // CRITICAL: we also listen for `loginResult` from the server and complete
+  // the login via useGameStore. Without this listener the deep-link spinner
+  // stays forever because the store never transitions to isLoggedIn=true.
+  const didEmitDeepLinkRef = useRef(false);
+  useEffect(() => {
+    if (!deepLinkContext) return;
+    if (didEmitDeepLinkRef.current) return;
+    const socket = getSocket();
+    if (!socket) return;
+
+    let cancelled = false;
+    let connectHandler = null;
+    let timeoutId = null;
+
+    const handleLoginResult = (result) => {
+      if (cancelled) return;
+      if (result?.success && result.userData) {
+        try {
+          if (result.token) sessionStorage.setItem('poker_auth_token', result.token);
+          sessionStorage.setItem('poker_keep_signed_in', '1');
+        } catch {}
+        useGameStore.getState().login(result.userData, result.token);
+      } else {
+        console.error('[deep-link] authWithTicket failed:', result?.error);
+      }
+    };
+    socket.on('loginResult', handleLoginResult);
+
+    // auth-only tickets can fire before isLoggedIn (that's the point); waitlist
+    // tickets also include auth, so same rule applies.
+    const emit = () => {
+      if (cancelled) return;
+      if (didEmitDeepLinkRef.current) return;
+      didEmitDeepLinkRef.current = true;
+      connectHandler = null;
+      if (deepLinkContext.source === 'waitlist') {
+        socket.emit('joinWithWaitlistContext', {
+          token: deepLinkContext.token,
+          context: {
+            source: 'waitlist',
+            gameId: deepLinkContext.gameId,
+            position: deepLinkContext.position,
+            venue: deepLinkContext.venue,
+            startTime: deepLinkContext.startTime,
+          },
+        });
+      } else {
+        socket.emit('authWithTicket', { token: deepLinkContext.token });
+      }
+
+      // Fail-safe: if loginResult never comes back within 15s, surface a
+      // retry affordance so the user isn't staring at a forever-spinner.
+      timeoutId = setTimeout(() => {
+        if (cancelled) return;
+        timeoutId = null;
+        console.warn('[deep-link] loginResult never received — ticket likely expired or socket stalled');
+        setDeepLinkTimedOut(true);
+      }, 15000);
+    };
+
+    if (socket.connected) {
+      emit();
+    } else {
+      connectHandler = emit;
+      socket.once('connect', emit);
+    }
+
+    return () => {
+      cancelled = true;
+      socket.off('loginResult', handleLoginResult);
+      if (connectHandler) socket.off('connect', connectHandler);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [deepLinkContext, connStatus]);
+
   const handleSpinComplete = () => {
     setShowSpinReveal(false);
   };
+
+  // OAuth2 callback — intercept before any other screen
+  if (isOAuthCallback) {
+    return <AuthCallback />;
+  }
 
   // Shared replay link — show viewer without any auth requirement
   if (sharedReplay) {
@@ -520,7 +862,87 @@ export default function App() {
   }
 
   if (displayedScreen === 'login') {
+    // Deep-link from marketing/player app: we have a signed ticket in the URL
+    // and are actively authenticating via authWithTicket. Show a spinner
+    // instead of the login screen — making users "sign in again" here is
+    // exactly the bug we're avoiding.
+    if (deepLinkContext) {
+      return (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'linear-gradient(135deg,#0a0a1a,#1a1a3e 60%,#0d0d2b)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#e0e0e0', fontFamily: 'system-ui',
+        }}>
+          <div style={{
+            padding: 32, background: 'rgba(22,33,62,0.95)', borderRadius: 16,
+            textAlign: 'center', maxWidth: 360,
+          }}>
+            {deepLinkTimedOut ? (
+              <>
+                <div style={{ fontSize: 40, marginBottom: 8 }}>⏱️</div>
+                <h2 style={{ color: '#fcd34d', margin: 0, fontSize: 20 }}>Connection timed out</h2>
+                <p style={{ opacity: 0.75, marginTop: 10, fontSize: 14, lineHeight: 1.4 }}>
+                  We didn't hear back from the server. Your ticket may have expired or your
+                  network is unstable. Try again, or sign in normally below.
+                </p>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 18 }}>
+                  <button
+                    onClick={() => {
+                      didEmitDeepLinkRef.current = false;
+                      setDeepLinkTimedOut(false);
+                      // Force the effect to re-run by bumping connStatus dep via a no-op
+                      const socket = getSocket();
+                      if (socket) {
+                        if (socket.connected) socket.emit('authWithTicket', { token: deepLinkContext.token });
+                        else socket.connect();
+                      }
+                    }}
+                    style={{
+                      padding: '10px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                      background: 'linear-gradient(135deg,#B388FF,#7C3AED)', color: '#fff', fontWeight: 700,
+                    }}
+                  >
+                    Retry
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Drop the deep-link context and fall through to normal login
+                      window.location.replace('/');
+                    }}
+                    style={{
+                      padding: '10px 18px', borderRadius: 8, cursor: 'pointer',
+                      background: 'transparent', color: '#aaa',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                    }}
+                  >
+                    Sign in manually
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{
+                  width: 40, height: 40, margin: '0 auto 16px',
+                  border: '3px solid rgba(233,69,96,0.3)', borderTopColor: '#e94560',
+                  borderRadius: '50%', animation: 'dl-spin 0.8s linear infinite',
+                }} />
+                <h2 style={{ color: '#fcd34d', margin: 0, fontSize: 22 }}>Signing you in…</h2>
+                <p style={{ opacity: 0.7, marginTop: 12, fontSize: 14 }}>
+                  Connecting your American Pub Poker session.
+                </p>
+              </>
+            )}
+            <style>{`@keyframes dl-spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        </div>
+      );
+    }
     return <LoginScreen />;
+  }
+
+  if (displayedScreen === 'chooseUsername') {
+    return <ChooseUsernameScreen />;
   }
 
   if (displayedScreen === 'customizer') {
@@ -629,17 +1051,29 @@ export default function App() {
   return (
     <div className={`screen-transition ${transitionClass}`}>
       {(connStatus === 'disconnected' || connStatus === 'error') && (
+        // Wrapper captures NO clicks so it can't swallow taps meant for the
+        // game UI underneath. Only the inner pill opts back into interaction.
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999,
-          background: connStatus === 'error' ? 'rgba(220,38,38,0.95)' : 'rgba(180,83,9,0.95)',
-          color: '#fff', textAlign: 'center', fontSize: '0.8rem', fontWeight: 600,
-          padding: '6px 12px', letterSpacing: '0.03em',
+          pointerEvents: 'none',
+          display: 'flex', justifyContent: 'center',
+          paddingTop: 'max(env(safe-area-inset-top, 0px), 6px)',
         }}>
-          {connStatus === 'error' ? '⚠ Connection error — retrying…' : '⚠ Reconnecting to server…'}
+          <div style={{
+            pointerEvents: 'auto',
+            background: connStatus === 'error' ? 'rgba(220,38,38,0.95)' : 'rgba(180,83,9,0.95)',
+            color: '#fff', fontSize: '0.8rem', fontWeight: 600,
+            padding: '6px 14px', letterSpacing: '0.03em',
+            borderRadius: '0 0 10px 10px',
+            maxWidth: 'min(92vw, 560px)',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+          }}>
+            {connStatus === 'error' ? '⚠ Connection error — retrying…' : '⚠ Reconnecting to server…'}
+          </div>
         </div>
       )}
       <Suspense fallback={<ChunkLoader />}>
-        <Lobby activeTab={activeNavTab} onTabChange={handleNavTabChange} pwaAction={pwaAction} />
+        <Lobby activeTab={activeNavTab} onTabChange={handleNavTabChange} pwaAction={pwaAction} waitlistContext={waitlistContext} />
       </Suspense>
       <AchievementPopup />
       <LevelUpPopup />

@@ -74,7 +74,7 @@ export default function LeakFinder({ onClose }) {
     }
   }, []);
 
-  // Merge server stats with localStorage stats
+  // Merge server stats with sessionStorage stats
   const stats = {};
   const raw = detailedStats || progress || {};
 
@@ -85,9 +85,9 @@ export default function LeakFinder({ onClose }) {
   stats.bluffFrequency = raw.bluffFrequency ?? raw.stats?.bluffFrequency ?? 25;
   stats.foldToSteal = raw.foldToSteal ?? raw.stats?.foldToSteal ?? 60;
 
-  // Also check localStorage for any additional stored stats
+  // Also check sessionStorage for any additional stored stats
   try {
-    const stored = JSON.parse(localStorage.getItem('poker_player_stats') || '{}');
+    const stored = JSON.parse(sessionStorage.getItem('poker_player_stats') || '{}');
     if (stored.vpip !== undefined) stats.vpip = stored.vpip;
     if (stored.pfr !== undefined) stats.pfr = stored.pfr;
     if (stored.af !== undefined) stats.af = stored.af;

@@ -9,9 +9,31 @@ import './HandReplayViewer.css';
  * Each "step" is one of: blinds posted, hole cards dealt, player action, community cards, showdown.
  */
 
+// Variant-aware street layouts. `streets` is an ordered list of
+// { label, phase, afterActions, upToCard } — we advance through them
+// instead of hard-coding flop/turn/river. This handles Omaha (same streets
+// as Hold'em but 4 hole cards — same board timing), Short Deck (same),
+// Stud (no community cards — show per-street up-cards), and Five-Card Draw
+// (no community cards — show discards/draws).
+function streetsForVariant(variant) {
+  const v = (variant || 'texas-holdem').toLowerCase();
+  // Board variants — share Hold'em-style reveal timing.
+  if (v === 'texas-holdem' || v === 'omaha' || v === 'omaha-hi-lo' || v === 'short-deck') {
+    return [
+      { label: 'Flop revealed',  phase: 'Flop',  upToCard: 3 },
+      { label: 'Turn revealed',  phase: 'Turn',  upToCard: 4 },
+      { label: 'River revealed', phase: 'River', upToCard: 5 },
+    ];
+  }
+  // No-board variants — render nothing mid-hand. The action stream already
+  // drives the replay; showdown will reveal hole cards at the end.
+  return [];
+}
+
 function buildReplaySteps(history) {
   if (!history) return [];
   const steps = [];
+  const streets = streetsForVariant(history.variant);
 
   // Step 0: Shuffle / setup
   steps.push({
@@ -104,67 +126,41 @@ function buildReplaySteps(history) {
   const foldedPlayers = new Set();
   let currentPot = runningPot;
 
-  // Determine community card reveal points
+  // Determine community card reveal points (board variants only — stud/draw
+  // skip this entirely).
   const cc = history.communityCards || [];
-  let flopAdded = false;
-  let turnAdded = false;
-  let riverAdded = false;
   let actionCount = 0;
-  const flopAt = Math.min(3, allActions.length);
-  const turnAt = Math.min(flopAt + 3, allActions.length);
-  const riverAt = Math.min(turnAt + 2, allActions.length);
+  // Street reveal thresholds — roughly one round of actions between streets.
+  // Scaled to the total action count so short all-in hands still reveal the board.
+  const perStreet = Math.max(1, Math.floor(allActions.length / Math.max(streets.length, 1)));
+  const streetState = streets.map((s, i) => ({
+    ...s,
+    added: false,
+    at: Math.min((i + 1) * perStreet, allActions.length),
+  }));
 
   for (let i = 0; i < allActions.length; i++) {
     const a = allActions[i];
     actionCount++;
 
-    // Check for community card reveals based on action index
-    if (!flopAdded && actionCount >= flopAt && cc.length >= 3) {
+    // Board reveal — variant-aware (loops over defined streets for this game)
+    for (const street of streetState) {
+      if (street.added) continue;
+      if (actionCount < street.at) continue;
+      if (cc.length < street.upToCard) continue;
       steps.push({
         type: 'community',
-        phase: 'Flop',
-        label: 'Flop revealed',
+        phase: street.phase,
+        label: street.label,
         activeSeat: -1,
         pot: currentPot,
-        communityCards: cc.slice(0, 3),
+        communityCards: cc.slice(0, street.upToCard),
         playerStates: steps[steps.length - 1].playerStates.map((p) => ({
           ...p,
           currentAction: null,
         })),
       });
-      flopAdded = true;
-    }
-
-    if (!turnAdded && flopAdded && actionCount >= turnAt && cc.length >= 4) {
-      steps.push({
-        type: 'community',
-        phase: 'Turn',
-        label: 'Turn revealed',
-        activeSeat: -1,
-        pot: currentPot,
-        communityCards: cc.slice(0, 4),
-        playerStates: steps[steps.length - 1].playerStates.map((p) => ({
-          ...p,
-          currentAction: null,
-        })),
-      });
-      turnAdded = true;
-    }
-
-    if (!riverAdded && turnAdded && actionCount >= riverAt && cc.length >= 5) {
-      steps.push({
-        type: 'community',
-        phase: 'River',
-        label: 'River revealed',
-        activeSeat: -1,
-        pot: currentPot,
-        communityCards: cc.slice(0, 5),
-        playerStates: steps[steps.length - 1].playerStates.map((p) => ({
-          ...p,
-          currentAction: null,
-        })),
-      });
-      riverAdded = true;
+      street.added = true;
     }
 
     // Parse amount from action string

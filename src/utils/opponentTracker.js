@@ -1,7 +1,7 @@
 /**
  * Opponent tracking utility.
  * Tracks VPIP (Voluntarily Put $ In Pot) and PFR (Pre-Flop Raise) for each opponent.
- * Persists stats in localStorage.
+ * Persists stats in sessionStorage.
  */
 
 const STORAGE_KEY = 'app_poker_opponent_stats';
@@ -9,10 +9,10 @@ const STORAGE_KEY = 'app_poker_opponent_stats';
 // In-memory Map: playerName -> { handsObserved, vpipCount, pfrCount, threeBetCount, foldToCbetCount, cbetFaced, aggressiveActions, passiveActions }
 let statsMap = new Map();
 
-// Load from localStorage on init
+// Load from sessionStorage on init
 function loadStats() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       statsMap = new Map(Object.entries(parsed));
@@ -28,7 +28,7 @@ function saveStats() {
     for (const [key, val] of statsMap) {
       obj[key] = val;
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
   } catch {
     // ignore storage errors
   }
@@ -164,5 +164,5 @@ export function recordHandStats(seats, mySeatIndex, gameState) {
  */
 export function resetOpponentStats() {
   statsMap.clear();
-  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
 }

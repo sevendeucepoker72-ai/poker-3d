@@ -1,0 +1,1077 @@
+/* ================================================================
+   mobile-overrides.css — Comprehensive mobile-first overrides
+   Loaded only in the mobile build (main-mobile.jsx)
+   Builds on top of mobile.css with deeper touch optimisations
+   ================================================================ */
+
+/* ── Base: prevent rubber-band scroll, fill viewport ──────────── */
+html, body, #root {
+  height: 100%;
+  height: 100dvh; /* dynamic viewport height — hides URL bar on scroll */
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Global touch targets & tap feedback ──────────────────────── */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* ── Safe area padding helpers ────────────────────────────────── */
+.safe-top    { padding-top:    env(safe-area-inset-top, 0px); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ================================================================
+   LOADING SCREEN
+   ================================================================ */
+.loading-screen {
+  height: 100dvh !important;
+}
+
+/* ================================================================
+   LOGIN SCREEN
+   ================================================================ */
+.login-screen {
+  height: 100dvh !important;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 16px)
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 16px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.login-card {
+  width: 100% !important;
+  max-width: 420px;
+  margin: auto;
+  border-radius: 16px !important;
+}
+.login-input {
+  font-size: 16px !important; /* prevents iOS zoom */
+  height: 52px;
+  border-radius: 10px;
+}
+.login-btn {
+  height: 52px !important;
+  font-size: 1rem !important;
+  border-radius: 10px !important;
+}
+
+/* ================================================================
+   LOBBY — top bar
+   ================================================================ */
+.lobby-top-bar {
+  padding-top: calc(10px + env(safe-area-inset-top, 0px)) !important;
+  padding-left:  calc(12px + env(safe-area-inset-left, 0px)) !important;
+  padding-right: calc(12px + env(safe-area-inset-right, 0px)) !important;
+  padding-bottom: 8px !important;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.lobby-top-bar-chips {
+  font-size: 1rem !important;
+  font-weight: 700;
+}
+/* Hide XP bar — takes up too much real estate on mobile */
+.lobby-xp-bar-container { display: none !important; }
+
+/* ================================================================
+   LOBBY — nav tabs (scrollable pill strip)
+   ================================================================ */
+.lobby-nav {
+  display: flex !important;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  gap: 6px !important;
+  padding: 8px 12px !important;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  position: sticky;
+  top: 0;
+  z-index: 99;
+  backdrop-filter: blur(12px);
+}
+.lobby-nav::-webkit-scrollbar { display: none; }
+.lobby-nav-btn {
+  flex-shrink: 0 !important;
+  padding: 8px 14px !important;
+  border-radius: 20px !important;
+  font-size: 0.8rem !important;
+  white-space: nowrap;
+  min-height: 36px !important;
+}
+.lobby-nav-label { display: none !important; }
+
+/* ================================================================
+   LOBBY — content area
+   ================================================================ */
+.lobby-content, .lobby-tab-content {
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  height: calc(100dvh - 120px);
+}
+.lobby-tab-content { padding: 12px !important;
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important; }
+
+/* ================================================================
+   LOBBY — table cards (single column, touch-friendly)
+   ================================================================ */
+.table-list-grid {
+  grid-template-columns: 1fr !important;
+  gap: 10px !important;
+}
+.table-card {
+  padding: 14px !important;
+  border-radius: 14px !important;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s ease;
+}
+.table-card:active { transform: scale(0.97); }
+
+/* ================================================================
+   LOBBY — quick games (2-col grid)
+   ================================================================ */
+.quick-games-grid {
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 10px !important;
+}
+.quick-game-card {
+  border-radius: 14px !important;
+  padding: 16px 12px !important;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.quick-game-card:active { transform: scale(0.96); }
+
+/* ================================================================
+   LOBBY — featured banner
+   ================================================================ */
+.featured-table-banner {
+  border-radius: 14px !important;
+  padding: 14px !important;
+  margin-bottom: 12px !important;
+}
+.featured-table-btn {
+  width: 100% !important;
+  height: 48px !important;
+  border-radius: 10px !important;
+  font-size: 0.95rem !important;
+}
+
+/* ================================================================
+   LOBBY — modals (full-screen bottom sheets)
+   Scoped to known modal class names only — avoids clobbering
+   game overlays (showdown, rabbit, gesture, shortcuts, etc.)
+   ================================================================ */
+.lobby-modal,
+.create-table-modal,
+.player-profile-modal,
+.settings-modal,
+.buy-in-modal,
+.leave-modal,
+.confirm-modal,
+.overlay-panel {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  top: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: 92dvh !important;
+  height: auto !important;
+  border-radius: 20px 20px 0 0 !important;
+  margin: 0 !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  animation: mobile-sheet-up 0.3s cubic-bezier(0.32, 0.72, 0, 1) !important;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Sheet drag handle */
+.lobby-modal::before,
+.create-table-modal::before {
+  content: '';
+  display: block;
+  width: 36px;
+  height: 4px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+  margin: 10px auto 4px;
+}
+
+@keyframes mobile-sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+/* Overlay backdrop */
+.modal-overlay {
+  background: rgba(0,0,0,0.6) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+/* CreateTableModal specific */
+.create-table-modal {
+  position: fixed !important;
+  left: 0 !important; right: 0 !important; bottom: 0 !important; top: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: 90dvh !important;
+  border-radius: 20px 20px 0 0 !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  animation: mobile-sheet-up 0.3s cubic-bezier(0.32, 0.72, 0, 1) !important;
+}
+
+/* Modal close buttons — bigger touch target */
+[class*="-modal"] .close-btn,
+[class*="-modal"] [data-close],
+.modal-close {
+  min-width: 44px !important;
+  min-height: 44px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* ================================================================
+   BOTTOM NAV — safe area + larger tap targets
+   ================================================================ */
+.bottom-nav {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+  z-index: 200 !important;
+  backdrop-filter: blur(16px) !important;
+  border-top: 1px solid rgba(255,255,255,0.08) !important;
+}
+.bottom-nav-item {
+  flex: 1 !important;
+  min-height: 56px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 3px !important;
+  font-size: 0.62rem !important;
+  padding: 6px 4px 0 !important;
+}
+.bottom-nav-item:active { opacity: 0.7; }
+.bottom-nav-icon { font-size: 1.3rem !important; }
+
+/* ================================================================
+   GAME HUD — action bar (anchored to bottom of .hud which fills screen)
+   Use position:absolute (not fixed) — the screen-transition wrapper has
+   transform:translateX(0) from animation fill-mode which breaks fixed.
+   Since .hud is position:absolute;inset:0 the visual result is identical.
+   ================================================================ */
+.hud-bottom {
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  padding: 10px 10px calc(14px + env(safe-area-inset-bottom, 0px)) !important;
+  gap: 8px !important;
+  flex-wrap: nowrap !important;
+  background: rgba(5, 5, 14, 0.98) !important;
+  border-top: 1px solid rgba(255,255,255,0.1) !important;
+  z-index: 60 !important;
+}
+
+/* Hide the hand-strength left panel — saves precious width for buttons */
+.hud-bottom-left { display: none !important; }
+
+/* Action container: force flex row, override the 480px 2-column grid */
+.hud-actions,
+.hud-actions-inner {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  gap: 6px !important;
+}
+
+/* Inner flat row — evenly distribute buttons */
+.action-bar-flat {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 8px !important;
+  align-items: stretch !important;
+  width: 100% !important;
+}
+
+/* All action buttons: big, bold, easy to tap */
+.action-btn {
+  min-height: 80px !important;
+  border-radius: 18px !important;
+  font-size: 1.25rem !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.02em !important;
+  padding: 0 6px !important;
+}
+.action-btn:active {
+  transform: scale(0.93) !important;
+  opacity: 0.82 !important;
+}
+
+/* Every action button fills equal width */
+.action-bar-flat .action-btn {
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+/* Hide inline preset buttons — they cause hit-target misalignment.
+   Raise amount is chosen in the gesture-raise slider panel. */
+.ab-presets { display: none !important; pointer-events: none !important; }
+.ab-timer   { display: none !important; pointer-events: none !important; }
+
+/* ab-call-group is a div wrapper around the call button — make it grow too */
+.ab-call-group {
+  flex: 1 !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.ab-call-group .action-btn {
+  flex: 1 !important;
+  height: 100% !important;
+}
+
+/* Pre-action pills — large, easy to tap while waiting */
+.pre-action-btns {
+  display: flex !important;
+  gap: 8px !important;
+  justify-content: center !important;
+  flex-wrap: nowrap !important;
+  width: 100% !important;
+}
+.pre-action-btn {
+  flex: 1 !important;
+  min-height: 52px !important;
+  padding: 8px 10px !important;
+  border-radius: 14px !important;
+  font-size: 0.88rem !important;
+  font-weight: 700 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px !important;
+}
+.pre-action-icon { font-size: 1rem !important; }
+.pre-action-label { font-size: 0.72rem !important; }
+
+/* ================================================================
+   GAME HUD — gesture raise slider panel
+   The actual class is .gesture-raise-overlay / .gesture-raise-panel
+   ================================================================ */
+.gesture-raise-overlay {
+  /* Sit above the action bar, not behind it */
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+  align-items: flex-end !important;
+}
+.gesture-raise-panel {
+  width: calc(100vw - 24px) !important;
+  max-width: 100% !important;
+  border-radius: 20px 20px 0 0 !important;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+}
+.gesture-raise-panel .raise-slider {
+  height: 36px !important;
+  width: 100% !important;
+  accent-color: #00D9FF !important;
+}
+.gesture-raise-panel .action-btn {
+  width: 100% !important;
+  min-height: 52px !important;
+  margin-top: 10px !important;
+}
+
+/* Quick-pick preset pills */
+.raise-quick-presets {
+  display: flex !important;
+  gap: 6px !important;
+  margin-bottom: 12px !important;
+  justify-content: space-between !important;
+}
+.raise-quick-btn {
+  flex: 1 !important;
+  min-height: 38px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(0,217,255,0.35) !important;
+  background: rgba(0,217,255,0.08) !important;
+  color: #00D9FF !important;
+  font-size: 0.8rem !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+}
+.raise-quick-btn:active { background: rgba(0,217,255,0.25) !important; }
+
+/* Slider row with nudge buttons */
+.raise-slider-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin-bottom: 8px !important;
+}
+.raise-nudge-btn {
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
+  background: rgba(255,255,255,0.06) !important;
+  color: #ffffff !important;
+  font-size: 1.4rem !important;
+  font-weight: 300 !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.raise-nudge-btn:active { background: rgba(255,255,255,0.15) !important; }
+.raise-slider-row .raise-slider { flex: 1 !important; }
+
+/* Raise amount display */
+.raise-amount-display {
+  text-align: center !important;
+  font-size: 1.3rem !important;
+  font-weight: 800 !important;
+  color: #ffffff !important;
+  margin-bottom: 12px !important;
+}
+.raise-pot-pct {
+  font-size: 0.75rem !important;
+  color: #00D9FF !important;
+  font-weight: 500 !important;
+}
+
+/* Raise slider — taller touch target */
+.raise-slider {
+  height: 36px !important;
+  cursor: pointer !important;
+  accent-color: #00D9FF !important;
+}
+.raise-input {
+  font-size: 16px !important; /* no iOS zoom */
+  height: 48px !important;
+  border-radius: 10px !important;
+  text-align: center !important;
+}
+.raise-confirm-btn {
+  width: 100% !important;
+  height: 52px !important;
+  border-radius: 12px !important;
+  font-size: 1rem !important;
+  font-weight: 700 !important;
+  margin-top: 10px !important;
+}
+
+/* ================================================================
+   GAME HUD — action timer strip (top edge of action bar)
+   ================================================================ */
+.action-timer-strip {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 4px !important;
+  background: rgba(255,255,255,0.08) !important;
+  border-radius: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+.action-timer-strip-fill {
+  height: 100% !important;
+  background: linear-gradient(90deg, #4ade80, #00D9FF) !important;
+  border-radius: 0 2px 2px 0 !important;
+  transition: width 1s linear, background 0.3s ease !important;
+}
+.action-timer-strip--danger {
+  background: #ef4444 !important;
+  animation: timer-danger-pulse 0.5s ease-in-out infinite !important;
+}
+@keyframes timer-danger-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
+/* position:fixed already creates a stacking context — absolute children anchor to it fine */
+/* (removed the conflicting position:relative that was overriding position:fixed) */
+
+/* ================================================================
+   GAME HUD — hole cards + nameplate (float above action bar)
+   Action bar is ~96px (72px buttons + padding) + safe-area.
+   Cards sit well above. Nameplate between cards and bar.
+   ================================================================ */
+.hud-cards.hud-cards-floating {
+  position: absolute !important;
+  bottom: calc(220px + env(safe-area-inset-bottom, 0px)) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 200 !important;
+}
+/* Correct class used by JSX is hud-nameplate-me (not hud-my-nameplate) */
+.hud-nameplate-me {
+  position: absolute !important;
+  bottom: calc(148px + env(safe-area-inset-bottom, 0px)) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 201 !important;
+  padding: 6px 14px 6px 6px !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(0,217,255,0.35) !important;
+}
+.hud-np-avatar {
+  width: 50px !important;
+  height: 50px !important;
+  font-size: 22px !important;
+}
+.hud-np-name {
+  font-size: 18px !important;
+  font-weight: 800 !important;
+}
+.hud-np-chips {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+}
+.hud-np-pos {
+  font-size: 13px !important;
+  padding: 3px 9px !important;
+}
+
+/* Hole cards — large and very readable */
+.hole-card,
+.card-peek {
+  width: clamp(80px, 20vw, 110px) !important;
+  height: clamp(112px, 28vw, 154px) !important;
+  border-radius: 14px !important;
+}
+.card-peek-front {
+  font-size: clamp(1.5rem, 4vw, 2rem) !important;
+}
+.card-rank { font-size: clamp(1.8rem, 5vw, 2.4rem) !important; }
+.card-suit { font-size: clamp(1.5rem, 4vw, 2rem) !important; }
+
+/* ================================================================
+   GAME HUD — options dropdown (clamp to screen on mobile)
+   ================================================================ */
+.hud-options-dropdown {
+  position: fixed !important;
+  top: calc(env(safe-area-inset-top, 0px) + 52px) !important;
+  right: 8px !important;
+  left: auto !important;
+  max-height: calc(100dvh - 120px) !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  width: 200px !important;
+  z-index: 500 !important;
+}
+
+/* Options toggle buttons — bigger tap area */
+.options-toggle {
+  min-width: 48px !important;
+  min-height: 36px !important;
+  border-radius: 8px !important;
+}
+.options-action-btn {
+  min-height: 40px !important;
+  width: 100% !important;
+  border-radius: 8px !important;
+  font-size: 0.85rem !important;
+}
+
+/* ================================================================
+   GAME HUD — pot / community cards info bar
+   ================================================================ */
+.pot-info, .game-info-bar {
+  font-size: 0.85rem !important;
+  padding: 4px 10px !important;
+}
+
+/* ================================================================
+   GAME HUD — chat (bottom sheet style)
+   ================================================================ */
+/* Action bar needs z-index to sit above the chat panel */
+.hud-bottom { z-index: 60 !important; }
+
+.chat-panel {
+  position: fixed !important;
+  bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  border-radius: 16px 16px 0 0 !important;
+  max-height: 60dvh !important;
+  z-index: 55 !important;
+}
+.chat-toggle {
+  width: 100% !important;
+  border-radius: 16px 16px 0 0 !important;
+  padding: 10px 16px !important;
+  min-height: 44px !important;
+  text-align: left !important;
+}
+.chat-body {
+  max-height: calc(60dvh - 44px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.chat-messages {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding: 8px 12px !important;
+}
+.chat-quick {
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  padding: 6px 12px !important;
+}
+.chat-quick-btn {
+  min-height: 36px !important;
+  padding: 0 12px !important;
+  border-radius: 18px !important;
+  font-size: 0.8rem !important;
+}
+.chat-input-row {
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+}
+.chat-input {
+  font-size: 16px !important; /* no iOS zoom */
+  height: 44px !important;
+  border-radius: 10px !important;
+}
+.chat-send {
+  height: 44px !important;
+  padding: 0 16px !important;
+  border-radius: 10px !important;
+}
+
+/* ================================================================
+   GAME HUD — advanced toolbar (hide most on mobile)
+   ================================================================ */
+.adv-toolbar {
+  flex-direction: column !important;
+  top: calc(env(safe-area-inset-top, 0px) + 8px) !important;
+  right: 6px !important;
+  gap: 4px !important;
+  background: rgba(6,8,20,0.8) !important;
+  border-radius: 12px !important;
+  padding: 6px !important;
+  backdrop-filter: blur(8px) !important;
+  max-height: calc(100dvh - 160px) !important;
+  overflow-y: auto !important;
+}
+.adv-tool-btn {
+  width: 36px !important;
+  height: 36px !important;
+  font-size: 16px !important;
+  border-radius: 8px !important;
+}
+
+/* ================================================================
+   GAME HUD — leave / menu button (top left)
+   ================================================================ */
+.hud-leave-btn,
+.leave-table-btn {
+  position: fixed !important;
+  top: calc(env(safe-area-inset-top, 0px) + 8px) !important;
+  left: calc(env(safe-area-inset-left, 0px) + 8px) !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  border-radius: 12px !important;
+  z-index: 51 !important;
+  padding: 0 12px !important;
+  font-size: 0.8rem !important;
+}
+
+/* ================================================================
+   GAME HUD — timer bar
+   ================================================================ */
+.action-timer-bar {
+  height: 5px !important;
+  border-radius: 0 !important;
+  position: fixed !important;
+  top: env(safe-area-inset-top, 0px) !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
+/* ================================================================
+   SESSION TRACKER — compact mobile card
+   ================================================================ */
+.session-tracker {
+  width: calc(100% - 24px) !important;
+  max-width: 360px !important;
+  border-radius: 14px !important;
+  margin: 0 12px !important;
+}
+
+/* ================================================================
+   NAMEPLATES (3D scene overlay)
+   ================================================================ */
+.nameplate {
+  width: 155px !important;
+  min-height: 52px !important;
+  border-radius: 12px !important;
+  padding: 6px 12px !important;
+}
+.nameplate__name  { font-size: 15px !important; font-weight: 800 !important; }
+.nameplate__chips { font-size: 13px !important; font-weight: 600 !important; }
+
+/* ================================================================
+   MULTI-TABLE TABS
+   ================================================================ */
+.multi-table-tabs {
+  top: env(safe-area-inset-top, 0px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  max-width: calc(100vw - 120px) !important;
+  overflow-x: auto !important;
+  scrollbar-width: none !important;
+}
+.multi-table-tabs::-webkit-scrollbar { display: none; }
+
+/* ================================================================
+   AVATAR CUSTOMIZER — scrollable on mobile
+   ================================================================ */
+.avatar-customizer {
+  height: 100dvh !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+}
+.avatar-customizer-panels {
+  flex-direction: column !important;
+  height: auto !important;
+}
+.avatar-preview-panel {
+  height: 200px !important;
+}
+
+/* ================================================================
+   ANALYTICS / OVERLAYS — full-screen on mobile
+   ================================================================ */
+.advanced-analytics,
+.bankroll-ai-panel,
+.coaching-rail,
+.gto-solver-panel,
+.leaderboard-panel,
+.battle-pass-panel,
+.hand-history-panel,
+.clubs-panel,
+.friend-system-panel {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100dvh !important;
+  max-width: 100% !important;
+  max-height: 100dvh !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding-top: env(safe-area-inset-top, 0px) !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+}
+
+/* ================================================================
+   KEYBOARD SHORTCUTS — hide entirely on mobile (no keyboard)
+   ================================================================ */
+.keyboard-shortcuts-btn,
+.keyboard-shortcuts-panel {
+  display: none !important;
+}
+
+/* ================================================================
+   EMOTE WHEEL — centred, larger buttons
+   ================================================================ */
+.emote-wheel {
+  bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  right: auto !important;
+}
+.emote-btn {
+  width: 52px !important;
+  height: 52px !important;
+  font-size: 1.4rem !important;
+}
+
+/* ================================================================
+   WIN CONFETTI — full viewport
+   ================================================================ */
+.win-confetti canvas {
+  width: 100vw !important;
+  height: 100dvh !important;
+}
+
+/* ================================================================
+   POST-HAND ANALYSIS — slide up from bottom
+   ================================================================ */
+.post-hand-analysis {
+  position: fixed !important;
+  left: 0 !important; right: 0 !important; bottom: 0 !important; top: auto !important;
+  width: 100% !important;
+  max-height: 85dvh !important;
+  border-radius: 20px 20px 0 0 !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+  animation: mobile-sheet-up 0.3s cubic-bezier(0.32, 0.72, 0, 1) !important;
+}
+
+/* ================================================================
+   HAND REPLAY VIEWER — full screen
+   ================================================================ */
+.hand-replay-viewer {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100dvh !important;
+  border-radius: 0 !important;
+  padding-top: env(safe-area-inset-top, 0px) !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+}
+
+/* ================================================================
+   EQUITY CALCULATOR — bottom sheet
+   ================================================================ */
+.equity-calculator {
+  position: fixed !important;
+  left: 0 !important; right: 0 !important; bottom: 0 !important; top: auto !important;
+  width: 100% !important;
+  max-height: 80dvh !important;
+  border-radius: 20px 20px 0 0 !important;
+  overflow-y: auto !important;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+  animation: mobile-sheet-up 0.25s ease-out !important;
+}
+
+/* ================================================================
+   SPIN REVEAL — full screen centred
+   ================================================================ */
+.spin-reveal-overlay {
+  padding: 0 20px !important;
+}
+.spin-reveal-multiplier {
+  font-size: clamp(3rem, 20vw, 6rem) !important;
+}
+
+/* ================================================================
+   ACHIEVEMENT / LEVEL-UP POPUPS — top of screen
+   ================================================================ */
+.achievement-popup,
+.level-up-popup {
+  top: calc(env(safe-area-inset-top, 0px) + 12px) !important;
+  left: 12px !important;
+  right: 12px !important;
+  max-width: 100% !important;
+  width: auto !important;
+}
+
+/* ================================================================
+   GAME HUD — mini pot pill (sits just above action bar)
+   Default is bottom: 64px — needs to match our taller bar
+   ================================================================ */
+.mini-pot-pill {
+  bottom: calc(330px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* ================================================================
+   GAME HUD — all-in confirmation panel
+   ================================================================ */
+.allin-confirm-overlay {
+  z-index: 600 !important;
+}
+.allin-confirm-panel {
+  width: calc(100vw - 40px) !important;
+  max-width: 340px !important;
+  border-radius: 20px !important;
+  padding: 24px 20px !important;
+}
+.allin-confirm-btn {
+  min-height: 52px !important;
+  border-radius: 12px !important;
+  font-size: 1rem !important;
+}
+
+/* ================================================================
+   GAME HUD — showdown overlay (tap-to-dismiss text)
+   ================================================================ */
+.showdown-dismiss { font-size: 0.75rem !important; }
+
+/* ================================================================
+   GAME HUD — insurance panel
+   ================================================================ */
+.insurance-panel {
+  left: 12px !important;
+  right: 12px !important;
+  width: auto !important;
+  max-width: 100% !important;
+  border-radius: 16px !important;
+  bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+}
+.insurance-btn {
+  min-height: 48px !important;
+  border-radius: 10px !important;
+  font-size: 0.95rem !important;
+}
+
+/* ================================================================
+   GAME HUD — right rail buttons (Last Hand, Replay, React, Emote)
+   Default bottom: 70px puts them behind the action bar on mobile
+   ================================================================ */
+.right-rail-btns {
+  bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+  right: 8px !important;
+  width: 72px !important;
+  gap: 6px !important;
+}
+.rail-btn {
+  min-height: 44px !important;
+  font-size: 0.68rem !important;
+  padding: 6px 4px !important;
+  border-radius: 10px !important;
+}
+
+/* ================================================================
+   GAME HUD — last hand panel (full-width bottom sheet on mobile)
+   Default: absolute 320px fixed at right: 20px — overflows phone
+   ================================================================ */
+.last-hand-panel {
+  position: fixed !important;
+  top: auto !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: 80dvh !important;
+  border-radius: 20px 20px 0 0 !important;
+  padding: 16px !important;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  animation: mobile-sheet-up 0.3s cubic-bezier(0.32, 0.72, 0, 1) !important;
+  z-index: 300 !important;
+}
+
+/* ================================================================
+   GAME HUD — showdown overlay (already full-screen, tweak panel)
+   ================================================================ */
+.showdown-panel {
+  width: calc(100vw - 32px) !important;
+  max-width: 420px !important;
+  max-height: 80dvh !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  border-radius: 20px !important;
+  padding: 20px 16px !important;
+}
+.showdown-title { font-size: 1.2rem !important; }
+.showdown-winner-name { font-size: 0.95rem !important; }
+.showdown-dismiss {
+  font-size: 0.8rem !important;
+  margin-top: 10px !important;
+}
+
+/* ================================================================
+   GAME HUD — rabbit hunt overlay
+   ================================================================ */
+.rabbit-overlay .showdown-panel {
+  width: calc(100vw - 32px) !important;
+}
+
+/* ================================================================
+   MISC: hide non-essential decorative elements
+   ================================================================ */
+.lobby-particles          { display: none !important; }
+.activity-ticker          { font-size: 0.72rem !important; padding: 3px 10px !important; }
+.lobby-conn-pill          { display: none !important; }
+.timing-tell-panel        { width: 160px !important; font-size: 8px !important; }
+.commentary-panel         { width: 180px !important; font-size: 9px !important; }
+.range-visualizer         { width: calc(100vw - 16px) !important; max-width: 340px !important; }
+
+/* ================================================================
+   GAME HUD — action button sub-labels (amount + pot odds)
+   ================================================================ */
+.action-btn {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 1px !important;
+  line-height: 1.1 !important;
+}
+.action-amount-sub {
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  opacity: 0.9 !important;
+  line-height: 1 !important;
+}
+.action-odds-sub {
+  font-size: 0.65rem !important;
+  font-weight: 500 !important;
+  opacity: 0.7 !important;
+  line-height: 1 !important;
+}
+
+/* ================================================================
+   PERFORMANCE — no transitions on inactive buttons
+   ================================================================ */
+.hud-actions--inactive .action-btn {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* ================================================================
+   PORTRAIT-ONLY helpers (< 480px wide)
+   ================================================================ */
+@media (max-width: 480px) {
+  .lobby-top-bar-name { font-size: 0.82rem !important; }
+  .table-card-title   { font-size: 0.9rem !important; }
+  .section-header     { font-size: 0.72rem !important; letter-spacing: 0.05em !important; }
+  .btn-accent { width: 100% !important; }
+  .quick-game-card { padding: 12px 8px !important; min-height: 88px !important; }
+  .action-btn { font-size: 1.05rem !important; min-height: 68px !important; }
+  .raise-panel { padding-left: 12px !important; padding-right: 12px !important; }
+}
+
+/* ================================================================
+   LANDSCAPE PHONE helpers
+   ================================================================ */
+@media (max-height: 500px) and (orientation: landscape) {
+  .lobby-content, .lobby-tab-content {
+    height: calc(100dvh - 90px) !important;
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .bottom-nav { height: calc(48px + env(safe-area-inset-bottom, 0px)) !important; }
+  .bottom-nav-item { min-height: 48px !important; }
+  .action-btn { min-height: 56px !important; font-size: 1rem !important; }
+  .hud-bottom { padding: 8px 8px calc(10px + env(safe-area-inset-bottom, 0px)) !important; }
+  .hud-cards.hud-cards-floating { bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important; }
+  .hud-nameplate-me { bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; }
+  .raise-panel { max-height: 75dvh !important; overflow-y: auto !important; }
+  .chat-panel { max-height: 55dvh !important; }
+  .adv-toolbar {
+    top: calc(env(safe-area-inset-top, 0px) + 4px) !important;
+    max-height: calc(100dvh - 100px) !important;
+  }
+}

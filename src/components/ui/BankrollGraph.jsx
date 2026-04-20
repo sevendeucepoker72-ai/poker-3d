@@ -6,7 +6,7 @@ const STORAGE_KEY = 'poker_bankroll_history';
 
 function loadHistory() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]');
   } catch {
     return [];
   }
@@ -18,7 +18,7 @@ export function recordBankrollPoint(chips) {
     history.push({ timestamp: Date.now(), chips });
     // Keep last 500 points max
     if (history.length > 500) history.splice(0, history.length - 500);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(history));
   } catch { /* ignore */ }
 }
 

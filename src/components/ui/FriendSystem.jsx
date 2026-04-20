@@ -48,7 +48,7 @@ function formatLastSeen(dateStr) {
 export default function FriendSystem({ onClose }) {
   const [friends, setFriends] = useState(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = sessionStorage.getItem(STORAGE_KEY);
       if (stored) return JSON.parse(stored);
     } catch { /* ignore */ }
     return DEFAULT_FRIENDS;
@@ -58,7 +58,7 @@ export default function FriendSystem({ onClose }) {
   const [inviteSent, setInviteSent] = useState(null);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(friends));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(friends));
   }, [friends]);
 
   const handleAddFriend = () => {

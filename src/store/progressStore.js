@@ -71,12 +71,12 @@ export function detectLeaks(progress) {
   return leaks;
 }
 
-// ─── localStorage persistence ───────────────────────────────────────────────
+// ─── sessionStorage persistence ───────────────────────────────────────────────
 const STORAGE_KEY = 'poker_player_progress';
 
 function loadSavedProgress() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch { /* ignore corrupt data */ }
   return null;
@@ -84,7 +84,7 @@ function loadSavedProgress() {
 
 function saveProgress(progress) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
     // Also sync stats for AdvancedAnalytics leaks tab
     // Compute aggression factor from street action counts: (bets+raises) / calls
     const sa = progress.streetActions || {};
@@ -103,7 +103,7 @@ function saveProgress(progress) {
     const blindHands = progress.blindHands || 0;
     const blindFolded = progress.blindFolded || 0;
 
-    localStorage.setItem('poker_player_stats', JSON.stringify({
+    sessionStorage.setItem('poker_player_stats', JSON.stringify({
       vpip: progress.vpip || 0,
       pfr: progress.pfr || 0,
       handsPlayed: progress.handsPlayed || 0,
@@ -180,7 +180,7 @@ function getDailySeed() {
 function defaultProgress() {
   const info = levelFromTotalXp(0);
   return {
-    playerName: localStorage.getItem('poker_username') || 'Player',
+    playerName: sessionStorage.getItem('poker_username') || 'Player',
     level: 1,
     xp: 0,
     xpToNextLevel: xpRequiredForLevel(1),
@@ -236,12 +236,29 @@ function defaultProgress() {
     missionsPlayCount: 0,
     missionsRaiseCount: 0,
     sessionBiggestPot: 0,
+    // ─── Persistence-sweep durable fields (hydrated from server via durableState event) ───
+    // Inventory: array of { item_type, item_id, equipped, acquired_at }
+    inventory: [],
+    // Fast lookups derived from inventory (kept in sync by setDurableState)
+    ownedBy: {},      // { card_back: Set<id>, emote: Set<id>, ... }
+    equippedBy: {},   // { card_back: id, frame: id, ... }
+    // Claimed battle pass tiers for current season
+    battlePassClaimed: [],
+    // Avatar customization (skinTone, hairStyle, ...) — synced to server
+    customization: {},
+    // UI preferences — synced to server
+    preferences: {},
+    // Banked scratch cards
+    scratchCardsAvailable: 0,
+    // Daily login streak + last claim date
+    loginStreak: 0,
+    lastLoginClaimDate: null,
   };
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────────
 export const useProgressStore = create((set, get) => ({
-  // Player progress — hydrate from localStorage on first load
+  // Player progress — hydrate from sessionStorage on first load
   progress: loadSavedProgress() || defaultProgress(),
 
   setProgress: (incoming) => {
@@ -255,6 +272,59 @@ export const useProgressStore = create((set, get) => ({
       merged.xp = info.xp;
       merged.xpToNextLevel = info.xpToNextLevel;
     }
+    saveProgress(merged);
+    set({ progress: merged });
+  },
+
+  /**
+   * Merge a server-sourced `durableState` payload (inventory, battle pass
+   * claims, customization, preferences, stars, scratch balance, login streak).
+   * Server is the source of truth for these fields.
+   */
+  setDurableState: (payload) => {
+    const prev = get().progress || defaultProgress();
+    const inventory = Array.isArray(payload?.inventory) ? payload.inventory : [];
+    const ownedBy = {};
+    const equippedBy = {};
+    for (const row of inventory) {
+      const t = row.item_type || row.itemType;
+      const id = row.item_id || row.itemId;
+      if (!t || !id) continue;
+      if (!ownedBy[t]) ownedBy[t] = new Set();
+      ownedBy[t].add(id);
+      if (row.equipped) equippedBy[t] = id;
+    }
+    const merged = {
+      ...prev,
+      inventory,
+      ownedBy,
+      equippedBy,
+      battlePassClaimed: payload?.battlePassClaims || [],
+      customization: payload?.customization || prev.customization || {},
+      preferences: payload?.preferences || prev.preferences || {},
+      stars: typeof payload?.stars === 'number' ? payload.stars : prev.stars,
+      scratchCardsAvailable: payload?.scratchCardsAvailable ?? 0,
+      loginStreak: payload?.loginStreak ?? 0,
+      lastLoginClaimDate: payload?.lastLoginClaimDate || null,
+    };
+    saveProgress(merged);
+    set({ progress: merged });
+  },
+
+  /** Called when server emits `inventoryUpdated` after a buy/equip. */
+  setInventory: (inventory) => {
+    const prev = get().progress || defaultProgress();
+    const ownedBy = {};
+    const equippedBy = {};
+    for (const row of inventory || []) {
+      const t = row.item_type || row.itemType;
+      const id = row.item_id || row.itemId;
+      if (!t || !id) continue;
+      if (!ownedBy[t]) ownedBy[t] = new Set();
+      ownedBy[t].add(id);
+      if (row.equipped) equippedBy[t] = id;
+    }
+    const merged = { ...prev, inventory, ownedBy, equippedBy };
     saveProgress(merged);
     set({ progress: merged });
   },

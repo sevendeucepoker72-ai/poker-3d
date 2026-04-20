@@ -94,7 +94,7 @@ export default function CareerMode() {
   // Career progress tracking (stored locally for now)
   const [careerProgress] = useState(() => {
     try {
-      const saved = localStorage.getItem('pokerCareerProgress');
+      const saved = sessionStorage.getItem('pokerCareerProgress');
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};

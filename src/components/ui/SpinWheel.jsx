@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { getSocket } from '../../services/socketService';
+import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 import './SpinWheel.css';
 
 const SEGMENTS = [
@@ -14,68 +15,109 @@ const SEGMENTS = [
   { label: 'Mystery', value: 0, type: 'mystery', color: '#A855F7', icon: '\uD83C\uDF81' },
 ];
 
-const SPIN_KEY = 'poker_daily_spin';
-
-function canSpinToday() {
-  try {
-    const lastSpin = localStorage.getItem(SPIN_KEY);
-    if (!lastSpin) return true;
-    const lastDate = new Date(lastSpin).toDateString();
-    const today = new Date().toDateString();
-    return lastDate !== today;
-  } catch {
-    return true;
-  }
-}
-
-function markSpinUsed() {
-  localStorage.setItem(SPIN_KEY, new Date().toISOString());
-}
-
 export default function SpinWheel({ onClose }) {
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [prize, setPrize] = useState(null);
-  const [canSpin, setCanSpin] = useState(canSpinToday());
+  const [canSpin, setCanSpin] = useState(true); // server is source of truth; optimistic
+  const [errMsg, setErrMsg] = useState(null);
   const discRef = useRef(null);
+  // Track pending listener + timeouts so unmount mid-spin cleans up, AND a
+  // response that never arrives doesn't leave a ghost handler on the socket.
+  const activeListenerRef = useRef(null);
+  const timeoutIdsRef = useRef(new Set());
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      const sock = getSocket();
+      if (sock && activeListenerRef.current) {
+        sock.off('dailySpinClaimed', activeListenerRef.current);
+      }
+      timeoutIdsRef.current.forEach(clearTimeout);
+      timeoutIdsRef.current.clear();
+    };
+  }, []);
+
+  // Hardware back button closes the modal
+  useBackButtonClose(true, onClose);
 
   const segAngle = 360 / SEGMENTS.length;
 
   const doSpin = useCallback(() => {
     if (spinning || !canSpin) return;
-
+    setErrMsg(null);
     setSpinning(true);
 
-    // Pick random winner
-    const winnerIndex = Math.floor(Math.random() * SEGMENTS.length);
-    const won = SEGMENTS[winnerIndex];
+    const socket = getSocket();
+    if (!socket) { setSpinning(false); return; }
 
-    // Calculate target rotation so pointer (top) lands on the winning segment
-    // Segment 0 starts at 0deg, each segment spans segAngle
-    // Pointer is at top (0deg), so we need the midpoint of the segment to align with top
-    const segMiddle = winnerIndex * segAngle + segAngle / 2;
-    const extraSpins = 5 + Math.floor(Math.random() * 3); // 5-7 full rotations
-    const targetRotation = rotation + extraSpins * 360 + (360 - segMiddle);
-
-    setRotation(targetRotation);
-
-    setTimeout(() => {
-      setSpinning(false);
-      setPrize(won);
-      markSpinUsed();
-      setCanSpin(false);
-
-      // Emit reward claim to server
-      const socket = getSocket();
-      if (socket) {
-        socket.emit('claimSpinReward', {
-          type: won.type,
-          value: won.type === 'mystery' ? Math.floor(Math.random() * 3000) + 500 : won.value,
-          label: won.label,
-        });
+    // Hard fail-safe: if the server response never arrives, unblock the UI
+    // after 15s so the user can retry instead of being stuck spinning.
+    const timeoutGuard = setTimeout(() => {
+      if (!mountedRef.current) return;
+      if (activeListenerRef.current) {
+        socket.off('dailySpinClaimed', activeListenerRef.current);
+        activeListenerRef.current = null;
       }
-    }, 4200);
-  }, [spinning, canSpin, rotation, segAngle]);
+      setSpinning(false);
+      setErrMsg('Spin timed out — please try again.');
+      timeoutIdsRef.current.delete(timeoutGuard);
+    }, 15000);
+    timeoutIdsRef.current.add(timeoutGuard);
+
+    // Server determines the prize + rate-limits. We animate visually while waiting.
+    const onResult = (res) => {
+      socket.off('dailySpinClaimed', onResult);
+      if (activeListenerRef.current === onResult) activeListenerRef.current = null;
+      clearTimeout(timeoutGuard);
+      timeoutIdsRef.current.delete(timeoutGuard);
+      if (!mountedRef.current) return;
+
+      if (!res?.success) {
+        const t1 = setTimeout(() => {
+          timeoutIdsRef.current.delete(t1);
+          if (!mountedRef.current) return;
+          setSpinning(false);
+          setCanSpin(false);
+          setErrMsg(res?.error === 'already_claimed' ? 'You already used your daily spin!' : 'Could not claim spin');
+        }, 800);
+        timeoutIdsRef.current.add(t1);
+        return;
+      }
+
+      // Map server reward → closest SEGMENTS index for the visual stop.
+      const reward = res.reward || {};
+      let winnerIndex = 5; // default fallback
+      if (reward.stars && reward.stars >= 50) winnerIndex = 6;
+      else if (reward.stars) winnerIndex = 7;
+      else if (reward.chips >= 10000) winnerIndex = 5;
+      else if (reward.chips >= 5000) winnerIndex = 5;
+      else if (reward.chips >= 2500) winnerIndex = 4;
+      else if (reward.chips >= 1000) winnerIndex = 3;
+      else if (reward.chips >= 500)  winnerIndex = 2;
+      else if (reward.chips >= 250)  winnerIndex = 1;
+      else                           winnerIndex = 0;
+
+      const segMiddle = winnerIndex * segAngle + segAngle / 2;
+      const extraSpins = 5 + Math.floor(Math.random() * 3);
+      setRotation((prev) => prev + extraSpins * 360 + (360 - segMiddle));
+
+      const t2 = setTimeout(() => {
+        timeoutIdsRef.current.delete(t2);
+        if (!mountedRef.current) return;
+        setSpinning(false);
+        setPrize({ ...SEGMENTS[winnerIndex], serverLabel: reward.label });
+        setCanSpin(false);
+      }, 4200);
+      timeoutIdsRef.current.add(t2);
+    };
+
+    activeListenerRef.current = onResult;
+    socket.on('dailySpinClaimed', onResult);
+    socket.emit('claimDailySpinServer');
+  }, [spinning, canSpin, segAngle]);
 
   const closePrize = () => setPrize(null);
 
@@ -157,6 +199,9 @@ export default function SpinWheel({ onClose }) {
               You have already used your free daily spin.
             </div>
           )}
+          {errMsg && (
+            <div className="spin-wheel-cooldown" style={{ color: '#F59E0B' }}>{errMsg}</div>
+          )}
         </div>
       </div>
 
@@ -165,9 +210,11 @@ export default function SpinWheel({ onClose }) {
           <div className="spin-prize-card" onClick={(e) => e.stopPropagation()}>
             <span className="spin-prize-icon">{prize.icon}</span>
             <div className="spin-prize-label">
-              {prize.type === 'chips' && `${prize.value.toLocaleString()} Chips!`}
-              {prize.type === 'xp_multiplier' && '2x XP Boost!'}
-              {prize.type === 'mystery' && 'Mystery Prize!'}
+              {prize.serverLabel || (
+                prize.type === 'chips' ? `${prize.value.toLocaleString()} Chips!` :
+                prize.type === 'xp_multiplier' ? '2x XP Boost!' :
+                'Mystery Prize!'
+              )}
             </div>
             <div className="spin-prize-desc">
               {prize.type === 'chips' && 'Chips have been added to your balance.'}

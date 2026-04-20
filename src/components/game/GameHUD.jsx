@@ -184,6 +184,41 @@ export default function GameHUD() {
   const [showShowdown, setShowShowdown] = useState(false);
   const showdownTimerRef = useRef(null);
 
+  // Tournament spectator state
+  const [tournamentSpectator, setTournamentSpectator] = useState(null); // {tournamentId, tableId, tableIds, status}
+  const [eliminatedPosition, setEliminatedPosition] = useState(null); // {position, totalPlayers}
+
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const specHandler = (data) => setTournamentSpectator(data);
+    const elimHandler = (data) => {
+      setEliminatedPosition({ position: data.position, totalPlayers: data.totalPlayers });
+      setTournamentSpectator({
+        tournamentId: data.tournamentId,
+        tableId: data.tableId,
+        tableIds: data.tableIds,
+        status: data.status,
+      });
+    };
+    socket.on('spectatingTournament', specHandler);
+    socket.on('eliminatedToSpectator', elimHandler);
+    return () => {
+      socket.off('spectatingTournament', specHandler);
+      socket.off('eliminatedToSpectator', elimHandler);
+    };
+  }, []);
+
+  const handleNextTable = (dir) => {
+    const socket = getSocket();
+    if (!socket || !tournamentSpectator) return;
+    socket.emit('spectateNextTable', {
+      tournamentId: tournamentSpectator.tournamentId,
+      currentTableId: tournamentSpectator.tableId,
+      direction: dir,
+    });
+  };
+
   // Last hand panel state
   const [showLastHand, setShowLastHand] = useState(false);
 
@@ -240,7 +275,7 @@ export default function GameHUD() {
   // Color blind mode (from settings)
   const [colorBlindMode, setColorBlindMode] = useState(() => {
     try {
-      const raw = localStorage.getItem('app_poker_settings');
+      const raw = sessionStorage.getItem('app_poker_settings');
       if (raw) return JSON.parse(raw).colorBlindMode || false;
     } catch { /* ignore */ }
     return false;
@@ -290,7 +325,7 @@ export default function GameHUD() {
   const lastRaisePctRef = useRef(null);
   const [favBetSizes, setFavBetSizes] = useState(() => {
     try {
-      const stored = localStorage.getItem('app_poker_betSizes');
+      const stored = sessionStorage.getItem('app_poker_betSizes');
       if (stored) return JSON.parse(stored);
     } catch (e) { /* ignore */ }
     return [null, null, null];
@@ -298,7 +333,7 @@ export default function GameHUD() {
 
   // Auto-rebuy state
   const [autoRebuy, setAutoRebuy] = useState(() => {
-    try { return localStorage.getItem('app_poker_autoRebuy') === 'true'; } catch (e) { return false; }
+    try { return sessionStorage.getItem('app_poker_autoRebuy') === 'true'; } catch (e) { return false; }
   });
   const [rebuyNotification, setRebuyNotification] = useState(null);
   const prevPhaseForRebuyRef = useRef(null);
@@ -320,9 +355,9 @@ export default function GameHUD() {
 
   // === Sound volume (#8) ===
   const [sfxVolume, setSfxVolume] = useState(() => {
-    try { return parseFloat(localStorage.getItem('app_poker_sfxVol') ?? '0.8'); } catch { return 0.8; }
+    try { return parseFloat(sessionStorage.getItem('app_poker_sfxVol') ?? '0.8'); } catch { return 0.8; }
   });
-  useEffect(() => { localStorage.setItem('app_poker_sfxVol', sfxVolume); }, [sfxVolume]);
+  useEffect(() => { sessionStorage.setItem('app_poker_sfxVol', sfxVolume); }, [sfxVolume]);
 
   // === Keyboard shortcuts overlay (#9) ===
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -341,7 +376,7 @@ export default function GameHUD() {
 
   // === Auto Deal state (#11) ===
   const [autoDeal, setAutoDeal] = useState(() => {
-    try { return localStorage.getItem('app_poker_autoDeal') === 'true'; } catch (e) { return false; }
+    try { return sessionStorage.getItem('app_poker_autoDeal') === 'true'; } catch (e) { return false; }
   });
   const autoDealTimerRef = useRef(null);
 
@@ -351,7 +386,7 @@ export default function GameHUD() {
   // === Quick Showdown state (#13) ===
   const [quickShowdown, setQuickShowdown] = useState(() => {
     try {
-      const raw = localStorage.getItem('app_poker_settings');
+      const raw = sessionStorage.getItem('app_poker_settings');
       if (raw) return JSON.parse(raw).quickShowdown || false;
     } catch { /* ignore */ }
     return false;
@@ -392,7 +427,7 @@ export default function GameHUD() {
   const [showAllInConfirm, setShowAllInConfirm] = useState(false);
   const skipAllInConfirm = (() => {
     try {
-      const raw = localStorage.getItem('app_poker_settings');
+      const raw = sessionStorage.getItem('app_poker_settings');
       if (raw) return JSON.parse(raw).skipAllInConfirmation || false;
     } catch { /* ignore */ }
     return false;
@@ -557,6 +592,14 @@ export default function GameHUD() {
   const isStudGame = gameState?.isStudGame || false;
   const isDrawPhase = gameState?.isDrawPhase || false;
   const drawPhase = gameState?.drawPhase || null;
+  // Pineapple / Crazy Pineapple: server signals when the discard window is active.
+  const isPineapple = gameState?.isPineapple || false;
+  const pineappleDiscardActive = gameState?.pineappleDiscardActive || false;
+  const [pineappleDiscardIndex, setPineappleDiscardIndex] = useState(null);
+  // Reset selection whenever the discard window closes or cards update.
+  useEffect(() => {
+    if (!pineappleDiscardActive) setPineappleDiscardIndex(null);
+  }, [pineappleDiscardActive]);
 
   // Bomb Pot info
   const isBombPot = gameState?.bombPot || false;
@@ -680,21 +723,32 @@ export default function GameHUD() {
   const prevIsMyTurnForRaiseRef = useRef(false);
   useEffect(() => {
     if (isMyTurn && !prevIsMyTurnForRaiseRef.current) {
-      // Try bet sizing memory in order: in-memory ref → localStorage → pot fraction → minRaise
+      // #1 — if there's no legal raise (all-in already, or ≤0 effective stack),
+      // don't bother computing a raise amount; UI will hide the raise slider.
+      if (maxRaise <= 0 || minRaiseTotal > maxRaise) {
+        setRaiseAmount(0);
+        setShowRaiseSlider && setShowRaiseSlider(false);
+        prevIsMyTurnForRaiseRef.current = isMyTurn;
+        return;
+      }
+      // Try bet sizing memory in order: in-memory ref → sessionStorage → pot fraction → minRaise
       let amount = null;
       if (betMemoryRef.current != null && pot > 0) {
         const pct = betMemoryRef.current / pot;
         amount = Math.round(pot * pct);
       } else {
         try {
-          const pct = parseFloat(localStorage.getItem('poker_last_raise_pct'));
+          const pct = parseFloat(sessionStorage.getItem('poker_last_raise_pct'));
           if (!isNaN(pct) && pot > 0) amount = Math.round(pot * pct);
         } catch { /* ignore */ }
       }
       if (amount != null && amount >= minRaiseTotal && amount <= maxRaise) {
         setRaiseAmount(amount);
       } else {
-        setRaiseAmount(Math.max(minRaiseTotal, Math.min(minRaiseTotal, maxRaise)));
+        // Clamp properly: the previous `Math.max(minRaiseTotal, Math.min(minRaiseTotal, maxRaise))`
+        // was a no-op that could exceed `maxRaise`. Use the real clamp so the
+        // slider's initial value is always legal.
+        setRaiseAmount(Math.min(Math.max(minRaiseTotal, 0), Math.max(maxRaise, 0)));
       }
     }
     prevIsMyTurnForRaiseRef.current = isMyTurn;
@@ -1216,8 +1270,14 @@ export default function GameHUD() {
   const autoFoldedRef = useRef(false);
   const timerStartedRef = useRef(false); // true only after the first interval tick
   useEffect(() => {
+    // Extra belt-and-suspenders: atomically claim the fold slot by flipping
+    // BOTH refs before even computing the action. This blocks any parallel
+    // manual-fold click handler from re-firing between tick and emit on a
+    // laggy network (refs are synchronous, so the second caller finds the
+    // flag already set and bails out).
     if (isMyTurn && timeLeft <= 0 && timerStartedRef.current && !autoFoldedRef.current && !hasSentActionRef.current) {
       autoFoldedRef.current = true;
+      hasSentActionRef.current = true;
       console.log('[Timer] Timer expired — auto-folding');
       playSound('fold');
       if (callAmount === 0) {
@@ -1351,12 +1411,12 @@ export default function GameHUD() {
 
   // Persist auto-rebuy preference
   useEffect(() => {
-    localStorage.setItem('app_poker_autoRebuy', autoRebuy ? 'true' : 'false');
+    sessionStorage.setItem('app_poker_autoRebuy', autoRebuy ? 'true' : 'false');
   }, [autoRebuy]);
 
   // Persist Auto Deal preference (#11)
   useEffect(() => {
-    localStorage.setItem('app_poker_autoDeal', autoDeal ? 'true' : 'false');
+    sessionStorage.setItem('app_poker_autoDeal', autoDeal ? 'true' : 'false');
   }, [autoDeal]);
 
   // Auto Deal: auto-start next hand after HandComplete (#11)
@@ -1383,10 +1443,10 @@ export default function GameHUD() {
   // Persist Quick Showdown preference (#13)
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('app_poker_settings');
+      const raw = sessionStorage.getItem('app_poker_settings');
       const settings = raw ? JSON.parse(raw) : {};
       settings.quickShowdown = quickShowdown;
-      localStorage.setItem('app_poker_settings', JSON.stringify(settings));
+      sessionStorage.setItem('app_poker_settings', JSON.stringify(settings));
     } catch { /* ignore */ }
   }, [quickShowdown]);
 
@@ -1550,7 +1610,7 @@ export default function GameHUD() {
     const newFavs = [...favBetSizes];
     newFavs[index] = raiseAmount;
     setFavBetSizes(newFavs);
-    localStorage.setItem('app_poker_betSizes', JSON.stringify(newFavs));
+    sessionStorage.setItem('app_poker_betSizes', JSON.stringify(newFavs));
   };
 
   const loadFavBetSize = (index) => {
@@ -1617,7 +1677,7 @@ export default function GameHUD() {
     if (type === 'raise' && amount) {
       betMemoryRef.current = amount;
       if (pot > 0) {
-        localStorage.setItem('poker_last_raise_pct', (amount / pot).toFixed(2));
+        sessionStorage.setItem('poker_last_raise_pct', (amount / pot).toFixed(2));
       }
     }
     sendAction(type, amount);
@@ -1670,10 +1730,19 @@ export default function GameHUD() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  // Chat send handler
+  // Chat send handler — strips HTML-ish sequences before sending. React escapes
+  // on render too (text nodes, no dangerouslySetInnerHTML), but we defense-in-
+  // depth here so the server never sees raw `<script>` or data: URIs.
   const handleSendChat = useCallback((message) => {
     if (!message || !message.trim()) return;
-    sendChat(message.trim());
+    const sanitized = message
+      .trim()
+      .replace(/<[^>]*>/g, '')          // strip HTML tags
+      .replace(/javascript:/gi, '')     // strip inline script scheme
+      .replace(/data:\s*text\/html/gi, '') // strip html data URIs
+      .slice(0, 200);                   // enforce server cap client-side too
+    if (!sanitized) return;
+    sendChat(sanitized);
     setChatInput('');
   }, [sendChat]);
 
@@ -1684,11 +1753,11 @@ export default function GameHUD() {
     }
   }, [chatInput, handleSendChat]);
 
-  // Sync color blind mode from localStorage changes
+  // Sync color blind mode from sessionStorage changes
   useEffect(() => {
     const handleStorage = () => {
       try {
-        const raw = localStorage.getItem('app_poker_settings');
+        const raw = sessionStorage.getItem('app_poker_settings');
         if (raw) setColorBlindMode(JSON.parse(raw).colorBlindMode || false);
       } catch { /* ignore */ }
     };
@@ -1773,9 +1842,9 @@ export default function GameHUD() {
     if (!isTouchDevice) return;
     const hintKey = 'poker3d_gestureHintShown';
     try {
-      if (!localStorage.getItem(hintKey)) {
+      if (!sessionStorage.getItem(hintKey)) {
         setShowGestureHint(true);
-        localStorage.setItem(hintKey, 'true');
+        sessionStorage.setItem(hintKey, 'true');
         const timer = setTimeout(() => setShowGestureHint(false), 5000);
         return () => clearTimeout(timer);
       }
@@ -1981,6 +2050,7 @@ export default function GameHUD() {
               title="Table Options"
             >
               ⋯
+              <span className="icon-btn-label">Options</span>
             </button>
             {showOptions && (
               <div className="hud-options-dropdown">
@@ -2043,7 +2113,7 @@ export default function GameHUD() {
                 <div className="options-divider" />
                 {/* Sound volume (#8) */}
                 <div className="options-row options-row--volume">
-                  <span className="options-label">🔊 Sound</span>
+                  <span className="options-label">{sfxVolume === 0 ? '🔇' : sfxVolume < 0.5 ? '🔉' : '🔊'} Sound</span>
                   <div className="options-volume-wrap">
                     <input
                       type="range" min="0" max="1" step="0.05"
@@ -2053,6 +2123,7 @@ export default function GameHUD() {
                     />
                     <span className="options-volume-pct">{Math.round(sfxVolume * 100)}%</span>
                   </div>
+                  <span className="options-volume-label">{sfxVolume === 0 ? 'Muted' : sfxVolume < 0.3 ? 'Low' : sfxVolume < 0.7 ? 'Medium' : 'Loud'}</span>
                 </div>
                 {/* Keyboard shortcuts (#9) */}
                 <button className="options-action-btn" onClick={() => { setShowShortcuts(true); setShowOptions(false); }}>
@@ -2128,9 +2199,14 @@ export default function GameHUD() {
               </div>
             );
           })}
-          {/* Board Texture Badge */}
+          {/* Board Texture Badge — color-coded */}
           {boardTexture && boardTexture.labels.length > 0 && (
-            <div className="board-texture-badge">
+            <div className={`board-texture-badge ${
+              boardTexture.labels.some(l => l === 'Monotone') ? 'board-texture--monotone' :
+              boardTexture.labels.some(l => l === 'Paired') ? 'board-texture--paired' :
+              boardTexture.labels.some(l => /flush|straight|draw/i.test(l) || l === 'Two-tone') ? 'board-texture--wet' :
+              'board-texture--dry'
+            }`}>
               {boardTexture.labels.join(' / ')}
             </div>
           )}
@@ -2274,10 +2350,13 @@ export default function GameHUD() {
               <div className="bsb-track">
                 <div className="bsb-fill" style={{
                   width: `${Math.round(handStrength.strength * 100)}%`,
-                  background: handStrength.strength < 0.33 ? '#EF4444' : handStrength.strength < 0.66 ? '#EAB308' : '#22C55E',
+                  background: handStrength.strength < 0.33 ? '#EF4444' : handStrength.strength < 0.66 ? '#EAB308' : handStrength.strength >= 0.85 ? '#FFD700' : '#22C55E',
                 }} />
               </div>
               <span className="bsb-label">{handStrength.name}</span>
+              <span className={`bsb-tier bsb-tier--${handStrength.strength < 0.33 ? 'weak' : handStrength.strength < 0.66 ? 'medium' : handStrength.strength >= 0.85 ? 'monster' : 'strong'}`}>
+                {handStrength.strength < 0.33 ? 'Weak' : handStrength.strength < 0.66 ? 'Medium' : handStrength.strength >= 0.85 ? 'Monster' : 'Strong'}
+              </span>
             </div>
           )}
           {/* Timer fully on nameplates — no HUD timer elements */}
@@ -2286,10 +2365,35 @@ export default function GameHUD() {
         {/* CENTRE: action buttons panel */}
         <div className="hud-bottom-panel">
         {/* Player's hole cards */}
+        {isPineapple && pineappleDiscardActive && yourCards.length === 3 && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '-28px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              padding: '4px 12px',
+              background: pineappleDiscardIndex != null
+                ? 'rgba(16, 185, 129, 0.95)'
+                : 'linear-gradient(90deg, #f59e0b, #d97706)',
+              color: '#0f172a',
+              fontSize: '12px',
+              fontWeight: 700,
+              borderRadius: '999px',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+              zIndex: 10,
+            }}
+          >
+            {pineappleDiscardIndex != null
+              ? '✓ Card marked — click another to change'
+              : '⚠️ Pick one card to discard'}
+          </div>
+        )}
         <div className={`hud-cards hud-cards-floating ${isMyTurn ? 'hud-cards-active' : ''} ${holeCardCount >= 4 ? 'hud-cards-many' : ''} ${preflopTier ? `hud-cards-tier-${preflopTier}` : ''} ${cardsDealt ? 'hud-cards--dealt' : ''}`}>
           {yourCards.length > 0 ? (
             yourCards.map((card, i) => {
-              const isSelected = selectedDiscards.includes(i);
+              const isSelected = selectedDiscards.includes(i) || (isPineapple && pineappleDiscardIndex === i);
               const isSmall = holeCardCount >= 4;
               const isWinHoleCard = winningCardIndices && winningCardIndices.holeIndices.includes(i);
 
@@ -2297,14 +2401,31 @@ export default function GameHUD() {
               const studInfo = gameState?.yourCardVisibility?.[i];
               const isFaceUp = studInfo?.faceUp;
 
+              // Card click: (1) draw-game discard toggle, (2) pineapple discard choice
+              const canPineappleDiscard = isPineapple && pineappleDiscardActive && yourCards.length === 3;
+              let cardClick;
+              let cardTitle = 'Hover to peek';
+              if (hasDrawPhase && isDrawPhase) {
+                cardClick = () => toggleDiscard(i);
+                cardTitle = isSelected ? 'Click to keep' : 'Click to discard';
+              } else if (canPineappleDiscard) {
+                cardClick = () => {
+                  setPineappleDiscardIndex(i);
+                  const socket = getSocket();
+                  socket?.emit('selectPineappleDiscard', { cardIndex: i });
+                };
+                cardTitle = isSelected ? 'Marked to discard — click another to change' : 'Click to discard this card';
+              }
+
               return (
                 <div
                   key={`${card.rank}-${card.suit}-${i}`}
                   className={`card-peek ${isWinHoleCard ? 'card-winner-glow' : ''}`}
-                  onClick={hasDrawPhase && isDrawPhase ? () => toggleDiscard(i) : undefined}
-                  title={hasDrawPhase && isDrawPhase ? (isSelected ? 'Click to keep' : 'Click to discard') : 'Hover to peek'}
+                  onClick={cardClick}
+                  title={cardTitle}
                   style={{
                     ...(isSelected ? { transform: 'translateY(-8px)' } : {}),
+                    ...(canPineappleDiscard ? { cursor: 'pointer' } : {}),
                   }}
                 >
                   <div className="card-peek-inner">
@@ -2377,8 +2498,8 @@ export default function GameHUD() {
                 style={{
                   width: `${handStrength.strength * 100}%`,
                   background: `linear-gradient(90deg,
-                    ${handStrength.strength < 0.33 ? '#EF4444' : handStrength.strength < 0.66 ? '#EAB308' : '#22C55E'},
-                    ${handStrength.strength < 0.5 ? '#EAB308' : '#22C55E'})`,
+                    ${handStrength.strength < 0.33 ? '#EF4444' : handStrength.strength < 0.66 ? '#EAB308' : handStrength.strength >= 0.85 ? '#FFD700' : '#22C55E'},
+                    ${handStrength.strength < 0.5 ? '#EAB308' : handStrength.strength >= 0.85 ? '#FFA500' : '#22C55E'})`,
                 }}
               />
               <span className="hand-strength-label">{handStrength.detailedName || handStrength.name}</span>
@@ -2405,7 +2526,45 @@ export default function GameHUD() {
         <div className="hud-actions">
           {/* ── Always-visible action bar ── */}
           {isSpectating ? (
-            <div className="hud-waiting" style={{ color: '#00D9FF' }}>Spectating</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', justifyContent: 'center' }}>
+              {/* Eliminated banner */}
+              {eliminatedPosition && (
+                <div style={{
+                  position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)',
+                  background: 'rgba(0,0,0,0.85)', border: '1px solid #fcd34d',
+                  borderRadius: 12, padding: '12px 24px', zIndex: 100, textAlign: 'center',
+                }}>
+                  <div style={{ color: '#fcd34d', fontWeight: 800, fontSize: '1.1rem' }}>
+                    You placed {eliminatedPosition.position}{eliminatedPosition.position === 1 ? 'st' : eliminatedPosition.position === 2 ? 'nd' : eliminatedPosition.position === 3 ? 'rd' : 'th'}
+                  </div>
+                  <div style={{ color: '#888', fontSize: '0.8rem' }}>out of {eliminatedPosition.totalPlayers} players</div>
+                </div>
+              )}
+
+              {/* Tournament spectator controls */}
+              {tournamentSpectator && tournamentSpectator.tableIds?.length > 1 && (
+                <button onClick={() => handleNextTable('prev')} style={{
+                  padding: '8px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(255,255,255,0.2)', color: '#fff', cursor: 'pointer', fontWeight: 600,
+                }}>Prev Table</button>
+              )}
+
+              <div style={{ color: '#00D9FF', textAlign: 'center' }}>
+                <div style={{ fontWeight: 700 }}>Spectating</div>
+                {tournamentSpectator?.status && (
+                  <div style={{ fontSize: '0.75rem', color: '#888' }}>
+                    {tournamentSpectator.status.alivePlayers} players | {tournamentSpectator.status.tables} tables | Lvl {tournamentSpectator.status.blindLevel}
+                  </div>
+                )}
+              </div>
+
+              {tournamentSpectator && tournamentSpectator.tableIds?.length > 1 && (
+                <button onClick={() => handleNextTable('next')} style={{
+                  padding: '8px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(255,255,255,0.2)', color: '#fff', cursor: 'pointer', fontWeight: 600,
+                }}>Next Table</button>
+              )}
+            </div>
           ) : isWaiting ? (
             <button className="action-btn deal" onClick={startHand}>Start Hand</button>
           ) : hasDrawPhase && isDrawPhase ? (
@@ -2482,13 +2641,20 @@ export default function GameHUD() {
                           {potOddsDisplay}&nbsp;·&nbsp;{Math.round(100 / (potOdds + 1))}%
                         </span>
                       )}
+                      {handStrength && (
+                        <span className="action-equity-sub">
+                          Eq: {Math.round(handStrength.strength * 100)}%
+                        </span>
+                      )}
                     </button>
                   )}
                   {/* Pot odds moved to table overlay */}
                 </div>
 
-                {/* PRESETS — flat text buttons */}
-                {isMyTurn && (
+                {/* PRESETS — flat text buttons. Only show when a legal raise
+                    is actually possible (min ≤ max and max > 0) — otherwise
+                    the player is effectively all-in-or-fold. */}
+                {isMyTurn && maxRaise > 0 && minRaiseTotal <= maxRaise && (
                   <div className="ab-presets">
                     <button className="ab-preset" onClick={() => setRaiseAmount(potFraction(1/2))}>½ Pot</button>
                     <button className="ab-preset" onClick={() => setRaiseAmount(potFraction(2/3))}>2/3 Pot</button>
@@ -2497,11 +2663,37 @@ export default function GameHUD() {
                   </div>
                 )}
 
-                {/* RAISE — always opens the slider so users can adjust amount before confirming */}
-                <button className="action-btn raise" disabled={!isMyTurn} onClick={() => setShowRaiseSlider(v => !v)}>
-                  Raise<br />{raiseAmount.toLocaleString()}
-                  <span className="raise-chevron">{showRaiseSlider ? '▼' : '▲'}</span>
-                </button>
+                {/* RAISE — inline slider with confirm. Hidden entirely when no
+                    legal raise exists (was previously rendered as a disabled
+                    slider, which confused users in all-in scenarios). */}
+                {maxRaise > 0 && minRaiseTotal <= maxRaise && (
+                  <div className="raise-inline-group">
+                    <div className="raise-inline-slider-wrap">
+                      <span className="raise-inline-val">{raiseAmount.toLocaleString()}</span>
+                      <input
+                        type="range"
+                        min={minRaiseTotal}
+                        max={maxRaise}
+                        step={Math.max(
+                          1,
+                          Math.min(
+                            Math.floor(minRaiseTotal / 4),
+                            // Step can never exceed the usable range, else the
+                            // browser snaps to illegal values past maxRaise.
+                            Math.max(1, maxRaise - minRaiseTotal)
+                          )
+                        )}
+                        value={Math.max(minRaiseTotal, Math.min(raiseAmount || minRaiseTotal, maxRaise))}
+                        onChange={(e) => setRaiseAmount(Number(e.target.value))}
+                        className="raise-inline-slider"
+                        disabled={!isMyTurn}
+                      />
+                    </div>
+                    <button className="action-btn raise" disabled={!isMyTurn} onClick={() => handleAction('raise', raiseAmount)}>
+                      Raise<br />{raiseAmount.toLocaleString()}
+                    </button>
+                  </div>
+                )}
 
                 {/* ALL-IN */}
                 <button
@@ -2516,6 +2708,16 @@ export default function GameHUD() {
                 </button>
 
               </div>{/* end action-bar-flat */}
+
+              {/* Keyboard shortcut hints — fades out after 30s */}
+              {isMyTurn && (
+                <div className="hud-hotkey-hints">
+                  <span><kbd>{hotkeys.fold === ' ' ? '␣' : hotkeys.fold.toUpperCase()}</kbd> Fold</span>
+                  <span><kbd>{hotkeys.checkCall === ' ' ? '␣' : hotkeys.checkCall.toUpperCase()}</kbd> Call</span>
+                  <span><kbd>{hotkeys.raise.toUpperCase()}</kbd> Raise</span>
+                  <span><kbd>A</kbd> All-In</span>
+                </div>
+              )}
 
               {/* raise row moved to raise-panel-float below hud-bottom */}
 

@@ -83,7 +83,7 @@ export default function PredictionMarket({ gameState: gameStateRaw, socket, visi
   const [expanded, setExpanded]     = useState(false);
   const [balance, setBalance] = useState(() => {
     try {
-      const stored = localStorage.getItem('prediction_market_balance');
+      const stored = sessionStorage.getItem('prediction_market_balance');
       return stored !== null ? Number(stored) : STARTING_BALANCE;
     } catch { return STARTING_BALANCE; }
   });
@@ -176,7 +176,7 @@ export default function PredictionMarket({ gameState: gameStateRaw, socket, visi
       setResolved(r => ({ ...r, ...newResolved }));
       setBalance(b => {
         const next = b + balanceDelta;
-        try { localStorage.setItem('prediction_market_balance', String(next)); } catch {}
+        try { sessionStorage.setItem('prediction_market_balance', String(next)); } catch {}
         return next;
       });
       if (newToasts.length > 0) {
@@ -233,7 +233,7 @@ export default function PredictionMarket({ gameState: gameStateRaw, socket, visi
 
     setBalance(b => {
       const next = b - amount;
-      try { localStorage.setItem('prediction_market_balance', String(next)); } catch {}
+      try { sessionStorage.setItem('prediction_market_balance', String(next)); } catch {}
       return next;
     });
     setPositions(prev => ({ ...prev, [market.id]: { outcome, amount, potentialWin } }));

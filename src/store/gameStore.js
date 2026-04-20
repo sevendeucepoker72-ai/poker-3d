@@ -1,10 +1,22 @@
 import { create } from 'zustand';
+import { getSocket } from '../services/socketService';
 
 const AVATAR_STORAGE_KEY = 'poker_avatar';
 
+// Debounced persistence sweep: sync avatar customization to server (400ms quiet).
+let _avatarSyncTimer = null;
+function scheduleAvatarSync(avatar) {
+  if (_avatarSyncTimer) clearTimeout(_avatarSyncTimer);
+  _avatarSyncTimer = setTimeout(() => {
+    _avatarSyncTimer = null;
+    const socket = getSocket();
+    if (socket && socket.connected) socket.emit('updateAvatar', avatar);
+  }, 400);
+}
+
 function loadSavedAvatar(defaults) {
   try {
-    const raw = localStorage.getItem(AVATAR_STORAGE_KEY);
+    const raw = sessionStorage.getItem(AVATAR_STORAGE_KEY);
     if (!raw) return { ...defaults };
     const parsed = JSON.parse(raw);
     // Merge with defaults so any new fields are included
@@ -47,28 +59,78 @@ export const useGameStore = create((set, get) => ({
   userId: null,
   authToken: null,
 
+  // OAuth2 token state
+  oauthAccessToken: null,
+  oauthRefreshToken: null,
+  oauthIdToken: null,
+  oauthTokenExpiry: null,
+
   login: (userData, token) => set({
     isLoggedIn: true,
     userId: userData.id,
     authToken: token,
-    playerName: userData.username,
+    playerName: userData.displayName || userData.username,
+    phone: userData.phone || '',
+    needsUsername: userData.needsUsername || false,
     chips: userData.chips,
-    screen: 'lobby',
+    screen: userData.needsUsername ? 'chooseUsername' : 'lobby',
+  }),
+
+  // OAuth2 SSO login
+  oauthLogin: (tokens, userData) => set({
+    isLoggedIn: true,
+    userId: userData.id,
+    authToken: tokens.access_token,
+    oauthAccessToken: tokens.access_token,
+    oauthRefreshToken: tokens.refresh_token,
+    oauthIdToken: tokens.id_token || null,
+    oauthTokenExpiry: Date.now() + (tokens.expires_in * 1000),
+    playerName: userData.displayName || userData.username,
+    phone: userData.phone || '',
+    needsUsername: userData.needsUsername || false,
+    chips: userData.chips,
+    screen: userData.needsUsername ? 'chooseUsername' : 'lobby',
   }),
 
   logout: () => {
-    localStorage.removeItem('poker_auth_token');
-    localStorage.removeItem('poker_keep_signed_in');
-    localStorage.removeItem('poker_username');
+    const idToken = get().oauthIdToken;
+    // Auth tokens
     sessionStorage.removeItem('poker_auth_token');
+    sessionStorage.removeItem('poker_keep_signed_in');
+    sessionStorage.removeItem('poker_oauth_refresh');
+    sessionStorage.removeItem('poker_oauth_id_token');
+    sessionStorage.removeItem('poker_token_expiry');
+    sessionStorage.removeItem('poker_auth_token');
+    sessionStorage.removeItem('poker_oauth_id_token');
+    sessionStorage.removeItem('poker_token_expiry');
+    // Identity / player profile — previously leaked across account switches
+    // (next user would temporarily see the previous user's username, avatar,
+    // and cached stats until the server response overwrote them).
+    sessionStorage.removeItem('poker_username');
+    sessionStorage.removeItem('poker_avatar');
+    sessionStorage.removeItem('poker_player_stats');
+    sessionStorage.removeItem('poker_remember_phone');
+    // Cached progression state — stars, streak, battle pass, etc.
+    sessionStorage.removeItem('app_poker_login_rewards');
+    sessionStorage.removeItem('app_bp_premium');
+    // Ephemeral UI caches
+    sessionStorage.removeItem('poker_hand_history');
     set({
       isLoggedIn: false,
       userId: null,
       authToken: null,
+      oauthAccessToken: null,
+      oauthRefreshToken: null,
+      oauthIdToken: null,
+      oauthTokenExpiry: null,
       playerName: '',
       chips: 10000,
       screen: 'login',
     });
+    // SSO logout: redirect to auth server to clear session cookie
+    if (idToken) {
+      import('../services/authService').then(({ startLogout }) => startLogout(idToken));
+    }
   },
 
   setAuth: (userId, token) => set({ userId, authToken: token }),
@@ -79,12 +141,19 @@ export const useGameStore = create((set, get) => ({
   chips: 10000,
   setChips: (chips) => set({ chips }),
 
-  // Avatar config — loaded from localStorage if available
+  // Avatar config — loaded from sessionStorage if available
   avatar: loadSavedAvatar(DEFAULT_AVATAR),
   updateAvatar: (key, value) =>
     set((state) => {
+      // Validate color-valued fields — reject anything that isn't a standard
+      // 3/6/8-digit hex. Arbitrary strings could CSS-inject downstream.
+      const COLOR_KEYS = new Set(['skinTone', 'hairColor', 'eyeColor', 'shirtColor', 'accessoryColor', 'lipColor', 'blushColor']);
+      if (COLOR_KEYS.has(key) && typeof value === 'string' && !/^#([0-9A-F]{3}|[0-9A-F]{6}|[0-9A-F]{8})$/i.test(value)) {
+        return state; // silently drop invalid color
+      }
       const next = { ...state.avatar, [key]: value };
-      localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(next));
+      sessionStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(next));
+      scheduleAvatarSync(next);
       return { avatar: next };
     }),
   updateFaceShape: (key, value) =>
@@ -93,11 +162,12 @@ export const useGameStore = create((set, get) => ({
         ...state.avatar,
         faceShape: { ...state.avatar.faceShape, [key]: value },
       };
-      localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(next));
+      sessionStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(next));
+      scheduleAvatarSync(next);
       return { avatar: next };
     }),
   resetAvatar: () => {
-    localStorage.removeItem(AVATAR_STORAGE_KEY);
+    sessionStorage.removeItem(AVATAR_STORAGE_KEY);
     set({ avatar: { ...DEFAULT_AVATAR } });
   },
 

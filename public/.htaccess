@@ -1,5 +1,5 @@
 Options -MultiViews
 RewriteEngine On
-RewriteBase /pokerroom/
+RewriteBase /
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^ index.html [L]

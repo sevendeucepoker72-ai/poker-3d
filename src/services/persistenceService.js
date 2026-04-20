@@ -1,8 +1,8 @@
 /**
- * persistenceService — bidirectional sync between localStorage and the server.
+ * persistenceService — bidirectional sync between sessionStorage and the server.
  *
  * The server is the source of truth for chips/xp/level/achievements.
- * localStorage holds: career progress, mission state, battle pass claims,
+ * sessionStorage holds: career progress, mission state, battle pass claims,
  * settings, notes, etc.
  *
  * This service:
@@ -33,11 +33,11 @@ const CLIENT_KEYS = [
 let _lastSyncHash = '';
 let _syncTimer = null;
 
-/** Collect all client-only keys from localStorage into one object. */
+/** Collect all client-only keys from sessionStorage into one object. */
 function collectClientData() {
   const data = {};
   for (const key of CLIENT_KEYS) {
-    const val = localStorage.getItem(key);
+    const val = sessionStorage.getItem(key);
     if (val !== null) data[key] = val;
   }
   return data;
@@ -47,9 +47,9 @@ function collectClientData() {
 function restoreClientData(blob) {
   if (!blob || typeof blob !== 'object') return;
   for (const key of CLIENT_KEYS) {
-    if (blob[key] !== undefined && localStorage.getItem(key) === null) {
+    if (blob[key] !== undefined && sessionStorage.getItem(key) === null) {
       // Only restore if key is absent locally (don't overwrite newer local data)
-      localStorage.setItem(key, blob[key]);
+      sessionStorage.setItem(key, blob[key]);
     }
   }
 }

@@ -18,18 +18,16 @@ export const useTableStore = create((set, get) => ({
   mySeat: -1,
   setMySeat: (seat) => set({ mySeat: seat }),
 
-  // Chat messages (last 50)
+  // Chat messages (ring-buffered at 100 entries in memory — UI just slices
+  // when rendering). We used to inject a fake "— older messages not shown —"
+  // system row whenever the cap tripped, but that rendered as a real chat
+  // bubble and confused users who thought someone said "older messages not
+  // shown". Instead, we just cap silently; GameHUD renders a subtle "older
+  // messages hidden" badge ABOVE the scroll area when it detects a cap hit.
   chatMessages: [],
   addChatMessage: (msg) => set((state) => {
     const updated = [...state.chatMessages, msg];
-    if (updated.length > 50) {
-      // Inject a system notice when older messages are trimmed
-      const trimmed = updated.slice(-50);
-      const hasNotice = trimmed[0]?.system && trimmed[0]?.trimNotice;
-      if (!hasNotice) trimmed.unshift({ system: true, trimNotice: true, message: '— older messages not shown —', timestamp: Date.now() });
-      return { chatMessages: trimmed };
-    }
-    return { chatMessages: updated };
+    return { chatMessages: updated.length > 100 ? updated.slice(-100) : updated };
   }),
 
   // Draw game: selected cards to discard

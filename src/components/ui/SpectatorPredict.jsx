@@ -5,14 +5,14 @@ const STORAGE_KEY = 'sp_stats';
 
 function loadStats() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch { /* ignore */ }
   return { correct: 0, total: 0, streak: 0, bestStreak: 0, leaderboard: [] };
 }
 
 function saveStats(stats) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(stats)); } catch { /* ignore */ }
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stats)); } catch { /* ignore */ }
 }
 
 export default function SpectatorPredict({ tableId, gameState, socket, visible, onClose }) {

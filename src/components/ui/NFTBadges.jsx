@@ -35,20 +35,20 @@ function fakeTxHash() {
   return '0x' + Math.random().toString(16).slice(2, 10).padEnd(8, '0');
 }
 
-// Load minted badges from localStorage
+// Load minted badges from sessionStorage
 function loadMintedBadges() {
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = sessionStorage.getItem(LS_KEY);
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
   }
 }
 
-// Save minted badges to localStorage
+// Save minted badges to sessionStorage
 function saveMintedBadges(data) {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(data));
+    sessionStorage.setItem(LS_KEY, JSON.stringify(data));
   } catch {
     // ignore storage errors
   }

@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import './LoginRewards.css';
+import { getSocket } from '../../services/socketService';
+import { useProgressStore } from '../../store/progressStore';
+import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 
 const DAILY_REWARDS = [
   { day: 1, chips: 500, stars: 0, label: '500 chips' },
@@ -16,7 +19,7 @@ const LS_KEY = 'app_poker_login_rewards';
 
 function getStoredData() {
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = sessionStorage.getItem(LS_KEY);
     if (raw) return JSON.parse(raw);
   } catch { /* ignore */ }
   return null;
@@ -60,21 +63,109 @@ function getInitialState() {
 }
 
 export default function LoginRewards({ onClose, autoOpened, inline }) {
-  const [state, setState] = useState(getInitialState);
+  // Server-authoritative streak + last claim. Seed from store hydration; falls
+  // back to the legacy sessionStorage state so UI still works pre-hydration.
+  const progress = useProgressStore((s) => s.progress);
   const today = getTodayStr();
-  const canClaim = state.lastClaimDate !== today;
 
+  const [state, setState] = useState(() => {
+    // Prefer server-hydrated data if present
+    if (progress?.loginStreak != null || progress?.lastLoginClaimDate != null) {
+      const streak = progress.loginStreak || 0;
+      const lastClaim = progress.lastLoginClaimDate || null;
+      const day = streak === 0 ? 1 : ((streak - 1) % 7) + 1;
+      return {
+        streak,
+        currentDay: day,
+        lastClaimDate: lastClaim,
+        claimedDays: lastClaim === today ? [day] : [],
+      };
+    }
+    return getInitialState();
+  });
+
+  const canClaim = state.lastClaimDate !== today;
+  const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState(null);
+
+  // Hardware back-button closes the modal (not inline embed)
+  useBackButtonClose(!inline && typeof onClose === 'function', onClose || (() => {}));
+
+  // Track active listener + timeouts so unmount mid-claim doesn't leak a
+  // handler on the shared socket or fire setState on an unmounted component.
+  const activeListenerRef = useRef(null);
+  const timeoutIdsRef = useRef(new Set());
+  const mountedRef = useRef(true);
   useEffect(() => {
-    localStorage.setItem(LS_KEY, JSON.stringify(state));
-  }, [state]);
+    return () => {
+      mountedRef.current = false;
+      const sock = getSocket();
+      if (sock && activeListenerRef.current) {
+        sock.off('dailyLoginClaimed', activeListenerRef.current);
+      }
+      activeListenerRef.current = null;
+      timeoutIdsRef.current.forEach(clearTimeout);
+      timeoutIdsRef.current.clear();
+    };
+  }, []);
+
+  // Re-sync when store updates arrive from server
+  useEffect(() => {
+    if (progress?.loginStreak == null && progress?.lastLoginClaimDate == null) return;
+    const streak = progress.loginStreak || 0;
+    const lastClaim = progress.lastLoginClaimDate || null;
+    const day = streak === 0 ? 1 : ((streak - 1) % 7) + 1;
+    setState({
+      streak,
+      currentDay: day,
+      lastClaimDate: lastClaim,
+      claimedDays: lastClaim === today ? [day] : [],
+    });
+  }, [progress?.loginStreak, progress?.lastLoginClaimDate, today]);
 
   const handleClaim = () => {
-    if (!canClaim) return;
-    setState((prev) => ({
-      ...prev,
-      lastClaimDate: today,
-      claimedDays: [...prev.claimedDays, prev.currentDay],
-    }));
+    if (!canClaim || claiming) return;
+    const socket = getSocket();
+    if (!socket) return;
+    setClaiming(true);
+    setClaimError(null);
+
+    // Fail-safe: if the server never responds, unblock the UI after 12s.
+    const timeoutGuard = setTimeout(() => {
+      timeoutIdsRef.current.delete(timeoutGuard);
+      if (!mountedRef.current) return;
+      if (activeListenerRef.current) {
+        socket.off('dailyLoginClaimed', activeListenerRef.current);
+        activeListenerRef.current = null;
+      }
+      setClaiming(false);
+      setClaimError('Claim timed out — please try again.');
+    }, 12000);
+    timeoutIdsRef.current.add(timeoutGuard);
+
+    const onResult = (res) => {
+      socket.off('dailyLoginClaimed', onResult);
+      if (activeListenerRef.current === onResult) activeListenerRef.current = null;
+      clearTimeout(timeoutGuard);
+      timeoutIdsRef.current.delete(timeoutGuard);
+      if (!mountedRef.current) return;
+      setClaiming(false);
+      if (!res?.success) {
+        setClaimError(res?.error || 'Could not claim');
+        return;
+      }
+      // Server awarded it — update UI optimistically; store will re-sync via playerProgress
+      setState((prev) => ({
+        ...prev,
+        streak: res.streak || prev.streak + 1,
+        currentDay: res.day || prev.currentDay,
+        lastClaimDate: today,
+        claimedDays: [...prev.claimedDays, res.day || prev.currentDay],
+      }));
+    };
+    activeListenerRef.current = onResult;
+    socket.on('dailyLoginClaimed', onResult);
+    socket.emit('claimDailyLogin');
   };
 
   const rewardsContent = (

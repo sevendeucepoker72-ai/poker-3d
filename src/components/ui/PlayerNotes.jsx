@@ -15,7 +15,7 @@ export const COLOR_TAGS = [
 
 export function getNotesFromStorage() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}');
   } catch {
     return {};
   }
@@ -29,7 +29,7 @@ export function getPlayerTag(playerName) {
 }
 
 function saveNotesToStorage(notes) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
   syncToServer();
 }
 
@@ -84,6 +84,8 @@ export default function PlayerNotes({ playerName, onClose }) {
           padding: '24px',
           width: 360,
           maxWidth: '92vw',
+          maxHeight: '90vh',     // cap height so a long note can't push the modal off-screen
+          overflowY: 'auto',     // scroll inside the card instead
           boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
         }}
         onClick={(e) => e.stopPropagation()}
@@ -130,12 +132,14 @@ export default function PlayerNotes({ playerName, onClose }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Write notes about this player…"
+          maxLength={1000}
           style={{
-            width: '100%', height: 100, padding: '10px 12px',
+            width: '100%', height: 100, maxHeight: '40vh', padding: '10px 12px',
             borderRadius: '8px', border: '1px solid rgba(42,42,74,0.6)',
             background: 'rgba(26,26,46,0.7)', color: '#E0E0E0',
             fontSize: '0.88rem', resize: 'vertical', outline: 'none',
             fontFamily: 'inherit', boxSizing: 'border-box', display: 'block',
+            wordBreak: 'break-word', whiteSpace: 'pre-wrap',
           }}
         />
 

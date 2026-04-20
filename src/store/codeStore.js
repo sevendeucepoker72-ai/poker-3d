@@ -9,8 +9,8 @@ function genCode() {
   return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
-function load(key) { try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; } catch { return null; } }
-function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
+function load(key) { try { const r = sessionStorage.getItem(key); return r ? JSON.parse(r) : null; } catch { return null; } }
+function save(key, val) { try { sessionStorage.setItem(key, JSON.stringify(val)); } catch {} }
 
 let _codes  = load(CODES_KEY)  || [];
 let _promos = load(PROMOS_KEY) || [];

@@ -14,7 +14,7 @@ function downloadCSV(filename, csvContent) {
 }
 
 function exportHandHistory() {
-  const historyRaw = localStorage.getItem('poker_hand_history');
+  const historyRaw = sessionStorage.getItem('poker_hand_history');
   let history = [];
   try {
     history = JSON.parse(historyRaw || '[]');
@@ -22,10 +22,10 @@ function exportHandHistory() {
 
   if (history.length === 0) {
     // Try alternative key formats
-    const keys = Object.keys(localStorage).filter((k) => k.includes('hand') || k.includes('history'));
+    const keys = Object.keys(sessionStorage).filter((k) => k.includes('hand') || k.includes('history'));
     for (const key of keys) {
       try {
-        const data = JSON.parse(localStorage.getItem(key) || '[]');
+        const data = JSON.parse(sessionStorage.getItem(key) || '[]');
         if (Array.isArray(data) && data.length > 0) {
           history = data;
           break;
@@ -59,9 +59,9 @@ function exportHandHistory() {
 }
 
 function exportSessionStats() {
-  // Gather from localStorage
-  const bankrollHistory = JSON.parse(localStorage.getItem('poker_bankroll_history') || '[]');
-  const playerStats = JSON.parse(localStorage.getItem('poker_player_stats') || '{}');
+  // Gather from sessionStorage
+  const bankrollHistory = JSON.parse(sessionStorage.getItem('poker_bankroll_history') || '[]');
+  const playerStats = JSON.parse(sessionStorage.getItem('poker_player_stats') || '{}');
 
   const lines = [];
 

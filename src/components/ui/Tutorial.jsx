@@ -46,7 +46,7 @@ export default function Tutorial() {
   const [step, setStep] = useState(0);
   const [visible, setVisible] = useState(() => {
     try {
-      return !localStorage.getItem(STORAGE_KEY);
+      return !sessionStorage.getItem(STORAGE_KEY);
     } catch {
       return false;
     }
@@ -54,7 +54,7 @@ export default function Tutorial() {
 
   const complete = () => {
     try {
-      localStorage.setItem(STORAGE_KEY, 'true');
+      sessionStorage.setItem(STORAGE_KEY, 'true');
     } catch {}
     setVisible(false);
   };

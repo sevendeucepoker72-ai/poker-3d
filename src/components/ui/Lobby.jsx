@@ -40,6 +40,7 @@ import BankrollAI from './BankrollAI';
 import PlayerProfile from './PlayerProfile';
 import NFTBadges from './NFTBadges';
 import { getSocket } from '../../services/socketService';
+import { PlayerAvatar } from '../../hooks/useAvatar';
 import './Lobby.css';
 
 const VARIANT_FILTERS = [
@@ -127,6 +128,15 @@ function FeaturedTableBanner({ tables, onSpectate }) {
   const SUIT_SYMBOLS = { s: '♠', h: '♥', d: '♦', c: '♣' };
   const SUIT_COLORS = { s: '#fff', h: '#EF4444', d: '#EF4444', c: '#fff' };
 
+  // Recompute featured table whenever any table's pot or playerCount changes
+  // — not just when the list reference changes. Previously an in-place delta
+  // that mutated { pot, playerCount } on an existing table element wouldn't
+  // invalidate the memo, so the banner showed stale numbers until the next
+  // full list replacement.
+  const tablesSignature = useMemo(
+    () => (tables || []).map(t => `${t.tableId}:${t.pot || 0}:${t.playerCount || 0}:${t.phase || ''}`).join('|'),
+    [tables]
+  );
   const featured = useMemo(() => {
     if (!tables || tables.length === 0) return null;
     return tables.reduce((best, t) => {
@@ -134,7 +144,8 @@ function FeaturedTableBanner({ tables, onSpectate }) {
       const bScore = (best.pot || 0) * 2 + (best.playerCount || 0) * 500;
       return score > bScore ? t : best;
     });
-  }, [tables]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tables, tablesSignature]);
 
   if (!featured || (featured.playerCount || 0) < 2) return null;
 
@@ -518,7 +529,7 @@ function InlineFriendsList({ onJoinFriendTable }) {
 
   const [friends] = useState(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = sessionStorage.getItem(STORAGE_KEY);
       if (stored) return JSON.parse(stored);
     } catch { /* ignore */ }
     return DEFAULT_FRIENDS;
@@ -623,6 +634,7 @@ function InlineLeaderboard() {
           className={`inline-lb-row ${entry.isCurrentPlayer ? 'inline-lb-row-current' : ''} ${entry.rank <= 3 ? 'inline-lb-row-top' : ''}`}
         >
           <span className="inline-lb-rank">{getRankIcon(entry.rank)}</span>
+          <PlayerAvatar playerId={entry.name} name={entry.name} size={24} style={{ flexShrink: 0 }} />
           <span className="inline-lb-name">{entry.name}</span>
           <span className="inline-lb-chips">{entry.chipsWon.toLocaleString()}</span>
         </div>
@@ -862,6 +874,20 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
                   </span>
                 )}
               </div>
+              {/* Mini seat visualization */}
+              <div className="table-seat-preview">
+                {Array.from({ length: table.maxSeats || 9 }, (_, i) => {
+                  const s = (table.seats || [])[i];
+                  const isOccupied = !!s?.playerName;
+                  return (
+                    <div
+                      key={i}
+                      className={`table-seat-dot ${isOccupied ? 'table-seat-dot--occupied' : ''}`}
+                      title={s?.playerName || `Seat ${i + 1} (empty)`}
+                    />
+                  );
+                })}
+              </div>
               {/* Hover preview */}
               {isHovered && (
                 <div className="table-hover-preview">
@@ -939,7 +965,7 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
 // ═══════════════════════════════════════════
 // MAIN LOBBY COMPONENT
 // ═══════════════════════════════════════════
-export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = null }) {
+export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = null, waitlistContext = null }) {
   const setScreen = useGameStore((s) => s.setScreen);
   const playerName = useGameStore((s) => s.playerName);
   const setPlayerName = useGameStore((s) => s.setPlayerName);
@@ -1007,10 +1033,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // Return player detection (last session > 24h ago)
   const [isReturningPlayer] = useState(() => {
     try {
-      const last = localStorage.getItem('app_poker_last_session');
-      if (!last) { localStorage.setItem('app_poker_last_session', Date.now().toString()); return false; }
+      const last = sessionStorage.getItem('app_poker_last_session');
+      if (!last) { sessionStorage.setItem('app_poker_last_session', Date.now().toString()); return false; }
       const diff = Date.now() - parseInt(last, 10);
-      localStorage.setItem('app_poker_last_session', Date.now().toString());
+      sessionStorage.setItem('app_poker_last_session', Date.now().toString());
       return diff > 24 * 60 * 60 * 1000;
     } catch { return false; }
   });
@@ -1019,7 +1045,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // Daily bonus claimed state
   const [dailyBonusClaimed, setDailyBonusClaimed] = useState(() => {
     try {
-      const raw = localStorage.getItem('app_poker_login_rewards');
+      const raw = sessionStorage.getItem('app_poker_login_rewards');
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
       const stored = raw ? JSON.parse(raw) : null;
@@ -1152,7 +1178,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // Auto-show login rewards if today's reward hasn't been claimed
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('app_poker_login_rewards');
+      const raw = sessionStorage.getItem('app_poker_login_rewards');
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       const stored = raw ? JSON.parse(raw) : null;
@@ -1180,7 +1206,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     // Try preferred seat first (#14)
     try {
       const prefKey = `app_poker_prefSeat_${table.tableName || table.tableId}`;
-      const savedSeat = localStorage.getItem(prefKey);
+      const savedSeat = sessionStorage.getItem(prefKey);
       if (savedSeat !== null) {
         const seatIdx = parseInt(savedSeat, 10);
         const seats = table.seats || [];
@@ -1202,7 +1228,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     // Save preferred seat for this table (#14)
     try {
       const prefKey = `app_poker_prefSeat_${seatPickerTable.tableName || seatPickerTable.tableId}`;
-      localStorage.setItem(prefKey, String(seatIndex));
+      sessionStorage.setItem(prefKey, String(seatIndex));
     } catch { /* ignore */ }
     joinTable(seatPickerTable.tableId, nameInput.trim(), seatIndex, seatPickerTable.minBuyIn || 1000, avatar);
     setSeatPickerTable(null);
@@ -1346,7 +1372,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           <span className="upc-sparkline-label">7-day</span>
           <Sparkline data={sparklineData} width={110} height={32} />
           <span className="upc-sparkline-trend" style={{ color: sparklineData[6] >= sparklineData[0] ? '#4ADE80' : '#EF4444' }}>
-            {sparklineData[6] >= sparklineData[0] ? '▲' : '▼'} {Math.abs(Math.round((sparklineData[6] - sparklineData[0]) / sparklineData[0] * 100))}%
+            {sparklineData[6] >= sparklineData[0] ? '▲' : '▼'} {sparklineData[0] > 0 ? Math.abs(Math.round((sparklineData[6] - sparklineData[0]) / sparklineData[0] * 100)) : 0}%
           </span>
         </div>
       </div>
@@ -1541,7 +1567,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     <div className="lobby-tab-content lobby-tab-fade" key="play">
       {/* Qualifiers */}
       <SectionHeader>Qualifier Tournaments</SectionHeader>
-      <QualifierLobby />
+      <QualifierLobby onSpectate={() => setScreen('table')} />
 
       {/* Cash Games — #7 two-column grid on wider screens */}
       <SectionHeader>Cash Games</SectionHeader>
@@ -1702,38 +1728,35 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
   const renderProfileTab = () => (
     <div className="lobby-tab-content lobby-tab-fade" key="profile">
-      {/* Player Info Card */}
-      <div className="lobby-profile-card">
-        <div
-          className="lobby-profile-avatar"
-          style={avatar?.seatColor ? { background: avatar.seatColor } : avatar?.skinTone ? { background: avatar.skinTone } : {}}
-        >
-          {avatar?.photo
-            ? <img src={avatar.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />
-            : (nameInput || 'P').charAt(0).toUpperCase()
-          }
-        </div>
-        <div className="lobby-profile-details">
-          <div className="lobby-profile-name">
-            <input
-              type="text"
-              placeholder="Enter your name..."
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              className="name-input"
-              maxLength={20}
-              style={{ width: '180px' }}
-            />
+      {/* Player Info Card with Banner */}
+      <div className="lobby-profile-banner-wrap">
+        <div className="lobby-profile-banner" />
+        <div className="lobby-profile-card lobby-profile-card--with-banner">
+          <div className="lobby-profile-avatar lobby-profile-avatar--overlap" style={{ background: 'transparent', overflow: 'hidden' }}>
+            <PlayerAvatar playerId={nameInput || playerName} name={nameInput || playerName} size={72} style={{ border: '3px solid #16162e' }} />
           </div>
-          <div className="lobby-profile-level">Level {currentLevel}</div>
-          <div className="lobby-profile-xp-bar">
-            <div className="lobby-profile-xp-fill" style={{ width: `${xpPercent}%` }} />
+          <div className="lobby-profile-details">
+            <div className="lobby-profile-name">
+              <input
+                type="text"
+                placeholder="Enter your name..."
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                className="name-input"
+                maxLength={20}
+                style={{ width: '180px' }}
+              />
+            </div>
+            <div className="lobby-profile-level">Level {currentLevel}</div>
+            <div className="lobby-profile-xp-bar">
+              <div className="lobby-profile-xp-fill" style={{ width: `${xpPercent}%` }} />
+            </div>
+            <div className="lobby-profile-xp-label">{currentXP.toLocaleString()} / {xpToNextLevel.toLocaleString()} XP</div>
           </div>
-          <div className="lobby-profile-xp-label">{currentXP.toLocaleString()} / {xpToNextLevel.toLocaleString()} XP</div>
-        </div>
-        <div className="lobby-profile-resources">
-          <span className="lobby-player-chips">{chipCount.toLocaleString()} chips</span>
-          {starCount > 0 && <span className="lobby-player-stars">{starCount.toLocaleString()} stars</span>}
+          <div className="lobby-profile-resources">
+            <span className="lobby-player-chips">{chipCount.toLocaleString()} chips</span>
+            {starCount > 0 && <span className="lobby-player-stars">{starCount.toLocaleString()} stars</span>}
+          </div>
         </div>
       </div>
 
@@ -1828,42 +1851,45 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
       {/* Tools section */}
       <SectionHeader>Tools</SectionHeader>
+      {(() => {
+        const toolBtnStyle = { flex: 1, padding: '12px 16px', fontSize: '0.85rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(0,217,255,0.15)', color: '#ccc', borderRadius: 10, cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s' };
+        return <>
       <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
         <button
           className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #3B82F6, #6ABAFF)', color: '#fff' }}
+          style={toolBtnStyle}
           onClick={() => setShowEquityCalc(true)}
         >
-          Equity Calc
+          📊 Equity Calc
         </button>
         <button
           className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #22C55E, #4ADE80)', color: '#0a0a1a' }}
+          style={toolBtnStyle}
           onClick={() => setShowRangeChart(true)}
         >
-          Range Chart
+          🎯 Range Chart
         </button>
       </div>
       <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
         <button
           className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #EF4444, #F97316)', color: '#fff' }}
+          style={toolBtnStyle}
           onClick={() => setShowLeakFinder(true)}
         >
-          Leak Finder
+          🔍 Leak Finder
         </button>
         <button
           className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #8B5CF6, #A855F7)', color: '#fff' }}
+          style={toolBtnStyle}
           onClick={() => setShowBankrollGraph(true)}
         >
-          Bankroll Graph
+          📈 Bankroll Graph
         </button>
       </div>
       <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
         <button
           className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #0EA5E9, #00D9FF)', color: '#0a0a1a' }}
+          style={toolBtnStyle}
           onClick={() => setShowAdvancedAnalytics(true)}
         >
           📊 Advanced Analytics
@@ -1872,7 +1898,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
         <button
           className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #7C3AED, #A855F7)', color: '#fff' }}
+          style={toolBtnStyle}
           onClick={() => setShowHandHistoryImporter(true)}
         >
           📂 Import Hand History
@@ -1881,14 +1907,14 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
         <button
           className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #22C55E, #16A34A)', color: '#fff' }}
+          style={toolBtnStyle}
           onClick={() => setShowBankrollAI(true)}
         >
           💹 Bankroll AI
         </button>
         <button
           className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #F59E0B, #D97706)', color: '#0a0a1a' }}
+          style={toolBtnStyle}
           onClick={() => setShowNFTBadges(true)}
         >
           🏅 NFT Badges
@@ -1897,7 +1923,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
         <button
           className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #00D9FF, #0EA5E9)', color: '#0a0a1a' }}
+          style={toolBtnStyle}
           onClick={() => setShowPlayerProfile(true)}
         >
           👤 My Profile Page
@@ -1906,19 +1932,20 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
         <button
           className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #06B6D4, #22D3EE)', color: '#0a0a1a' }}
+          style={toolBtnStyle}
           onClick={() => setShowExportData(true)}
         >
-          Export Data
+          📤 Export Data
         </button>
         <button
           className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #F59E0B, #EAB308)', color: '#0a0a1a' }}
+          style={toolBtnStyle}
           onClick={() => setShowHandQuiz(true)}
         >
-          Hand Quiz
+          🧠 Hand Quiz
         </button>
       </div>
+      </>; })()}
 
       {/* Achievements Preview */}
       <SectionHeader>Achievements</SectionHeader>
@@ -1974,7 +2001,34 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     </div>
   );
 
-  const renderShopTab = () => (
+  const renderShopTab = () => {
+    // Persistence-sweep helpers: ownership / equipped state from server-hydrated store.
+    const ownedBy = progress?.ownedBy || {};
+    const equippedBy = progress?.equippedBy || {};
+    const isOwned = (type, id) => !!ownedBy[type]?.has?.(id);
+    const isEquipped = (type, id) => equippedBy[type] === id;
+    const onBuy = (type, id) => {
+      const socket = getSocket();
+      if (!socket) return;
+      socket.emit('purchaseShopItem', { itemType: type, itemId: id });
+    };
+    const onEquip = (type, id) => {
+      const socket = getSocket();
+      if (!socket) return;
+      socket.emit('equipItem', { itemType: type, itemId: id });
+    };
+    const actionLabel = (type, id, price) => {
+      if (isEquipped(type, id)) return 'Equipped';
+      if (isOwned(type, id)) return 'Equip';
+      return price;
+    };
+    const actionClick = (type, id) => () => {
+      if (isEquipped(type, id)) return;
+      if (isOwned(type, id)) onEquip(type, id);
+      else                   onBuy(type, id);
+    };
+
+    return (
     <div className="lobby-tab-content lobby-tab-fade" key="shop">
       {/* Battle Pass */}
       <SectionHeader>Battle Pass</SectionHeader>
@@ -2032,42 +2086,230 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <SectionHeader>Card Backs</SectionHeader>
       <div className="lobby-card-backs-grid">
         {[
-          { name: 'Classic Red', color: '#DC2626', owned: true },
-          { name: 'Royal Blue', color: '#2563EB', owned: true },
-          { name: 'Gold Premium', color: '#D97706', owned: false },
-          { name: 'Neon Green', color: '#16A34A', owned: false },
-        ].map((card) => (
-          <div key={card.name} className={`lobby-card-back ${card.owned ? 'owned' : 'locked'}`}>
-            <div className="lobby-card-back-preview" style={{ background: `linear-gradient(135deg, ${card.color}, ${card.color}88)` }}>
-              <span style={{ fontSize: '1.5rem' }}>{'\u{1F0CF}'}</span>
+          { id: 'classic_red',  name: 'Classic Red',  color: '#DC2626', price: 0 },
+          { id: 'royal_blue',   name: 'Royal Blue',   color: '#2563EB', price: 0 },
+          { id: 'gold_premium', name: 'Gold Premium', color: '#D97706', price: 500 },
+          { id: 'neon_green',   name: 'Neon Green',   color: '#16A34A', price: 500 },
+        ].map((card) => {
+          const owned = isOwned('card_back', card.id) || card.price === 0;
+          const equipped = isEquipped('card_back', card.id);
+          return (
+            <div
+              key={card.id}
+              onClick={actionClick('card_back', card.id)}
+              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
+              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
+            >
+              <div className="lobby-card-back-preview" style={{ background: `linear-gradient(135deg, ${card.color}, ${card.color}88)` }}>
+                <span style={{ fontSize: '1.5rem' }}>{'\u{1F0CF}'}</span>
+              </div>
+              <span className="lobby-card-back-name">{card.name}</span>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : owned ? '#00D9FF' : '#00D9FF' }}>
+                {equipped ? 'Equipped' : owned ? 'Equip' : `${card.price} ⭐`}
+              </span>
             </div>
-            <span className="lobby-card-back-name">{card.name}</span>
-            {!card.owned && <span className="lobby-card-back-price">500 stars</span>}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* VIP Packages */}
-      <SectionHeader>VIP Packages</SectionHeader>
+      {/* Chip Packs — stars → chips conversion */}
+      <SectionHeader>Chip Packs</SectionHeader>
       <div className="lobby-vip-packages">
         {[
-          { name: 'Starter Pack', desc: '10,000 chips + 50 stars', price: '$4.99', color: '#3B82F6' },
-          { name: 'Pro Bundle', desc: '50,000 chips + 250 stars', price: '$14.99', color: '#8B5CF6' },
-          { name: 'High Roller', desc: '200,000 chips + 1000 stars', price: '$49.99', color: '#FFD700' },
+          { id: 'refill', name: 'Refill Stack', desc: '10,000 chips',    price: 50,    color: '#3B82F6' },
+          { id: 'big',    name: 'Big Stack',    desc: '50,000 chips',    price: 200,   color: '#10B981' },
+          { id: 'pro',    name: 'Pro Stack',    desc: '200,000 chips',   price: 600,   color: '#8B5CF6' },
+          { id: 'whale',  name: 'Whale Stack',  desc: '1,000,000 chips', price: 2500,  color: '#FFD700' },
         ].map((pkg) => (
-          <div key={pkg.name} className="lobby-vip-package-card" style={{ borderLeftColor: pkg.color }}>
+          <div key={pkg.id} className="lobby-vip-package-card" style={{ borderLeftColor: pkg.color }}>
             <div>
               <div style={{ color: pkg.color, fontWeight: 700, fontSize: '0.95rem' }}>{pkg.name}</div>
               <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{pkg.desc}</div>
             </div>
-            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }}>
-              {pkg.price}
+            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('chip_pack', pkg.id)}>
+              {pkg.price.toLocaleString()} ⭐
             </button>
           </div>
         ))}
       </div>
+
+      {/* Emotes */}
+      <SectionHeader>Emotes</SectionHeader>
+      <div className="lobby-card-backs-grid">
+        {[
+          { id: 'nice_hand', name: 'Nice Hand', icon: '👍', price: 150 },
+          { id: 'good_game', name: 'Good Game', icon: '🤝', price: 150 },
+          { id: 'big_brain', name: 'Big Brain', icon: '🧠', price: 200 },
+          { id: 'money',     name: 'Money',     icon: '💰', price: 200 },
+          { id: 'fire',      name: 'Fire',      icon: '🔥', price: 250 },
+          { id: 'tears',     name: 'Tears',     icon: '😭', price: 250 },
+          { id: 'rocket',    name: 'Rocket',    icon: '🚀', price: 300 },
+          { id: 'crown',     name: 'Crown',     icon: '👑', price: 400 },
+        ].map((e) => {
+          const owned = isOwned('emote', e.id);
+          return (
+            <div
+              key={e.id}
+              onClick={owned ? undefined : () => onBuy('emote', e.id)}
+              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
+              style={{ cursor: owned ? 'default' : 'pointer' }}
+            >
+              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #1f2937, #111827)' }}>
+                <span style={{ fontSize: '1.8rem' }}>{e.icon}</span>
+              </div>
+              <span className="lobby-card-back-name">{e.name}</span>
+              {owned
+                ? <span className="lobby-card-back-price" style={{ color: '#10B981' }}>Owned</span>
+                : <span className="lobby-card-back-price">{e.price} ⭐</span>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Avatar Frames */}
+      <SectionHeader>Avatar Frames</SectionHeader>
+      <div className="lobby-card-backs-grid">
+        {[
+          { id: 'bronze',  name: 'Bronze',  color: '#CD7F32', icon: '◯', price: 500 },
+          { id: 'silver',  name: 'Silver',  color: '#C0C0C0', icon: '◯', price: 1000 },
+          { id: 'gold',    name: 'Gold',    color: '#FFD700', icon: '◯', price: 2000 },
+          { id: 'diamond', name: 'Diamond', color: '#B9F2FF', icon: '◆', price: 5000 },
+        ].map((f) => {
+          const owned = isOwned('frame', f.id);
+          const equipped = isEquipped('frame', f.id);
+          return (
+            <div
+              key={f.id}
+              onClick={actionClick('frame', f.id)}
+              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
+              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
+            >
+              <div className="lobby-card-back-preview" style={{ background: `radial-gradient(circle, ${f.color}22 0%, transparent 70%)`, border: `2px solid ${f.color}` }}>
+                <span style={{ fontSize: '1.6rem', color: f.color }}>{f.icon}</span>
+              </div>
+              <span className="lobby-card-back-name">{f.name}</span>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+                {equipped ? 'Equipped' : owned ? 'Equip' : `${f.price} ⭐`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Win Celebrations */}
+      <SectionHeader>Win Celebrations</SectionHeader>
+      <div className="lobby-card-backs-grid">
+        {[
+          { id: 'confetti',  name: 'Confetti',  icon: '🎉', price: 400 },
+          { id: 'chip_rain', name: 'Chip Rain', icon: '🪙', price: 800 },
+          { id: 'fireworks', name: 'Fireworks', icon: '🎆', price: 1200 },
+          { id: 'lightning', name: 'Lightning', icon: '⚡', price: 1500 },
+        ].map((w) => {
+          const owned = isOwned('celebration', w.id);
+          const equipped = isEquipped('celebration', w.id);
+          return (
+            <div
+              key={w.id}
+              onClick={actionClick('celebration', w.id)}
+              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
+              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
+            >
+              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #0e7490, #155e75)' }}>
+                <span style={{ fontSize: '1.8rem' }}>{w.icon}</span>
+              </div>
+              <span className="lobby-card-back-name">{w.name}</span>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+                {equipped ? 'Equipped' : owned ? 'Equip' : `${w.price} ⭐`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Mystery Boxes — handled as scratch cards server-side (surprise reveals) */}
+      <SectionHeader>Scratch Cards</SectionHeader>
+      <div className="lobby-vip-packages">
+        <div className="lobby-vip-package-card" style={{ borderLeftColor: '#D97706' }}>
+          <div>
+            <div style={{ color: '#D97706', fontWeight: 700, fontSize: '0.95rem' }}>🎟️ You have {progress?.scratchCardsAvailable || 0} scratch cards</div>
+            <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>Earn 1 card every 20 hands. Reveals chips, stars, or surprise items.</div>
+          </div>
+          <button
+            className="btn-accent"
+            style={{ padding: '6px 16px', fontSize: '0.8rem', opacity: (progress?.scratchCardsAvailable || 0) > 0 ? 1 : 0.4 }}
+            disabled={(progress?.scratchCardsAvailable || 0) === 0}
+            onClick={() => {
+              const socket = getSocket();
+              socket?.emit('claimScratchCard');
+            }}
+          >
+            Reveal
+          </button>
+        </div>
+      </div>
+
+      {/* Sound Packs */}
+      <SectionHeader>Sound Packs</SectionHeader>
+      <div className="lobby-card-backs-grid">
+        {[
+          { id: 'vegas_casino', name: 'Vegas Casino', icon: '🎰', price: 300 },
+          { id: 'old_school',   name: 'Old School',   icon: '🎼', price: 500 },
+          { id: 'cyberpunk',    name: 'Cyberpunk',    icon: '🎧', price: 750 },
+          { id: 'silent_mode',  name: 'Silent Mode',  icon: '🔇', price: 100 },
+        ].map((s) => {
+          const owned = isOwned('sound_pack', s.id);
+          const equipped = isEquipped('sound_pack', s.id);
+          return (
+            <div
+              key={s.id}
+              onClick={actionClick('sound_pack', s.id)}
+              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
+              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
+            >
+              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #581c87, #3b0764)' }}>
+                <span style={{ fontSize: '1.8rem' }}>{s.icon}</span>
+              </div>
+              <span className="lobby-card-back-name">{s.name}</span>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+                {equipped ? 'Active' : owned ? 'Equip' : `${s.price} ⭐`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Player Titles */}
+      <SectionHeader>Player Titles</SectionHeader>
+      <div className="lobby-vip-packages">
+        {[
+          { id: 'the_shark',     name: 'The Shark',     desc: 'Shown under your name at the table', price: 800,  color: '#06B6D4' },
+          { id: 'all_in_legend', name: 'All-In Legend', desc: 'Shown under your name at the table', price: 1500, color: '#F59E0B' },
+          { id: 'river_rat',     name: 'River Rat',     desc: 'Shown under your name at the table', price: 600,  color: '#84CC16' },
+          { id: 'bluff_master',  name: 'Bluff Master',  desc: 'Shown under your name at the table', price: 1200, color: '#EC4899' },
+        ].map((t) => {
+          const owned = isOwned('title', t.id);
+          const equipped = isEquipped('title', t.id);
+          return (
+            <div key={t.id} className="lobby-vip-package-card" style={{ borderLeftColor: t.color, outline: equipped ? '2px solid #10B981' : 'none' }}>
+              <div>
+                <div style={{ color: t.color, fontWeight: 700, fontSize: '0.95rem' }}>{t.name}</div>
+                <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{t.desc}</div>
+              </div>
+              <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={actionClick('title', t.id)}>
+                {equipped ? 'Equipped' : owned ? 'Equip' : `${t.price.toLocaleString()} ⭐`}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ marginBottom: '24px', padding: '12px', textAlign: 'center', color: '#8888AA', fontSize: '0.8rem', background: 'rgba(0,217,255,0.05)', borderRadius: '8px', border: '1px solid rgba(0,217,255,0.15)' }}>
+        💡 Earn ⭐ stars by playing hands, winning pots, daily spins, leveling up, and completing missions.
+      </div>
+
     </div>
   );
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -2087,6 +2329,29 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <span /><span /><span /><span /><span />
         <span /><span /><span /><span /><span />
       </div>
+
+      {/* Waitlist context banner — shown when player deep-linked from player app */}
+      {waitlistContext && (
+        <div style={{
+          padding: '10px 16px',
+          background: 'linear-gradient(90deg, #f59e0b, #d97706)',
+          color: '#0f172a',
+          fontSize: '13px',
+          fontWeight: 600,
+          textAlign: 'center',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
+        }}>
+          ⏳ You're {waitlistContext.position ? `#${waitlistContext.position} ` : ''}
+          on the waitlist{waitlistContext.venue ? ` for ${waitlistContext.venue}` : ''}
+          {waitlistContext.startTime
+            ? ` at ${new Date(waitlistContext.startTime).toLocaleString([], { weekday:'short', hour:'numeric', minute:'2-digit' })}`
+            : ''}
+          {' — '}playing at Beginner's Table while you wait
+        </div>
+      )}
 
       {/* Top Bar - always visible */}
       <div className="lobby-top-bar">

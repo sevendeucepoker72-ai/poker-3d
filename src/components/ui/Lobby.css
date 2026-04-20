@@ -459,6 +459,28 @@
   cursor: not-allowed;
 }
 
+/* Mini seat preview dots */
+.table-seat-preview {
+  display: flex;
+  gap: 5px;
+  margin-top: 8px;
+  align-items: center;
+}
+.table-seat-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.2);
+  background: transparent;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.table-seat-dot--occupied {
+  background: #4ADE80;
+  border-color: #4ADE80;
+  box-shadow: 0 0 4px rgba(74,222,128,0.35);
+}
+
 /* Career mode button */
 .btn-career {
   padding: 10px 24px;
@@ -1032,6 +1054,45 @@
 /* ═══════════════════════════════════════════ */
 /* PROFILE CARD (Profile Tab)                  */
 /* ═══════════════════════════════════════════ */
+
+/* Banner wrap + gradient cover area */
+.lobby-profile-banner-wrap {
+  position: relative;
+  margin-bottom: 16px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 217, 255, 0.4);
+  background: rgba(8, 8, 8, 0.5);
+  backdrop-filter: blur(8px);
+}
+.lobby-profile-banner {
+  height: 80px;
+  background: linear-gradient(135deg, #0d1b4a 0%, #1a3a6e 30%, #00D9FF22 60%, #6366f1 100%);
+  position: relative;
+}
+.lobby-profile-banner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 50%, rgba(8,8,8,0.7) 100%);
+}
+
+.lobby-profile-card--with-banner {
+  border: none !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  margin-bottom: 0 !important;
+  border-radius: 0 !important;
+}
+
+.lobby-profile-avatar--overlap {
+  margin-top: -28px !important;
+  position: relative;
+  z-index: 2;
+  width: 72px !important;
+  height: 72px !important;
+}
+
 .lobby-profile-card {
   display: flex;
   align-items: flex-start;

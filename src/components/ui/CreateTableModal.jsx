@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { getSocket } from '../../services/socketService';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
+import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 
 const VARIANTS = [
   { value: 'texas-holdem', label: "Texas Hold'em" },
@@ -44,6 +45,39 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
 
   const { sb, bb } = BLINDS[blindIdx];
 
+  // Hardware back button closes the modal
+  useBackButtonClose(true, onClose);
+
+  // Track every socket listener we attach so unmounting mid-request doesn't
+  // leave ghost handlers on the shared singleton socket, AND a stale response
+  // doesn't fire setScreen on an unmounted component.
+  const listenersRef = useRef(new Set()); // { event, fn } pairs
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      const sock = getSocket();
+      if (sock) {
+        listenersRef.current.forEach(({ event, fn }) => sock.off(event, fn));
+      }
+      listenersRef.current.clear();
+    };
+  }, []);
+
+  function attach(socket, event, fn) {
+    listenersRef.current.add({ event, fn });
+    socket.on(event, fn);
+  }
+  function detach(socket, event, fn) {
+    for (const entry of listenersRef.current) {
+      if (entry.event === event && entry.fn === fn) {
+        listenersRef.current.delete(entry);
+        break;
+      }
+    }
+    socket.off(event, fn);
+  }
+
   function handleCreate() {
     if (creating) return;
     setCreating(true);
@@ -56,14 +90,17 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
       return;
     }
 
-    socket.once('privateTableCreated', ({ tableId, inviteCode: code }) => {
+    const onCreated = ({ tableId, inviteCode: code }) => {
+      detach(socket, 'privateTableCreated', onCreated);
+      if (!mountedRef.current) return;
       setInviteCode(code);
       setCreating(false);
       // Auto-join as creator (seat 0, host)
       if (playerName) setPlayerName(playerName);
       joinTable(tableId, playerName, 0, bb * 100, avatar);
       setScreen('table');
-    });
+    };
+    attach(socket, 'privateTableCreated', onCreated);
 
     socket.emit('createPrivateTable', {
       tableName,
@@ -86,11 +123,29 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
     const socket = getSocket();
     if (!socket?.connected) { setError('Not connected.'); return; }
 
-    socket.once('joinError', ({ message }) => setError(message));
-    socket.once('gameState', () => {
+    // Track whether we've already resolved this join — otherwise a late
+    // gameState broadcast (e.g., from another table) could re-trigger setScreen.
+    let settled = false;
+
+    const onJoinError = ({ message }) => {
+      if (settled) return;
+      settled = true;
+      detach(socket, 'joinError', onJoinError);
+      detach(socket, 'gameState', onGameState);
+      if (!mountedRef.current) return;
+      setError(message);
+    };
+    const onGameState = () => {
+      if (settled) return;
+      settled = true;
+      detach(socket, 'joinError', onJoinError);
+      detach(socket, 'gameState', onGameState);
+      if (!mountedRef.current) return;
       if (playerName) setPlayerName(playerName);
       setScreen('table');
-    });
+    };
+    attach(socket, 'joinError', onJoinError);
+    attach(socket, 'gameState', onGameState);
 
     socket.emit('joinByInviteCode', {
       inviteCode: code,

@@ -12,7 +12,7 @@ export default function useSoundEffects() {
 
   const getVolume = useCallback(() => {
     try {
-      const v = parseFloat(localStorage.getItem('sfxVolume'));
+      const v = parseFloat(sessionStorage.getItem('sfxVolume'));
       return isNaN(v) ? 1 : Math.max(0, Math.min(1, v));
     } catch {
       return 1;

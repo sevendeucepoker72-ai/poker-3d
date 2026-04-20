@@ -6,7 +6,7 @@ const STORAGE_KEY = 'app_poker_theme';
 export default function ThemeToggle() {
   const [isDark, setIsDark] = useState(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY) !== 'light';
+      return sessionStorage.getItem(STORAGE_KEY) !== 'light';
     } catch {
       return true;
     }
@@ -15,17 +15,17 @@ export default function ThemeToggle() {
   useEffect(() => {
     if (isDark) {
       document.body.classList.remove('light-theme');
-      localStorage.setItem(STORAGE_KEY, 'dark');
+      sessionStorage.setItem(STORAGE_KEY, 'dark');
     } else {
       document.body.classList.add('light-theme');
-      localStorage.setItem(STORAGE_KEY, 'light');
+      sessionStorage.setItem(STORAGE_KEY, 'light');
     }
   }, [isDark]);
 
   // Apply on mount in case of stored preference
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = sessionStorage.getItem(STORAGE_KEY);
       if (stored === 'light') {
         document.body.classList.add('light-theme');
         setIsDark(false);

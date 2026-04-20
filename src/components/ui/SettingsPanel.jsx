@@ -1,6 +1,27 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import './SettingsPanel.css';
+import { getSocket } from '../../services/socketService';
+import { useProgressStore } from '../../store/progressStore';
+import { useGameStore } from '../../store/gameStore';
+import {
+  isPushSupported,
+  isIosNonStandalone,
+  subscribeToPush,
+  unsubscribeFromPush,
+  getPushStatus,
+} from '../../hooks/usePushNotifications';
+
+// Debounced server sync for preferences — persists across devices.
+let _prefsSyncTimer = null;
+function schedulePrefsSync(settings) {
+  if (_prefsSyncTimer) clearTimeout(_prefsSyncTimer);
+  _prefsSyncTimer = setTimeout(() => {
+    _prefsSyncTimer = null;
+    const socket = getSocket();
+    if (socket && socket.connected) socket.emit('updatePreferences', settings);
+  }, 400);
+}
 
 const STORAGE_KEY = 'app_poker_settings';
 const SETTINGS_3D_KEY = 'poker3d_settings';
@@ -55,7 +76,7 @@ const TIMER_OPTIONS = [
 
 function loadSettings() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw) {
       return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
     }
@@ -65,15 +86,22 @@ function loadSettings() {
 
 function saveSettings(settings) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     // Also save to poker3d_settings key for cross-component access
-    localStorage.setItem(SETTINGS_3D_KEY, JSON.stringify(settings));
+    sessionStorage.setItem(SETTINGS_3D_KEY, JSON.stringify(settings));
   } catch { /* ignore */ }
 }
 
 function applyFontScale(fontSizeKey) {
   const option = FONT_SIZE_OPTIONS.find((o) => o.key === fontSizeKey) || FONT_SIZE_OPTIONS[1];
+  // --font-scale is a multiplier used by em/rem-based selectors. For modals
+  // that set explicit `px` widths, we ALSO toggle a data-attribute so their
+  // CSS can opt into `calc(W * var(--font-scale))` rather than overflow.
   document.documentElement.style.setProperty('--font-scale', String(option.scale));
+  document.documentElement.style.setProperty('--font-scale-pct', String(Math.round(option.scale * 100) + '%'));
+  document.documentElement.setAttribute('data-font-scale', fontSizeKey);
+  // Also scale the root font-size — any rem-based layout will follow automatically.
+  document.documentElement.style.fontSize = `calc(16px * ${option.scale})`;
 }
 
 function applyColorBlindMode(enabled) {
@@ -86,7 +114,7 @@ function applyColorBlindMode(enabled) {
 
 // Apply settings on initial load (before component mounts)
 try {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw = sessionStorage.getItem(STORAGE_KEY);
   if (raw) {
     const parsed = JSON.parse(raw);
     if (parsed.fontSize) applyFontScale(parsed.fontSize);
@@ -95,13 +123,59 @@ try {
 } catch { /* ignore */ }
 
 export default function SettingsPanel({ onClose }) {
-  const [settings, setSettings] = useState(loadSettings);
+  // Hydrate from server preferences if present, else local defaults.
+  const serverPrefs = useProgressStore((s) => s.progress?.preferences);
+  const [settings, setSettings] = useState(() => {
+    const local = loadSettings();
+    return { ...local, ...(serverPrefs || {}) };
+  });
 
-  // Save whenever settings change
+  // Push notification enrollment state
+  const userId = useGameStore((s) => s.userId);
+  const supportsPush = isPushSupported();
+  const iosGuidance = isIosNonStandalone();
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!supportsPush || !userId) return;
+    getPushStatus(userId).then((s) => {
+      if (!cancelled) setPushEnabled(!!(s && (s.push_enabled || s.has_subscription)));
+    });
+    return () => { cancelled = true; };
+  }, [supportsPush, userId]);
+
+  const togglePush = async () => {
+    if (!userId || pushBusy) return;
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      if (pushEnabled) {
+        await unsubscribeFromPush(userId);
+        setPushEnabled(false);
+      } else {
+        const ok = await subscribeToPush(userId);
+        if (!ok) {
+          setPushError(Notification.permission === 'denied'
+            ? 'Notifications are blocked in your browser settings. Allow them to enable.'
+            : 'Could not enable push. Try again.');
+        } else {
+          setPushEnabled(true);
+        }
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  // Save whenever settings change — local + debounced server sync
   useEffect(() => {
     saveSettings(settings);
     applyFontScale(settings.fontSize);
     applyColorBlindMode(settings.colorBlindMode);
+    schedulePrefsSync(settings);
   }, [settings]);
 
   // Close on escape
@@ -123,6 +197,52 @@ export default function SettingsPanel({ onClose }) {
         <div className="settings-header">
           <span className="settings-title">Settings</span>
           <button className="settings-close" onClick={onClose}>Close</button>
+        </div>
+
+        {/* ===== NOTIFICATIONS ===== */}
+        <div className="settings-section">
+          <div className="settings-section-title">Notifications</div>
+
+          {!supportsPush && (
+            <div className="settings-row" style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+              This browser does not support push notifications.
+            </div>
+          )}
+
+          {supportsPush && iosGuidance && (
+            <div className="settings-row" style={{ color: '#fbbf24', fontSize: '0.85rem', lineHeight: 1.4 }}>
+              On iPhone: Tap <strong>Share → Add to Home Screen</strong>, then open the app from your home screen to enable notifications.
+            </div>
+          )}
+
+          {supportsPush && !iosGuidance && (
+            <div className="settings-row" style={{ flexWrap: 'wrap', gap: '8px' }}>
+              <span className="settings-label">Push notifications</span>
+              <button
+                className="btn-accent"
+                onClick={togglePush}
+                disabled={pushBusy || !userId}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '0.85rem',
+                  background: pushEnabled ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+                  color: '#fff',
+                }}
+              >
+                {pushBusy ? 'Working…' : pushEnabled ? '✓ Enabled — click to turn off' : 'Turn on'}
+              </button>
+              {pushError && (
+                <div style={{ flexBasis: '100%', color: '#ef4444', fontSize: '0.78rem', marginTop: '4px' }}>
+                  {pushError}
+                </div>
+              )}
+              {!userId && (
+                <div style={{ flexBasis: '100%', color: '#94a3b8', fontSize: '0.78rem', marginTop: '4px' }}>
+                  Log in to enable notifications.
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ===== SOUND ===== */}

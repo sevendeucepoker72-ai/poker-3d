@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node -e \"import('fs').then(m=>{const f=m.default;const p='dist/sw.js';if(f.existsSync(p)){f.writeFileSync(p,f.readFileSync(p,'utf8').replace(/__BUILD_TIME__/g,Date.now().toString()))}})\"",
     "build:mobile": "vite build --config vite.config.mobile.js",
     "lint": "eslint .",
     "preview": "vite preview"
