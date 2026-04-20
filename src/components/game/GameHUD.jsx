@@ -393,8 +393,16 @@ export default function GameHUD() {
   const showHandTimerRef = useRef(null);
 
   // === Auto Deal state (#11) ===
+  // Default ON — the server now auto-starts hands every 12s heartbeat (and
+  // 3s after every HandComplete), so the manual "Start Hand" button is
+  // vestigial. Auto-deal is kept as a client-side redundancy so even if
+  // server scheduling stalls, the client fires startHand() 2s after HandComplete.
   const [autoDeal, setAutoDeal] = useState(() => {
-    try { return sessionStorage.getItem('app_poker_autoDeal') === 'true'; } catch (e) { return false; }
+    try {
+      const raw = sessionStorage.getItem('app_poker_autoDeal');
+      if (raw === null) return true; // default ON for new users
+      return raw === 'true';
+    } catch (e) { return true; }
   });
   const autoDealTimerRef = useRef(null);
 
@@ -2861,7 +2869,38 @@ export default function GameHUD() {
               )}
             </div>
           ) : isWaiting ? (
-            <button className="action-btn deal" onClick={startHand}>Start Hand</button>
+            /* Live-room behavior: the server auto-starts the next hand every
+               12s heartbeat (and 3s after HandComplete). Players should never
+               need to click a button to continue play. We show a passive
+               "Starting next hand…" indicator instead, but keep a small
+               manual Deal escape hatch in case the server stalls. */
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', width: '100%' }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                padding: '6px 14px', borderRadius: 999,
+                background: 'rgba(0,217,255,0.08)', color: '#00D9FF',
+                border: '1px solid rgba(0,217,255,0.25)', fontSize: 13, fontWeight: 600,
+              }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: '50%', background: '#00D9FF',
+                  animation: 'livePulse 1.2s ease-in-out infinite',
+                }} />
+                {phase === 'HandComplete' ? 'Starting next hand…' : 'Waiting for players…'}
+              </span>
+              <button
+                className="action-btn deal"
+                onClick={startHand}
+                style={{
+                  padding: '6px 14px', fontSize: 12, opacity: 0.55,
+                  background: 'transparent', border: '1px solid rgba(255,255,255,0.18)',
+                  color: '#aaa',
+                }}
+                title="Force the next hand to start immediately"
+              >
+                Deal now
+              </button>
+              <style>{`@keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }`}</style>
+            </div>
           ) : hasDrawPhase && isDrawPhase ? (
             /* Draw Phase */
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
