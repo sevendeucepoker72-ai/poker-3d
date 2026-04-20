@@ -296,6 +296,7 @@ const SeatPod = memo(function SeatPod({
   style, dealerButtonSeat, occupiedSeats,
   handResult, phase, onClickNameplate,
   bigBlind, heroEmoji, onSitHere, winStreak,
+  isTournament, heroAlreadySeated, isPendingMoveTarget,
 }) {
   const turnStartedAt = useTimerStore(s => s.turnStartedAt);
   const turnTimeout   = useTimerStore(s => s.turnTimeout);
@@ -350,22 +351,40 @@ const SeatPod = memo(function SeatPod({
      fewer than 9 seats. Treating eliminated-but-still-there as "Open"
      matches player intuition: a busted-out seat is available to sit. */
   if (!serverSeat || (!isOccupied && !isSittingOut) || eliminated) {
+    // Disable "Sit Here" for tournament tables — TournamentManager owns
+    // seating there. Still show the "Open" placeholder so the oval layout
+    // stays 9-wide and spectators can see where the empty seats are.
+    const canInteract = !isTournament;
+    // When the hero is already seated, the action is a seat MOVE (cash
+    // tables only). Show a different label so the intent is explicit.
+    const btnLabel = heroAlreadySeated ? 'Move here' : 'Sit Here';
     return (
       <div
-        className="seat-pod seat-pod--empty"
-        style={style}
+        className={`seat-pod seat-pod--empty ${isPendingMoveTarget ? 'seat-pod--pending-move' : ''}`}
+        style={{
+          ...style,
+          ...(isPendingMoveTarget ? {
+            outline: '2px dashed rgba(34, 211, 238, 0.8)',
+            boxShadow: '0 0 0 6px rgba(34, 211, 238, 0.12)',
+            borderRadius: '50%',
+          } : {}),
+        }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
         <div className="seat-pod__avatar-wrap">
           <div className="seat-pod__avatar seat-pod__avatar--empty">+</div>
         </div>
-        {hovered ? (
+        {isPendingMoveTarget ? (
+          <div className="seat-pod__label" style={{ color: '#22D3EE', fontWeight: 700 }}>
+            Moving here…
+          </div>
+        ) : hovered && canInteract ? (
           <button
             className="seat-pod__sit-btn"
             onClick={() => onSitHere && onSitHere(seatIndex)}
           >
-            Sit Here
+            {btnLabel}
           </button>
         ) : (
           <div className="seat-pod__label">Open</div>
@@ -610,6 +629,26 @@ export default function PokerTable2D() {
   const bigBlind       = gameState?.bigBlind ?? (gameState?.smallBlind ?? 0) * 2;
   const communityCards = gameState?.communityCards ?? [];
 
+  // Pending-seat-move state. When the server ACKs a `moveSeat` request it
+  // emits `moveSeatPending { pendingSeat }`; on execution at the next
+  // hand boundary it emits `moveSeatComplete { newSeat }` which clears.
+  const [pendingSeat, setPendingSeat] = useState(null);
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const onPending = (d) => { if (d?.pendingSeat != null) setPendingSeat(d.pendingSeat); };
+    const onComplete = () => setPendingSeat(null);
+    const onCancelled = () => setPendingSeat(null);
+    socket.on('moveSeatPending', onPending);
+    socket.on('moveSeatComplete', onComplete);
+    socket.on('moveSeatCancelled', onCancelled);
+    return () => {
+      socket.off('moveSeatPending', onPending);
+      socket.off('moveSeatComplete', onComplete);
+      socket.off('moveSeatCancelled', onCancelled);
+    };
+  }, []);
+
   const occupiedSeats = seats
     .map((s, i) => (s?.state === 'occupied' ? i : -1))
     .filter(i => i >= 0);
@@ -727,9 +766,34 @@ export default function PokerTable2D() {
     []
   );
 
+  // Click on an empty seat. Branches on whether the player is ALREADY
+  // seated at this table: if yes, it's a seat-move request (server queues
+  // it for the next hand boundary). If no, it's a take-seat request
+  // (legacy, currently a no-op on the server — future seat reservation
+  // flow lives here). Tournament tables reject moveSeat server-side; the
+  // UI also hides the Sit Here button for tournament tables.
   const onSitHere = useCallback((seatIndex) => {
     const socket = getSocket();
-    if (socket?.connected) socket.emit('takeSeat', { seatIndex });
+    if (!socket?.connected) return;
+    const alreadySeated = yourSeat >= 0;
+    const isTournament =
+      gameState?.isTournament === true ||
+      gameState?.tournamentId != null ||
+      (gameState?.variantName || '').toLowerCase().includes('tournament');
+    if (alreadySeated) {
+      if (isTournament) {
+        // Tournament seats are controlled by the tournament manager —
+        // silently no-op rather than confusing the user with an error.
+        return;
+      }
+      socket.emit('moveSeat', { targetSeatIndex: seatIndex, tableId: gameState?.tableId });
+    } else {
+      socket.emit('takeSeat', { seatIndex });
+    }
+  }, [yourSeat, gameState]);
+  const cancelPendingMove = useCallback(() => {
+    const socket = getSocket();
+    if (socket?.connected) socket.emit('cancelMoveSeat');
   }, []);
 
   return (
@@ -789,6 +853,40 @@ export default function PokerTable2D() {
       </div>
 
       {/* ── Theme cycle button ─────────────────────────────── */}
+      {/* Pending seat-move pill — shows when the player has queued a move
+          and it's waiting for the current hand to complete. Tapping
+          "Cancel" tells the server to drop the queued move. */}
+      {pendingSeat != null && pendingSeat !== yourSeat && (
+        <div
+          style={{
+            position: 'fixed', top: 14, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 1500, display: 'flex', alignItems: 'center', gap: 10,
+            padding: '8px 14px', borderRadius: 999,
+            background: 'rgba(14, 116, 144, 0.95)',
+            border: '1px solid rgba(34, 211, 238, 0.5)',
+            color: '#e0f2fe', fontSize: 13, fontWeight: 600,
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+          }}
+        >
+          <span style={{
+            display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+            background: '#22D3EE', animation: 'movePendPulse 1.2s infinite',
+          }} />
+          Moving to seat {pendingSeat + 1} after this hand
+          <button
+            onClick={cancelPendingMove}
+            style={{
+              marginLeft: 6, padding: '4px 10px', borderRadius: 6,
+              background: 'transparent', border: '1px solid rgba(255,255,255,0.35)',
+              color: '#fff', cursor: 'pointer', fontSize: 12,
+            }}
+          >
+            Cancel
+          </button>
+          <style>{`@keyframes movePendPulse { 0%,100% {opacity:1} 50% {opacity:0.3} }`}</style>
+        </div>
+      )}
+
       <button className="table2d-theme-btn" onClick={cycleTheme} title="Change table theme">
         {theme.name}
       </button>
@@ -851,6 +949,10 @@ export default function PokerTable2D() {
         const topPct = seatEllipse
           ? (seatEllipse.cy + y * seatEllipse.yR) * 100
           : 50 + y * 28;
+        const isTournamentTbl =
+          gameState?.isTournament === true ||
+          gameState?.tournamentId != null ||
+          (gameState?.variantName || '').toLowerCase().includes('tournament');
         return (
           <SeatPod
             key={i}
@@ -871,6 +973,9 @@ export default function PokerTable2D() {
             heroEmoji={heroEmoji}
             onSitHere={onSitHere}
             winStreak={winStreaks.get(seatName) ?? 0}
+            isTournament={isTournamentTbl}
+            heroAlreadySeated={yourSeat >= 0}
+            isPendingMoveTarget={pendingSeat === i}
           />
         );
       })}
