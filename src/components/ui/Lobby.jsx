@@ -992,6 +992,43 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
   const [nameInput, setNameInput] = useState(playerName);
 
+  // #1 (audit) — screen transition race guard.
+  // Instead of immediately swapping to 'table' the instant we emit a join
+  // message, we show a "Joining table…" overlay and wait for gameState to
+  // arrive with our seat populated. If 8s pass with no gameState, we give up
+  // and surface an error so the user isn't stranded on a blank spinner.
+  const [joining, setJoining] = useState(null); // null | { since: number, label: string }
+  const [joinError, setJoinError] = useState(null);
+  const beginJoin = (label, action) => {
+    setJoinError(null);
+    setJoining({ since: Date.now(), label });
+    try { action(); } catch (e) {
+      setJoining(null);
+      setJoinError(e?.message || 'Could not start join — try again.');
+    }
+  };
+  // Watch for gameState with our seat — that's the signal that the server
+  // has accepted us and play can begin. `gameState.yourSeat >= 0` with a
+  // playerName confirms we're actually seated, not just receiving spectator
+  // state or a stale previous-table payload.
+  useEffect(() => {
+    if (!joining) return;
+    const seated = gameState?.yourSeat >= 0 && gameState?.seats?.[gameState.yourSeat]?.playerName;
+    if (seated) {
+      setJoining(null);
+      setJoinError(null);
+      setScreen('table');
+    }
+  }, [joining, gameState, setScreen]);
+  useEffect(() => {
+    if (!joining) return;
+    const id = setTimeout(() => {
+      setJoining(null);
+      setJoinError('Server didn\'t respond in time. Check your connection and try again.');
+    }, 8000);
+    return () => clearTimeout(id);
+  }, [joining]);
+
   // Session tracker
   const sessionStartRef = useRef(Date.now());
   const sessionStartChipsRef = useRef(null);
@@ -1213,8 +1250,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         const isTaken = seats[seatIdx] && seats[seatIdx].playerName;
         if (!isTaken && seatIdx >= 0 && seatIdx < (table.maxSeats || 9)) {
           setPlayerName(nameInput.trim());
-          joinTable(table.tableId, nameInput.trim(), seatIdx, table.minBuyIn || 1000, avatar);
-          setScreen('table');
+          beginJoin('Joining table…', () => {
+            joinTable(table.tableId, nameInput.trim(), seatIdx, table.minBuyIn || 1000, avatar);
+          });
           return;
         }
       }
@@ -1230,9 +1268,11 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       const prefKey = `app_poker_prefSeat_${seatPickerTable.tableName || seatPickerTable.tableId}`;
       sessionStorage.setItem(prefKey, String(seatIndex));
     } catch { /* ignore */ }
-    joinTable(seatPickerTable.tableId, nameInput.trim(), seatIndex, seatPickerTable.minBuyIn || 1000, avatar);
+    const tbl = seatPickerTable;
     setSeatPickerTable(null);
-    setScreen('table');
+    beginJoin('Joining table…', () => {
+      joinTable(tbl.tableId, nameInput.trim(), seatIndex, tbl.minBuyIn || 1000, avatar);
+    });
   };
 
   // Auto-trigger PWA shortcut action once connected + name is set
@@ -1240,39 +1280,36 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     if (!pwaAction || !connected || !nameInput.trim()) return;
     const name = nameInput.trim();
     setPlayerName(name);
-    if (pwaAction === 'quickplay') { quickPlay(name, avatar); setScreen('table'); }
-    else if (pwaAction === 'spingo') { quickSpinGo(name, avatar); setScreen('table'); }
+    if (pwaAction === 'quickplay') beginJoin('Finding a game…', () => quickPlay(name, avatar));
+    else if (pwaAction === 'spingo') beginJoin('Finding a Spin & Go…', () => quickSpinGo(name, avatar));
   }, [pwaAction, connected, nameInput]); // eslint-disable-line
 
   const handleQuickPlay = () => {
     if (!nameInput.trim()) return;
     setPlayerName(nameInput.trim());
-    quickPlay(nameInput.trim(), avatar);
-    setScreen('table');
+    beginJoin('Finding a game…', () => quickPlay(nameInput.trim(), avatar));
   };
 
   const handleQuickHeadsUp = () => {
     if (!nameInput.trim()) return;
     setPlayerName(nameInput.trim());
-    quickHeadsUp(nameInput.trim());
-    setScreen('table');
+    beginJoin('Finding a heads-up match…', () => quickHeadsUp(nameInput.trim()));
   };
 
   const handleQuickSpinGo = () => {
     if (!nameInput.trim()) return;
     setPlayerName(nameInput.trim());
-    quickSpinGo(nameInput.trim());
-    setScreen('table');
+    beginJoin('Finding a Spin & Go…', () => quickSpinGo(nameInput.trim()));
   };
 
   const handleQuickAllInOrFold = () => {
     if (!nameInput.trim()) return;
     setPlayerName(nameInput.trim());
-    quickAllInOrFold(nameInput.trim());
-    setScreen('table');
+    beginJoin('Finding an All-In or Fold game…', () => quickAllInOrFold(nameInput.trim()));
   };
 
   const handleWatch = (tableId) => {
+    // Spectator mode doesn't produce a `yourSeat` so we DO transition directly.
     spectateTable(tableId);
     setScreen('table');
   };
@@ -2329,6 +2366,53 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <span /><span /><span /><span /><span />
         <span /><span /><span /><span /><span />
       </div>
+
+      {/* Join-in-progress overlay — blocks interaction until server confirms
+          our seat via a gameState carrying yourSeat, or the 8s watchdog fires. */}
+      {joining && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 3000,
+            background: 'rgba(5,8,18,0.72)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div style={{
+            background: 'linear-gradient(135deg,#0d0d2a,#1a1a4e)',
+            padding: '26px 32px', borderRadius: 16, textAlign: 'center',
+            border: '1px solid rgba(0,217,255,0.3)', color: '#e0e0e0',
+            minWidth: 260, boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
+          }}>
+            <div style={{
+              width: 40, height: 40, margin: '0 auto 16px',
+              border: '3px solid rgba(0,217,255,0.25)', borderTopColor: '#00D9FF',
+              borderRadius: '50%', animation: 'lobbyJoinSpin 0.9s linear infinite',
+            }} />
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#00D9FF' }}>{joining.label}</div>
+            <div style={{ opacity: 0.6, fontSize: 12, marginTop: 6 }}>Seating you at the table…</div>
+            <style>{`@keyframes lobbyJoinSpin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        </div>
+      )}
+
+      {/* Join error toast — shown briefly if the server didn't seat us in time */}
+      {joinError && !joining && (
+        <div
+          role="alert"
+          style={{
+            position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 3100, background: 'rgba(120,20,20,0.96)', color: '#fff',
+            padding: '10px 18px', borderRadius: 10, fontSize: 13, maxWidth: 320,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            border: '1px solid rgba(239,68,68,0.6)',
+          }}
+          onClick={() => setJoinError(null)}
+        >
+          ⚠ {joinError} <span style={{ opacity: 0.7, marginLeft: 8 }}>(tap to dismiss)</span>
+        </div>
+      )}
 
       {/* Waitlist context banner — shown when player deep-linked from player app */}
       {waitlistContext && (

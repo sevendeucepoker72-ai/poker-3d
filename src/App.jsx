@@ -716,15 +716,25 @@ export default function App() {
     return () => { cancelled = true; };
   }, [isOAuthCallback]);
 
-  // Handle seat reconnection after token login
+  // Handle seat reconnection after token login.
+  // Server now force-emits a full gameState on reconnect (see emitGameState
+  // with forceFullState=true in poker-server), so we no longer rely on the
+  // broadcast delta catching us up. This handler jumps the user straight to
+  // the table screen so they don't have to manually re-navigate after the
+  // server restored their seat — critical on mobile where a phone lock /
+  // network blip is the most common reconnect cause.
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
 
     const handleReconnected = (data) => {
-      // Server has re-joined us to our reserved table/seat
-      // The broadcastGameState after reconnect will update table state via existing handlers
       console.log('[App] Reconnected to reserved seat', data);
+      try {
+        const store = useGameStore.getState();
+        if (store.isLoggedIn) {
+          store.setScreen('table');
+        }
+      } catch { /* ignore */ }
     };
 
     socket.on('reconnectedToTable', handleReconnected);
@@ -784,9 +794,16 @@ export default function App() {
           if (result.token) sessionStorage.setItem('poker_auth_token', result.token);
           sessionStorage.setItem('poker_keep_signed_in', '1');
         } catch {}
+        if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+        setDeepLinkTimedOut(false);
         useGameStore.getState().login(result.userData, result.token);
       } else {
+        // Surface the actual server error (token_already_used / ticket_expired /
+        // token_verify_failed) so the spinner stops and the user sees a sensible
+        // "Sign in manually" path instead of an infinite retry loop.
         console.error('[deep-link] authWithTicket failed:', result?.error);
+        if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+        setDeepLinkTimedOut(true);
       }
     };
     socket.on('loginResult', handleLoginResult);
