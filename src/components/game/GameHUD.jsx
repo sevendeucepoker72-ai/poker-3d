@@ -919,10 +919,25 @@ export default function GameHUD() {
         const name = seat.playerName || `P${i + 1}`;
         let entry = '';
         const act = action.toLowerCase();
+        // Disambiguate raises: "raised to X" when we can surface the new total,
+        // and "raised from Y to X" when we have the previous bet snapshot. A
+        // plain "raised 250" used to be ambiguous between "raised to 250" and
+        // "raised by 250" — several users misread it as the raise delta.
+        const prevBet = prevSeat?.currentBet || 0;
+        const curBet = seat.currentBet || 0;
+        const raiseDelta = curBet - prevBet;
         if (act.includes('fold')) entry = `${name} folded`;
         else if (act.includes('check')) entry = `${name} checked`;
-        else if (act.includes('call')) entry = `${name} called ${seat.currentBet > 0 ? seat.currentBet.toLocaleString() : ''}`;
-        else if (act.includes('raise') || act.includes('bet')) entry = `${name} raised ${seat.currentBet > 0 ? seat.currentBet.toLocaleString() : ''}`;
+        else if (act.includes('call')) entry = `${name} called ${curBet > 0 ? curBet.toLocaleString() : ''}`;
+        else if (act.includes('raise') || act.includes('bet')) {
+          if (curBet > 0 && raiseDelta > 0 && prevBet > 0) {
+            entry = `${name} raised to ${curBet.toLocaleString()} (+${raiseDelta.toLocaleString()})`;
+          } else if (curBet > 0) {
+            entry = `${name} raised to ${curBet.toLocaleString()}`;
+          } else {
+            entry = `${name} raised`;
+          }
+        }
         else if (act.includes('all-in') || act.includes('allin')) entry = `${name} went all-in`;
         else entry = `${name} ${action}`;
         if (entry) newEntries.push(entry.trim());
@@ -2864,18 +2879,38 @@ export default function GameHUD() {
           ) : (
             /* Normal betting — always rendered, disabled when not our turn */
             <>
-              {/* Pre-action pills — shown above buttons while waiting (not during showdown/hand end) */}
-              {!isMyTurn && phase !== 'Showdown' && phase !== 'HandComplete' && (
+              {/* Pre-action pills — shown above buttons while waiting (not during
+                  showdown/hand end, and explicitly not for spectators). The outer
+                  isSpectating branch already hides this whole block, but adding
+                  the guard here too is defense-in-depth against future refactors
+                  and against the case where `isSpectating` flips stale after a
+                  leave-table event and the UI lingers mid-transition. */}
+              {!isMyTurn && !isSpectating && phase !== 'Showdown' && phase !== 'HandComplete' && (
                 <div className="pre-action-btns">
-                  <button className={`pre-action-btn${preAction === 'checkFold' ? ' active' : ''}`} onClick={() => setPreAction(preAction === 'checkFold' ? null : 'checkFold')}>
+                  <button
+                    className={`pre-action-btn${preAction === 'checkFold' ? ' active' : ''}`}
+                    aria-label={preAction === 'checkFold' ? 'Cancel pre-action: check or fold' : 'Queue pre-action: check or fold on my turn'}
+                    aria-pressed={preAction === 'checkFold'}
+                    onClick={() => setPreAction(preAction === 'checkFold' ? null : 'checkFold')}
+                  >
                     <span className="pre-action-icon">🔄</span>
                     <span className="pre-action-label">Check/Fold</span>
                   </button>
-                  <button className={`pre-action-btn${preAction === 'callAny' ? ' active' : ''}`} onClick={() => setPreAction(preAction === 'callAny' ? null : 'callAny')}>
+                  <button
+                    className={`pre-action-btn${preAction === 'callAny' ? ' active' : ''}`}
+                    aria-label={preAction === 'callAny' ? 'Cancel pre-action: call any' : 'Queue pre-action: call any bet on my turn'}
+                    aria-pressed={preAction === 'callAny'}
+                    onClick={() => setPreAction(preAction === 'callAny' ? null : 'callAny')}
+                  >
                     <span className="pre-action-icon">✋</span>
                     <span className="pre-action-label">Call Any</span>
                   </button>
-                  <button className={`pre-action-btn${preAction === 'checkOnly' ? ' active' : ''}`} onClick={() => setPreAction(preAction === 'checkOnly' ? null : 'checkOnly')}>
+                  <button
+                    className={`pre-action-btn${preAction === 'checkOnly' ? ' active' : ''}`}
+                    aria-label={preAction === 'checkOnly' ? 'Cancel pre-action: check if possible' : 'Queue pre-action: check if still free when action returns'}
+                    aria-pressed={preAction === 'checkOnly'}
+                    onClick={() => setPreAction(preAction === 'checkOnly' ? null : 'checkOnly')}
+                  >
                     <span className="pre-action-icon">✓</span>
                     <span className="pre-action-label">Check</span>
                   </button>
@@ -2889,6 +2924,13 @@ export default function GameHUD() {
                 <button
                   className={`action-btn fold ${foldPending ? 'fold-pending' : ''}`}
                   disabled={!isMyTurn}
+                  aria-label={
+                    !isMyTurn
+                      ? 'Fold button, not your turn'
+                      : foldPending
+                        ? `Confirm fold by tapping again. You would give up a call of ${callAmount.toLocaleString()} chips.`
+                        : `Fold. ${callAmount > 0 ? `Call amount ${callAmount.toLocaleString()} chips.` : 'No bet to call.'} ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`
+                  }
                   onClick={() => {
                     const bigBet = myChips > 0 && callAmount > myChips * 0.25;
                     if (bigBet && !foldPending) {
@@ -2914,11 +2956,21 @@ export default function GameHUD() {
                 {/* CHECK / CALL with pot odds below */}
                 <div className="ab-call-group">
                   {callAmount === 0 ? (
-                    <button className="action-btn check" disabled={!isMyTurn} onClick={() => handleAction('check')}>
+                    <button
+                      className="action-btn check"
+                      disabled={!isMyTurn}
+                      aria-label={!isMyTurn ? 'Check button, not your turn' : `Check for free. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
+                      onClick={() => handleAction('check')}
+                    >
                       Check
                     </button>
                   ) : (
-                    <button className="action-btn call" disabled={!isMyTurn} onClick={() => handleAction('call')}>
+                    <button
+                      className="action-btn call"
+                      disabled={!isMyTurn}
+                      aria-label={!isMyTurn ? `Call button, not your turn. Call amount ${callAmount.toLocaleString()} chips.` : `Call ${callAmount.toLocaleString()} chips. ${pot > 0 ? `Pot odds require ${Math.round(100 * callAmount / (pot + callAmount))} percent equity to break even.` : ''} ${handStrength ? `Current hand strength ${Math.round(handStrength.strength * 100)} percent.` : ''} ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
+                      onClick={() => handleAction('call')}
+                    >
                       Call
                       <span className="action-amount-sub">{callAmount.toLocaleString()}</span>
                       {potOddsDisplay && (
@@ -2976,9 +3028,18 @@ export default function GameHUD() {
                         onChange={(e) => setRaiseAmount(Number(e.target.value))}
                         className="raise-inline-slider"
                         disabled={!isMyTurn}
+                        aria-label={`Raise amount slider. Minimum ${minRaiseTotal.toLocaleString()}, maximum ${maxRaise.toLocaleString()}, current ${raiseAmount.toLocaleString()}.`}
+                        aria-valuemin={minRaiseTotal}
+                        aria-valuemax={maxRaise}
+                        aria-valuenow={raiseAmount}
                       />
                     </div>
-                    <button className="action-btn raise" disabled={!isMyTurn} onClick={() => handleAction('raise', raiseAmount)}>
+                    <button
+                      className="action-btn raise"
+                      disabled={!isMyTurn}
+                      aria-label={!isMyTurn ? `Raise button, not your turn. Amount ${raiseAmount.toLocaleString()}.` : `Raise to ${raiseAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
+                      onClick={() => handleAction('raise', raiseAmount)}
+                    >
                       Raise<br />{raiseAmount.toLocaleString()}
                     </button>
                   </div>
@@ -2988,6 +3049,7 @@ export default function GameHUD() {
                 <button
                   className="action-btn allin"
                   disabled={!isMyTurn}
+                  aria-label={!isMyTurn ? 'All-in button, not your turn' : `Push all ${myChips.toLocaleString()} chips all-in. ${skipAllInConfirm ? 'Confirmation skipped — single tap commits.' : 'Opens confirmation dialog.'}`}
                   onClick={() => {
                     if (skipAllInConfirm) handleAction('allIn');
                     else setShowAllInConfirm(true);
