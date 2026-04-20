@@ -2695,10 +2695,16 @@
   letter-spacing: 0.3px;
 }
 
-/* === Side Pot Breakdown === */
+/* === Side Pot Breakdown ===
+   Previously pinned at `top: 340px` — roughly the middle of the oval where
+   the flop/turn/river community cards render. The boxes literally covered
+   the board. Repositioned to sit JUST UNDER the top pot header (which shows
+   the total) so the breakdown is always visible without obscuring the
+   board. On short viewports it falls further up; on tall viewports we let
+   it hug the top header instead of drifting down into the table. */
 .side-pot-breakdown {
   position: fixed;
-  top: 340px;
+  top: 72px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 200;
@@ -2708,6 +2714,13 @@
   pointer-events: none;
   flex-wrap: nowrap;
   justify-content: center;
+  max-width: 92vw;
+}
+/* Very short viewports (mobile landscape) — shrink + align with header */
+@media (max-height: 600px) {
+  .side-pot-breakdown { top: 56px; }
+  .side-pot-breakdown .side-pot-item { padding: 2px 8px; min-width: 64px; }
+  .side-pot-breakdown .side-pot-amount { font-size: 0.85rem; }
 }
 
 .side-pot-item {
