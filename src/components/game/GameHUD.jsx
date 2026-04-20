@@ -23,6 +23,8 @@ import { loadHotkeys } from '../ui/HotkeySettings';
 import { useAFKTracker } from '../../hooks/useAFKTracker';
 import './GameHUD.css';
 
+import OverlayBoundary from '../ui/OverlayBoundary';
+
 // ─── Lazy-loaded overlays — only downloaded when first opened ─────────────────
 const HandReplayViewer  = lazy(() => import('../replay/HandReplayViewer'));
 const HotkeySettings    = lazy(() => import('../ui/HotkeySettings'));
@@ -512,7 +514,25 @@ export default function GameHUD() {
   // Tracks whether we've already sent an action this turn — prevents timer auto-fold race
   const hasSentActionRef = useRef(false);
 
-  // Derive values from server game state
+  // Derive values from server game state.
+  // Defensive schema guard — if an older / regressed server revision drops
+  // fields we expect (seats, pots, communityCards, yourCardVisibility), we
+  // log ONCE and keep rendering with sane defaults rather than crashing on
+  // a `.length` or bracket access below. The ref gates the log so a shape
+  // mismatch doesn't spam the console every tick.
+  const schemaWarnedRef = useRef(false);
+  useEffect(() => {
+    if (!gameState || schemaWarnedRef.current) return;
+    const missing = [];
+    if (!Array.isArray(gameState.seats)) missing.push('seats');
+    if (gameState.communityCards !== undefined && !Array.isArray(gameState.communityCards)) missing.push('communityCards');
+    if (gameState.pots !== undefined && !Array.isArray(gameState.pots)) missing.push('pots');
+    if (missing.length > 0) {
+      schemaWarnedRef.current = true;
+      // eslint-disable-next-line no-console
+      console.warn('[GameHUD] gameState schema mismatch — missing/invalid:', missing, '(falling back to defaults)');
+    }
+  }, [gameState]);
   const phase = gameState?.phase || 'WaitingForPlayers';
   const pot = gameState?.pot || 0;
   const communityCards = gameState?.communityCards || [];
@@ -1281,7 +1301,15 @@ export default function GameHUD() {
     }
   }, [serverTurnStartedAt, serverTurnTimeout, setTurnTiming, clearTurnTiming]);
 
-  // Turn timer: hero countdown derived from server timestamp
+  // Turn timer: hero countdown derived from server timestamp.
+  // Defensive guards against reconnect drift:
+  //  • Don't tick at all until BOTH serverTurnStartedAt and serverTurnTimeout
+  //    have been populated (was previously using `|| Date.now()` fallback,
+  //    which during reconnect could produce a 30s display that immediately
+  //    jumped to 0 when the real value arrived).
+  //  • Clamp remaining to the timeout-in-seconds ceiling, not just >= 0,
+  //    so a future-dated serverTurnStartedAt (clock skew) doesn't briefly
+  //    show e.g. 120s on a 30s budget.
   useEffect(() => {
     if (isMyTurn) {
       timerWarningPlayed.current = false;
@@ -1289,8 +1317,15 @@ export default function GameHUD() {
 
       const tick = () => {
         timerStartedRef.current = true;
-        const elapsed = Date.now() - (serverTurnStartedAt || Date.now());
-        const remaining = Math.max(0, Math.ceil((serverTurnTimeout - elapsed) / 1000));
+        // Require a real server timestamp; skip ticks before reconnect settles.
+        if (!serverTurnStartedAt || !serverTurnTimeout) {
+          setTimeLeft(Math.ceil((serverTurnTimeout || 30000) / 1000));
+          return;
+        }
+        const elapsed = Date.now() - serverTurnStartedAt;
+        const timeoutSec = Math.max(1, Math.ceil(serverTurnTimeout / 1000));
+        const rawRemaining = Math.ceil((serverTurnTimeout - elapsed) / 1000);
+        const remaining = Math.max(0, Math.min(timeoutSec, rawRemaining));
         setTimeLeft(remaining);
         if (remaining <= 0) {
           clearInterval(timerRef.current);
@@ -2477,15 +2512,20 @@ export default function GameHUD() {
         </div>
       )}
 
-      {/* All-in Equity Display (#17) */}
+      {/* All-in Equity Display (#17). Worker results are sanitized before
+          render — NaN/fractional/negative/oversized values all coerce to a
+          valid 0-100 integer. Previously a broken worker response could paint
+          "NaN%" or "45.77777777%" directly into the badge. */}
       {equityResults && Object.keys(equityResults).length > 0 && (
         <div className="equity-badges-container">
           {seats.map((seat, i) => {
             if (!seat || seat.state !== 'occupied' || seat.folded || equityResults[i] === undefined) return null;
+            const raw = Number(equityResults[i]);
+            const pct = Number.isFinite(raw) ? Math.round(Math.max(0, Math.min(100, raw))) : 0;
             return (
-              <div key={i} className="equity-badge" title={`${seat.playerName}: ${equityResults[i]}% equity`}>
+              <div key={i} className="equity-badge" title={`${seat.playerName}: ${pct}% equity`}>
                 <span className="equity-player-name">{seat.playerName}</span>
-                <span className="equity-pct">{equityResults[i]}%</span>
+                <span className="equity-pct">{pct}%</span>
               </div>
             );
           })}
@@ -3069,8 +3109,18 @@ export default function GameHUD() {
 
             {/* All showdown hands — skip rows whose holeCards haven't
                 hydrated yet (client may receive the showdown envelope before
-                the encrypted cards are decrypted). Variant-aware eval. */}
+                the encrypted cards are decrypted). Variant-aware eval.
+                If EVERY hand is still unhydrated we show a placeholder so the
+                overlay doesn't look broken. */}
             <div className="showdown-hands">
+              {handResult.showdownHands.filter(h => Array.isArray(h.holeCards) && h.holeCards.length > 0).length === 0 && (
+                <div
+                  className="showdown-hand-row"
+                  style={{ opacity: 0.7, fontStyle: 'italic', justifyContent: 'center', padding: '16px 0' }}
+                >
+                  Waiting for cards to reveal…
+                </div>
+              )}
               {handResult.showdownHands.filter(h => Array.isArray(h.holeCards) && h.holeCards.length > 0).map((hand) => {
                 const isWinner = winnerSeatSet.has(hand.seatIndex);
                 let detailedName = hand.handName;
@@ -3482,12 +3532,15 @@ export default function GameHUD() {
         );
       })}
 
-      {/* Replay viewer overlay */}
-      <Suspense fallback={null}>
-        {showReplay && lastHandHistory && (
-          <HandReplayViewer history={lastHandHistory} onClose={() => setShowReplay(false)} />
-        )}
-      </Suspense>
+      {/* Replay viewer overlay — wrapped so a chunk-load failure doesn't
+          blank the whole HUD. OverlayBoundary falls back to a small toast. */}
+      <OverlayBoundary name="Hand Replay" onClose={() => setShowReplay(false)}>
+        <Suspense fallback={null}>
+          {showReplay && lastHandHistory && (
+            <HandReplayViewer history={lastHandHistory} onClose={() => setShowReplay(false)} />
+          )}
+        </Suspense>
+      </OverlayBoundary>
 
       {/* Training overlay */}
       {trainingEnabled && <TrainingOverlay />}
@@ -3502,9 +3555,11 @@ export default function GameHUD() {
       </button>
 
       {/* Hotkey settings overlay */}
-      <Suspense fallback={null}>
-        <HotkeySettings open={hotkeyOpen} onClose={() => setHotkeyOpen(false)} />
-      </Suspense>
+      <OverlayBoundary name="Hotkey Settings" onClose={() => setHotkeyOpen(false)}>
+        <Suspense fallback={null}>
+          <HotkeySettings open={hotkeyOpen} onClose={() => setHotkeyOpen(false)} />
+        </Suspense>
+      </OverlayBoundary>
 
       {/* Unified toast stack (replaces inline rebuy notification) */}
       {toasts.length > 0 && (
@@ -3593,7 +3648,29 @@ export default function GameHUD() {
       {/* Hand Range Chart overlay */}
       {showRangeChart && <HandRangeChart onClose={() => setShowRangeChart(false)} />}
 
-      {/* Equity Calculator, GTO, Provably Fair, Share, Coach, Voice — lazy loaded */}
+      {/* Equity Calculator, GTO, Provably Fair, Share, Coach, Voice — lazy loaded.
+          Wrapped in OverlayBoundary so a failed chunk load for any of these
+          doesn't take down the whole HUD with React's default error behavior. */}
+      <OverlayBoundary
+        name="Advanced Overlays"
+        onClose={() => {
+          setShowEquityCalc(false);
+          setShowProvablyFair(false);
+          setShowShareReplay(false);
+          setShowPostHandCoach(false);
+          setShowVoiceChat(false);
+          setShowTimingTells(false);
+          setShowCommentary(false);
+          setShowRangeViz(false);
+          setShowSpectatorPredict(false);
+          setShowPauseCoach(false);
+          setShowStream(false);
+          setShowSessionRecap(false);
+          setShowGtoSolver(false);
+          setShowPredictionMarket(false);
+          setShowHandHeatmap(false);
+        }}
+      >
       <Suspense fallback={null}>
         {showEquityCalc && <EquityCalculator onClose={() => setShowEquityCalc(false)} />}
 
@@ -3631,6 +3708,7 @@ export default function GameHUD() {
           />
         )}
       </Suspense>
+      </OverlayBoundary>
 
       {/* Post-Hand Analysis Panel */}
       {(phase === 'Showdown' || phase === 'HandComplete') && handResult && (

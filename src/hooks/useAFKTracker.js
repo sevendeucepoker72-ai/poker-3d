@@ -56,6 +56,19 @@ export function useAFKTracker({ active = false, onAFK, onBack, onWarning } = {})
     const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
     events.forEach(ev => window.addEventListener(ev, resetActivity, { passive: true }));
 
+    // Tab backgrounding / pageshow should also count as activity on return.
+    // Previously the AFK timer accumulated silently while the tab was hidden
+    // — someone returning after alt-tabbing for 11 minutes would fire the AFK
+    // callback the instant they came back, even though they were clearly
+    // present at that moment.
+    const handleVisibility = () => {
+      if (!document.hidden) resetActivity();
+    };
+    const handlePageShow = () => resetActivity();
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('focus', handlePageShow);
+
     // Tick every second to update countdown
     tickRef.current = setInterval(() => {
       const idle = Date.now() - lastActivityRef.current;
@@ -77,6 +90,9 @@ export function useAFKTracker({ active = false, onAFK, onBack, onWarning } = {})
     return () => {
       clearInterval(tickRef.current);
       events.forEach(ev => window.removeEventListener(ev, resetActivity));
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('focus', handlePageShow);
     };
   }, [active]);
 

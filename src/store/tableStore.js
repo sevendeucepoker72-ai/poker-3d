@@ -26,6 +26,13 @@ export const useTableStore = create((set, get) => ({
   // messages hidden" badge ABOVE the scroll area when it detects a cap hit.
   chatMessages: [],
   addChatMessage: (msg) => set((state) => {
+    // Dedup on clientMessageId — if the server echoes the same message twice
+    // (transient connectivity, doubled emit, AT-LEAST-ONCE delivery) we drop
+    // the duplicate rather than doubling bubbles in the transcript.
+    if (msg?.clientMessageId) {
+      const dup = state.chatMessages.some(m => m.clientMessageId === msg.clientMessageId);
+      if (dup) return state;
+    }
     const updated = [...state.chatMessages, msg];
     return { chatMessages: updated.length > 100 ? updated.slice(-100) : updated };
   }),
@@ -103,9 +110,29 @@ export const useTableStore = create((set, get) => ({
     }
   },
 
+  // Idempotency for chat: GameHUD may invoke sendChat more than once on a
+  // flaky network (button retry, hotkey repeat). We suppress duplicate emits
+  // within a 1500ms window per-text, AND generate a clientMessageId that the
+  // server can echo back so `addChatMessage` can dedupe on receipt.
+  _recentChatSends: new Map(), // text → timestamp
   sendChat: (message) => {
     const socket = getSocket();
-    if (socket?.connected) socket.emit('chatMessage', { message });
+    if (!socket?.connected) return;
+    const key = String(message || '').trim();
+    if (!key) return;
+    const now = Date.now();
+    const recent = get()._recentChatSends;
+    const last = recent.get(key);
+    if (last && now - last < 1500) return; // suppress double-click / key repeat
+    recent.set(key, now);
+    // Garbage-collect entries older than 5s so the map doesn't grow unbounded.
+    for (const [k, t] of recent) {
+      if (now - t > 5000) recent.delete(k);
+    }
+    const clientMessageId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `c_${now}_${Math.random().toString(36).slice(2, 10)}`;
+    socket.emit('chatMessage', { message: key, clientMessageId });
   },
 
   leaveTable: () => {
