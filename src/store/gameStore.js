@@ -94,15 +94,13 @@ export const useGameStore = create((set, get) => ({
 
   logout: () => {
     const idToken = get().oauthIdToken;
-    // Auth tokens
-    sessionStorage.removeItem('poker_auth_token');
-    sessionStorage.removeItem('poker_keep_signed_in');
-    sessionStorage.removeItem('poker_oauth_refresh');
-    sessionStorage.removeItem('poker_oauth_id_token');
-    sessionStorage.removeItem('poker_token_expiry');
-    sessionStorage.removeItem('poker_auth_token');
-    sessionStorage.removeItem('poker_oauth_id_token');
-    sessionStorage.removeItem('poker_token_expiry');
+    // Auth tokens — explicit logout wipes BOTH stores (localStorage +
+    // sessionStorage) so "Keep me signed in" state from a prior tab
+    // can't resurrect the session on the next page load.
+    for (const k of ['poker_auth_token','poker_keep_signed_in','poker_oauth_refresh','poker_oauth_id_token','poker_token_expiry']) {
+      try { localStorage.removeItem(k); } catch {}
+      try { sessionStorage.removeItem(k); } catch {}
+    }
     // Identity / player profile — previously leaked across account switches
     // (next user would temporarily see the previous user's username, avatar,
     // and cached stats until the server response overwrote them).

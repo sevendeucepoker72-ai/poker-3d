@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { getSocket } from '../../services/socketService';
 import { handleCallback, getCallbackParams } from '../../services/authService';
+import { setAuthToken, isKeepSignedIn } from '../../services/tokenStorage';
 
 export default function AuthCallback() {
   const [status, setStatus] = useState('Signing in...');
@@ -62,19 +63,18 @@ export default function AuthCallback() {
       .then((tokens) => {
         if (cancelled) return;
 
-        // Store tokens (short-lived access in sessionStorage; refresh stays
-        // in sessionStorage because it survives tab close / "keep me signed in")
+        // Route tokens to localStorage or sessionStorage based on the
+        // keep-signed-in flag the user set on the login screen (already
+        // persisted by LoginScreen.handleSSOLogin before startLogin).
+        // tokenStorage.setAuthToken uses that flag internally.
         try {
-          sessionStorage.setItem('poker_auth_token', tokens.access_token);
-          sessionStorage.setItem('poker_oauth_id_token', tokens.id_token || '');
-          sessionStorage.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000));
+          setAuthToken(tokens.access_token);
+          const keep = isKeepSignedIn();
+          const store = keep ? localStorage : sessionStorage;
+          store.setItem('poker_oauth_refresh', tokens.refresh_token);
+          store.setItem('poker_oauth_id_token', tokens.id_token || '');
+          store.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000));
         } catch { /* ignore */ }
-        // Legacy mirrors so code paths that still read sessionStorage keep working
-        sessionStorage.setItem('poker_auth_token', tokens.access_token);
-        sessionStorage.setItem('poker_oauth_refresh', tokens.refresh_token);
-        sessionStorage.setItem('poker_oauth_id_token', tokens.id_token || '');
-        sessionStorage.setItem('poker_keep_signed_in', '1');
-        sessionStorage.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000));
 
         // Authenticate with poker-server via socket
         const socket = getSocket();

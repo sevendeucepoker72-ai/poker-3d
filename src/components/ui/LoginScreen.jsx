@@ -3,6 +3,7 @@ import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
 import { getSocket } from '../../services/socketService';
 import { startLogin } from '../../services/authService';
+import { setAuthToken, setAuthUsername, isKeepSignedIn, setKeepSignedIn } from '../../services/tokenStorage';
 import './LoginScreen.css';
 
 // Generate a cryptographically-random password for guest accounts. The previous
@@ -25,10 +26,9 @@ export default function LoginScreen() {
   // "Remember me" — previously set silently to 1 by the SSO path; now the
   // user controls it. Defaults ON (matches previous behavior for returning
   // users) but SSO + guest now both honor the checkbox.
-  const [rememberMe, setRememberMe] = useState(() => {
-    try { return sessionStorage.getItem('poker_keep_signed_in') !== '0'; }
-    catch { return true; }
-  });
+  // "Keep me signed in" now reads from localStorage (via tokenStorage helper)
+  // so the preference survives browser restart, matching the token it gates.
+  const [rememberMe, setRememberMe] = useState(() => isKeepSignedIn());
 
   const login = useGameStore((s) => s.login);
   const tables = useTableStore((s) => s.tables);
@@ -42,14 +42,11 @@ export default function LoginScreen() {
     const handleRegisterResult = (result) => {
       setLoading(false);
       if (result.success) {
-        if (rememberMe) {
-          sessionStorage.setItem('poker_auth_token', result.token);
-          sessionStorage.setItem('poker_keep_signed_in', '1');
-        } else {
-          sessionStorage.setItem('poker_auth_token', result.token);
-          sessionStorage.setItem('poker_keep_signed_in', '0');
-        }
-        sessionStorage.setItem('poker_username', result.userData.username);
+        // Route the token to localStorage when "Keep me signed in" is on
+        // (survives browser restart), sessionStorage otherwise (tab-only).
+        setKeepSignedIn(rememberMe);
+        setAuthToken(result.token, rememberMe);
+        setAuthUsername(result.userData.username);
         login(result.userData, result.token);
       } else {
         setError(result.error || 'Guest login failed');
@@ -61,9 +58,10 @@ export default function LoginScreen() {
   }, [login, rememberMe]);
 
   const handleSSOLogin = () => {
-    try {
-      sessionStorage.setItem('poker_keep_signed_in', rememberMe ? '1' : '0');
-    } catch { /* ignore */ }
+    // Persist the keep-signed-in choice BEFORE starting the OAuth flow;
+    // the callback handler will read it to decide where to store the
+    // returned token (localStorage vs sessionStorage).
+    setKeepSignedIn(rememberMe);
     setLoading(true);
     startLogin();
   };

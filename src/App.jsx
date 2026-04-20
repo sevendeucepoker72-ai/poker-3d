@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, Component, lazy, Suspense } from 'react';
 import { useGameStore } from './store/gameStore';
 import { useTableStore } from './store/tableStore';
+import { getAuthToken, setAuthToken, clearAuthToken, isKeepSignedIn } from './services/tokenStorage';
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -273,7 +274,9 @@ export default function App() {
     // we have to redo the handshake or any in-game action we emit next will
     // be rejected as unauthenticated. Uses the stored OAuth access token.
     socket.on('connect', () => {
-      const token = (() => { try { return sessionStorage.getItem('poker_auth_token'); } catch { return null; } })();
+      // Use tokenStorage so both localStorage (keep-signed-in) and
+      // sessionStorage (tab-only) variants are checked on reconnect.
+      const token = getAuthToken();
       if (!token) return;
       // Only re-emit if we already have an authenticated session — otherwise
       // the initial login flow (handled below) will take care of it.
@@ -586,16 +589,21 @@ export default function App() {
     if (!socket) return;
 
     const clearStoredTokens = () => {
-      try { sessionStorage.removeItem('poker_auth_token'); } catch {}
-      try { sessionStorage.removeItem('poker_keep_signed_in'); } catch {}
-      try { sessionStorage.removeItem('poker_oauth_refresh'); } catch {}
-      try { sessionStorage.removeItem('poker_oauth_id_token'); } catch {}
-      try { sessionStorage.removeItem('poker_token_expiry'); } catch {}
-      try { sessionStorage.removeItem('poker_auth_token'); } catch {}
+      // Clear BOTH stores for each key so localStorage-backed "Keep me
+      // signed in" sessions are also purged on auto-login failure.
+      clearAuthToken();
+      for (const k of ['poker_keep_signed_in','poker_oauth_refresh','poker_oauth_id_token','poker_token_expiry']) {
+        try { localStorage.removeItem(k); } catch {}
+        try { sessionStorage.removeItem(k); } catch {}
+      }
     };
 
-    // Attempt OAuth refresh token flow
-    const oauthRefresh = sessionStorage.getItem('poker_oauth_refresh');
+    // Attempt OAuth refresh token flow — check localStorage first
+    // (keep-signed-in) then sessionStorage fallback.
+    const oauthRefresh = (() => {
+      try { return localStorage.getItem('poker_oauth_refresh') || sessionStorage.getItem('poker_oauth_refresh'); }
+      catch { return null; }
+    })();
     if (oauthRefresh) {
       let oauthResultListener = null;
       let oauthConnectHandler = null;
@@ -604,10 +612,16 @@ export default function App() {
       refreshAccessToken(oauthRefresh)
         .then((tokens) => {
           if (cancelled) return;
-          sessionStorage.setItem('poker_auth_token', tokens.access_token);
-          sessionStorage.setItem('poker_oauth_refresh', tokens.refresh_token);
-          sessionStorage.setItem('poker_oauth_id_token', tokens.id_token || '');
-          sessionStorage.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000));
+          // Use tokenStorage so the access token respects "Keep me signed in".
+          setAuthToken(tokens.access_token);
+          // OAuth refresh token / id token / expiry: also route to the
+          // same storage the auth token went to (localStorage if
+          // keep-signed-in, sessionStorage otherwise).
+          const keep = isKeepSignedIn();
+          const store = keep ? localStorage : sessionStorage;
+          try { store.setItem('poker_oauth_refresh', tokens.refresh_token); } catch {}
+          try { store.setItem('poker_oauth_id_token', tokens.id_token || ''); } catch {}
+          try { store.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000)); } catch {}
 
           const handleResult = (result) => {
             if (cancelled) return;
@@ -667,13 +681,12 @@ export default function App() {
       };
     }
 
-    // Legacy token auto-login (existing HS256 JWT)
+    // Legacy token auto-login (existing HS256 JWT).
+    // tokenStorage.getAuthToken reads localStorage (persistent) first,
+    // then sessionStorage fallback — so "Keep me signed in" actually
+    // works across browser restarts.
     function tryLegacyAutoLogin() {
-      let localToken = null;
-      let sessionToken = null;
-      try { localToken   = sessionStorage.getItem('poker_auth_token'); }   catch {}
-      try { sessionToken = sessionStorage.getItem('poker_auth_token'); } catch {}
-      const savedToken = localToken || sessionToken;
+      const savedToken = getAuthToken();
       if (!savedToken) return;
 
       let timeoutId = null;
@@ -683,14 +696,9 @@ export default function App() {
         clearTimeout(timeoutId);
         socket.off('loginResult', handleAutoLoginResult);
         if (result?.success && result.userData) {
-          try {
-            if (localToken) {
-              sessionStorage.setItem('poker_auth_token', result.token);
-              sessionStorage.setItem('poker_keep_signed_in', '1');
-            } else {
-              sessionStorage.setItem('poker_auth_token', result.token);
-            }
-          } catch {}
+          // Re-persist the refreshed token using the user's stored
+          // keep-signed-in preference. Preserves localStorage placement.
+          setAuthToken(result.token);
           useGameStore.getState().login(result.userData, result.token);
         } else {
           clearStoredTokens();
@@ -751,13 +759,17 @@ export default function App() {
     if (delay <= 0) return;
 
     const timer = setTimeout(async () => {
-      const refresh = sessionStorage.getItem('poker_oauth_refresh');
+      // Check both stores for the refresh token (keep-signed-in lives in localStorage).
+      let refresh = null;
+      try { refresh = localStorage.getItem('poker_oauth_refresh') || sessionStorage.getItem('poker_oauth_refresh'); } catch {}
       if (!refresh) return;
       try {
         const tokens = await refreshAccessToken(refresh);
-        sessionStorage.setItem('poker_auth_token', tokens.access_token);
-        sessionStorage.setItem('poker_oauth_refresh', tokens.refresh_token);
-        sessionStorage.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000));
+        setAuthToken(tokens.access_token);
+        const keep = isKeepSignedIn();
+        const store = keep ? localStorage : sessionStorage;
+        try { store.setItem('poker_oauth_refresh', tokens.refresh_token); } catch {}
+        try { store.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000)); } catch {}
         const state = useGameStore.getState();
         state.setAuth(state.userId, tokens.access_token);
       } catch {
@@ -791,7 +803,7 @@ export default function App() {
       if (cancelled) return;
       if (result?.success && result.userData) {
         try {
-          if (result.token) sessionStorage.setItem('poker_auth_token', result.token);
+          if (result.token) setAuthToken(result.token);
           sessionStorage.setItem('poker_keep_signed_in', '1');
         } catch {}
         if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
