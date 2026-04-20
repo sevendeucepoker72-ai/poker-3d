@@ -1515,16 +1515,19 @@ export default function GameHUD() {
     }
   }, [chatMessages]);
 
-  // Auto-rebuy: when hand completes and chips are below min buy-in
+  // Auto-rebuy: fires ONLY when the player has truly busted (0 chips), not
+  // just short-stacked. Previously used `myChips < minBuyIn` which topped
+  // up any under-min stack every hand — that's free chips every time you
+  // lose a pot, not real poker. Now matches PokerStars / GG: rebuy on bust
+  // to the starting stack; short-stacked players play out of it or leave.
   useEffect(() => {
     if (autoRebuy && phase === 'HandComplete' && prevPhaseForRebuyRef.current !== 'HandComplete') {
-      const minBuyIn = gameState?.minBuyIn || 5000;
-      if (myChips < minBuyIn) {
+      if (myChips <= 0) {
+        const minBuyIn = gameState?.minBuyIn || 5000;
         const socket = getSocket();
         if (socket?.connected) {
-          const rebuyAmount = minBuyIn;
-          socket.emit('rebuy', { amount: rebuyAmount });
-          addToast(`♻ Auto-rebuying ${rebuyAmount.toLocaleString()} chips`, 'success');
+          socket.emit('rebuy', { amount: minBuyIn });
+          addToast(`♻ Auto-rebuying ${minBuyIn.toLocaleString()} chips`, 'success');
         }
       }
     }
