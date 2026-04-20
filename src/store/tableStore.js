@@ -62,11 +62,17 @@ export const useTableStore = create((set, get) => ({
     else console.warn('[sendAction] Socket not connected');
   },
 
-  joinTable: (tableId, playerName, seatIndex, buyIn, avatar) => {
+  // `expectedVariant` is optional but strongly recommended — it tells the
+  // server which variant the user thought they were joining. If the server's
+  // current variant doesn't match (table got converted, rebalanced, etc.)
+  // the join is rejected with a clear error instead of silently seating the
+  // player at a different game type. Fixes the "I clicked Hold'em, ended
+  // up at a Draw table" class of bug.
+  joinTable: (tableId, playerName, seatIndex, buyIn, avatar, expectedVariant) => {
     const socket = getSocket();
     if (socket?.connected) {
-      console.log('[joinTable] Joining:', tableId, playerName);
-      socket.emit('joinTable', { tableId, playerName, seatIndex, buyIn, avatar });
+      console.log('[joinTable] Joining:', tableId, playerName, 'expected:', expectedVariant);
+      socket.emit('joinTable', { tableId, playerName, seatIndex, buyIn, avatar, expectedVariant });
     } else {
       console.warn('[joinTable] Socket not connected');
     }

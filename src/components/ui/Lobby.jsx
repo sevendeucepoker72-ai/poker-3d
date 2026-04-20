@@ -1251,7 +1251,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         if (!isTaken && seatIdx >= 0 && seatIdx < (table.maxSeats || 9)) {
           setPlayerName(nameInput.trim());
           beginJoin('Joining table…', () => {
-            joinTable(table.tableId, nameInput.trim(), seatIdx, table.minBuyIn || 1000, avatar);
+            // Pass expectedVariant so the server rejects the join (instead of
+            // silently seating) if the table's variant has drifted from the
+            // list view the user tapped.
+            joinTable(table.tableId, nameInput.trim(), seatIdx, table.minBuyIn || 1000, avatar, table.variant || 'texas-holdem');
           });
           return;
         }
