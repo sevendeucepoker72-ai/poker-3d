@@ -2745,6 +2745,59 @@ export default function GameHUD() {
                 >
                   🧑 Customize Avatar
                 </button>
+
+                {/* ─────────────────────────────────────────────────
+                    Advanced tools — moved in from the floating
+                    .adv-toolbar per user request. Same three collapsible
+                    groups (Analysis / Coach / Live), same toggles, same
+                    state. `toolbarGroups` kept as the open/close store.
+                    ───────────────────────────────────────────────── */}
+                <div className="options-adv-section">
+                  {/* Analysis group — range matrix, heatmaps, GTO, provably fair */}
+                  <button
+                    className={`options-adv-header ${toolbarGroups.analysis ? 'options-adv-header--open' : ''}`}
+                    onClick={() => setToolbarGroups(g => ({ ...g, analysis: !g.analysis }))}
+                  >📊 Analysis Tools {toolbarGroups.analysis ? '▾' : '▸'}</button>
+                  {toolbarGroups.analysis && (
+                    <div className="options-adv-grid">
+                      <button className={`options-adv-btn ${showRangeViz ? 'active' : ''}`} onClick={() => setShowRangeViz(v => !v)}>🎯 Range Matrix</button>
+                      <button className={`options-adv-btn ${showHeatmap ? 'active' : ''}`} onClick={() => setShowHeatmap(v => !v)}>🌡 Equity Heatmap</button>
+                      <button className={`options-adv-btn ${showTimingTells ? 'active' : ''}`} onClick={() => setShowTimingTells(v => !v)}>⏱ Timing Tells</button>
+                      <button className={`options-adv-btn ${showSpectatorPredict ? 'active' : ''}`} onClick={() => setShowSpectatorPredict(v => !v)}>🔮 Predict Winner</button>
+                      <button className={`options-adv-btn ${gtoVisible ? 'active' : ''}`} onClick={() => setGtoVisible(v => !v)}>📈 GTO Overlay</button>
+                      <button className={`options-adv-btn ${showGTOSolver ? 'active' : ''}`} onClick={() => setShowGTOSolver(v => !v)}>♟ GTO Solver</button>
+                      <button className="options-adv-btn" onClick={() => setShowProvablyFair(true)}>🔐 Provably Fair</button>
+                    </div>
+                  )}
+
+                  {/* Coach group — AI rail, commentary, pause-and-coach, post-hand review */}
+                  <button
+                    className={`options-adv-header ${toolbarGroups.coach ? 'options-adv-header--open' : ''}`}
+                    onClick={() => setToolbarGroups(g => ({ ...g, coach: !g.coach }))}
+                  >🧠 Coach Mode {toolbarGroups.coach ? '▾' : '▸'}</button>
+                  {toolbarGroups.coach && (
+                    <div className="options-adv-grid">
+                      <button className={`options-adv-btn ${showCoachingRail ? 'active' : ''}`} onClick={() => setShowCoachingRail(v => !v)}>🧠 AI Coach Rail</button>
+                      <button className={`options-adv-btn ${showCommentary ? 'active' : ''}`} onClick={() => setShowCommentary(v => !v)}>🎓 Table Commentary</button>
+                      <button className={`options-adv-btn ${showPauseCoach ? 'active' : ''}`} onClick={() => setShowPauseCoach(v => !v)} disabled={!isMyTurn}>⏸ Pause & Coach</button>
+                      <button className="options-adv-btn" onClick={() => setShowPostHandCoach(true)} disabled={!lastHandHistory}>🤖 Post-Hand Review</button>
+                    </div>
+                  )}
+
+                  {/* Live group — voice chat, streaming, prediction market, share hand */}
+                  <button
+                    className={`options-adv-header ${toolbarGroups.live ? 'options-adv-header--open' : ''}`}
+                    onClick={() => setToolbarGroups(g => ({ ...g, live: !g.live }))}
+                  >📡 Live & Social {toolbarGroups.live ? '▾' : '▸'}</button>
+                  {toolbarGroups.live && (
+                    <div className="options-adv-grid">
+                      <button className={`options-adv-btn ${showVoiceChat ? 'active' : ''}`} onClick={() => setShowVoiceChat(v => !v)}>🎙 Voice Chat</button>
+                      <button className={`options-adv-btn ${showStream ? 'active' : ''}`} onClick={() => setShowStream(v => !v)}>📺 Go Live</button>
+                      <button className={`options-adv-btn ${showPredictionMarket ? 'active' : ''}`} onClick={() => setShowPredictionMarket(v => !v)}>🎲 Prediction Market</button>
+                      <button className="options-adv-btn" onClick={() => setShowShareReplay(true)} disabled={!lastHandHistory}>🔗 Share Hand</button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -4304,61 +4357,12 @@ export default function GameHUD() {
         />
       </Suspense>
 
-      {/* Advanced tools toolbar — rendered via portal to document.body so
-          position:fixed works correctly regardless of parent transforms */}
-      {createPortal(<div className="adv-toolbar">
-        {/* ── Analysis group ─────────────────────────────────── */}
-        <div className="adv-toolbar-group">
-          <button
-            className={`adv-group-header ${toolbarGroups.analysis ? 'adv-group-header--open' : ''}`}
-            onClick={() => setToolbarGroups(g => ({ ...g, analysis: !g.analysis }))}
-            title="Analysis tools"
-          >📊 {toolbarGroups.analysis ? '▾' : '▸'}</button>
-          {toolbarGroups.analysis && (
-            <div className="adv-group-items">
-              <button className={`adv-tool-btn ${showRangeViz ? 'active' : ''}`} title="Range Matrix" onClick={() => setShowRangeViz(v => !v)}>🎯</button>
-              <button className={`adv-tool-btn ${showHeatmap ? 'active' : ''}`} title="Equity Heatmap" onClick={() => setShowHeatmap(v => !v)}>🌡</button>
-              <button className={`adv-tool-btn ${showTimingTells ? 'active' : ''}`} title="Timing Tells" onClick={() => setShowTimingTells(v => !v)}>⏱</button>
-              <button className={`adv-tool-btn ${showSpectatorPredict ? 'active' : ''}`} title="Predict Winner" onClick={() => setShowSpectatorPredict(v => !v)}>🔮</button>
-              <button className={`adv-tool-btn ${gtoVisible ? 'active' : ''}`} title="GTO Overlay" onClick={() => setGtoVisible(v => !v)}>📈</button>
-              <button className={`adv-tool-btn ${showGTOSolver ? 'active' : ''}`} title="GTO Solver" onClick={() => setShowGTOSolver(v => !v)}>♟</button>
-              <button className="adv-tool-btn" title="Provably Fair" onClick={() => setShowProvablyFair(true)}>🔐</button>
-            </div>
-          )}
-        </div>
-        {/* ── Coach group ─────────────────────────────────────── */}
-        <div className="adv-toolbar-group">
-          <button
-            className={`adv-group-header ${toolbarGroups.coach ? 'adv-group-header--open' : ''}`}
-            onClick={() => setToolbarGroups(g => ({ ...g, coach: !g.coach }))}
-            title="Coaching tools"
-          >🧠 {toolbarGroups.coach ? '▾' : '▸'}</button>
-          {toolbarGroups.coach && (
-            <div className="adv-group-items">
-              <button className={`adv-tool-btn ${showCoachingRail ? 'active' : ''}`} title="AI Coach Rail" onClick={() => setShowCoachingRail(v => !v)}>🧠</button>
-              <button className={`adv-tool-btn ${showCommentary ? 'active' : ''}`} title="Table Commentary" onClick={() => setShowCommentary(v => !v)}>🎓</button>
-              <button className={`adv-tool-btn ${showPauseCoach ? 'active' : ''}`} title="Pause & Coach" onClick={() => setShowPauseCoach(v => !v)} disabled={!isMyTurn}>⏸</button>
-              <button className="adv-tool-btn" title="AI Coach" onClick={() => setShowPostHandCoach(true)} disabled={!lastHandHistory}>🤖</button>
-            </div>
-          )}
-        </div>
-        {/* ── Live group ──────────────────────────────────────── */}
-        <div className="adv-toolbar-group">
-          <button
-            className={`adv-group-header ${toolbarGroups.live ? 'adv-group-header--open' : ''}`}
-            onClick={() => setToolbarGroups(g => ({ ...g, live: !g.live }))}
-            title="Live & Social"
-          >📡 {toolbarGroups.live ? '▾' : '▸'}</button>
-          {toolbarGroups.live && (
-            <div className="adv-group-items">
-              <button className={`adv-tool-btn ${showVoiceChat ? 'active' : ''}`} title="Voice Chat" onClick={() => setShowVoiceChat(v => !v)}>🎙</button>
-              <button className={`adv-tool-btn ${showStream ? 'active' : ''}`} title="Go Live" onClick={() => setShowStream(v => !v)}>📺</button>
-              <button className={`adv-tool-btn ${showPredictionMarket ? 'active' : ''}`} title="Prediction Market" onClick={() => setShowPredictionMarket(v => !v)}>🎲</button>
-              <button className="adv-tool-btn" title="Share Hand" onClick={() => setShowShareReplay(true)} disabled={!lastHandHistory}>🔗</button>
-            </div>
-          )}
-        </div>
-      </div>, document.body)}
+      {/* Advanced-tools toolbar — moved inside the Options dropdown per
+          user request ("menus with the range matrix, the coach mode,
+          and voice options need to be moved into options"). The whole
+          floating `.adv-toolbar` portal is gone; its three groups
+          (Analysis / Coach / Live) now render inside the Options menu
+          as labeled sections. See GameHUD.jsx Options dropdown body. */}
 
       {/* All-In Confirmation Popup.
           Two UX fixes vs. the previous version:

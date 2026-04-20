@@ -280,6 +280,76 @@
   width: 100%;
 }
 
+/* Advanced tools section inside Options dropdown (moved here from
+   the floating .adv-toolbar). Three collapsible groups, each with a
+   2-column grid of toggle buttons. Active toggles get a cyan accent.
+   Disabled buttons (e.g. Pause & Coach when not your turn) dim. */
+.options-adv-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.options-adv-header {
+  width: 100%;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: #C0C0D0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background 0.15s, border-color 0.15s;
+}
+.options-adv-header:hover { border-color: rgba(255, 255, 255, 0.16); }
+.options-adv-header--open {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: rgba(34, 211, 238, 0.4);
+  color: #E0F7FA;
+}
+.options-adv-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  padding: 4px 2px 6px;
+}
+.options-adv-btn {
+  padding: 6px 8px;
+  background: rgba(10, 10, 10, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: #A0A0C0;
+  font-size: 0.66rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.12s, border-color 0.15s, color 0.15s;
+}
+.options-adv-btn:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #E0E0F0;
+}
+.options-adv-btn.active {
+  background: rgba(6, 182, 212, 0.2);
+  border-color: rgba(34, 211, 238, 0.6);
+  color: #E0F7FA;
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.4);
+}
+.options-adv-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Training-mode badge in top-left (duplicate-audit #10). Subtle
    purple glow so it's obvious but not competing with pot/chip info.
    Tap toggles training off without having to hunt through Options. */
