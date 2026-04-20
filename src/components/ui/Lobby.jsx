@@ -988,7 +988,14 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const handHistories = useTableStore((s) => s.handHistories);
 
   const progress = useProgressStore((s) => s.progress);
-  const chipCount = progress ? progress.chips : chips;
+  // Authoritative chip balance comes from gameStore, which is set from
+  // loginResult.userData.chips (the server's DB view). progressStore's
+  // `chips` field has a 5000 default that stays until an explicit server
+  // push updates it — so a user with a real 0 balance would see "5,000"
+  // and try to join tables they can't afford. Prefer the gameStore value
+  // whenever it's defined (0 IS a valid value), only falling back to the
+  // progressStore if gameStore hasn't been populated yet.
+  const chipCount = (typeof chips === 'number') ? chips : (progress?.chips ?? 0);
 
   const [nameInput, setNameInput] = useState(playerName);
 
