@@ -1395,11 +1395,20 @@ export default function GameHUD() {
         playSound('call');
         sendAction('call');
       } else if (action === 'callAny') {
-        playSound('call');
-        sendAction('call');
+        // Safety cap: standard poker UX is to fold when the queued call
+        // amount exceeds the player's stack (e.g., opponent re-raised huge
+        // after we queued Call Any). Rather than silently put the player
+        // all-in, fold — they can always explicitly click Call to commit.
+        if (callAmount > myChips) {
+          playSound('fold');
+          sendAction('fold');
+        } else {
+          playSound('call');
+          sendAction('call');
+        }
       }
     }
-  }, [isMyTurn, callAmount, sendAction, playSound]);
+  }, [isMyTurn, callAmount, myChips, sendAction, playSound]);
 
   // Sync ref with state
   useEffect(() => {
@@ -1859,7 +1868,20 @@ export default function GameHUD() {
     // i.e., after you call, the pot would be (pot + callAmount), then you raise that amount
     const potAfterCall = pot + callAmount;
     const amount = callAmount + Math.round(potAfterCall * fraction);
-    return Math.max(minRaiseTotal, Math.min(amount, maxRaise));
+    const clamped = Math.max(minRaiseTotal, Math.min(amount, maxRaise));
+    // Surface a subtle toast when a preset gets clamped so the user knows
+    // the "½ Pot" (etc.) button worked, it just hit the stack ceiling.
+    if (clamped !== amount) {
+      try {
+        addToast(
+          clamped >= maxRaise
+            ? `Capped at all-in (${maxRaise.toLocaleString()})`
+            : `Raised to minimum (${minRaiseTotal.toLocaleString()})`,
+          'info'
+        );
+      } catch { /* addToast not in scope yet at first render — silent */ }
+    }
+    return clamped;
   };
 
   // Chip denomination breakdown helper
@@ -2966,18 +2988,28 @@ export default function GameHUD() {
               {/* Single flat row: Timer | Fold | Call | presets | Raise | All-In */}
               <div className="action-bar-flat">
 
-                {/* FOLD — instant on small bets, confirmation required for large commitments */}
+                {/* FOLD — instant on small bets, confirmation required for large commitments.
+                    When callAmount === 0, folding is functionally a check — route to `check`
+                    to save the server round-trip and avoid the "why did I fold a free card"
+                    confusion when a user reflex-taps Fold on a free-check street. */}
                 <button
                   className={`action-btn fold ${foldPending ? 'fold-pending' : ''}`}
                   disabled={!isMyTurn}
                   aria-label={
                     !isMyTurn
                       ? 'Fold button, not your turn'
-                      : foldPending
-                        ? `Confirm fold by tapping again. You would give up a call of ${callAmount.toLocaleString()} chips.`
-                        : `Fold. ${callAmount > 0 ? `Call amount ${callAmount.toLocaleString()} chips.` : 'No bet to call.'} ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`
+                      : callAmount === 0
+                        ? 'Check — no bet to call. Fold converts to a check on a free street.'
+                        : foldPending
+                          ? `Confirm fold by tapping again. You would give up a call of ${callAmount.toLocaleString()} chips.`
+                          : `Fold. Call amount ${callAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`
                   }
                   onClick={() => {
+                    // #7 — free check: Fold = Check when nothing to call
+                    if (callAmount === 0) {
+                      handleAction('check');
+                      return;
+                    }
                     const bigBet = myChips > 0 && callAmount > myChips * 0.25;
                     if (bigBet && !foldPending) {
                       // First tap: show confirmation; auto-dismiss after 3s so
@@ -3072,22 +3104,39 @@ export default function GameHUD() {
                         )}
                         value={Math.max(minRaiseTotal, Math.min(raiseAmount || minRaiseTotal, maxRaise))}
                         onChange={(e) => setRaiseAmount(Number(e.target.value))}
+                        onKeyDown={(e) => {
+                          // Escape blurs the slider so keyboard users aren't trapped
+                          // in the range input; the global Escape handler (elsewhere
+                          // in this file) also hides the slider overlay.
+                          if (e.key === 'Escape' && e.currentTarget) e.currentTarget.blur();
+                        }}
                         className="raise-inline-slider"
                         disabled={!isMyTurn}
-                        aria-label={`Raise amount slider. Minimum ${minRaiseTotal.toLocaleString()}, maximum ${maxRaise.toLocaleString()}, current ${raiseAmount.toLocaleString()}.`}
+                        aria-label={`Raise amount slider. Minimum ${minRaiseTotal.toLocaleString()}, maximum ${maxRaise.toLocaleString()}, current ${(raiseAmount || minRaiseTotal).toLocaleString()}.`}
                         aria-valuemin={minRaiseTotal}
                         aria-valuemax={maxRaise}
-                        aria-valuenow={raiseAmount}
+                        aria-valuenow={raiseAmount || minRaiseTotal}
                       />
                     </div>
-                    <button
-                      className="action-btn raise"
-                      disabled={!isMyTurn}
-                      aria-label={!isMyTurn ? `Raise button, not your turn. Amount ${raiseAmount.toLocaleString()}.` : `Raise to ${raiseAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
-                      onClick={() => handleAction('raise', raiseAmount)}
-                    >
-                      Raise<br />{raiseAmount.toLocaleString()}
-                    </button>
+                    {(() => {
+                      // Defensive: raiseAmount is initialized to 0 and should always
+                      // be a number, but a rapid re-render during `setRaiseAmount(undefined)`
+                      // could briefly leave it falsy. Fall back to `minRaiseTotal` so the
+                      // Raise button never renders "Raise\n(blank)".
+                      const displayAmount = (typeof raiseAmount === 'number' && raiseAmount > 0)
+                        ? raiseAmount
+                        : minRaiseTotal;
+                      return (
+                        <button
+                          className="action-btn raise"
+                          disabled={!isMyTurn}
+                          aria-label={!isMyTurn ? `Raise button, not your turn. Amount ${displayAmount.toLocaleString()}.` : `Raise to ${displayAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
+                          onClick={() => handleAction('raise', displayAmount)}
+                        >
+                          Raise<br />{displayAmount.toLocaleString()}
+                        </button>
+                      );
+                    })()}
                   </div>
                 )}
 

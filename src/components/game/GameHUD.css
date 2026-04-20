@@ -3441,12 +3441,12 @@
 .hud-actions--inactive .preset-btn,
 .hud-actions--inactive .raise-slider,
 .hud-actions--inactive .raise-input {
-  opacity: 0.38;
+  opacity: 0.4;  /* unified with `.hud-actions--inactive` parent for consistent disabled feel */
   pointer-events: none;
   cursor: default;
 }
 .hud-actions--inactive .raise-group {
-  opacity: 0.38;
+  opacity: 0.4;
   pointer-events: none;
 }
 
@@ -5618,3 +5618,63 @@
   font-weight: 600;
   margin-top: 1px;
 }
+
+/* ============================================================
+   Action bar — misc polish from audit round 4
+   ============================================================ */
+
+/* #1 — Turn-timer progress strip at the top of the action bar.
+   The JSX renders the div with inline width but no class rules existed,
+   so the countdown indicator was invisible. */
+.action-timer-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  z-index: 2;
+  pointer-events: none;
+}
+.action-timer-strip-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4ADE80, #22C55E);
+  transition: width 0.5s linear;
+  transform-origin: left center;
+}
+.action-timer-strip--danger {
+  background: linear-gradient(90deg, #F97316, #EF4444) !important;
+  animation: timerStripPulse 0.6s ease-in-out infinite alternate;
+}
+@keyframes timerStripPulse {
+  from { filter: brightness(0.9); }
+  to   { filter: brightness(1.25); }
+}
+
+/* #8 — Reserve vertical space for the pot-odds + equity sub-labels so the
+   Call button doesn't jump 4-5px when the first hand of the session
+   computes equity and adds the second line. */
+.ab-call-group {
+  min-height: 3.3em;
+}
+
+/* #6 — Narrow viewport wrap. Below ~720px the 9-button row packs too
+   tightly (Fold + Call + 4 presets + Raise + All-In). Let presets wrap
+   below the main action buttons so nothing gets cut off. */
+@media (max-width: 720px) {
+  .action-bar-flat {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .ab-presets {
+    order: 10;
+    flex-basis: 100%;
+    justify-content: center;
+  }
+  .ab-preset {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+  }
+}
+
