@@ -5626,30 +5626,36 @@
 /* #1 — Turn-timer progress strip at the top of the action bar.
    The JSX renders the div with inline width but no class rules existed,
    so the countdown indicator was invisible. */
+/* Audit fix #7: 3px was too subtle to catch on high-DPI or 4K displays;
+   bump to 6px with a soft glow so a player under timer pressure actually
+   sees the countdown. The <5s danger state also pulses harder now. */
 .action-timer-strip {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 3px;
-  background: rgba(0, 0, 0, 0.3);
+  height: 6px;
+  background: rgba(0, 0, 0, 0.35);
   overflow: hidden;
   z-index: 2;
   pointer-events: none;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.04);
 }
 .action-timer-strip-fill {
   height: 100%;
   background: linear-gradient(90deg, #4ADE80, #22C55E);
   transition: width 0.5s linear;
   transform-origin: left center;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.45);
 }
 .action-timer-strip--danger {
   background: linear-gradient(90deg, #F97316, #EF4444) !important;
-  animation: timerStripPulse 0.6s ease-in-out infinite alternate;
+  animation: timerStripPulse 0.45s ease-in-out infinite alternate;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.75) !important;
 }
 @keyframes timerStripPulse {
-  from { filter: brightness(0.9); }
-  to   { filter: brightness(1.25); }
+  from { filter: brightness(0.85); transform: scaleY(1); }
+  to   { filter: brightness(1.4);  transform: scaleY(1.15); }
 }
 
 /* #8 — Reserve vertical space for the pot-odds + equity sub-labels so the
@@ -5657,6 +5663,90 @@
    computes equity and adds the second line. */
 .ab-call-group {
   min-height: 3.3em;
+}
+
+/* Audit fix #5 + #2: stack the Call button's contents vertically so
+   "Call / 1,200 / 3:1 · 14%   Eq 50%" reads as three lines instead of
+   concatenating into "Call1,2003:1 · 14%Eq 50%" at a scan. */
+.action-btn.call,
+.action-btn.allin {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1.15;
+  text-align: center;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.action-btn.call .action-verb,
+.action-btn.allin .action-verb {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.action-btn.call .action-amount-sub,
+.action-btn.allin .action-amount-sub {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #FDE68A;
+}
+.action-btn.call .action-meta-row {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 0.72rem;
+  opacity: 0.92;
+  white-space: nowrap;
+}
+.action-btn.call .action-odds-sub,
+.action-btn.call .action-equity-sub {
+  font-weight: 600;
+}
+.action-btn.call .action-equity-sub--tier {
+  color: #93C5FD;
+  opacity: 0.85;
+  font-style: italic;
+}
+
+/* Audit fix #2: visible gap between button label and keyboard-hint chip. */
+.action-btn .btn-key {
+  margin-left: 6px;
+  padding: 1px 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  display: inline-block;
+  min-width: 14px;
+  text-align: center;
+  font-family: 'Menlo', 'Consolas', monospace;
+  letter-spacing: 0;
+}
+
+/* Audit fix #9: pre-action toggle buttons get a much more visible pressed
+   state when `.active` is applied — players weren't noticing their
+   queued action. Cyan outline + subtle glow, with the icon nudged to
+   hint toggle-ness. */
+.pre-action-btn.active {
+  background: linear-gradient(180deg, #0891B2, #0E7490) !important;
+  color: #F0FDFA !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.25),
+    0 0 0 2px rgba(34, 211, 238, 0.45),
+    0 0 10px rgba(34, 211, 238, 0.35) !important;
+  transform: translateY(1px);
+}
+.pre-action-btn.active .pre-action-icon {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.55));
+}
+.pre-action-btn .pre-action-icon {
+  margin-right: 4px;
+  transition: transform 0.15s ease, filter 0.15s ease;
 }
 
 /* #6 — Narrow viewport wrap. Below ~720px the 9-button row packs too

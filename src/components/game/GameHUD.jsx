@@ -652,12 +652,15 @@ export default function GameHUD() {
     sendAction('fold');
   }, [serverThinksItsMyTurn, phase, sendAction]);
   const myChips = myPlayer?.chipCount ?? 0;
-  const currentBetToMatch = gameState?.currentBetToMatch || 0;
+  const currentBetToMatch = Math.max(0, gameState?.currentBetToMatch || 0);
   const myCurrentBet = myPlayer?.currentBet || 0;
   const callAmount = Math.max(0, currentBetToMatch - myCurrentBet);
   callAmountRef.current = callAmount;
   // minRaise from server = getMinRaise() = currentBetToMatch + lastRaiseAmount (already the total to raise to)
-  const minRaiseTotal = gameState?.minRaise || (currentBetToMatch + (gameState?.bigBlind || 20));
+  // Audit fix #18: use ?? so server-sent minRaise === 0 is respected as a legal
+  // value (e.g. no previous bet this street) instead of silently falling back
+  // to currentBetToMatch + BB, which would over-require a raise.
+  const minRaiseTotal = gameState?.minRaise ?? (currentBetToMatch + (gameState?.bigBlind || 20));
   const maxRaise = myChips;
 
   // Variant info
@@ -701,7 +704,13 @@ export default function GameHUD() {
   // We pass the variant through so `evaluateHandStrength` can enforce the rule;
   // if the util doesn't recognize the variant, it falls back to Hold'em rules.
   const gameVariant = gameState?.variant || gameState?.variantName || 'texas-holdem';
-  const showHandStrength = yourCards.length > 0 && communityCards.length >= 3;
+  // Audit fix #13: hide hand-strength overlay if we've folded — otherwise a
+  // screen-watcher could infer our hole cards from the equity/strength bar
+  // after we muck. yourCards is still populated briefly so the overlay keeps
+  // rendering otherwise.
+  const showHandStrength = yourCards.length > 0
+    && communityCards.length >= 3
+    && !myPlayer?.folded;
   const handStrength = useMemo(
     () => showHandStrength ? evaluateHandStrength(yourCards, communityCards, { variant: gameVariant }) : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -731,7 +740,13 @@ export default function GameHUD() {
 
   // Pot odds calculation
   const potOdds = callAmount > 0 ? (pot / callAmount) : 0;
-  const potOddsDisplay = callAmount > 0 ? `${potOdds.toFixed(1)}:1` : null;
+  // Audit fix #4: drop trailing .0 for whole-number ratios so "3:1" renders
+  // instead of "3.0:1". Consistent with how experienced players read pot-odds.
+  const potOddsDisplay = callAmount > 0
+    ? (Math.abs(potOdds - Math.round(potOdds)) < 0.05
+        ? `${Math.round(potOdds)}:1`
+        : `${potOdds.toFixed(1)}:1`)
+    : null;
   // Determine if pot odds are "good" relative to hand strength
   // Good odds = pot odds ratio is favorable compared to hand strength
   const potOddsGood = handStrength ? potOdds > (1 / Math.max(handStrength.strength, 0.05)) : potOdds > 3;
@@ -819,6 +834,37 @@ export default function GameHUD() {
     sendDraw(selectedDiscards);
   }, [sendDraw, selectedDiscards]);
 
+  // Audit fix #1 + #11: compute the slider step size ONCE and snap all
+  // setRaiseAmount callsites to that step so the Raise-button label and
+  // the slider thumb always agree. Root cause of the "Raise113 vs slider 125"
+  // bug: potFraction() returned a value that wasn't step-aligned; the
+  // browser snapped the slider thumb visually to the nearest step (125),
+  // but the React state (113) was sent on click. Now all writes snap first.
+  const raiseStepSize = React.useMemo(() => {
+    if (maxRaise <= 0 || minRaiseTotal > maxRaise) return 1;
+    const usable = Math.max(1, maxRaise - minRaiseTotal);
+    // Granularity target: ~20 positions across the usable range, but never
+    // smaller than BB/2 so the slider doesn't feel twitchy on deep stacks.
+    const bbHalf = Math.max(1, Math.floor((gameState?.bigBlind || 20) / 2));
+    const coarse = Math.max(bbHalf, Math.floor(minRaiseTotal / 10));
+    return Math.max(1, Math.min(coarse, usable));
+  }, [minRaiseTotal, maxRaise, gameState?.bigBlind]);
+
+  const snapRaiseToStep = React.useCallback((val) => {
+    if (!Number.isFinite(val)) return minRaiseTotal;
+    if (val <= minRaiseTotal) return minRaiseTotal;
+    if (val >= maxRaise) return maxRaise;
+    const offset = val - minRaiseTotal;
+    const snapped = Math.round(offset / raiseStepSize) * raiseStepSize + minRaiseTotal;
+    return Math.max(minRaiseTotal, Math.min(snapped, maxRaise));
+  }, [minRaiseTotal, maxRaise, raiseStepSize]);
+
+  // setRaiseAmountSafe always snaps; use this instead of setRaiseAmount
+  // from preset/favorite/keyboard paths.
+  const setRaiseAmountSafe = React.useCallback((val) => {
+    setRaiseAmount(snapRaiseToStep(val));
+  }, [snapRaiseToStep]);
+
   // Initialize raise amount when turn starts — single effect, reads all memory sources
   const prevIsMyTurnForRaiseRef = useRef(false);
   useEffect(() => {
@@ -894,6 +940,26 @@ export default function GameHUD() {
       setFoldPending(false);
     }
   }, [isMyTurn]);
+
+  // Audit fix #3: reset raise amount whenever the hand number advances so
+  // "Raise 678" stale from the previous hand doesn't bleed into the next one's
+  // action bar before the player has interacted. Runs for every hand boundary,
+  // including the first hand dealt after joining.
+  const prevHandNumberRef = useRef(null);
+  useEffect(() => {
+    const hn = gameState?.handNumber ?? gameState?.handId ?? null;
+    if (hn == null) return;
+    if (prevHandNumberRef.current != null && prevHandNumberRef.current !== hn) {
+      setRaiseAmount(0);
+      lastRaiseRef.current = null;
+      setPreAction(null);
+      setFoldPending(false);
+      setShowAllInConfirm(false);
+      hasSentActionRef.current = false;
+      autoFoldedRef.current = false;
+    }
+    prevHandNumberRef.current = hn;
+  }, [gameState?.handNumber, gameState?.handId]);
 
   // Reset all local UI state when leaving table (gameState becomes null)
   useEffect(() => {
@@ -1834,8 +1900,24 @@ export default function GameHUD() {
 
   const loadFavBetSize = (index) => {
     const val = favBetSizes[index];
-    if (val !== null) {
-      setRaiseAmount(Math.max(minRaiseTotal, Math.min(val, maxRaise)));
+    if (val == null) return;
+    const clamped = Math.max(minRaiseTotal, Math.min(val, maxRaise));
+    const snapped = snapRaiseToStep(clamped);
+    setRaiseAmount(snapped);
+    // Audit fix #16: surface silent clamping so the player knows why their
+    // saved size didn't stick (e.g. short stack after a bust).
+    if (snapped !== val) {
+      try {
+        addToast(
+          snapped >= maxRaise
+            ? `Fav ${val.toLocaleString()} capped at all-in (${maxRaise.toLocaleString()})`
+            : snapped <= minRaiseTotal
+              ? `Fav ${val.toLocaleString()} raised to min (${minRaiseTotal.toLocaleString()})`
+              : `Fav ${val.toLocaleString()} snapped to ${snapped.toLocaleString()}`,
+          'info',
+          2200
+        );
+      } catch { /* addToast not in scope yet at first render — silent */ }
     }
   };
 
@@ -1994,22 +2076,52 @@ export default function GameHUD() {
     // Ctrl+F for fold, Cmd+C for call, etc. if they want.
     if (isTouchDevice && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) return;
 
+    // Audit fix #12: if we've already sent an action this turn, don't fire
+    // another one on a double-press. Pairs with the fold-button click guard.
+    if (hasSentActionRef.current) return;
+
+    // Audit fix #22: build a priority-ordered map of hotkey → action handler
+    // so that remapping multiple actions to the same key is deterministic
+    // (check/call wins, then raise, then all-in, then fold) AND doesn't
+    // fire TWO actions on one keystroke. Previous if/else chain would only
+    // ever fire the first branch anyway, but without telling the user that
+    // their fold+call-on-same-key remap was a silent no-op.
     const key = e.key;
-    if (key === hotkeys.fold) {
-      handleAction('fold');
-    } else if (key === hotkeys.checkCall) {
-      e.preventDefault();
-      if (callAmount === 0) {
-        handleAction('check');
-      } else {
-        handleAction('call');
-      }
-    } else if (key === hotkeys.raise) {
-      handleAction('raise', raiseAmount);
-    } else if (key === hotkeys.allIn) {
-      handleAction('allIn');
+    const handlers = [
+      ['checkCall', () => {
+        e.preventDefault();
+        // Audit fix #6: on a free street, the configured check/call key
+        // ALREADY routed to check — but a user remapping "F" to both fold
+        // and checkCall used to fold a free card. Now we unify the fold key
+        // on free streets to also check, matching the Fold button's click
+        // behavior before we hid it.
+        if (callAmount === 0) handleAction('check');
+        else handleAction('call');
+      }],
+      ['raise', () => {
+        if (maxRaise <= 0 || minRaiseTotal > maxRaise) return;
+        const amt = (typeof raiseAmount === 'number' && raiseAmount >= minRaiseTotal)
+          ? snapRaiseToStep(raiseAmount)
+          : minRaiseTotal;
+        handleAction('raise', amt);
+      }],
+      ['allIn', () => handleAction('allIn')],
+      ['fold', () => {
+        // Free street → treat fold key as check (mirrors the now-hidden
+        // Fold button's old click behavior so keyboard + UI agree).
+        if (callAmount === 0) { handleAction('check'); return; }
+        handleAction('fold');
+      }],
+    ];
+    const seen = new Set();
+    for (const [name, fn] of handlers) {
+      const k = hotkeys[name];
+      if (!k) continue;
+      if (seen.has(k)) continue; // dedupe: if two actions share a key, first wins
+      seen.add(k);
+      if (key === k) { fn(); return; }
     }
-  }, [isMyTurn, handleAction, callAmount, raiseAmount, hotkeys, showRaiseSlider, showAllInConfirm, isTouchDevice]);
+  }, [isMyTurn, handleAction, callAmount, raiseAmount, hotkeys, showRaiseSlider, showAllInConfirm, isTouchDevice, minRaiseTotal, maxRaise, snapRaiseToStep]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -2179,9 +2291,22 @@ export default function GameHUD() {
   }[phase] || phase;
 
   const handleBackToLobby = useCallback(() => {
+    // Audit fix #10: require confirmation mid-hand so a misclick doesn't
+    // abandon a live decision and auto-fold at the server. Waiting /
+    // complete / showdown states leave without asking (nothing at stake).
+    const inLiveHand = phase && phase !== 'WaitingForPlayers' && phase !== 'HandComplete' && phase !== 'Showdown';
+    const mySeatObj = gameState?.seats?.[yourSeat];
+    const myChipsAtRisk = (mySeatObj?.currentBet || 0) > 0 || !!mySeatObj?.folded === false;
+    if (inLiveHand && isMyTurn) {
+      const ok = typeof window !== 'undefined' && window.confirm('Leave the table mid-turn? Your hand will be auto-folded.');
+      if (!ok) return;
+    } else if (inLiveHand && myChipsAtRisk) {
+      const ok = typeof window !== 'undefined' && window.confirm('Leave mid-hand? You\'ll forfeit any chips already in the pot.');
+      if (!ok) return;
+    }
     leaveTable();
     setScreen('lobby');
-  }, [leaveTable, setScreen]);
+  }, [leaveTable, setScreen, phase, gameState?.seats, yourSeat, isMyTurn]);
 
   const isWaiting = phase === 'WaitingForPlayers' || phase === 'HandComplete';
   const isShowdown = phase === 'Showdown';
@@ -2956,7 +3081,14 @@ export default function GameHUD() {
                   the guard here too is defense-in-depth against future refactors
                   and against the case where `isSpectating` flips stale after a
                   leave-table event and the UI lingers mid-transition. */}
-              {!isMyTurn && !isSpectating && phase !== 'Showdown' && phase !== 'HandComplete' && (
+              {/* Audit fix #14: also suppress pre-actions whenever the server
+                  has already emitted a handResult payload, which happens a
+                  beat before `phase` flips to 'HandComplete'. Without this
+                  co-check a click in that ~200ms race queues an illegal
+                  action that the server then rejects. */}
+              {!isMyTurn && !isSpectating
+                && phase !== 'Showdown' && phase !== 'HandComplete'
+                && !gameState?.handResult && (
                 <div className="pre-action-btns">
                   <button
                     className={`pre-action-btn${preAction === 'checkFold' ? ' active' : ''}`}
@@ -2987,7 +3119,14 @@ export default function GameHUD() {
                   </button>
                 </div>
               )}
-            <div className={`hud-actions-inner ${!isMyTurn ? 'hud-actions--inactive' : ''}`}>
+            {/* Audit fix #19: aria-live="polite" so screen readers announce
+                when the action buttons enable/disable as turn transfers. */}
+            <div
+              className={`hud-actions-inner ${!isMyTurn ? 'hud-actions--inactive' : ''}`}
+              role="group"
+              aria-label="Poker action controls"
+              aria-live="polite"
+            >
               {/* Single flat row: Timer | Fold | Call | presets | Raise | All-In */}
               <div className="action-bar-flat">
 
@@ -2995,24 +3134,29 @@ export default function GameHUD() {
                     When callAmount === 0, folding is functionally a check — route to `check`
                     to save the server round-trip and avoid the "why did I fold a free card"
                     confusion when a user reflex-taps Fold on a free-check street. */}
+                {/* Audit fix #6: on a free street (callAmount === 0), the
+                    Fold button is redundant with the Check button rendered to
+                    its right — and clicking it routed to `check` anyway,
+                    which confused users ("the button says Fold but I checked").
+                    Hide it entirely when there's nothing to fold. */}
+                {callAmount > 0 && (
                 <button
                   className={`action-btn fold ${foldPending ? 'fold-pending' : ''}`}
                   disabled={!isMyTurn}
                   aria-label={
                     !isMyTurn
                       ? 'Fold button, not your turn'
-                      : callAmount === 0
-                        ? 'Check — no bet to call. Fold converts to a check on a free street.'
-                        : foldPending
-                          ? `Confirm fold by tapping again. You would give up a call of ${callAmount.toLocaleString()} chips.`
-                          : `Fold. Call amount ${callAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`
+                      : foldPending
+                        ? `Confirm fold by tapping again. You would give up a call of ${callAmount.toLocaleString()} chips.`
+                        : `Fold. Call amount ${callAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`
                   }
                   onClick={() => {
-                    // #7 — free check: Fold = Check when nothing to call
-                    if (callAmount === 0) {
-                      handleAction('check');
-                      return;
-                    }
+                    // Audit fix #12: dedupe double-tap. If the turn has already
+                    // sent an action this cycle, ignore subsequent clicks so a
+                    // stale fold doesn't fire a second time after the server
+                    // has already moved the turn on. Pairs with
+                    // hasSentActionRef reset on turn entry.
+                    if (hasSentActionRef.current) return;
                     const bigBet = myChips > 0 && callAmount > myChips * 0.25;
                     if (bigBet && !foldPending) {
                       // First tap: show confirmation; auto-dismiss after 3s so
@@ -3031,8 +3175,14 @@ export default function GameHUD() {
                   }}
                 >
                   {foldPending ? 'Fold?' : 'Fold'}
-                  {isMyTurn && !foldPending && <span className="btn-key">{hotkeys.fold === ' ' ? '␣' : hotkeys.fold.toUpperCase()}</span>}
+                  {/* Audit fix #2: explicit space so the keyboard hint doesn't
+                      visually concatenate as "FoldF" — screen readers and any
+                      CSS-stripped contexts then read correctly. */}
+                  {isMyTurn && !foldPending && (
+                    <>{' '}<span className="btn-key">{hotkeys.fold === ' ' ? '␣' : hotkeys.fold.toUpperCase()}</span></>
+                  )}
                 </button>
+                )}
 
                 {/* CHECK / CALL with pot odds below */}
                 <div className="ab-call-group">
@@ -3052,20 +3202,37 @@ export default function GameHUD() {
                       aria-label={!isMyTurn ? `Call button, not your turn. Call amount ${callAmount.toLocaleString()} chips.` : `Call ${callAmount.toLocaleString()} chips. ${pot > 0 ? `Pot odds require ${Math.round(100 * callAmount / (pot + callAmount))} percent equity to break even.` : ''} ${handStrength ? `Current hand strength ${Math.round(handStrength.strength * 100)} percent.` : ''} ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
                       onClick={() => handleAction('call')}
                     >
-                      Call
+                      {/* Audit fix #2 + #5: each span is a block-level stacked
+                          line in CSS (.action-btn.call display: flex column)
+                          so the label reads vertically:
+                            Call
+                            1,200
+                            3:1 · 14%   Eq: 50%
+                          Previously all four spans rendered inline, producing
+                          `Call1,2003:1 · 14%Eq: 50%` on scan. */}
+                      <span className="action-verb">Call</span>
                       <span className="action-amount-sub">{callAmount.toLocaleString()}</span>
-                      {potOddsDisplay && (
-                        <span className="action-odds-sub">
-                          {/* Break-even equity required to call = call / (pot + call).
-                              Previous label used `1 / (potOdds + 1)` which is only equivalent
-                              when `pot` is the pot BEFORE the call (and even then was
-                              semantically "reward fraction", not "equity needed"). */}
-                          {potOddsDisplay}&nbsp;·&nbsp;{Math.round(100 * callAmount / (pot + callAmount))}%
-                        </span>
-                      )}
-                      {handStrength && (
-                        <span className="action-equity-sub">
-                          Eq: {Math.round(handStrength.strength * 100)}%
+                      {(potOddsDisplay || handStrength) && (
+                        <span className="action-meta-row">
+                          {potOddsDisplay && (
+                            <span className="action-odds-sub">
+                              {potOddsDisplay}&nbsp;·&nbsp;{Math.round(100 * callAmount / (pot + callAmount))}%
+                            </span>
+                          )}
+                          {handStrength ? (
+                            <span className="action-equity-sub">
+                              {' '}Eq&nbsp;{Math.round(handStrength.strength * 100)}%
+                            </span>
+                          ) : preflopTier ? (
+                            /* Audit fix #8: keep the equity-like column
+                               populated pre-flop so the Call button's layout
+                               doesn't visually reflow when the flop hits.
+                               Shows a qualitative tier ("Premium"/"Strong"/…)
+                               since quantitative equity needs board cards. */
+                            <span className="action-equity-sub action-equity-sub--tier">
+                              {' '}{preflopTier.charAt(0).toUpperCase() + preflopTier.slice(1)}
+                            </span>
+                          ) : null}
                         </span>
                       )}
                     </button>
@@ -3078,10 +3245,10 @@ export default function GameHUD() {
                     the player is effectively all-in-or-fold. */}
                 {isMyTurn && maxRaise > 0 && minRaiseTotal <= maxRaise && (
                   <div className="ab-presets">
-                    <button className="ab-preset" onClick={() => setRaiseAmount(potFraction(1/2))}>½ Pot</button>
-                    <button className="ab-preset" onClick={() => setRaiseAmount(potFraction(2/3))}>2/3 Pot</button>
-                    <button className="ab-preset ab-preset--active" onClick={() => setRaiseAmount(potFraction(1))}>Pot</button>
-                    <button className="ab-preset" onClick={() => setRaiseAmount(Math.max(minRaiseTotal, Math.min(bigBlind * 3, maxRaise)))}>3x BB</button>
+                    <button className="ab-preset" onClick={() => setRaiseAmountSafe(potFraction(1/2))}>½ Pot</button>
+                    <button className="ab-preset" onClick={() => setRaiseAmountSafe(potFraction(2/3))}>2/3 Pot</button>
+                    <button className="ab-preset ab-preset--active" onClick={() => setRaiseAmountSafe(potFraction(1))}>Pot</button>
+                    <button className="ab-preset" onClick={() => setRaiseAmountSafe(Math.max(minRaiseTotal, Math.min(bigBlind * 3, maxRaise)))}>3x BB</button>
                   </div>
                 )}
 
@@ -3096,17 +3263,20 @@ export default function GameHUD() {
                         type="range"
                         min={minRaiseTotal}
                         max={maxRaise}
-                        step={Math.max(
-                          1,
-                          Math.min(
-                            Math.floor(minRaiseTotal / 4),
-                            // Step can never exceed the usable range, else the
-                            // browser snaps to illegal values past maxRaise.
-                            Math.max(1, maxRaise - minRaiseTotal)
-                          )
-                        )}
+                        step={raiseStepSize}
                         value={Math.max(minRaiseTotal, Math.min(raiseAmount || minRaiseTotal, maxRaise))}
-                        onChange={(e) => setRaiseAmount(Number(e.target.value))}
+                        onChange={(e) => {
+                          // Audit fix #17: coalesce rapid-fire drag events to
+                          // the next animation frame — avoids iOS Safari stutter
+                          // when the browser fires a slider onChange on every
+                          // pixel of travel.
+                          const v = Number(e.target.value);
+                          if (window.__raiseSliderRaf) cancelAnimationFrame(window.__raiseSliderRaf);
+                          window.__raiseSliderRaf = requestAnimationFrame(() => {
+                            setRaiseAmountSafe(v);
+                            window.__raiseSliderRaf = null;
+                          });
+                        }}
                         onKeyDown={(e) => {
                           // Escape blurs the slider so keyboard users aren't trapped
                           // in the range input; the global Escape handler (elsewhere
@@ -3153,7 +3323,13 @@ export default function GameHUD() {
                     else setShowAllInConfirm(true);
                   }}
                 >
-                  All-In
+                  {/* Audit fix #20: label shows the actual shove amount so a
+                      short-stack user can see "All-In 1,240" at a glance
+                      rather than just "All-In" and guess the commitment. */}
+                  <span className="action-verb">All-In</span>
+                  {myChips > 0 && (
+                    <span className="action-amount-sub">{myChips.toLocaleString()}</span>
+                  )}
                 </button>
 
               </div>{/* end action-bar-flat */}
