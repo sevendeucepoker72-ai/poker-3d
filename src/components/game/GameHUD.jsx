@@ -10,6 +10,7 @@ import { calculateOuts, analyzeBoardTexture } from '../../utils/outsCalculator';
 import useSoundEffects from '../../hooks/useSoundEffects';
 import TrainingOverlay from './TrainingOverlay';
 import EmoteWheel, { EMOTE_MAP } from './EmoteWheel';
+import MobileMoreSheet from './MobileMoreSheet';
 import WinConfetti from './WinConfetti';
 import SessionTracker from './SessionTracker';
 import HandRangeChart from './HandRangeChart';
@@ -3379,6 +3380,35 @@ export default function GameHUD() {
         </div>
         </div>{/* end hud-bottom-panel */}
       </div>
+
+      {/* Mobile U1 + U2 + U11: ⋯ More sheet. Self-gates to phone portrait
+          via matchMedia inside the component, so it's an inert no-op on
+          tablet/desktop. Absorbs session-tracker, last-hand, reactions,
+          and the pre-action queue into one surface. */}
+      <MobileMoreSheet
+        preAction={preAction}
+        setPreAction={setPreAction}
+        lastHand={lastHandHistory}
+        sessionStats={{
+          hands: sessionHandsRef.current,
+          /* Derive "won" from progress.stats if available, else 0. */
+          won: (progress?.stats?.handsWon || 0),
+          biggestPot: sessionBiggestPotRef.current || 0,
+          pl: (progress?.chips ?? myChips) - (sessionStartChipsRef.current ?? (progress?.chips ?? myChips)),
+        }}
+        handStrength={handStrength}
+        isMyTurn={isMyTurn}
+        /* Emote/reactions: the EmoteWheel component self-manages its open
+           state via internal click on its trigger button, so we scroll to
+           / focus its rail-btn-wrap as a hint when the user taps
+           "Reactions" from the sheet. No state var to flip. */
+        onOpenReactions={() => {
+          const trigger = document.querySelector('.rail-btn-wrap .emote-wheel-trigger, .emote-wheel-trigger');
+          trigger?.click();
+        }}
+        onOpenChat={() => setChatOpen(true)}
+        onOpenSettings={() => setShowOptions(true)}
+      />
 
       {/* Hand strength identifier — moved out of the action bar per user
           feedback. Portalled into <body> so it floats above the table as a
