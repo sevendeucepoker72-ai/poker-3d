@@ -103,9 +103,27 @@ function _doSync() {
   });
 }
 
-/** Install a beforeunload handler so we flush on tab close. Returns an unsubscribe function. */
+/**
+ * Install flush-to-server handlers that fire on tab close OR background/hide.
+ *
+ * PWA audit #8: iOS PWAs don't fire `beforeunload` when the app is
+ * suspended/killed from the app switcher — so a beforeunload-only
+ * sync loses any progression not yet flushed. Use `pagehide` and
+ * `visibilitychange` (which fire on background in iOS/Android PWAs)
+ * as the primary triggers; `beforeunload` stays as a desktop
+ * fallback. Returns a combined unsubscribe.
+ */
 export function installBeforeUnloadSync() {
   const handler = syncToServerNow;
+  const onVisibility = () => {
+    if (document.visibilityState === 'hidden') syncToServerNow();
+  };
   window.addEventListener('beforeunload', handler);
-  return () => window.removeEventListener('beforeunload', handler);
+  window.addEventListener('pagehide', handler);
+  document.addEventListener('visibilitychange', onVisibility);
+  return () => {
+    window.removeEventListener('beforeunload', handler);
+    window.removeEventListener('pagehide', handler);
+    document.removeEventListener('visibilitychange', onVisibility);
+  };
 }

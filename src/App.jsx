@@ -278,11 +278,23 @@ export default function App() {
       // sessionStorage (tab-only) variants are checked on reconnect.
       const token = getAuthToken();
       if (!token) return;
-      // Only re-emit if we already have an authenticated session — otherwise
-      // the initial login flow (handled below) will take care of it.
       const st = useGameStore.getState();
       if (!st.isLoggedIn) return;
       socket.emit('oauthLogin', { accessToken: token });
+
+      // PWA audit #2 + #11: after (re)connecting, if the user was
+      // previously on a table, explicitly request a fresh game-state
+      // sync. The server's reservedSeats restore path kicks in from
+      // the oauthLogin handler, but this extra emit guarantees the
+      // client has the current hand + seat occupancy + turn state,
+      // protecting against the "resume to a stale table view" bug.
+      const ts = useTableStore.getState();
+      if (ts.gameState?.tableId || ts.currentTableId) {
+        const tableId = ts.gameState?.tableId || ts.currentTableId;
+        setTimeout(() => {
+          try { socket.emit('syncTableState', { tableId }); } catch {}
+        }, 350); // slight delay so oauthLogin auth completes first
+      }
     });
 
     // Handle both full state and delta patches from the server
@@ -666,10 +678,18 @@ export default function App() {
         })
         .catch(() => {
           if (cancelled) return;
-          // Refresh failed — clear OAuth tokens and try legacy
-          sessionStorage.removeItem('poker_oauth_refresh');
-          sessionStorage.removeItem('poker_oauth_id_token');
-          sessionStorage.removeItem('poker_token_expiry');
+          // PWA audit #3: iOS Safari / PWA Storage Access API evicts
+          // localStorage after ~7 days of no app interaction. When the
+          // user comes back, the refresh token we saved is gone AND the
+          // call fails silently. Previously this path tried a legacy
+          // auto-login which also has no valid token — so the UI got
+          // stuck on "Signing in…" forever. Clear BOTH stores and hand
+          // off to the legacy path; if it also fails we land cleanly
+          // on the login screen rather than infinite-spinnering.
+          for (const k of ['poker_oauth_refresh','poker_oauth_id_token','poker_token_expiry','poker_auth_token']) {
+            try { localStorage.removeItem(k);   } catch {}
+            try { sessionStorage.removeItem(k); } catch {}
+          }
           tryLegacyAutoLogin();
         });
 

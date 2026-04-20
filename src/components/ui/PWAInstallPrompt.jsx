@@ -9,7 +9,7 @@ export default function PWAInstallPrompt() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    const dismissed = sessionStorage.getItem('pwa_install_dismissed');
+    const dismissed = localStorage.getItem('pwa_install_dismissed');
     if (dismissed) return;
 
     const handler = (e) => {
@@ -25,7 +25,7 @@ export default function PWAInstallPrompt() {
   useEffect(() => {
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    const dismissed = sessionStorage.getItem('pwa_install_dismissed');
+    const dismissed = localStorage.getItem('pwa_install_dismissed');
     if (isIOS && !isStandalone && !dismissed) {
       const timer = setTimeout(() => setVisible(true), 3000);
       return () => clearTimeout(timer);
@@ -47,7 +47,7 @@ export default function PWAInstallPrompt() {
   }
 
   function handleDismiss() {
-    sessionStorage.setItem('pwa_install_dismissed', '1');
+    localStorage.setItem('pwa_install_dismissed', '1');
     setVisible(false);
   }
 

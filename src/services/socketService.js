@@ -31,10 +31,7 @@ export const subscribeConnectionStatus = (fn) => {
 export const getConnectionStatus = () => ({ status: _connectionStatus, error: _connectionError });
 
 export const connectToServer = () => {
-  // If socket exists and is connected, reuse it
   if (socket?.connected) return socket;
-
-  // If socket exists but disconnected, destroy it and make a new one
   if (socket) {
     socket.removeAllListeners();
     socket.disconnect();
@@ -44,9 +41,16 @@ export const connectToServer = () => {
   socket = io(SERVER_URL, {
     transports: ['websocket', 'polling'],
     reconnection: true,
-    reconnectionAttempts: 10,
-    reconnectionDelay: 1000,
-    timeout: 10000,
+    // PWA audit #1: iOS backgrounds socket.io for ≥30s during swipe-up /
+    // take a call / notification lockscreen. Bump attempts to 20 and
+    // extend initial delay so the exponential backoff doesn't exhaust
+    // inside a normal backgrounding window. With randomizationFactor the
+    // retries spread nicely 1s → 2s → 4s → … up to 20s max.
+    reconnectionAttempts: 20,
+    reconnectionDelay: 800,
+    reconnectionDelayMax: 20_000,
+    randomizationFactor: 0.5,
+    timeout: 10_000,
   });
 
   socket.on('connect', () => { console.log('Connected to server:', socket.id); setStatus('connected'); });
@@ -55,7 +59,37 @@ export const connectToServer = () => {
   socket.on('reconnect', () => setStatus('connected'));
   socket.on('reconnecting', () => setStatus('disconnected'));
 
+  // PWA audit #1: explicit visibility-change kick so an iOS PWA resumed
+  // from background re-establishes the socket immediately instead of
+  // waiting for socket.io's reconnect loop to tick. Also fires on tab
+  // re-focus desktop-side — harmless when already connected.
+  if (typeof document !== 'undefined' && !socket._visListenerAttached) {
+    socket._visListenerAttached = true;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && socket && !socket.connected) {
+        try { socket.connect(); } catch { /* ignore */ }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    // Also on explicit online/pageshow for iOS Safari quirks.
+    window.addEventListener('online', onVisible);
+    window.addEventListener('pageshow', onVisible);
+  }
+
   return socket;
+};
+
+/**
+ * Trigger a manual reconnect. Called from the app-resume handler to
+ * force an immediate reconnect attempt outside socket.io's backoff
+ * schedule. Safe to call unconditionally; no-op if already connected.
+ */
+export const forceReconnect = () => {
+  if (!socket) return;
+  if (socket.connected) return;
+  try {
+    socket.connect();
+  } catch { /* ignore */ }
 };
 
 export const getSocket = () => socket;

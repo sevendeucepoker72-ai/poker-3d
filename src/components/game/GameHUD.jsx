@@ -10,6 +10,10 @@ import { calculateOuts, analyzeBoardTexture } from '../../utils/outsCalculator';
 import useSoundEffects from '../../hooks/useSoundEffects';
 import TrainingOverlay from './TrainingOverlay';
 import EmoteWheel, { EMOTE_MAP } from './EmoteWheel';
+// PWA audit #9: request Screen Wake Lock while the user has an active
+// turn so the phone doesn't auto-sleep mid-decision (which would drop
+// the socket and auto-fold). Hook self-gates on browser support.
+import useWakeLock from '../../hooks/useWakeLock';
 /* MobileMoreSheet import removed — its floating ⋯ FAB was merged into
    the top-right Options dropdown per user request. The component file
    is kept in the tree in case the bottom-sheet pattern is needed
@@ -644,6 +648,10 @@ export default function GameHUD() {
   const yourCards = sittingOutUntilNextHand.current ? [] : rawCards;
   const serverThinksItsMyTurn = activeSeat === yourSeat && yourSeat >= 0;
   const isMyTurn = serverThinksItsMyTurn && yourCards.length > 0;
+  // PWA audit #9: hold Screen Wake Lock while deciding so the phone
+  // doesn't sleep and drop the socket / auto-fold. Released when turn
+  // ends or component unmounts. Hook is a no-op on unsupported browsers.
+  useWakeLock(isMyTurn);
 
   // Keep refs in sync immediately after derivation (no render lag)
   isMyTurnRef.current = isMyTurn;

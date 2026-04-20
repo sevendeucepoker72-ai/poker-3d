@@ -43,9 +43,6 @@ function isNavigationRequest(request) {
 
 // ── Install: pre-cache shell ──────────────────────────────────────────────────
 self.addEventListener('install', (e) => {
-  // Hard-fail if the build token wasn't injected — stops us from shipping a
-  // broken-cache SW to prod. Browser falls back to plain network until a good
-  // build is deployed.
   if (!BUILD_TOKEN_OK) {
     e.waitUntil(Promise.reject(new Error('sw: BUILD_TIME token not injected')));
     return;
@@ -53,7 +50,16 @@ self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_URLS))
   );
-  self.skipWaiting();
+  // PWA audit #4: don't skipWaiting automatically — we want to notify
+  // the running client first so it can toast "New version available".
+  // The client messages us back with {type:'SKIP_WAITING'} after the
+  // user accepts (or on next soft-reload).
+  // self.skipWaiting();  // ← intentionally disabled; controlled by client
+});
+
+// Accept SKIP_WAITING from client when user confirms the update.
+self.addEventListener('message', (e) => {
+  if (e.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 // ── Activate: evict old caches ────────────────────────────────────────────────
