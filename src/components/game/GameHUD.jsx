@@ -961,6 +961,36 @@ export default function GameHUD() {
     prevHandNumberRef.current = hn;
   }, [gameState?.handNumber, gameState?.handId]);
 
+  // Mobile audit M2: iOS software-keyboard handling. When the chat / chip /
+  // rabbit-hunt input focuses on iOS Safari, the keyboard (~290-380px tall)
+  // slides up from the bottom and covers the `.hud-bottom` action row —
+  // making the Fold/Call/Raise/All-In buttons unreachable. We listen to
+  // `window.visualViewport` for keyboard-triggered resizes and set a CSS
+  // custom property `--kb-offset` that `.hud-bottom` reads to shift up.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    const root = document.documentElement;
+    const update = () => {
+      // Keyboard offset = how much the visual viewport bottom has been pushed
+      // up from the layout viewport. 0 when no keyboard.
+      const offset = Math.max(0, (window.innerHeight - vv.height - vv.offsetTop));
+      root.style.setProperty('--kb-offset', `${offset}px`);
+      // Toggle a class so CSS can also use it for sizing / opacity / etc.
+      if (offset > 60) root.classList.add('kb-open');
+      else root.classList.remove('kb-open');
+    };
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+      root.style.removeProperty('--kb-offset');
+      root.classList.remove('kb-open');
+    };
+  }, []);
+
   // Reset all local UI state when leaving table (gameState becomes null)
   useEffect(() => {
     if (gameState === null) {

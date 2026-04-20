@@ -1808,49 +1808,11 @@
     font-size: 0.5rem;
   }
 
-  .hud-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    width: 100%;
-    max-width: 280px;
-  }
-
-  .action-btn {
-    padding: 10px 8px;
-    font-size: 0.8rem;
-    width: 100%;
-  }
-
-  .action-btn.deal {
-    grid-column: 1 / -1;
-    padding: 12px 20px;
-  }
-
-  .raise-group {
-    grid-column: 1 / -1;
-    width: 100%;
-  }
-
-  .raise-slider {
-    width: 100%;
-  }
-
-  .raise-presets {
-    flex-wrap: wrap;
-    justify-content: center;
-    width: 100%;
-  }
-
-  .auto-actions {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .auto-btn {
-    padding: 6px 12px;
-    font-size: 0.7rem;
-  }
+  /* Mobile audit M5: removed the legacy .hud-actions 2-column grid rule
+     and the `.raise-slider` / `.raise-group` / `.raise-presets` /
+     `.auto-btn` overrides — none of those classes are rendered by the
+     current `.action-bar-flat` JSX. The real mobile rules for the
+     action bar now live at the bottom of this file (M3/M4/M11). */
 
   .chat-panel {
     width: 100%;
@@ -5209,15 +5171,30 @@
   touch-action: manipulation;
 }
 
-/* ── Safe-area insets (iPhone notch / Dynamic Island) ── */
+/* ── Safe-area insets (iPhone notch / Dynamic Island) ──
+   Mobile audit M1: now that index.html carries viewport-fit=cover these
+   env() values actually compute non-zero on notched iPhones.
+   Mobile audit M2: --kb-offset is set by GameHUD's VisualViewport listener
+   when iOS Safari's software keyboard opens; adding it to `bottom` pushes
+   the whole action row above the keyboard. */
 .hud-bottom {
   padding-bottom: max(12px, env(safe-area-inset-bottom));
+  bottom: var(--kb-offset, 0);
+  transition: bottom 0.18s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .pre-action-btns {
   padding-bottom: max(4px, env(safe-area-inset-bottom));
 }
 .gesture-raise-panel {
   padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+/* While keyboard is open, dim non-critical overlays so the action bar
+   is the obvious thing to reach. */
+html.kb-open .equity-badges-container,
+html.kb-open .session-tracker,
+html.kb-open .table-pot-odds {
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 /* ── Disable sticky hover effects on true touch devices ── */
@@ -5765,6 +5742,360 @@
   .ab-preset {
     font-size: 0.7rem;
     padding: 4px 8px;
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════════════
+   Mobile audit — comprehensive phone / tablet-portrait polish
+   All rules below were added to address the 22-item mobile audit
+   covering tap targets, the raise slider, modal widths, equity badges,
+   landscape orientation, and iOS keyboard handling.
+   ═════════════════════════════════════════════════════════════════════ */
+
+/* ── M3 + M8 + M11: raise-inline-slider + value box ──
+   The inline slider is the primary raise input. At phone widths the
+   14px thumb and 80px track are impossible to drag with a thumb.
+   Bump to 28px thumb / 10px track on touch, and let the amount label
+   grow so large chip counts don't clip. */
+@media (max-width: 720px) {
+  .raise-inline-slider-wrap {
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+  .raise-inline-slider {
+    width: 100%;
+    min-width: 140px;
+    height: 10px;
+    border-radius: 5px;
+  }
+  .raise-inline-slider::-webkit-slider-thumb {
+    width: 28px;
+    height: 28px;
+    border-width: 2px;
+  }
+  .raise-inline-slider::-moz-range-thumb {
+    width: 28px;
+    height: 28px;
+    border-width: 2px;
+  }
+  .raise-inline-val {
+    font-size: 0.78rem;
+    min-width: 52px;
+    max-width: 80px;
+    padding: 2px 4px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+}
+/* Even bigger thumbs on true touch hardware regardless of viewport width
+   (e.g. touchscreen laptops). Apple HIG minimum is 44pt. */
+@media (hover: none) and (pointer: coarse) {
+  .raise-inline-slider {
+    height: 12px;
+    border-radius: 6px;
+  }
+  .raise-inline-slider::-webkit-slider-thumb {
+    width: 32px;
+    height: 32px;
+  }
+  .raise-inline-slider::-moz-range-thumb {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* ── M4 + M11: action-bar-flat sizing at 480 / 400 / 360 ──
+   Below 480 the flat-row's buttons get tiny; enforce a 48px minimum
+   height (44px HIG target + 4px headroom) across every button on the
+   action bar so a thumb can reliably land on any of Fold/Call/Raise/All-In. */
+@media (max-width: 480px) {
+  .action-bar-flat {
+    padding: 4px;
+    gap: 4px;
+  }
+  .action-bar-flat .action-btn {
+    min-height: 48px;
+    font-size: 0.85rem;
+    padding: 8px 10px;
+    flex: 1 1 auto;
+  }
+  .action-bar-flat .action-btn.fold {
+    flex-basis: 22%;
+  }
+  .action-bar-flat .ab-call-group {
+    flex-basis: 28%;
+    min-height: 48px;
+  }
+  .action-bar-flat .ab-call-group .action-btn {
+    min-height: 48px;
+    width: 100%;
+  }
+  .action-bar-flat .action-btn.raise {
+    flex-basis: 24%;
+  }
+  .action-bar-flat .action-btn.allin {
+    flex-basis: 26%;
+  }
+  .ab-presets {
+    gap: 4px;
+  }
+  .ab-preset {
+    min-height: 36px;
+    font-size: 0.7rem;
+    padding: 6px 8px;
+    flex: 1 0 auto;
+  }
+  .action-btn.call .action-verb,
+  .action-btn.allin .action-verb {
+    font-size: 0.85rem;
+  }
+  .action-btn.call .action-amount-sub,
+  .action-btn.allin .action-amount-sub {
+    font-size: 0.92rem;
+  }
+  .action-btn.call .action-meta-row {
+    font-size: 0.6rem;
+    gap: 4px;
+  }
+  /* M12: hide keyboard-hint chips on phones — no keyboard, just wastes
+     horizontal space on an already-cramped Fold/Call/Raise/All-In row. */
+  .action-btn .btn-key {
+    display: none;
+  }
+}
+
+/* ── M9: pre-action buttons — show a short letter label even when the
+   long label is hidden at <=400px, so the icons aren't the sole cue.
+   Without this, user sees three indistinguishable emoji pills. */
+@media (max-width: 400px) {
+  .pre-action-btn {
+    min-height: 40px;
+    padding: 6px 8px;
+    font-size: 0.72rem;
+  }
+  .pre-action-btn .pre-action-label {
+    display: inline;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    margin-left: 2px;
+    /* Abbreviate so three buttons fit on a 320px row. CSS-only — no JSX
+       touch needed: we clip the long label with max-width + ellipsis. */
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* ── M6: modal widths at phone breakpoints ──
+   Below 480px, every modal / overlay needs to fit inside calc(100vw - 16px)
+   so it doesn't force horizontal scroll or clip at the edge. */
+@media (max-width: 480px) {
+  .last-hand-panel,
+  .chat-panel,
+  .insurance-panel,
+  .showdown-panel,
+  .allin-confirm-panel,
+  .rabbit-hunt-panel,
+  .settings-panel,
+  .options-menu {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
+    left: 8px !important;
+    right: 8px !important;
+  }
+}
+
+/* ── M7: equity badges — on portrait phone, the right-edge fixed overlay
+   covers the button/cut-off/SB seat. Dock to the top instead. */
+@media (max-width: 480px) {
+  .equity-badges-container {
+    top: auto !important;
+    bottom: calc(var(--kb-offset, 0) + 88px) !important;
+    right: 8px !important;
+    max-width: calc(100vw - 16px);
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: flex-end;
+  }
+  .equity-badge {
+    font-size: 0.62rem;
+    padding: 2px 4px;
+  }
+  .equity-player-name {
+    max-width: 58px;
+  }
+}
+
+/* ── M10: landscape phone orientation — iPhone sideways is 844×390.
+   The community cards + pot area gets squished if action bar doesn't
+   flatten. Keep everything in one row, shrink card heights, drop the
+   session tracker overlay to avoid covering the table. */
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
+  .action-bar-flat {
+    flex-wrap: nowrap;
+    row-gap: 0;
+  }
+  .ab-presets {
+    order: 0;
+    flex-basis: auto;
+  }
+  .ab-preset {
+    min-height: 30px;
+    font-size: 0.62rem;
+    padding: 3px 6px;
+  }
+  .hud-bottom {
+    padding-top: 2px;
+    padding-bottom: max(4px, env(safe-area-inset-bottom));
+  }
+  .session-tracker,
+  .hud-reactions-col,
+  .table-pot-odds {
+    display: none !important;
+  }
+  .hud-community .card2d,
+  .hud-community .hud-card {
+    transform: scale(0.85);
+    transform-origin: top center;
+  }
+  /* Timer strip even slimmer in landscape so it doesn't eat screen height */
+  .action-timer-strip { height: 4px; }
+}
+
+/* ── M13: side-pot pills wrap instead of overflow ── */
+.side-pot-breakdown {
+  flex-wrap: wrap !important;
+  row-gap: 4px;
+}
+
+/* ── M14: session tracker collapses to a tiny pill on phone to free
+   the left side of the table for the button-seat player. */
+@media (max-width: 480px) {
+  .session-tracker {
+    bottom: calc(var(--kb-offset, 0) + 140px) !important;
+    left: 6px !important;
+    min-width: 0 !important;
+    max-width: 120px;
+    font-size: 0.62rem;
+    padding: 4px 6px;
+    opacity: 0.85;
+  }
+  .session-tracker .sess-label { display: none; }
+}
+
+/* ── M15: dealer-voice line can't overflow narrow phones ── */
+.dealer-voice-hidden,
+.dealer-voice-line {
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .dealer-voice-hidden,
+  .dealer-voice-line {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: calc(var(--kb-offset, 0) + 170px) !important;
+    font-size: 0.7rem;
+  }
+}
+
+/* ── M16: card sizing at true-small viewports ── */
+@media (max-width: 360px) {
+  .hud-card { width: 28px !important; height: 40px !important; }
+  .hud-hole-card { width: 34px !important; height: 48px !important; }
+  .hud-community {
+    gap: 3px !important;
+    transform: scale(0.9);
+    transform-origin: top center;
+  }
+}
+
+/* ── M17: turn-timer ring readable at 320px ── */
+@media (max-width: 360px) {
+  .turn-timer-ring {
+    width: 22px !important;
+    height: 22px !important;
+    font-size: 0.6rem !important;
+  }
+}
+
+/* ── M18: emote wheel / react column doesn't overlap last-hand/replay
+   buttons on portrait phone. Stack them vertically, tuck to the right. */
+@media (max-width: 480px) {
+  .hud-reactions-col {
+    right: 4px !important;
+    gap: 4px !important;
+  }
+  .hud-reactions-col .rail-btn,
+  .hud-reactions-col .rail-btn-wrap {
+    font-size: 0.6rem;
+    padding: 4px 6px;
+    min-height: 34px;
+  }
+}
+
+/* ── M19: hand-strength bar text — truncate instead of wrap, larger
+   font so it's legible at 90px width on phones. */
+@media (max-width: 480px) {
+  .hand-strength-label {
+    font-size: 0.62rem !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+}
+
+/* ── M20: table tabs (switcher) on phone — single-line scroll instead
+   of wrapping. Smaller tab headers so 3 tables fit in 320px with
+   horizontal scroll available for more. */
+@media (max-width: 480px) {
+  .tabs-bar,
+  .table-tabs {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding: 2px 4px;
+  }
+  .tabs-bar .tab,
+  .table-tabs .tab {
+    flex: 0 0 auto;
+    max-width: 120px;
+    font-size: 0.68rem;
+    padding: 4px 8px;
+  }
+}
+
+/* ── M21: all-in confirm modal scales — already in M6 bundle, but the
+   inner "Shove 1,240,000?" copy needs responsive font too. */
+@media (max-width: 480px) {
+  .allin-confirm-panel .allin-confirm-amount {
+    font-size: 1.3rem;
+  }
+  .allin-confirm-panel .allin-confirm-actions button {
+    min-height: 48px;
+    font-size: 0.9rem;
+    flex: 1;
+  }
+}
+
+/* ── M22: chip-stack fly-out trajectories clip on tiny viewports.
+   Scale the entire animation down so it stays on-screen. */
+@media (max-width: 480px) {
+  .chip-fly,
+  .chip-stack-fly {
+    transform-origin: center center;
+    /* Scale down the translate3d by ~20% without touching the anim keyframes */
+    zoom: 0.85;
   }
 }
 
