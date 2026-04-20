@@ -1029,6 +1029,28 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     return () => clearTimeout(id);
   }, [joining]);
 
+  // Listen for server `error` events while the join spinner is up — if the
+  // server rejects the join (insufficient chips, table full, variant
+  // mismatch, banned, etc.) surface the REAL message immediately instead of
+  // making the user wait 8s for the generic watchdog. joinError is also set
+  // from `joinError` events (private-table invite path).
+  useEffect(() => {
+    if (!joining) return;
+    const socket = getSocket();
+    if (!socket) return;
+    const onServerError = (err) => {
+      if (!err) return;
+      setJoining(null);
+      setJoinError(err.message || 'Server rejected the join.');
+    };
+    socket.on('error', onServerError);
+    socket.on('joinError', onServerError);
+    return () => {
+      socket.off('error', onServerError);
+      socket.off('joinError', onServerError);
+    };
+  }, [joining]);
+
   // Session tracker
   const sessionStartRef = useRef(Date.now());
   const sessionStartChipsRef = useRef(null);
