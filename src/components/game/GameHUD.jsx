@@ -297,6 +297,11 @@ export default function GameHUD() {
   // Upgrade: fold confirmation micro-animation
   const [foldPending, setFoldPending] = useState(false);
   const foldTimerRef = useRef(null);
+  // Hotkey hint fade-out — visible for 30s per turn, then fades. Reset on
+  // every new turn so the user always gets a reminder on their first action
+  // in a fresh session but doesn't have permanent visual noise.
+  const [hotkeyHintsVisible, setHotkeyHintsVisible] = useState(true);
+  const [hotkeyHintsFading, setHotkeyHintsFading] = useState(false);
   const showBigBetConfirmRef = useRef(false);
   const [showRaiseSlider, setShowRaiseSlider] = useState(false);
   const isTouchDevice = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
@@ -596,10 +601,18 @@ export default function GameHUD() {
   const isPineapple = gameState?.isPineapple || false;
   const pineappleDiscardActive = gameState?.pineappleDiscardActive || false;
   const [pineappleDiscardIndex, setPineappleDiscardIndex] = useState(null);
-  // Reset selection whenever the discard window closes or cards update.
+  // Reset selection whenever the discard window closes or a new hand starts.
+  // Previously the index only cleared on `pineappleDiscardActive` going false,
+  // which meant a server crash or race mid-discard could strand the old index
+  // into the next hand (cosmetic desync in the card selection UI).
   useEffect(() => {
     if (!pineappleDiscardActive) setPineappleDiscardIndex(null);
   }, [pineappleDiscardActive]);
+  useEffect(() => {
+    if (phase === 'PreFlop' || phase === 'WaitingForPlayers') {
+      setPineappleDiscardIndex(null);
+    }
+  }, [phase]);
 
   // Bomb Pot info
   const isBombPot = gameState?.bombPot || false;
@@ -612,12 +625,17 @@ export default function GameHUD() {
   // Ante info
   const anteAmount = gameState?.ante || 0;
 
-  // Hand strength evaluation — memoized so it only reruns when cards change
+  // Hand strength evaluation — memoized so it only reruns when cards change.
+  // Variant-aware: Omaha games must use EXACTLY 2 hole cards + 3 community
+  // (otherwise a 1-hole-card flush/straight gets scored as made when it isn't).
+  // We pass the variant through so `evaluateHandStrength` can enforce the rule;
+  // if the util doesn't recognize the variant, it falls back to Hold'em rules.
+  const gameVariant = gameState?.variant || gameState?.variantName || 'texas-holdem';
   const showHandStrength = yourCards.length > 0 && communityCards.length >= 3;
   const handStrength = useMemo(
-    () => showHandStrength ? evaluateHandStrength(yourCards, communityCards) : null,
+    () => showHandStrength ? evaluateHandStrength(yourCards, communityCards, { variant: gameVariant }) : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showHandStrength, yourCards.map(c => `${c.rank}-${c.suit}`).join(','), communityCards.map(c => `${c.rank}-${c.suit}`).join(',')]
+    [showHandStrength, gameVariant, yourCards.map(c => `${c.rank}-${c.suit}`).join(','), communityCards.map(c => `${c.rank}-${c.suit}`).join(',')]
   );
 
   // Outs calculation — memoized, only runs on Flop/Turn
@@ -657,10 +675,14 @@ export default function GameHUD() {
     return null;
   })();
 
-  // Stack-to-Pot Ratio (Upgrade 2)
+  // Stack-to-Pot Ratio (Upgrade 2) — helper keeps top-bar badge and action-bar
+  // SPR display in lockstep; the two places used to inline their own copy of
+  // this threshold ladder.
+  const getSPRColor = (s) => s === null ? '#6b7280' : Number(s) >= 8 ? '#4ADE80' : Number(s) >= 3 ? '#F59E0B' : '#EF4444';
+  const getSPRLabel = (s) => s === null ? '' : Number(s) >= 8 ? 'Deep' : Number(s) >= 3 ? 'Mid' : 'Short';
   const spr = pot > 0 ? (myChips / pot).toFixed(1) : null;
-  const sprColor = spr === null ? '#6b7280' : Number(spr) >= 8 ? '#4ADE80' : Number(spr) >= 3 ? '#F59E0B' : '#EF4444';
-  const sprLabel = spr === null ? '' : Number(spr) >= 8 ? 'Deep' : Number(spr) >= 3 ? 'Mid' : 'Short';
+  const sprColor = getSPRColor(spr);
+  const sprLabel = getSPRLabel(spr);
 
   // Pre-flop hand tier (for card glow) (Upgrade 3)
   const preflopTier = (() => {
@@ -693,7 +715,15 @@ export default function GameHUD() {
     phase === 'Turn' ? 5 - communityCards.length : 0;
   const showInsurancePanel = isPlayerAllIn && cardsStillToCome > 0 && !insuranceDismissed &&
     (phase === 'Flop' || phase === 'Turn' || phase === 'PreFlop');
-  const insuranceEquity = handStrength ? Math.round(handStrength.strength * 100) : 50;
+  // Insurance equity now discounts by live opponents. Previous math ignored
+  // folded hands, which inflated strength (since their cards are no longer in
+  // the deck) and generously over-offered insurance cashout.
+  const liveOpponents = Math.max(
+    0,
+    ((gameState?.seats || []).filter((s, i) => s?.playerName && !s?.folded && i !== yourSeat).length)
+  );
+  const opponentDiscount = liveOpponents <= 1 ? 1 : Math.max(0.4, 1 - 0.08 * (liveOpponents - 1));
+  const insuranceEquity = handStrength ? Math.round(handStrength.strength * 100 * opponentDiscount) : 50;
   const insuranceCashout = Math.round(pot * (insuranceEquity / 100) * 0.9); // 90% of equity value
 
   // Session stats tracking: initialize start chips, count hands, track biggest pot
@@ -850,9 +880,13 @@ export default function GameHUD() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastActionsFingerprint]);
 
-  // Clear action history on new hand/phase
+  // Clear action history on EVERY phase transition — previously only cleared
+  // on new-hand boundaries, so late-street history could include stale Pre-Flop
+  // lines pushed off-screen but still retained until the last 3 recycled.
+  const prevPhaseForHistoryRef = useRef(phase);
   useEffect(() => {
-    if (phase === 'WaitingForPlayers' || phase === 'PreFlop') {
+    if (prevPhaseForHistoryRef.current !== phase) {
+      prevPhaseForHistoryRef.current = phase;
       setActionHistory([]);
       prevSeatsRef.current = null;
     }
@@ -981,17 +1015,29 @@ export default function GameHUD() {
     }
 
     if (voiceLine) {
-      if (dealerVoiceTimerRef.current) clearTimeout(dealerVoiceTimerRef.current);
-      dealerVoiceFadingRef.current = false;
-      setDealerVoice(voiceLine);
-      dealerVoiceTimerRef.current = setTimeout(() => {
-        dealerVoiceFadingRef.current = true;
-        setDealerVoiceKey((k) => k + 1); // force re-render for fade
-        setTimeout(() => {
-          setDealerVoice(null);
-          dealerVoiceFadingRef.current = false;
-        }, 400);
-      }, 2000);
+      // Respect in-progress fade: if we're already fading out, let it finish
+      // (400ms) before queueing the next voice line. Previously, back-to-back
+      // phase changes within 2s would clear the fade timer mid-transition and
+      // the CSS fade class never applied — line visually popped instead of faded.
+      const startVoice = () => {
+        dealerVoiceFadingRef.current = false;
+        setDealerVoice(voiceLine);
+        dealerVoiceTimerRef.current = setTimeout(() => {
+          dealerVoiceFadingRef.current = true;
+          setDealerVoiceKey((k) => k + 1); // force re-render for fade
+          setTimeout(() => {
+            setDealerVoice(null);
+            dealerVoiceFadingRef.current = false;
+          }, 400);
+        }, 2000);
+      };
+      if (dealerVoiceFadingRef.current) {
+        // In the middle of a fade-out already; chain the next line after it.
+        setTimeout(startVoice, 400);
+      } else {
+        if (dealerVoiceTimerRef.current) clearTimeout(dealerVoiceTimerRef.current);
+        startVoice();
+      }
     }
 
     prevPhaseForVoiceRef.current = phase;
@@ -1070,22 +1116,26 @@ export default function GameHUD() {
       const potBreakdown = handResult.potBreakdown;
       let lines;
       if (potBreakdown && potBreakdown.length > 0) {
-        // Flatten winnerAmounts across pots, labeled by pot name
-        lines = potBreakdown.flatMap(pot =>
+        // Flatten winnerAmounts across pots, labeled by pot name. Dedup key
+        // uses (seatIndex, potIndex) — the previous (name, potName, amount)
+        // key incorrectly collapsed two distinct players sharing the same pot
+        // for the same amount into a single row.
+        lines = potBreakdown.flatMap((pot, potIndex) =>
           (pot.winnerAmounts || []).map(wa => {
             const winnerInfo = handResult.winners.find(w => w.seatIndex === wa.seatIndex);
             return {
               name: winnerInfo?.playerName || `Seat ${wa.seatIndex + 1}`,
               amount: wa.amount,
               potName: pot.name,
+              potIndex,
+              seatIndex: wa.seatIndex,
               handName: winnerInfo?.handName || '',
             };
           })
         );
-        // Deduplicate identical lines (can occur when same player wins multiple splits in same pot)
         const seen = new Set();
         lines = lines.filter(l => {
-          const key = `${l.name}-${l.potName}-${l.amount}`;
+          const key = `${l.seatIndex}:${l.potIndex}`;
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
@@ -1293,14 +1343,38 @@ export default function GameHUD() {
     }
   }, [timeLeft, isMyTurn, callAmount, sendAction, playSound]);
 
-  // Timer warning sound when < 5 seconds
+  // Hotkey-hints fade manager: reset on each new turn, begin fade after 24s,
+  // fully hide at 30s. Cleans up on unmount or turn change.
   useEffect(() => {
-    if (isMyTurn && timeLeft <= 5 && timeLeft > 0 && !timerWarningPlayed.current) {
-      playSound('timer');
-      timerWarningPlayed.current = true;
-      // Reset so it plays each second
-      setTimeout(() => { timerWarningPlayed.current = false; }, 900);
+    if (!isMyTurn) {
+      setHotkeyHintsVisible(true);
+      setHotkeyHintsFading(false);
+      return;
     }
+    setHotkeyHintsVisible(true);
+    setHotkeyHintsFading(false);
+    const fadeStart = setTimeout(() => setHotkeyHintsFading(true), 24000);
+    const hideEnd = setTimeout(() => setHotkeyHintsVisible(false), 30000);
+    return () => {
+      clearTimeout(fadeStart);
+      clearTimeout(hideEnd);
+    };
+  }, [isMyTurn]);
+
+  // Timer warning sound when < 5 seconds — gated on the timeLeft VALUE that
+  // last played rather than a 900ms timer (which was racing with the 1s tick
+  // and could fire twice per second). Now each new `timeLeft` integer plays
+  // exactly one warning tone.
+  const lastWarningTickRef = useRef(null);
+  useEffect(() => {
+    if (!isMyTurn) {
+      lastWarningTickRef.current = null;
+      return;
+    }
+    if (timeLeft > 5 || timeLeft <= 0) return;
+    if (lastWarningTickRef.current === timeLeft) return;
+    lastWarningTickRef.current = timeLeft;
+    playSound('timer');
   }, [timeLeft, isMyTurn, playSound]);
 
   // Scroll chat to bottom when new messages arrive
@@ -2199,8 +2273,11 @@ export default function GameHUD() {
               </div>
             );
           })}
-          {/* Board Texture Badge — color-coded */}
-          {boardTexture && boardTexture.labels.length > 0 && (
+          {/* Board Texture Badge — color-coded. Gated on live phase so it
+              doesn't linger during WaitingForPlayers / new-hand preload (where
+              the memo still has cached labels from the previous board). */}
+          {boardTexture && boardTexture.labels.length > 0 &&
+           (phase === 'Flop' || phase === 'Turn' || phase === 'River' || phase === 'Showdown' || phase === 'HandComplete') && (
             <div className={`board-texture-badge ${
               boardTexture.labels.some(l => l === 'Monotone') ? 'board-texture--monotone' :
               boardTexture.labels.some(l => l === 'Paired') ? 'board-texture--paired' :
@@ -2297,7 +2374,10 @@ export default function GameHUD() {
       )}
 
       {/* Missed Blinds Button (#16) */}
-      {missedBlindsAmount > 0 && !sittingOut && (phase === 'WaitingForPlayers' || phase === 'HandComplete') && (
+      {/* Missed-blinds prompt — previously shown in BOTH HandComplete and
+          WaitingForPlayers, which flickered for <1s across the phase boundary.
+          Tied to amount > 0 + not sitting out; phase no longer gates it. */}
+      {missedBlindsAmount > 0 && !sittingOut && phase !== 'PreFlop' && phase !== 'Flop' && phase !== 'Turn' && phase !== 'River' && phase !== 'Showdown' && (
         <div className="missed-blinds-panel">
           <div className="missed-blinds-text">
             You missed blinds while sitting out.
@@ -2345,17 +2425,34 @@ export default function GameHUD() {
 
         {/* LEFT: turn timer pill + hand strength meter */}
         <div className="hud-bottom-left">
+          {/* Strength meter stays visible through HandComplete (previously
+              vanished at showdown, which is exactly when equity sanity-check
+              matters most). Resets with the next PreFlop when hole cards flip. */}
           {handStrength && yourCards.length > 0 && (
             <div className="bottom-strength-bar">
               <div className="bsb-track">
                 <div className="bsb-fill" style={{
                   width: `${Math.round(handStrength.strength * 100)}%`,
-                  background: handStrength.strength < 0.33 ? '#EF4444' : handStrength.strength < 0.66 ? '#EAB308' : handStrength.strength >= 0.85 ? '#FFD700' : '#22C55E',
+                  /* 5-point gradient with sharper breakpoints. Previous 4-point
+                     version flattened 0.5–0.66 into a washed-out yellow-green. */
+                  background:
+                    handStrength.strength < 0.2 ? '#DC2626' :
+                    handStrength.strength < 0.4 ? '#F97316' :
+                    handStrength.strength < 0.7 ? '#EAB308' :
+                    handStrength.strength < 0.9 ? '#22C55E' : '#FFD700',
                 }} />
               </div>
               <span className="bsb-label">{handStrength.name}</span>
-              <span className={`bsb-tier bsb-tier--${handStrength.strength < 0.33 ? 'weak' : handStrength.strength < 0.66 ? 'medium' : handStrength.strength >= 0.85 ? 'monster' : 'strong'}`}>
-                {handStrength.strength < 0.33 ? 'Weak' : handStrength.strength < 0.66 ? 'Medium' : handStrength.strength >= 0.85 ? 'Monster' : 'Strong'}
+              <span className={`bsb-tier bsb-tier--${
+                handStrength.strength < 0.2 ? 'weak' :
+                handStrength.strength < 0.4 ? 'light' :
+                handStrength.strength < 0.7 ? 'medium' :
+                handStrength.strength < 0.9 ? 'strong' : 'monster'
+              }`}>
+                {handStrength.strength < 0.2 ? 'Weak' :
+                 handStrength.strength < 0.4 ? 'Light' :
+                 handStrength.strength < 0.7 ? 'Medium' :
+                 handStrength.strength < 0.9 ? 'Strong' : 'Monster'}
               </span>
             </div>
           )}
@@ -2439,7 +2536,9 @@ export default function GameHUD() {
                     >
                       <span className="card-rank">{serverRankDisplay(card.rank)}</span>
                       <span className="card-suit">{SUIT_INDEX_TO_SYMBOL[card.suit]}</span>
-                      {isStudGame && isFaceUp !== undefined && (
+                      {/* Stud: only show U/D badge on 3rd card onward — first two
+                          are always hole cards and a badge there was cosmetic noise. */}
+                      {isStudGame && isFaceUp !== undefined && i >= 2 && (
                         <span style={{
                           position: 'absolute',
                           top: '-4px',
@@ -2612,8 +2711,13 @@ export default function GameHUD() {
                   onClick={() => {
                     const bigBet = myChips > 0 && callAmount > myChips * 0.25;
                     if (bigBet && !foldPending) {
-                      // First tap: show confirmation, wait for second tap
+                      // First tap: show confirmation; auto-dismiss after 3s so
+                      // a stale "Fold?" state never catches the user by surprise
+                      // on the NEXT tap (which was the previous bug — foldPending
+                      // never timed out, so tap-wait-tap folded without confirm).
                       setFoldPending(true);
+                      clearTimeout(foldTimerRef.current);
+                      foldTimerRef.current = setTimeout(() => setFoldPending(false), 3000);
                     } else {
                       // Second tap (or small bet): fold immediately
                       clearTimeout(foldTimerRef.current);
@@ -2638,7 +2742,11 @@ export default function GameHUD() {
                       <span className="action-amount-sub">{callAmount.toLocaleString()}</span>
                       {potOddsDisplay && (
                         <span className="action-odds-sub">
-                          {potOddsDisplay}&nbsp;·&nbsp;{Math.round(100 / (potOdds + 1))}%
+                          {/* Break-even equity required to call = call / (pot + call).
+                              Previous label used `1 / (potOdds + 1)` which is only equivalent
+                              when `pot` is the pot BEFORE the call (and even then was
+                              semantically "reward fraction", not "equity needed"). */}
+                          {potOddsDisplay}&nbsp;·&nbsp;{Math.round(100 * callAmount / (pot + callAmount))}%
                         </span>
                       )}
                       {handStrength && (
@@ -2709,9 +2817,13 @@ export default function GameHUD() {
 
               </div>{/* end action-bar-flat */}
 
-              {/* Keyboard shortcut hints — fades out after 30s */}
-              {isMyTurn && (
-                <div className="hud-hotkey-hints">
+              {/* Keyboard shortcut hints — fades out after 30s of visibility.
+                  Previously the comment promised fade-out but nothing implemented it. */}
+              {isMyTurn && hotkeyHintsVisible && (
+                <div
+                  className={`hud-hotkey-hints ${hotkeyHintsFading ? 'hud-hotkey-hints--fading' : ''}`}
+                  style={{ opacity: hotkeyHintsFading ? 0 : 1, transition: 'opacity 0.6s ease-out' }}
+                >
                   <span><kbd>{hotkeys.fold === ' ' ? '␣' : hotkeys.fold.toUpperCase()}</kbd> Fold</span>
                   <span><kbd>{hotkeys.checkCall === ' ' ? '␣' : hotkeys.checkCall.toUpperCase()}</kbd> Call</span>
                   <span><kbd>{hotkeys.raise.toUpperCase()}</kbd> Raise</span>
@@ -2814,14 +2926,15 @@ export default function GameHUD() {
               ))
             )}
 
-            {/* All showdown hands */}
+            {/* All showdown hands — skip rows whose holeCards haven't
+                hydrated yet (client may receive the showdown envelope before
+                the encrypted cards are decrypted). Variant-aware eval. */}
             <div className="showdown-hands">
-              {handResult.showdownHands.map((hand) => {
+              {handResult.showdownHands.filter(h => Array.isArray(h.holeCards) && h.holeCards.length > 0).map((hand) => {
                 const isWinner = winnerSeatSet.has(hand.seatIndex);
-                // Compute detailed hand name client-side if possible
                 let detailedName = hand.handName;
-                if (hand.holeCards && hand.holeCards.length > 0 && communityCards.length >= 3) {
-                  const evalResult = evaluateHandStrength(hand.holeCards, communityCards);
+                if (hand.holeCards.length > 0 && communityCards.length >= 3) {
+                  const evalResult = evaluateHandStrength(hand.holeCards, communityCards, { variant: gameVariant });
                   if (evalResult.detailedName) detailedName = evalResult.detailedName;
                 }
                 return (
@@ -3188,8 +3301,14 @@ export default function GameHUD() {
       {emotes.map((emote, i) => {
         const emoteData = EMOTE_MAP[emote.emoteId];
         if (!emoteData) return null;
-        // Position emotes at top center with offset per seat
-        const offsetX = (emote.seatIndex / 8) * 400 - 200;
+        // Position emotes centered around the table, spread based on ACTUAL seat
+        // count. Previous math assumed 8 seats, so on 6-max the first seat
+        // shifted way off-center and seat 9 on a 10-max went off-screen.
+        const seatCount = Math.max(2, gameState?.maxSeats || (seats?.length || 8));
+        // Map seat 0..seatCount-1 to range [-200, +200] evenly
+        const offsetX = seatCount === 1
+          ? 0
+          : ((emote.seatIndex / (seatCount - 1)) * 400) - 200;
         return (
           <div
             key={`${emote.timestamp}-${i}`}

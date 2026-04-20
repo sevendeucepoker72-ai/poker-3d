@@ -223,7 +223,7 @@ function combinations(arr, k) {
  *   strength: 0-1 normalized value for the meter
  *   bestFive: The 5 cards that make up the best hand
  */
-export function evaluateHandStrength(holeCards, communityCards) {
+export function evaluateHandStrength(holeCards, communityCards, options = {}) {
   if (!holeCards || holeCards.length === 0) {
     return { rank: 0, name: 'High Card', detailedName: 'High Card', strength: 0, bestFive: [] };
   }
@@ -235,8 +235,28 @@ export function evaluateHandStrength(holeCards, communityCards) {
     return { rank: 0, name: 'High Card', detailedName: 'High Card', strength: 0, bestFive: [] };
   }
 
-  // Get all 5-card combinations and find the best
-  const combos = combinations(allCards, 5);
+  // Variant-aware combo generation.
+  //   - Omaha (+ Hi-Lo): MUST use EXACTLY 2 hole cards + 3 community cards.
+  //     Previous behavior used any-5-of-N which over-counted flushes/straights
+  //     that depended on a single hole card (illegal in Omaha).
+  //   - Short Deck, Texas Hold'em, default: any 5 of all cards.
+  const variant = (options.variant || 'texas-holdem').toLowerCase();
+  const isOmaha = variant === 'omaha' || variant === 'omaha-hi-lo';
+
+  let combos;
+  if (isOmaha && holeCards.length >= 2 && communityCards.length >= 3) {
+    const holeCombos = combinations(holeCards, 2);
+    const boardCombos = combinations(communityCards, 3);
+    combos = [];
+    for (const h of holeCombos) {
+      for (const b of boardCombos) {
+        combos.push([...h, ...b]);
+      }
+    }
+  } else {
+    combos = combinations(allCards, 5);
+  }
+
   let bestEval = null;
   let bestCombo = null;
 
