@@ -2,15 +2,22 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSocket } from '../../services/socketService';
 import './EmoteWheel.css';
 
+// Per-player emotes (shown at the sender's seat). `emote` socket event.
 const EMOTES = [
-  { id: 'nice', icon: '\uD83D\uDC4D', label: 'Nice' },
-  { id: 'lol', icon: '\uD83D\uDE02', label: 'LOL' },
-  { id: 'cool', icon: '\uD83D\uDE0E', label: 'Cool' },
-  { id: 'angry', icon: '\uD83D\uDE21', label: 'Angry' },
-  { id: 'thinking', icon: '\uD83E\uDD14', label: 'Thinking' },
-  { id: 'dead', icon: '\uD83D\uDC80', label: 'Dead' },
-  { id: 'fire', icon: '\uD83D\uDD25', label: 'Fire' },
-  { id: 'gg', icon: '\uD83D\uDC4F', label: 'GG' },
+  { id: 'nice',     icon: '\uD83D\uDC4D', label: 'Nice',     kind: 'emote' },
+  { id: 'lol',      icon: '\uD83D\uDE02', label: 'LOL',      kind: 'emote' },
+  { id: 'cool',     icon: '\uD83D\uDE0E', label: 'Cool',     kind: 'emote' },
+  { id: 'angry',    icon: '\uD83D\uDE21', label: 'Angry',    kind: 'emote' },
+  { id: 'thinking', icon: '\uD83E\uDD14', label: 'Thinking', kind: 'emote' },
+  { id: 'dead',     icon: '\uD83D\uDC80', label: 'Dead',     kind: 'emote' },
+  { id: 'fire',     icon: '\uD83D\uDD25', label: 'Fire',     kind: 'emote' },
+  { id: 'gg',       icon: '\uD83D\uDC4F', label: 'GG',       kind: 'emote' },
+  // Merged from TableReactions per user request — table-wide reactions
+  // (float over the felt, shown to everyone). `tableReaction` event.
+  { id: 'clap',  icon: '\uD83D\uDC4F', label: 'Clap',  kind: 'reaction' },
+  { id: 'laugh', icon: '\uD83D\uDE02', label: 'Laugh', kind: 'reaction' },
+  { id: 'cry',   icon: '\uD83D\uDE22', label: 'Cry',   kind: 'reaction' },
+  { id: 'shock', icon: '\uD83D\uDE31', label: 'Shock', kind: 'reaction' },
 ];
 
 export const EMOTE_MAP = Object.fromEntries(EMOTES.map((e) => [e.id, e]));
@@ -23,8 +30,11 @@ export default function EmoteWheel({ disabled }) {
   const sendEmote = useCallback((emoteId) => {
     if (cooldown) return;
     const socket = getSocket();
+    const entry = EMOTE_MAP[emoteId];
+    const event = entry?.kind === 'reaction' ? 'tableReaction' : 'emote';
+    const payloadKey = entry?.kind === 'reaction' ? 'reactionId' : 'emoteId';
     if (socket) {
-      socket.emit('emote', { emoteId });
+      socket.emit(event, { [payloadKey]: emoteId });
     }
     setOpen(false);
     setCooldown(true);
