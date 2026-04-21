@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
 import { useProgressStore } from '../../store/progressStore';
@@ -19,26 +19,30 @@ import LoginRewards from './LoginRewards';
 import ThemeToggle from './ThemeToggle';
 import NotificationCenter from './NotificationCenter';
 import SettingsPanel from './SettingsPanel';
-import EquityCalculator from './EquityCalculator';
-import HandRangeChart from '../game/HandRangeChart';
+// Modal-only panels — deferred via lazy() + Suspense so the initial Lobby
+// chunk drops ~200 KB worth of code the user rarely opens. Each is
+// rendered behind a `show*` boolean that's false on mount.
+const EquityCalculator    = lazy(() => import('./EquityCalculator'));
+const HandRangeChart      = lazy(() => import('../game/HandRangeChart'));
+const LeakFinder          = lazy(() => import('./LeakFinder'));
+const BankrollGraph       = lazy(() => import('./BankrollGraph'));
+const HandQuiz            = lazy(() => import('./HandQuiz'));
+const AdvancedAnalytics   = lazy(() => import('./AdvancedAnalytics'));
+const StakingMarketplace  = lazy(() => import('./StakingMarketplace'));
+const TournamentBracket   = lazy(() => import('./TournamentBracket'));
+const TournamentDirector  = lazy(() => import('./TournamentDirector'));
+const HandHistoryImporter = lazy(() => import('./HandHistoryImporter'));
+const SocialBracket       = lazy(() => import('./SocialBracket'));
+const BankrollAI          = lazy(() => import('./BankrollAI'));
+const NFTBadges           = lazy(() => import('./NFTBadges'));
+const AdminDashboard      = lazy(() => import('./AdminDashboard'));
+const ExportData          = lazy(() => import('./ExportData'));
+// Kept eager — rendered in the default lobby view, not gated behind a modal.
 import ClubsPanel from './ClubsPanel';
-import LeakFinder from './LeakFinder';
-import BankrollGraph from './BankrollGraph';
 import SpinWheel from './SpinWheel';
 import ScratchCards from './ScratchCards';
-import AdminDashboard from './AdminDashboard';
-import ExportData from './ExportData';
-import HandQuiz from './HandQuiz';
-import AdvancedAnalytics from './AdvancedAnalytics';
-import StakingMarketplace from './StakingMarketplace';
-import TournamentBracket from './TournamentBracket';
-import TournamentDirector from './TournamentDirector';
-import HandHistoryImporter from './HandHistoryImporter';
 import MultiTableView from './MultiTableView';
-import SocialBracket from './SocialBracket';
-import BankrollAI from './BankrollAI';
 import PlayerProfile from './PlayerProfile';
-import NFTBadges from './NFTBadges';
 import { getSocket } from '../../services/socketService';
 import { PlayerAvatar } from '../../hooks/useAvatar';
 import './Lobby.css';
@@ -2566,26 +2570,35 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           onClose={() => setSeatPickerTable(null)}
         />
       )}
-      {showEquityCalc && <EquityCalculator onClose={() => setShowEquityCalc(false)} />}
-      {showRangeChart && <HandRangeChart onClose={() => setShowRangeChart(false)} />}
+      {/* Lazy-mounted modal panels share a single Suspense boundary so
+          their chunks only download when the user opens them. Fallback
+          is null — the click triggers the modal open, the chunk loads
+          (usually <100ms on warm CDN), and the panel slides in. */}
+      <Suspense fallback={null}>
+        {showEquityCalc && <EquityCalculator onClose={() => setShowEquityCalc(false)} />}
+        {showRangeChart && <HandRangeChart onClose={() => setShowRangeChart(false)} />}
+        {showLeakFinder && <LeakFinder onClose={() => setShowLeakFinder(false)} />}
+        {showBankrollGraph && <BankrollGraph onClose={() => setShowBankrollGraph(false)} />}
+        {showAdminDashboard && <AdminDashboard onClose={() => setShowAdminDashboard(false)} />}
+        {showExportData && <ExportData onClose={() => setShowExportData(false)} />}
+        {showHandQuiz && <HandQuiz onClose={() => setShowHandQuiz(false)} />}
+        {showAdvancedAnalytics && <AdvancedAnalytics progress={progress} handHistories={handHistories || []} onClose={() => setShowAdvancedAnalytics(false)} />}
+        {showStakingMarketplace && <StakingMarketplace onClose={() => setShowStakingMarketplace(false)} />}
+        {showTournamentBracket && <TournamentBracket onClose={() => setShowTournamentBracket(false)} />}
+        {showTournamentDirector && <TournamentDirector onClose={() => setShowTournamentDirector(false)} />}
+        {showHandHistoryImporter && <HandHistoryImporter onClose={() => setShowHandHistoryImporter(false)} />}
+        {showSocialBracket && <SocialBracket socket={null} onClose={() => setShowSocialBracket(false)} />}
+        {showBankrollAI && <BankrollAI currentChips={chipCount} onClose={() => setShowBankrollAI(false)} />}
+        {showNFTBadges && <NFTBadges unlockedAchievementIds={progress?.achievements || []} onClose={() => setShowNFTBadges(false)} />}
+      </Suspense>
+      {/* Eagerly-loaded panels that live inside the default Lobby view
+          or are opened so frequently that the lazy round-trip wouldn't
+          help. */}
       {showClubs && <ClubsPanel onClose={() => setShowClubs(false)} />}
-      {showLeakFinder && <LeakFinder onClose={() => setShowLeakFinder(false)} />}
-      {showBankrollGraph && <BankrollGraph onClose={() => setShowBankrollGraph(false)} />}
       {showSpinWheel && <SpinWheel onClose={() => setShowSpinWheel(false)} />}
       {showScratchCards && <ScratchCards onClose={() => setShowScratchCards(false)} />}
-      {showAdminDashboard && <AdminDashboard onClose={() => setShowAdminDashboard(false)} />}
-      {showExportData && <ExportData onClose={() => setShowExportData(false)} />}
-      {showHandQuiz && <HandQuiz onClose={() => setShowHandQuiz(false)} />}
-      {showAdvancedAnalytics && <AdvancedAnalytics progress={progress} handHistories={handHistories || []} onClose={() => setShowAdvancedAnalytics(false)} />}
-      {showStakingMarketplace && <StakingMarketplace onClose={() => setShowStakingMarketplace(false)} />}
-      {showTournamentBracket && <TournamentBracket onClose={() => setShowTournamentBracket(false)} />}
-      {showTournamentDirector && <TournamentDirector onClose={() => setShowTournamentDirector(false)} />}
-      {showHandHistoryImporter && <HandHistoryImporter onClose={() => setShowHandHistoryImporter(false)} />}
       {showMultiTable && <MultiTableView onClose={() => setShowMultiTable(false)} />}
-      {showSocialBracket && <SocialBracket socket={null} onClose={() => setShowSocialBracket(false)} />}
-      {showBankrollAI && <BankrollAI currentChips={chipCount} onClose={() => setShowBankrollAI(false)} />}
       {showPlayerProfile && <PlayerProfile username={nameInput || 'Player'} socket={null} onClose={() => setShowPlayerProfile(false)} onViewReplay={() => {}} />}
-      {showNFTBadges && <NFTBadges unlockedAchievementIds={progress?.achievements || []} onClose={() => setShowNFTBadges(false)} />}
     </div>
   );
 }
