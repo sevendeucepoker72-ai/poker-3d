@@ -3926,18 +3926,16 @@ export default function GameHUD() {
           "Replay") opening overlapping views of the same data; now the
           single rail button opens the interactive version. */}
 
-      {/* Right rail — Last Hand + React. Emote wheel moved to a
-          separate left-rail container per user ("put the emote button
-          on the left side of the screen, even with the last hand
-          button"). Both rails share a `bottom` so their top edges
-          line up across the screen. */}
+      {/* Right rail — Last Hand. Left rail — Emote (single merged
+          reaction button per user "merge react and emote buttons").
+          TableReactions removed from the rail; EmoteWheel is the
+          single reaction entry point. */}
       {!isSpectating && (
         <>
           <div className="right-rail-btns">
             {lastHandHistory && !showShowdown && (
               <button className="rail-btn" onClick={() => setShowReplay(true)}>🃏 Last Hand</button>
             )}
-            <div className="rail-btn-wrap"><TableReactions /></div>
           </div>
           <div className="left-rail-btns">
             <div className="rail-btn-wrap"><EmoteWheel disabled={isSpectating} /></div>
