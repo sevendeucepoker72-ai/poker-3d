@@ -611,14 +611,17 @@ input, textarea {
    ================================================================ */
 .hud-options-dropdown {
   position: fixed !important;
-  top: calc(env(safe-area-inset-top, 0px) + 52px) !important;
+  top: calc(env(safe-area-inset-top, 0px) + 56px) !important;
   right: 8px !important;
   left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
   max-height: calc(100dvh - 120px) !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
-  width: 200px !important;
-  z-index: 500 !important;
+  width: min(280px, calc(100vw - 16px)) !important;
+  max-width: calc(100vw - 16px) !important;
+  z-index: 900 !important;
 }
 
 /* Options toggle buttons — bigger tap area */
