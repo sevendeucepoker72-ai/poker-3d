@@ -4211,9 +4211,9 @@ export default function GameHUD() {
           setShowPauseCoach(false);
           setShowStream(false);
           setShowSessionRecap(false);
-          setShowGtoSolver(false);
+          setShowGTOSolver(false);
           setShowPredictionMarket(false);
-          setShowHandHeatmap(false);
+          setShowHeatmap(false);
         }}
       >
       <Suspense fallback={null}>
