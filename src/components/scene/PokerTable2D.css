@@ -290,7 +290,8 @@
   position: relative;
   width: 50px;
   height: 50px;
-  flex-shrink: 0;
+  aspect-ratio: 1 / 1 !important;
+  flex-shrink: 0 !important;
 }
 
 /* Timer ring SVG */
@@ -303,11 +304,15 @@
   pointer-events: none;
 }
 
-/* Avatar circle */
+/* Avatar circle — aspect-ratio + !important border-radius so no
+   downstream rule can accidentally stretch it into an oval. */
 .seat-pod__avatar {
   width: 50px;
   height: 50px;
-  border-radius: 50%;
+  aspect-ratio: 1 / 1 !important;
+  flex: 0 0 auto !important;
+  border-radius: 50% !important;
+  overflow: hidden !important;
   display: flex;
   align-items: center;
   justify-content: center;
