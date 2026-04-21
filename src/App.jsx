@@ -449,6 +449,16 @@ export default function App() {
         const current = useGameStore.getState().avatar;
         useGameStore.setState({ avatar: { ...current, ...c, faceShape: { ...(current.faceShape || {}), ...(c.faceShape || {}) } } });
       }
+      // Hydrate tableStore.handHistories from the DB-backed list so the
+      // "🃏 Last Hand" rail button is available IMMEDIATELY after login
+      // instead of waiting for the user to finish another hand.
+      // Server returns newest-first; tableStore keys newest as last element,
+      // so reverse + slice to the last 20 (matches addHandHistory's cap).
+      const hh = Array.isArray(payload?.handHistory) ? payload.handHistory : [];
+      if (hh.length > 0) {
+        const oldestFirst = hh.slice().reverse().slice(-20);
+        useTableStore.setState({ handHistories: oldestFirst });
+      }
     });
 
     // Partial inventory update after buy/equip
