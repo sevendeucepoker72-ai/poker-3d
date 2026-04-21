@@ -3944,11 +3944,14 @@
   padding-bottom: 6px !important;
 }
 
-/* ─── Right rail buttons (Last Hand, Replay, React, Emote) ─── */
+/* ─── Right rail buttons (Last Hand, React, Emote) ─── Moved up per
+   user: "move the last hand up to where the bottom of it is where the
+   top is now" — shifted the whole rail up 36px (≈ one button height)
+   so the Last Hand button's new bottom aligns with its old top. */
 .right-rail-btns {
   position: fixed;
   right: 10px;
-  bottom: 70px;
+  bottom: 106px;
   display: flex;
   flex-direction: column;
   gap: 4px;
