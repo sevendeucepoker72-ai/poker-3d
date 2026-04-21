@@ -1844,8 +1844,8 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
             <div className="lobby-profile-xp-label">{currentXP.toLocaleString()} / {xpToNextLevel.toLocaleString()} XP</div>
           </div>
           <div className="lobby-profile-resources">
-            <span className="lobby-player-chips">{chipCount.toLocaleString()} chips</span>
-            {starCount > 0 && <span className="lobby-player-stars">{starCount.toLocaleString()} stars</span>}
+            <span className="lobby-player-chips">🪙 {chipCount.toLocaleString()} chips</span>
+            <span className="lobby-player-stars">⭐ {starCount.toLocaleString()} stars</span>
           </div>
         </div>
       </div>
