@@ -649,10 +649,11 @@
   flex-shrink: 0;
 }
 
-/* Floating cards — bumped another 16px per user (214 → 230). */
+/* Floating cards moved UP (farther from action bar) to the spot the
+   now-hidden hero seat-pod avatar (J initial) previously occupied. */
 .hud-cards.hud-cards-floating {
   position: fixed;
-  bottom: 210px;
+  bottom: 270px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 150;
@@ -4934,7 +4935,7 @@
    so the two read as a single unit instead of two floating boxes. */
 .hud-nameplate-me {
   position: fixed;
-  bottom: 200px;                 /* +16 to match cards nudge */
+  bottom: 238px;                 /* sits just below cards (cards at 270; nameplate ~38px with ~6px overlap) */
   left: 50%;
   transform: translateX(-50%);
   z-index: 160;
