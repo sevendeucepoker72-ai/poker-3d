@@ -100,6 +100,28 @@
   }
 }
 
+/* Hero emote rises out of the nameplate and floats further up so it
+   clearly reads as "coming from you". Keeps the translateX(-50%)
+   centering (inline style pins left: 50%). */
+@keyframes emoteFloatHero {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1.3);
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-100px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-180px) scale(0.7);
+  }
+}
+
 .emote-cooldown-bar {
   position: absolute;
   bottom: -4px;

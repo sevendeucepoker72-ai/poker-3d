@@ -4051,15 +4051,40 @@ export default function GameHUD() {
         </div>
       )}
 
-      {/* Floating emotes above seats */}
+      {/* Floating emotes above seats. The HERO's own emote launches
+          from their nameplate and floats straight up, so the user
+          sees their reaction rise right out of the "You" chip at the
+          bottom of the screen. Other seats' emotes use the legacy
+          center-of-table spread. */}
       {emotes.map((emote, i) => {
         const emoteData = EMOTE_MAP[emote.emoteId];
         if (!emoteData) return null;
-        // Position emotes centered around the table, spread based on ACTUAL seat
-        // count. Previous math assumed 8 seats, so on 6-max the first seat
-        // shifted way off-center and seat 9 on a 10-max went off-screen.
+        const isMine = yourSeat >= 0 && emote.seatIndex === yourSeat;
+        if (isMine) {
+          return (
+            <div
+              key={`${emote.timestamp}-${i}`}
+              className="emote-float emote-float--hero"
+              style={{
+                position: 'fixed',
+                bottom: 'calc(var(--kb-offset, 0px) + 250px)',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 600,
+                fontSize: '2.8rem',
+                textShadow: '0 2px 8px rgba(0,0,0,0.6)',
+                pointerEvents: 'none',
+                animation: 'emoteFloatHero 2s ease-out forwards',
+                textAlign: 'center',
+              }}
+            >
+              <div>{emoteData.icon}</div>
+              <div style={{ fontSize: '0.65rem', color: '#4ade80', fontWeight: 700 }}>{emote.playerName}</div>
+            </div>
+          );
+        }
+        // Non-hero seats: legacy center-table spread.
         const seatCount = Math.max(2, gameState?.maxSeats || (seats?.length || 8));
-        // Map seat 0..seatCount-1 to range [-200, +200] evenly
         const offsetX = seatCount === 1
           ? 0
           : ((emote.seatIndex / (seatCount - 1)) * 400) - 200;
