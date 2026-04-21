@@ -3164,9 +3164,44 @@ export default function GameHUD() {
           )}
         </div>
 
-        {/* Player nameplate — rendered from HUD (not 3D scene) so position:fixed works */}
+        {/* Player nameplate — rendered from HUD (not 3D scene) so
+            position:fixed works. When it's my turn, wrap it with a
+            countdown ring overlay (per user request: "put my turn
+            time countdown thing around my name plate instead").
+            The ring is an SVG rounded-rect stroke sized 1:1 to the
+            nameplate via position:absolute inset:-6. Only hero gets
+            this — all other seats keep their own avatar-centric rings. */}
         {myPlayer && yourSeat >= 0 && (
-          <div className="hud-nameplate-me">
+          <div className={`hud-nameplate-me ${isMyTurn ? 'hud-nameplate-me--active' : ''}`}>
+            {isMyTurn && (() => {
+              // Use the same 0–30s base as the seat-pod timer ring.
+              const pct = Math.max(0, Math.min(100, (timeLeft / 30) * 100));
+              const danger = timeLeft <= 5;
+              // Perimeter length scales with a 2:1 aspect (~220 for
+              // typical nameplate width 180 × height 48; rx:10 rounds).
+              // We use `pathLength="100"` so strokeDashoffset is simple
+              // and works regardless of element width.
+              return (
+                <svg
+                  className="hud-nameplate-me__timer-ring"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <rect
+                    x="1" y="1" width="98" height="98" rx="10" ry="10"
+                    pathLength="100"
+                    fill="none"
+                    stroke={danger ? '#ef4444' : '#4ade80'}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeDasharray="100"
+                    strokeDashoffset={100 - pct}
+                    style={{ transition: 'stroke-dashoffset 0.9s linear, stroke 0.4s' }}
+                  />
+                </svg>
+              );
+            })()}
             <div className="hud-np-avatar" style={{ background: '#16a34a' }}>
               {(playerName || 'P').charAt(0).toUpperCase()}
             </div>
