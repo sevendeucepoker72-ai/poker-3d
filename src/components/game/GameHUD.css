@@ -652,7 +652,7 @@
 /* Floating cards — bumped another 16px per user (214 → 230). */
 .hud-cards.hud-cards-floating {
   position: fixed;
-  bottom: 230px;
+  bottom: 210px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 150;
@@ -3954,7 +3954,7 @@
 .right-rail-btns {
   position: fixed;
   right: 10px;
-  bottom: 230px;
+  bottom: 210px;
   display: flex;
   flex-direction: column-reverse;   /* Last Hand (first child) → bottom of stack */
   gap: 4px;
@@ -3968,7 +3968,7 @@
 .left-rail-btns {
   position: fixed;
   left: 10px;
-  bottom: 230px;
+  bottom: 210px;
   display: flex;
   flex-direction: column;
   gap: 4px;
