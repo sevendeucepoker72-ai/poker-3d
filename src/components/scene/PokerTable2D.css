@@ -1465,30 +1465,15 @@
              action-bubble-anim 1.8s ease-out 0.3s forwards;
 }
 
-/* ── Upgrade 10: Level Badge Ring on Seat Pods ───────────── */
-.seat-pod__avatar-wrap::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 2px solid rgba(0,217,255,0.3);
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.6;
-}
-/* Don't show level ring when all-in ring is active */
-.seat-pod--allin .seat-pod__avatar-wrap::after {
-  display: none;
-}
-/* Hero gets a brighter ring */
-.seat-pod--hero .seat-pod__avatar-wrap::after {
-  border-color: rgba(0,217,255,0.5);
-  opacity: 1;
-}
-/* Folded seats dim the ring */
-.seat-pod--folded .seat-pod__avatar-wrap::after {
-  opacity: 0.15;
-}
+/* Upgrade 10: Level Badge Ring REMOVED per user feedback
+   ("where the first initial is still an oval??").
+   The ::after pseudo-element at inset:-4px on the avatar-wrap was
+   creating an always-visible ring around every seat's initial letter,
+   which visually stacked with the active-seat emphasis ring and the
+   winner glow. Removing cleans up the avatar presentation — active
+   turn still gets the cyan box-shadow ring from GameHUD.css, winner
+   still gets the golden drop-shadow glow, all-in still pulses. */
+.seat-pod__avatar-wrap::after { content: none; }
 
 /* ── Upgrade 12: Chip Delta Flash Enhancement ────────────── */
 .seat-pod__chip-delta {
