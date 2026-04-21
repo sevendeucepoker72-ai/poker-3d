@@ -649,13 +649,12 @@
   flex-shrink: 0;
 }
 
-/* Floating cards — peek out from behind the player nameplate.
-   Nudged up 24px (bottom 160 → 184) per user request so the cards
-   sit higher above the action bar and don't visually collide with
-   the Fold/Call/Raise row. */
+/* Floating cards. Bumped further up (bottom 184 → 214) per user so
+   the cards don't crowd the action bar, and the nameplate now sits
+   directly below the cards instead of overlapping them. */
 .hud-cards.hud-cards-floating {
   position: fixed;
-  bottom: 184px;
+  bottom: 214px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 150;
@@ -665,12 +664,13 @@
   gap: 4px;
 }
 
-/* Player's own nameplate — fixed overlay above cards. Moved in lockstep
-   with the cards (4px offset preserved for the nameplate to overlap
-   the bottom edge of the cards). */
+/* Player's own nameplate — re-anchored immediately below the cards
+   instead of overlapping their bottom edge. nameplate height ≈ 30px;
+   positioning it with bottom:184 puts its TOP edge at ~214 (aligned
+   with cards' bottom). No overlap, clean vertical stack. */
 .hud-my-nameplate {
   position: fixed;
-  bottom: 188px;       /* overlaps bottom edge of cards */
+  bottom: 184px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 160;        /* above cards (z-index 150) */
