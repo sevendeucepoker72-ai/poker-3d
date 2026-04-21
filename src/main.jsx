@@ -2,6 +2,13 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import './themes.css'
 import './mobile.css'
+// mobile-overrides.css carries the PWA mobile-specific rules (modal
+// positioning fixes, kill backdrop-filter for paint perf, etc.). It
+// was previously only imported from main-mobile.jsx (a separate
+// mobile-only entry point), so those overrides never reached the
+// actual PWA on americanpubpoker.online — latest example was the
+// 767px blur-kill rule that "shipped" but never ran in production.
+import './mobile-overrides.css'
 import App from './App.jsx'
 
 // Register the service worker early so push-enrollment UI doesn't race on

@@ -707,7 +707,33 @@ export default function GameHUD() {
   }, [phase]);
 
   // Bomb Pot info
-  const isBombPot = gameState?.bombPot || false;
+  // Bomb-pot banner gating. The server flag can get stuck in the
+  // wild from old client state, so we layer THREE guards on top:
+  //   1. Server-authoritative gameState.bombPot flag
+  //   2. Per-hand kill switch: the client resets it every time a new
+  //      hand starts (tracked by handNumber change)
+  //   3. Hard 45s timeout — even if everything else lies, the banner
+  //      can never flash longer than one bomb-pot hand's natural life.
+  const rawBombPotFlag = gameState?.bombPot || false;
+  const handNumber = gameState?.handNumber;
+  const [bombPotSuppressed, setBombPotSuppressed] = useState(false);
+  const lastBombPotHandRef = useRef(null);
+  useEffect(() => {
+    // Reset suppression when a new hand starts (server cleared flag
+    // between hands => this hand has a clean state).
+    if (handNumber != null && handNumber !== lastBombPotHandRef.current) {
+      lastBombPotHandRef.current = handNumber;
+      setBombPotSuppressed(false);
+    }
+  }, [handNumber]);
+  useEffect(() => {
+    if (!rawBombPotFlag) return;
+    // 45s auto-suppress — no legitimate bomb-pot hand plays longer
+    // than that. After this, banner stays hidden until the next hand.
+    const t = setTimeout(() => setBombPotSuppressed(true), 45_000);
+    return () => clearTimeout(t);
+  }, [rawBombPotFlag, handNumber]);
+  const isBombPot = rawBombPotFlag && !bombPotSuppressed;
 
   // Dealer's Choice info
   const isDealersChoice = gameState?.dealersChoice || false;
@@ -2845,7 +2871,11 @@ export default function GameHUD() {
           phase guard, a stale server-side bombPot flag (e.g. table went
           idle before the flag cleared) would leave the banner flashing
           forever at the top of the screen. */}
-      {isBombPot && phase && phase !== 'WaitingForPlayers' && phase !== 'HandComplete' && phase !== 'Showdown' && (
+      {/* Bomb pots skip preflop and play Flop -> Turn -> River. Anything
+          else (PreFlop / WaitingForPlayers / HandComplete / Showdown)
+          with bombPot=true is stale state leaking across hands — don't
+          flash the banner. */}
+      {isBombPot && (phase === 'Flop' || phase === 'Turn' || phase === 'River') && (
         <div className="bomb-pot-banner">
           BOMB POT!
         </div>
