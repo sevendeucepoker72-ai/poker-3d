@@ -3395,12 +3395,10 @@ export default function GameHUD() {
                   }}
                 >
                   {foldPending ? 'Fold?' : 'Fold'}
-                  {/* Audit fix #2: explicit space so the keyboard hint doesn't
-                      visually concatenate as "FoldF" — screen readers and any
-                      CSS-stripped contexts then read correctly. */}
-                  {isMyTurn && !foldPending && (
-                    <>{' '}<span className="btn-key">{hotkeys.fold === ' ' ? '␣' : hotkeys.fold.toUpperCase()}</span></>
-                  )}
+                  {/* Keyboard-hint chip removed per user request — PWA users
+                      have no keyboard and desktop players already know the
+                      bindings. Same reason the bottom .hud-hotkey-hints
+                      strip was dropped below. */}
                 </button>
                 )}
 
@@ -3554,19 +3552,12 @@ export default function GameHUD() {
 
               </div>{/* end action-bar-flat */}
 
-              {/* Keyboard shortcut hints — fades out after 30s of visibility.
-                  Previously the comment promised fade-out but nothing implemented it. */}
-              {isMyTurn && hotkeyHintsVisible && (
-                <div
-                  className={`hud-hotkey-hints ${hotkeyHintsFading ? 'hud-hotkey-hints--fading' : ''}`}
-                  style={{ opacity: hotkeyHintsFading ? 0 : 1, transition: 'opacity 0.6s ease-out' }}
-                >
-                  <span><kbd>{hotkeys.fold === ' ' ? '␣' : hotkeys.fold.toUpperCase()}</kbd> Fold</span>
-                  <span><kbd>{hotkeys.checkCall === ' ' ? '␣' : hotkeys.checkCall.toUpperCase()}</kbd> Call</span>
-                  <span><kbd>{hotkeys.raise.toUpperCase()}</kbd> Raise</span>
-                  <span><kbd>A</kbd> All-In</span>
-                </div>
-              )}
+              {/* Keyboard-hint strip removed per user request — PWA users
+                  have no keyboard, and desktop users who use hotkeys already
+                  know them (or can open Options → Shortcuts to review). The
+                  showShortcuts viewer + editable HotkeySettings both still
+                  live in the Options menu, so the keybinds remain
+                  discoverable without nagging the action bar each turn. */}
 
               {/* raise row moved to raise-panel-float below hud-bottom */}
 
