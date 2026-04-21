@@ -4909,10 +4909,14 @@
 .action-preset-strip { display: none; }
 .action-btn-row { display: contents; }
 
-/* ─── Player's own nameplate (centered, between cards and action bar) ─── */
+/* ─── Player's own nameplate ─── Positioned so the TOP edge of the
+   nameplate just barely covers the bottom edge of the hero's floating
+   cards (cards at bottom:214; nameplate is ~38px tall, so bottom:184
+   puts its top at ~222 — a clean 8px overlap over the cards' bottom
+   so the two read as a single unit instead of two floating boxes. */
 .hud-nameplate-me {
   position: fixed;
-  bottom: 124px;
+  bottom: 184px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 160;

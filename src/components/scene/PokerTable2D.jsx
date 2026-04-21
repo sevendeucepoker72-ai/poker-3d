@@ -532,8 +532,10 @@ const SeatPod = memo(function SeatPod({
         {isSittingOut && <div className="seat-pod__away-badge">AWAY</div>}
       </div>
 
-      {/* Hero YOU badge */}
-      {isMyPlayer && <div className="seat-pod__you-badge">YOU</div>}
+      {/* Hero YOU badge removed per user request ("get rid of where it
+          says you"). The hero already has a distinct cyan ring + their
+          name rendered in the hud-nameplate-me below the cards, so the
+          extra "YOU" label was redundant. */}
       {hasDeadBlindDebt && (
         <div
           className="seat-pod__owed-badge"

@@ -526,10 +526,14 @@ input, textarea {
   transform: translateX(-50%) !important;
   z-index: 200 !important;
 }
-/* Correct class used by JSX is hud-nameplate-me (not hud-my-nameplate) */
+/* Correct class used by JSX is hud-nameplate-me (not hud-my-nameplate).
+   Mobile: nameplate TOP sits just below the cards with a small overlap
+   so the cards+name read as one unit. Cards are at bottom:214 (desktop
+   rule); mobile scales smaller but the same rule still places them
+   well above the action bar. */
 .hud-nameplate-me {
   position: absolute !important;
-  bottom: calc(148px + env(safe-area-inset-bottom, 0px)) !important;
+  bottom: calc(168px + env(safe-area-inset-bottom, 0px)) !important;
   left: 50% !important;
   transform: translateX(-50%) !important;
   z-index: 201 !important;
