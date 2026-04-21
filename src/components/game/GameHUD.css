@@ -3944,14 +3944,29 @@
   padding-bottom: 6px !important;
 }
 
-/* ─── Right rail buttons (Last Hand, React, Emote) ─── Moved up per
-   user: "move the last hand up to where the bottom of it is where the
-   top is now" — shifted the whole rail up 36px (≈ one button height)
-   so the Last Hand button's new bottom aligns with its old top. */
+/* ─── Right rail buttons (Last Hand + React) ─── nudged +18px per
+   user ("nudge the last hand button up a hair"). Emote was split off
+   into .left-rail-btns below at the same `bottom` so it lines up
+   horizontally with Last Hand. */
 .right-rail-btns {
   position: fixed;
   right: 10px;
-  bottom: 106px;
+  bottom: 124px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 500;
+  align-items: stretch;
+  width: 80px;
+}
+
+/* Left-side rail — currently holds only the Emote wheel. Shares the
+   same bottom as .right-rail-btns so the Emote button is even with
+   the Last Hand button across the screen. */
+.left-rail-btns {
+  position: fixed;
+  left: 10px;
+  bottom: 124px;
   display: flex;
   flex-direction: column;
   gap: 4px;
