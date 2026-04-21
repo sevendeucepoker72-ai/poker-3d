@@ -82,6 +82,11 @@ export default function SpinWheel({ onClose }) {
           setSpinning(false);
           setCanSpin(false);
           setErrMsg(res?.error === 'already_claimed' ? 'You already used your daily spin!' : 'Could not claim spin');
+          // Mark locally so the auto-open effect doesn't pester the
+          // user after the server says they've already claimed.
+          if (res?.error === 'already_claimed') {
+            try { localStorage.setItem('app_poker_last_spin_date', new Date().toISOString().slice(0, 10)); } catch { /* ignore */ }
+          }
         }, 800);
         timeoutIdsRef.current.add(t1);
         return;
@@ -110,6 +115,9 @@ export default function SpinWheel({ onClose }) {
         setSpinning(false);
         setPrize({ ...SEGMENTS[winnerIndex], serverLabel: reward.label });
         setCanSpin(false);
+        // Persist "spun today" so the Lobby auto-open effect doesn't
+        // re-pop the wheel on the next page refresh within the same day.
+        try { localStorage.setItem('app_poker_last_spin_date', new Date().toISOString().slice(0, 10)); } catch { /* ignore */ }
       }, 4200);
       timeoutIdsRef.current.add(t2);
     };

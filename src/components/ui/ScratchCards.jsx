@@ -186,6 +186,52 @@ export default function ScratchCards({ onClose }) {
 
   const matchedIcon = result?.win ? result.icon : null;
 
+  // Batch "scratch all" — burns through every available card as fast as
+  // the server can award them. Accumulates total rewards into a single
+  // summary toast so the user doesn't have to tap-reveal each 3×3 grid
+  // by hand when they have 10+ stacked up.
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchSummary, setBatchSummary] = useState(null); // { cards, chips, stars, items }
+
+  const scratchAll = useCallback(() => {
+    if (cardsAvailable <= 0 || batchRunning) return;
+    const socket = getSocket();
+    if (!socket) return;
+
+    setBatchRunning(true);
+    setGrid(null);
+    setResult(null);
+    setGameActive(false);
+
+    let remaining = cardsAvailable;
+    const totals = { cards: 0, chips: 0, stars: 0, items: [] };
+
+    const onRevealed = (res) => {
+      if (!res?.success) {
+        socket.off('scratchCardRevealed', onRevealed);
+        setBatchRunning(false);
+        setBatchSummary(totals);
+        return;
+      }
+      const r = res.reward || {};
+      totals.cards += 1;
+      if (r.chips) totals.chips += r.chips;
+      if (r.stars) totals.stars += r.stars;
+      if (r.item)  totals.items.push(r.label || 'Mystery item');
+      remaining -= 1;
+      if (remaining > 0) {
+        socket.emit('claimScratchCard');
+      } else {
+        socket.off('scratchCardRevealed', onRevealed);
+        setBatchRunning(false);
+        setBatchSummary(totals);
+      }
+    };
+
+    socket.on('scratchCardRevealed', onRevealed);
+    socket.emit('claimScratchCard');
+  }, [cardsAvailable, batchRunning]);
+
   return createPortal(
     <div className="scratch-overlay" onClick={onClose}>
       <div className="scratch-panel" onClick={(e) => e.stopPropagation()}>
@@ -198,12 +244,38 @@ export default function ScratchCards({ onClose }) {
           Available cards: <span>{cardsAvailable}</span>
         </div>
 
-        {!grid ? (
+        {batchSummary ? (
+          <div className="scratch-result win" style={{ padding: '16px' }}>
+            <div className="scratch-result-text" style={{ fontSize: '0.95rem' }}>
+              Scratched {batchSummary.cards} card{batchSummary.cards === 1 ? '' : 's'}!
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.85rem' }}>
+              {batchSummary.chips > 0 && <span>🪙 +{batchSummary.chips.toLocaleString()} chips</span>}
+              {batchSummary.stars > 0 && <span style={{ color: '#FFD700' }}>⭐ +{batchSummary.stars.toLocaleString()} stars</span>}
+              {batchSummary.items.length > 0 && <span style={{ color: '#A78BFA' }}>💎 {batchSummary.items.length} mystery item{batchSummary.items.length === 1 ? '' : 's'}</span>}
+            </div>
+            <button
+              className="scratch-new-btn"
+              style={{ marginTop: 14 }}
+              onClick={() => setBatchSummary(null)}
+            >Done</button>
+          </div>
+        ) : !grid ? (
           cardsAvailable > 0 ? (
             <div style={{ textAlign: 'center', padding: '20px' }}>
-              <button className="scratch-new-btn" onClick={startNewCard}>
+              <button className="scratch-new-btn" onClick={startNewCard} disabled={batchRunning}>
                 Use Scratch Card
               </button>
+              {cardsAvailable >= 2 && (
+                <button
+                  className="scratch-new-btn"
+                  style={{ marginTop: 8, background: 'linear-gradient(135deg, #A855F7, #C084FC)' }}
+                  onClick={scratchAll}
+                  disabled={batchRunning}
+                >
+                  {batchRunning ? 'Scratching…' : `Scratch All (${cardsAvailable})`}
+                </button>
+              )}
               <div className="scratch-earn-info">
                 Earn 1 card for every 10 hands played
               </div>

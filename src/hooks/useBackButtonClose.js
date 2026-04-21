@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 /**
  * Intercepts the browser/mobile hardware back gesture while a modal/overlay is
@@ -16,8 +16,17 @@ import { useEffect } from 'react';
  *   user's back intent and calls onClose().
  * - On unmount OR when `active` flips to false, cleans up by going `history.back()`
  *   ONLY if our sentinel is still on top (prevents trapping the user).
+ *
+ * IMPORTANT: `onClose` is captured in a ref so a new arrow-function reference
+ * from the parent re-render does NOT re-run the effect. Previously a parent
+ * re-render would trigger cleanup → history.back() → new effect runs →
+ * listener catches the synthetic popstate → calls onClose → modal auto-closes.
+ * That was the "Battle Pass auto-closes" bug.
  */
 export function useBackButtonClose(active, onClose) {
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
   useEffect(() => {
     if (!active) return;
     const sentinel = { __pokerModal: true, ts: Date.now() };
@@ -28,10 +37,10 @@ export function useBackButtonClose(active, onClose) {
       pushedOurState = true;
     } catch { /* ignore (some iframes disallow history.pushState) */ }
 
-    const handlePop = (e) => {
+    const handlePop = () => {
       // The back button was pressed and our sentinel has been popped off.
       // Call onClose; do NOT push again here (that would re-trap the user).
-      onClose && onClose();
+      onCloseRef.current && onCloseRef.current();
     };
     window.addEventListener('popstate', handlePop);
 
@@ -43,5 +52,6 @@ export function useBackButtonClose(active, onClose) {
         try { window.history.back(); } catch { /* ignore */ }
       }
     };
-  }, [active, onClose]);
+    // Intentionally omit `onClose` from deps — see comment above.
+  }, [active]);
 }

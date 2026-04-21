@@ -1259,6 +1259,23 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     } catch { /* ignore */ }
   }, []);
 
+  // Auto-show daily spin wheel once per day until the user spins.
+  // Runs AFTER the login rewards timer (6s offset) so the two don't
+  // stack on top of each other on first login. Locks via localStorage
+  // so "once per day" survives refresh inside the day. Spin completion
+  // also writes this key (see SpinWheel) so a successful spin clears
+  // the auto-open for the rest of the day.
+  useEffect(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    let spunToday = false;
+    try {
+      spunToday = localStorage.getItem('app_poker_last_spin_date') === todayStr;
+    } catch { /* ignore */ }
+    if (spunToday) return;
+    const t = setTimeout(() => setShowSpinWheel(true), 6000);
+    return () => clearTimeout(t);
+  }, []);
+
   // Listen for bottom nav actions (legacy support)
   useEffect(() => {
     const handler = (e) => {
@@ -2103,6 +2120,25 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
     return (
     <div className="lobby-tab-content lobby-tab-fade" key="shop">
+      {/* Sticky currency balance — always visible at the top of the shop
+          so the user knows what they can afford before browsing. */}
+      <div className="lobby-shop-balance" style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 14px', marginBottom: '14px',
+        background: 'linear-gradient(135deg, rgba(14,14,36,0.95), rgba(26,16,46,0.95))',
+        border: '1px solid rgba(255, 215, 0, 0.35)',
+        borderRadius: '10px',
+        boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+      }}>
+        <span style={{ color: '#FFD700', fontWeight: 800, fontSize: '1.02rem', letterSpacing: '0.3px' }}>
+          ⭐ {(progress?.stars ?? 0).toLocaleString()} Stars
+        </span>
+        <span style={{ color: '#00D9FF', fontWeight: 700, fontSize: '0.95rem' }}>
+          🪙 {(progress?.chips ?? chipCount ?? 0).toLocaleString()} Chips
+        </span>
+      </div>
+
       {/* Battle Pass */}
       <SectionHeader>Battle Pass</SectionHeader>
       <button
