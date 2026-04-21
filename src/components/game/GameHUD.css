@@ -3954,7 +3954,7 @@
 .right-rail-btns {
   position: fixed;
   right: 10px;
-  bottom: 186px;
+  bottom: 230px;
   display: flex;
   flex-direction: column-reverse;   /* Last Hand (first child) → bottom of stack */
   gap: 4px;
@@ -3968,7 +3968,7 @@
 .left-rail-btns {
   position: fixed;
   left: 10px;
-  bottom: 186px;
+  bottom: 230px;
   display: flex;
   flex-direction: column;
   gap: 4px;
