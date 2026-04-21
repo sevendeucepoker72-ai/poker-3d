@@ -6449,16 +6449,20 @@ html.kb-open .table-pot-odds {
     transition: opacity 0.3s ease, filter 0.3s ease;
   }
   body:has(.seat-pod--active) .seat-pod--active {
-    /* DO NOT use `transform: scale(...)` here — the base `.seat-pod` rule
-       uses `transform: translate(-50%, -50%)` for centering, and any
-       override of `transform` drops the translate, making the pod jump
-       to its top-left corner. Use outline + box-shadow for emphasis. */
+    /* Apply z-index boost only; no transform (would drop the centering
+       translate) and NO outline on the pod itself (the pod bounds a
+       rectangle including the nameplate, so a 50%-radius outline drew
+       an ugly oval ring around the whole seat). The emphasis ring is
+       now on the avatar circle instead (next rule). */
     z-index: 3;
-    outline: 2px solid rgba(34, 211, 238, 0.7);
-    outline-offset: 4px;
-    border-radius: 50%;
-    box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.18), 0 8px 24px rgba(34, 211, 238, 0.35);
-    transition: box-shadow 0.25s ease, outline-color 0.25s ease;
+  }
+  body:has(.seat-pod--active) .seat-pod--active .seat-pod__avatar {
+    /* Proper circular ring, scoped to the actual circle element. */
+    box-shadow:
+      0 0 0 3px rgba(34, 211, 238, 0.85),
+      0 0 0 6px rgba(34, 211, 238, 0.25),
+      0 8px 24px rgba(34, 211, 238, 0.45);
+    transition: box-shadow 0.25s ease;
   }
   /* Hero seat always full opacity/saturation regardless of who's active. */
   .seat-pod--hero {
