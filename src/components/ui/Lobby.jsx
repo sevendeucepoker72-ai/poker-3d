@@ -2181,24 +2181,60 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         </button>
       </div>
 
-      {/* Table Themes */}
+      {/* Table Themes — inline grid. The previous "Browse Table Themes"
+          modal button opened a nested overlay that didn't work (click
+          was swallowed by something in the Lobby tree). Inline grid
+          using the same isOwned/isEquipped/actionClick pattern as the
+          other shop sections works directly. */}
       <SectionHeader>Table Themes</SectionHeader>
-      <button
-        className="btn-accent lobby-full-width-btn"
-        style={{ marginBottom: '24px', background: 'linear-gradient(135deg, #FFD700, #FFA000)', color: '#0a0a1a' }}
-        onClick={() => setShowShop(true)}
-      >
-        Browse Table Themes
-      </button>
+      <div className="lobby-card-backs-grid">
+        {[
+          { id: 'classic_blue',     name: 'Classic Blue',     felt: '#2874a6', rail: '#8B5E3C', price: 0 },
+          { id: 'green_felt',       name: 'Green Felt',       felt: '#1a5c2a', rail: '#8B6914', price: 0 },
+          { id: 'midnight_purple',  name: 'Midnight Purple',  felt: '#4a1d6e', rail: '#C0C0C0', price: 300 },
+          { id: 'ocean_breeze',     name: 'Ocean Breeze',     felt: '#1a7a7a', rail: '#F5F5F5', price: 400 },
+          { id: 'casino_royale',    name: 'Casino Royale',    felt: '#1a5c2a', rail: '#B8860B', price: 500 },
+          { id: 'neon_vegas',       name: 'Neon Vegas',       felt: '#0a0a0a', rail: '#1a1a2e', price: 600 },
+          { id: 'carbon_black',     name: 'Carbon Black',     felt: '#18181b', rail: '#3f3f46', price: 700 },
+          { id: 'royal_gold',       name: 'Royal Gold',       felt: '#0a1a3a', rail: '#DAA520', price: 800 },
+          { id: 'cherry_wood',      name: 'Cherry Wood',      felt: '#3d1a1a', rail: '#7c2d12', price: 900 },
+          { id: 'cosmic_nebula',    name: 'Cosmic Nebula',    felt: '#312e81', rail: '#a78bfa', price: 1500 },
+        ].map((theme) => {
+          const owned = isOwned('theme', theme.id) || theme.price === 0;
+          const equipped = isEquipped('theme', theme.id);
+          return (
+            <div
+              key={theme.id}
+              onClick={actionClick('theme', theme.id)}
+              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
+              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
+            >
+              <div className="lobby-card-back-preview" style={{ background: theme.felt, border: `3px solid ${theme.rail}` }}>
+                <span style={{ fontSize: '1.2rem' }}>♠</span>
+              </div>
+              <span className="lobby-card-back-name">{theme.name}</span>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+                {equipped ? 'Equipped' : owned ? 'Equip' : `${theme.price} ⭐`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
 
       {/* Card Backs */}
       <SectionHeader>Card Backs</SectionHeader>
       <div className="lobby-card-backs-grid">
         {[
-          { id: 'classic_red',  name: 'Classic Red',  color: '#DC2626', price: 0 },
-          { id: 'royal_blue',   name: 'Royal Blue',   color: '#2563EB', price: 0 },
-          { id: 'gold_premium', name: 'Gold Premium', color: '#D97706', price: 500 },
-          { id: 'neon_green',   name: 'Neon Green',   color: '#16A34A', price: 500 },
+          { id: 'classic_red',     name: 'Classic Red',     color: '#DC2626', price: 0 },
+          { id: 'royal_blue',      name: 'Royal Blue',      color: '#2563EB', price: 0 },
+          { id: 'silver_foil',     name: 'Silver Foil',     color: '#C0C0C0', price: 400 },
+          { id: 'gold_premium',    name: 'Gold Premium',    color: '#D97706', price: 500 },
+          { id: 'neon_green',      name: 'Neon Green',      color: '#16A34A', price: 500 },
+          { id: 'holographic',     name: 'Holographic',     color: '#A78BFA', price: 800 },
+          { id: 'dragon',          name: 'Dragon',          color: '#DC2626', price: 1200 },
+          { id: 'phoenix',         name: 'Phoenix',         color: '#F59E0B', price: 1500 },
+          { id: 'diamond_pattern', name: 'Diamond',         color: '#B9F2FF', price: 2000 },
+          { id: 'mythic',          name: 'Mythic',          color: '#FF1744', price: 5000 },
         ].map((card) => {
           const owned = isOwned('card_back', card.id) || card.price === 0;
           const equipped = isEquipped('card_back', card.id);
@@ -2225,10 +2261,14 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <SectionHeader>Chip Packs</SectionHeader>
       <div className="lobby-vip-packages">
         {[
-          { id: 'refill', name: 'Refill Stack', desc: '10,000 chips',    price: 50,    color: '#3B82F6' },
-          { id: 'big',    name: 'Big Stack',    desc: '50,000 chips',    price: 200,   color: '#10B981' },
-          { id: 'pro',    name: 'Pro Stack',    desc: '200,000 chips',   price: 600,   color: '#8B5CF6' },
-          { id: 'whale',  name: 'Whale Stack',  desc: '1,000,000 chips', price: 2500,  color: '#FFD700' },
+          { id: 'refill',  name: 'Refill Stack',  desc: '10,000 chips',     price: 50,    color: '#3B82F6' },
+          { id: 'small',   name: 'Small Stack',   desc: '25,000 chips',     price: 100,   color: '#06B6D4' },
+          { id: 'medium',  name: 'Medium Stack',  desc: '100,000 chips',    price: 300,   color: '#10B981' },
+          { id: 'big',     name: 'Big Stack',     desc: '250,000 chips',    price: 600,   color: '#84CC16' },
+          { id: 'pro',     name: 'Pro Stack',     desc: '750,000 chips',    price: 1500,  color: '#8B5CF6' },
+          { id: 'whale',   name: 'Whale Stack',   desc: '2,000,000 chips',  price: 3000,  color: '#F59E0B' },
+          { id: 'kingpin', name: 'Kingpin Stack', desc: '5,000,000 chips',  price: 6000,  color: '#EC4899' },
+          { id: 'emperor', name: 'Emperor Stack', desc: '15,000,000 chips', price: 12000, color: '#FFD700' },
         ].map((pkg) => (
           <div key={pkg.id} className="lobby-vip-package-card" style={{ borderLeftColor: pkg.color }}>
             <div>
@@ -2242,18 +2282,50 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         ))}
       </div>
 
+      {/* Mystery Boxes — stars → random reward (chips / stars / cosmetic) */}
+      <SectionHeader>Mystery Boxes</SectionHeader>
+      <div className="lobby-vip-packages">
+        {[
+          { id: 'basic',     name: '📦 Basic Mystery Box',    desc: 'Roll: chips, stars, or common emote/sound',   price: 500,  color: '#A3A3A3' },
+          { id: 'premium',   name: '🎁 Premium Mystery Box',  desc: 'Roll: bigger chips, stars, or silver+ items', price: 2000, color: '#A78BFA' },
+          { id: 'legendary', name: '✨ Legendary Mystery Box', desc: 'Roll: huge chips, stars, or diamond+ items',  price: 8000, color: '#FFD700' },
+        ].map((box) => (
+          <div key={box.id} className="lobby-vip-package-card" style={{ borderLeftColor: box.color }}>
+            <div>
+              <div style={{ color: box.color, fontWeight: 700, fontSize: '0.95rem' }}>{box.name}</div>
+              <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{box.desc}</div>
+            </div>
+            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('mystery_box', box.id)}>
+              {box.price.toLocaleString()} ⭐
+            </button>
+          </div>
+        ))}
+      </div>
+
       {/* Emotes */}
       <SectionHeader>Emotes</SectionHeader>
       <div className="lobby-card-backs-grid">
         {[
-          { id: 'nice_hand', name: 'Nice Hand', icon: '👍', price: 150 },
-          { id: 'good_game', name: 'Good Game', icon: '🤝', price: 150 },
-          { id: 'big_brain', name: 'Big Brain', icon: '🧠', price: 200 },
-          { id: 'money',     name: 'Money',     icon: '💰', price: 200 },
-          { id: 'fire',      name: 'Fire',      icon: '🔥', price: 250 },
-          { id: 'tears',     name: 'Tears',     icon: '😭', price: 250 },
-          { id: 'rocket',    name: 'Rocket',    icon: '🚀', price: 300 },
-          { id: 'crown',     name: 'Crown',     icon: '👑', price: 400 },
+          { id: 'nice_hand',   name: 'Nice Hand',   icon: '👍', price: 150 },
+          { id: 'good_game',   name: 'Good Game',   icon: '🤝', price: 150 },
+          { id: 'well_played', name: 'Well Played', icon: '🎯', price: 150 },
+          { id: 'thumbs_up',   name: 'Thumbs Up',   icon: '👍', price: 150 },
+          { id: 'clap',        name: 'Clap',        icon: '👏', price: 200 },
+          { id: 'love',        name: 'Love',        icon: '❤️', price: 250 },
+          { id: 'big_brain',   name: 'Big Brain',   icon: '🧠', price: 200 },
+          { id: 'money',       name: 'Money',       icon: '💰', price: 200 },
+          { id: 'fire',        name: 'Fire',        icon: '🔥', price: 250 },
+          { id: 'tears',       name: 'Tears',       icon: '😭', price: 250 },
+          { id: 'rocket',      name: 'Rocket',      icon: '🚀', price: 300 },
+          { id: 'crown',       name: 'Crown',       icon: '👑', price: 400 },
+          { id: 'sunglasses',  name: 'Cool',        icon: '😎', price: 200 },
+          { id: 'laughing',    name: 'Laughing',    icon: '😂', price: 200 },
+          { id: 'surprised',   name: 'Surprised',   icon: '😲', price: 200 },
+          { id: 'dead',        name: 'Dead',        icon: '💀', price: 300 },
+          { id: 'think',       name: 'Thinking',    icon: '🤔', price: 300 },
+          { id: 'poker_face',  name: 'Poker Face',  icon: '😐', price: 400 },
+          { id: 'mic_drop',    name: 'Mic Drop',    icon: '🎤', price: 500 },
+          { id: 'trophy',      name: 'Trophy',      icon: '🏆', price: 600 },
         ].map((e) => {
           const owned = isOwned('emote', e.id);
           return (
@@ -2279,10 +2351,15 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <SectionHeader>Avatar Frames</SectionHeader>
       <div className="lobby-card-backs-grid">
         {[
-          { id: 'bronze',  name: 'Bronze',  color: '#CD7F32', icon: '◯', price: 500 },
-          { id: 'silver',  name: 'Silver',  color: '#C0C0C0', icon: '◯', price: 1000 },
-          { id: 'gold',    name: 'Gold',    color: '#FFD700', icon: '◯', price: 2000 },
-          { id: 'diamond', name: 'Diamond', color: '#B9F2FF', icon: '◆', price: 5000 },
+          { id: 'bronze',   name: 'Bronze',   color: '#CD7F32', icon: '◯', price: 500 },
+          { id: 'silver',   name: 'Silver',   color: '#C0C0C0', icon: '◯', price: 1000 },
+          { id: 'gold',     name: 'Gold',     color: '#FFD700', icon: '◯', price: 2000 },
+          { id: 'flame',    name: 'Flame',    color: '#FF4500', icon: '🔥', price: 6000 },
+          { id: 'ice',      name: 'Ice',      color: '#60A5FA', icon: '❄', price: 6000 },
+          { id: 'platinum', name: 'Platinum', color: '#E5E7EB', icon: '◆', price: 8000 },
+          { id: 'crown',    name: 'Crown',    color: '#FFD700', icon: '👑', price: 10000 },
+          { id: 'diamond',  name: 'Diamond',  color: '#B9F2FF', icon: '◆', price: 5000 },
+          { id: 'mythic',   name: 'Mythic',   color: '#FF1744', icon: '★', price: 15000 },
         ].map((f) => {
           const owned = isOwned('frame', f.id);
           const equipped = isEquipped('frame', f.id);
@@ -2309,10 +2386,14 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <SectionHeader>Win Celebrations</SectionHeader>
       <div className="lobby-card-backs-grid">
         {[
-          { id: 'confetti',  name: 'Confetti',  icon: '🎉', price: 400 },
-          { id: 'chip_rain', name: 'Chip Rain', icon: '🪙', price: 800 },
-          { id: 'fireworks', name: 'Fireworks', icon: '🎆', price: 1200 },
-          { id: 'lightning', name: 'Lightning', icon: '⚡', price: 1500 },
+          { id: 'confetti',       name: 'Confetti',       icon: '🎉', price: 400 },
+          { id: 'chip_rain',      name: 'Chip Rain',      icon: '🪙', price: 800 },
+          { id: 'fireworks',      name: 'Fireworks',      icon: '🎆', price: 1200 },
+          { id: 'lightning',      name: 'Lightning',      icon: '⚡', price: 1500 },
+          { id: 'golden_shower',  name: 'Golden Rain',    icon: '💫', price: 2000 },
+          { id: 'dragon_breath',  name: 'Dragon Breath',  icon: '🐉', price: 3000 },
+          { id: 'cosmic_burst',   name: 'Cosmic Burst',   icon: '🌌', price: 4000 },
+          { id: 'supernova',      name: 'Supernova',      icon: '💥', price: 6000 },
         ].map((w) => {
           const owned = isOwned('celebration', w.id);
           const equipped = isEquipped('celebration', w.id);
@@ -2361,10 +2442,12 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <SectionHeader>Sound Packs</SectionHeader>
       <div className="lobby-card-backs-grid">
         {[
-          { id: 'vegas_casino', name: 'Vegas Casino', icon: '🎰', price: 300 },
-          { id: 'old_school',   name: 'Old School',   icon: '🎼', price: 500 },
-          { id: 'cyberpunk',    name: 'Cyberpunk',    icon: '🎧', price: 750 },
-          { id: 'silent_mode',  name: 'Silent Mode',  icon: '🔇', price: 100 },
+          { id: 'silent_mode',    name: 'Silent Mode',    icon: '🔇', price: 100 },
+          { id: 'classic_casino', name: 'Classic Casino', icon: '🎵', price: 300 },
+          { id: 'vegas_casino',   name: 'Vegas Casino',   icon: '🎰', price: 300 },
+          { id: 'old_school',     name: 'Old School',     icon: '🎼', price: 500 },
+          { id: 'cyberpunk',      name: 'Cyberpunk',      icon: '🎧', price: 750 },
+          { id: 'fantasy',        name: 'Fantasy',        icon: '🎻', price: 1000 },
         ].map((s) => {
           const owned = isOwned('sound_pack', s.id);
           const equipped = isEquipped('sound_pack', s.id);
@@ -2391,10 +2474,21 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <SectionHeader>Player Titles</SectionHeader>
       <div className="lobby-vip-packages">
         {[
-          { id: 'the_shark',     name: 'The Shark',     desc: 'Shown under your name at the table', price: 800,  color: '#06B6D4' },
-          { id: 'all_in_legend', name: 'All-In Legend', desc: 'Shown under your name at the table', price: 1500, color: '#F59E0B' },
-          { id: 'river_rat',     name: 'River Rat',     desc: 'Shown under your name at the table', price: 600,  color: '#84CC16' },
-          { id: 'bluff_master',  name: 'Bluff Master',  desc: 'Shown under your name at the table', price: 1200, color: '#EC4899' },
+          { id: 'nitwit',             name: 'Nitwit',             desc: 'For the tightest of the tight',      price: 300,  color: '#A3A3A3' },
+          { id: 'calling_station',    name: 'Calling Station',    desc: 'Wear your call stats with pride',    price: 400,  color: '#94A3B8' },
+          { id: 'grinder',            name: 'Grinder',            desc: 'Earn it one hand at a time',         price: 500,  color: '#64748B' },
+          { id: 'river_rat',          name: 'River Rat',          desc: 'Miracle on the river specialist',    price: 600,  color: '#84CC16' },
+          { id: 'chip_leader',        name: 'Chip Leader',        desc: 'Stack the whole table',              price: 700,  color: '#22C55E' },
+          { id: 'degenerate',         name: 'Degenerate',         desc: 'No fold button here',                price: 700,  color: '#A78BFA' },
+          { id: 'the_shark',          name: 'The Shark',          desc: 'Dangerous waters',                   price: 800,  color: '#06B6D4' },
+          { id: 'bad_beat_survivor',  name: 'Bad Beat Survivor',  desc: 'Ran bad, kept playing',              price: 800,  color: '#F97316' },
+          { id: 'final_table',        name: 'Final Table',        desc: 'Tournament endgame',                 price: 1000, color: '#3B82F6' },
+          { id: 'bluff_master',       name: 'Bluff Master',       desc: 'Show cards, they fold',              price: 1200, color: '#EC4899' },
+          { id: 'all_in_legend',      name: 'All-In Legend',      desc: 'Every hand, all-in',                 price: 1500, color: '#F59E0B' },
+          { id: 'phantom',            name: 'Phantom',            desc: 'Disappearing act',                   price: 1500, color: '#8B5CF6' },
+          { id: 'tournament_champ',   name: 'Tournament Champ',   desc: 'Proven winner',                      price: 2000, color: '#10B981' },
+          { id: 'royal',              name: 'Royal',              desc: 'King of the felt',                   price: 3000, color: '#FFD700' },
+          { id: 'godmode',            name: 'God Mode',           desc: 'The apex predator',                  price: 8000, color: '#FF1744' },
         ].map((t) => {
           const owned = isOwned('title', t.id);
           const equipped = isEquipped('title', t.id);
