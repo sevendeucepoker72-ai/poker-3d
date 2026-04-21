@@ -4680,6 +4680,51 @@
    feedback, stronger disabled dim. Audit findings #1 #3 #8 #10 #11 #13.
    ═══════════════════════════════════════════════════════════════════ */
 
+/* Fold button now carries a two-line layout: verb on top, confirm
+   hint beneath (user request: "put on the fold button 'double-click
+   to confirm fold'"). Hint is small, dimmed, text-transform none. */
+.action-btn.fold {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1.1;
+}
+.action-btn.fold .action-verb {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.action-btn.fold .fold-confirm-hint {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.82;
+  text-transform: none;
+  color: rgba(255, 228, 230, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.action-btn.fold.fold-pending .fold-confirm-hint {
+  color: #FEE2E2;
+  opacity: 1;
+  animation: foldHintPulse 0.9s ease-in-out infinite alternate;
+}
+@keyframes foldHintPulse {
+  from { filter: brightness(0.95); }
+  to   { filter: brightness(1.2); }
+}
+
+/* Mobile: shrink hint slightly more at small viewports to avoid wrap. */
+@media (max-width: 480px) and (orientation: portrait) {
+  .action-btn.fold .fold-confirm-hint {
+    font-size: 0.58rem;
+  }
+}
+
 /* FOLD — bright red (was muted dusty-rose; now reads as a real
    destructive action matching iOS/Stripe/PokerStars conventions). */
 .action-btn.fold {

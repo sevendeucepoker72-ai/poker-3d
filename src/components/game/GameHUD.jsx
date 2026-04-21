@@ -3371,34 +3371,30 @@ export default function GameHUD() {
                         : `Fold. Call amount ${callAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`
                   }
                   onClick={() => {
-                    // Audit fix #12: dedupe double-tap. If the turn has already
-                    // sent an action this cycle, ignore subsequent clicks so a
-                    // stale fold doesn't fire a second time after the server
-                    // has already moved the turn on. Pairs with
-                    // hasSentActionRef reset on turn entry.
+                    // Audit fix #12: dedupe — if an action already went out
+                    // this turn, ignore subsequent clicks.
                     if (hasSentActionRef.current) return;
-                    const bigBet = myChips > 0 && callAmount > myChips * 0.25;
-                    if (bigBet && !foldPending) {
-                      // First tap: show confirmation; auto-dismiss after 3s so
-                      // a stale "Fold?" state never catches the user by surprise
-                      // on the NEXT tap (which was the previous bug — foldPending
-                      // never timed out, so tap-wait-tap folded without confirm).
+                    // User request: ALL folds now require confirmation
+                    // (was only big-bet folds). First tap primes the
+                    // confirm state; second tap within 3s folds.
+                    if (!foldPending) {
                       setFoldPending(true);
                       clearTimeout(foldTimerRef.current);
                       foldTimerRef.current = setTimeout(() => setFoldPending(false), 3000);
                     } else {
-                      // Second tap (or small bet): fold immediately
                       clearTimeout(foldTimerRef.current);
                       handleAction('fold');
                       setFoldPending(false);
                     }
                   }}
                 >
-                  {foldPending ? 'Fold?' : 'Fold'}
-                  {/* Keyboard-hint chip removed per user request — PWA users
-                      have no keyboard and desktop players already know the
-                      bindings. Same reason the bottom .hud-hotkey-hints
-                      strip was dropped below. */}
+                  {/* Two-line layout: verb + confirm hint. When foldPending
+                      is true, swap the hint to "Tap again" so the user has
+                      an unambiguous next-step indicator. */}
+                  <span className="action-verb">{foldPending ? 'Fold?' : 'Fold'}</span>
+                  <span className="fold-confirm-hint">
+                    {foldPending ? 'Tap again to confirm' : 'Double-click to confirm fold'}
+                  </span>
                 </button>
                 )}
 
