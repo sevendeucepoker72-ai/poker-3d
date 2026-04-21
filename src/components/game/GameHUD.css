@@ -6318,12 +6318,14 @@ html.kb-open .table-pot-odds {
 }
 
 /* ── M6: modal widths at phone breakpoints ──
-   Below 480px, every modal / overlay needs to fit inside calc(100vw - 16px)
-   so it doesn't force horizontal scroll or clip at the edge. */
+   Below 480px, modals fit inside calc(100vw - 16px). NOTE:
+   .insurance-panel is INTENTIONALLY EXCLUDED — it uses left:50% +
+   translate(-50%,-50%) centering, and `left:8px` here was breaking
+   its horizontal center (putting it half off-screen). Insurance
+   gets its own phone-width rule below that preserves the centering. */
 @media (max-width: 480px) {
   .last-hand-panel,
   .chat-panel,
-  .insurance-panel,
   .showdown-panel,
   .allin-confirm-panel,
   .rabbit-hunt-panel,
@@ -6335,6 +6337,14 @@ html.kb-open .table-pot-odds {
     box-sizing: border-box;
     left: 8px !important;
     right: 8px !important;
+  }
+  /* Insurance keeps left:50% centering; only the width is clamped. */
+  .insurance-panel {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
+    padding: 14px 16px !important;
   }
 }
 
