@@ -33,8 +33,13 @@ import './GameHUD.css';
 
 import OverlayBoundary from '../ui/OverlayBoundary';
 
+// HandReplayViewer is imported eagerly — lazy()-loading was causing the
+// "Last Hand" button to silently do nothing when a stale service-worker
+// cached a bad chunk reference. It's small enough to bundle with GameHUD
+// directly, and it's the single most-used overlay.
+import HandReplayViewer from '../replay/HandReplayViewer';
+
 // ─── Lazy-loaded overlays — only downloaded when first opened ─────────────────
-const HandReplayViewer  = lazy(() => import('../replay/HandReplayViewer'));
 const HotkeySettings    = lazy(() => import('../ui/HotkeySettings'));
 const EquityCalculator  = lazy(() => import('../ui/EquityCalculator'));
 const ProvablyFair      = lazy(() => import('../ui/ProvablyFair'));
@@ -3964,7 +3969,7 @@ export default function GameHUD() {
       {!isSpectating && (
         <>
           <div className="right-rail-btns">
-            {lastHandHistory && !showShowdown && (
+            {lastHandHistory && (
               <button className="rail-btn" onClick={() => setShowReplay(true)}>🃏 Last Hand</button>
             )}
           </div>

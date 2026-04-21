@@ -573,7 +573,7 @@
    the hero's cards and nameplate area. */
 .hud-community {
   position: absolute;
-  top: 33%;
+  top: 30%;
   left: 50%;
   transform: translate(-50%, -50%);
   display: flex;
@@ -4361,7 +4361,7 @@
   .hud-timer { transform: scale(0.85); transform-origin: right center; }
 
   /* Community cards — smaller on mobile */
-  .hud-community { top: 30% !important; gap: 4px !important; }
+  .hud-community { top: 27% !important; gap: 4px !important; }
   .hud-card { width: 36px !important; height: 52px !important; font-size: 0.85rem !important; }
   .hud-card-rank { font-size: 0.85rem !important; }
   .hud-card-suit { font-size: 0.65rem !important; }
