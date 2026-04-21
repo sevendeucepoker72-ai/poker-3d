@@ -452,11 +452,14 @@ export default function App() {
       // Hydrate tableStore.handHistories from the DB-backed list so the
       // "🃏 Last Hand" rail button is available IMMEDIATELY after login
       // instead of waiting for the user to finish another hand.
-      // Server returns newest-first; tableStore keys newest as last element,
-      // so reverse + slice to the last 20 (matches addHandHistory's cap).
+      // Server returns newest-first; tableStore keys newest as last
+      // element, so reverse + slice to the last 20 (matches
+      // addHandHistory's cap). Filter malformed records (no players
+      // array) so old pre-migration rows don't crash the replay viewer.
       const hh = Array.isArray(payload?.handHistory) ? payload.handHistory : [];
-      if (hh.length > 0) {
-        const oldestFirst = hh.slice().reverse().slice(-20);
+      const usable = hh.filter((h) => h && Array.isArray(h.players) && h.players.length > 0);
+      if (usable.length > 0) {
+        const oldestFirst = usable.slice().reverse().slice(-20);
         useTableStore.setState({ handHistories: oldestFirst });
       }
     });

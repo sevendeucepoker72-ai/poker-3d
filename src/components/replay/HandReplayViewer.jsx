@@ -31,7 +31,16 @@ function streetsForVariant(variant) {
 }
 
 function buildReplaySteps(history) {
-  if (!history) return [];
+  // Defensive: early-return for malformed histories so the viewer renders
+  // `null` (triggering the "no history yet" branch) instead of throwing
+  // inside OverlayBoundary. Old DB-backed records from before the full-
+  // record migration can land here with no players/communityCards.
+  if (!history || !Array.isArray(history.players) || history.players.length === 0) {
+    return [];
+  }
+  if (!Array.isArray(history.communityCards)) {
+    history = { ...history, communityCards: [] };
+  }
   const steps = [];
   const streets = streetsForVariant(history.variant);
 
