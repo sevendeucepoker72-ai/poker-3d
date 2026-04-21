@@ -1939,6 +1939,28 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         My Stats
       </button>
 
+      {/* Admin-only: manual restore button. Server rejects non-admins. */}
+      <button
+        className="btn-accent lobby-full-width-btn"
+        style={{ marginBottom: '12px', background: 'linear-gradient(135deg, #F59E0B, #D97706)', color: '#0a0a1a', fontWeight: 800 }}
+        onClick={() => {
+          const socket = getSocket();
+          if (!socket?.connected) return;
+          const handler = (res) => {
+            socket.off('adminRestoreBalanceResult', handler);
+            if (res?.success) {
+              alert(`Restored ${res.chips.toLocaleString()} chips + ${res.stars.toLocaleString()} stars`);
+            } else {
+              alert(`Restore failed: ${res?.error || 'unknown'}`);
+            }
+          };
+          socket.on('adminRestoreBalanceResult', handler);
+          socket.emit('adminRestoreBalance');
+        }}
+      >
+        🔁 Restore Missing Balance (Admin)
+      </button>
+
       {/* Tools section */}
       <SectionHeader>Tools</SectionHeader>
       {(() => {
