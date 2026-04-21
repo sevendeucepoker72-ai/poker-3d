@@ -533,7 +533,7 @@ input, textarea {
    well above the action bar. */
 .hud-nameplate-me {
   position: absolute !important;
-  bottom: calc(168px + env(safe-area-inset-bottom, 0px)) !important;
+  bottom: calc(184px + env(safe-area-inset-bottom, 0px)) !important;
   left: 50% !important;
   transform: translateX(-50%) !important;
   z-index: 201 !important;

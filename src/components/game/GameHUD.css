@@ -649,12 +649,10 @@
   flex-shrink: 0;
 }
 
-/* Floating cards. Bumped further up (bottom 184 → 214) per user so
-   the cards don't crowd the action bar, and the nameplate now sits
-   directly below the cards instead of overlapping them. */
+/* Floating cards — bumped another 16px per user (214 → 230). */
 .hud-cards.hud-cards-floating {
   position: fixed;
-  bottom: 214px;
+  bottom: 230px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 150;
@@ -4916,7 +4914,7 @@
    so the two read as a single unit instead of two floating boxes. */
 .hud-nameplate-me {
   position: fixed;
-  bottom: 184px;
+  bottom: 200px;                 /* +16 to match cards nudge */
   left: 50%;
   transform: translateX(-50%);
   z-index: 160;

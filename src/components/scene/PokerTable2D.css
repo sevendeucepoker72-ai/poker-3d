@@ -350,6 +350,13 @@
 .seat-pod--hero .seat-pod__avatar {
   border-color: rgba(0,217,255,0.6);
 }
+/* Nudge hero seat pod up ~14px per user request. Must preserve the
+   translate(-50%, -50%) centering from the base .seat-pod rule or the
+   pod will jump to its top-left corner. We chain a marginTop-equivalent
+   via translate. */
+.seat-pod.seat-pod--hero {
+  transform: translate(-50%, calc(-50% - 14px));
+}
 
 /* All-in */
 .seat-pod--allin .seat-pod__avatar {
