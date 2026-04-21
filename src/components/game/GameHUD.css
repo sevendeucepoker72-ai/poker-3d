@@ -558,10 +558,12 @@
   50% { box-shadow: 0 0 24px rgba(239, 68, 68, 0.7); }
 }
 
-/* Community cards overlay (HUD-based) */
+/* Community cards overlay (HUD-based). Nudged up two hairs per user
+   (top 38% → 33%) so the board sits higher on the felt, clearer of
+   the hero's cards and nameplate area. */
 .hud-community {
   position: absolute;
-  top: 38%;
+  top: 33%;
   left: 50%;
   transform: translate(-50%, -50%);
   display: flex;
