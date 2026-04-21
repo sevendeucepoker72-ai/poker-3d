@@ -2138,12 +2138,14 @@
   box-shadow: 0 4px 20px rgba(124, 58, 237, 0.5);
 }
 
-/* ===== Feature: Insurance Panel ===== */
+/* ===== Feature: Insurance Panel =====
+   Per user request: pop up dead-center of the screen instead of
+   anchored to `bottom: 110px`. */
 .insurance-panel {
   position: fixed;
-  bottom: 110px;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   background: linear-gradient(135deg, rgba(14, 14, 36, 0.97), rgba(26, 16, 46, 0.97));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -2151,15 +2153,16 @@
   border-radius: 12px;
   padding: 16px 24px;
   min-width: 300px;
+  max-width: min(480px, calc(100vw - 24px));
   z-index: 105;
   box-shadow: 0 0 40px rgba(234, 179, 8, 0.15), 0 8px 32px rgba(0, 0, 0, 0.5);
-  animation: insurance-slide-up 0.3s ease-out;
+  animation: insurance-pop-center 0.3s ease-out;
   text-align: center;
 }
 
-@keyframes insurance-slide-up {
-  from { transform: translateX(-50%) translateY(20px); opacity: 0; }
-  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+@keyframes insurance-pop-center {
+  from { transform: translate(-50%, -50%) scale(0.92); opacity: 0; }
+  to   { transform: translate(-50%, -50%) scale(1);    opacity: 1; }
 }
 
 .insurance-title {

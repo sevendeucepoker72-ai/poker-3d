@@ -924,13 +924,18 @@ input, textarea {
 /* ================================================================
    GAME HUD — insurance panel
    ================================================================ */
+/* Mobile override for centered insurance panel: keep the dead-center
+   vertical anchor from GameHUD.css but allow the width to flex for
+   small screens. `left`/`right` removed — the desktop rule uses
+   left:50% + translate(-50%,-50%) and we don't want to break it. */
 .insurance-panel {
-  left: 12px !important;
-  right: 12px !important;
+  left: 50% !important;
+  right: auto !important;
   width: auto !important;
-  max-width: 100% !important;
+  max-width: calc(100vw - 24px) !important;
   border-radius: 16px !important;
-  bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+  bottom: auto !important;
+  top: 50% !important;
 }
 .insurance-btn {
   min-height: 48px !important;
