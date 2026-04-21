@@ -690,6 +690,10 @@ export default function App() {
             // Start the 8s watchdog ONLY after we actually emit — previously the
             // timer started at setup time, so a slow `connect` could eat the
             // whole budget before the emit ever fired.
+            // 12s budget: the server's per-hop Master API timeout is 6s
+            // and there are up to two hops (introspect + /me). 8s was too
+            // tight under cold-start conditions — the client would kill
+            // the listener before the second hop even finished.
             oauthTimeoutId = setTimeout(() => {
               if (cancelled) return;
               oauthTimeoutId = null;
@@ -697,7 +701,7 @@ export default function App() {
                 socket.off('loginResult', oauthResultListener);
                 oauthResultListener = null;
               }
-            }, 8000);
+            }, 12000);
           };
 
           oauthResultListener = handleResult;
@@ -762,11 +766,15 @@ export default function App() {
         if (cancelled) return;
         socket.on('loginResult', handleAutoLoginResult);
         socket.emit('tokenLogin', { token: savedToken });
+        // 10s — legacy token auto-login only needs the server to look up
+        // a local JWT + hit the DB, no Master API calls. 5s was too
+        // aggressive under Railway cold start (which can take 3–4s
+        // before the server even accepts the socket emit).
         timeoutId = setTimeout(() => {
           if (cancelled) return;
           socket.off('loginResult', handleAutoLoginResult);
           clearStoredTokens();
-        }, 5000);
+        }, 10000);
       };
 
       if (socket.connected) doLogin();

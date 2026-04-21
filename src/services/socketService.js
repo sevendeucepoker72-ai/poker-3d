@@ -50,7 +50,11 @@ export const connectToServer = () => {
     reconnectionDelay: 800,
     reconnectionDelayMax: 20_000,
     randomizationFactor: 0.5,
-    timeout: 10_000,
+    // 20s connect timeout. Railway free-tier servers cold-start in 3–8s,
+    // and on flaky mobile networks the TLS + websocket upgrade handshake
+    // can take another few seconds on top. 10s was causing the socket to
+    // abort mid-handshake, making every login feel like a timeout.
+    timeout: 20_000,
   });
 
   socket.on('connect', () => { console.log('Connected to server:', socket.id); setStatus('connected'); });
