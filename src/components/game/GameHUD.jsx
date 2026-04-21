@@ -2898,37 +2898,9 @@ export default function GameHUD() {
         </div>
       )}
 
-      {/* Side Pot Breakdown — only when someone is actually all-in */}
-      {gameState?.pots && gameState.pots.length > 1 &&
-       seats?.some(s => s?.state === 'occupied' && s?.allIn) &&
-       phase !== 'WaitingForPlayers' && (
-        <div className="side-pot-breakdown">
-          {gameState.pots.map((p, i) => {
-            const accentColors = ['#00D9FF', '#6AB4FF', '#A78BFA', '#4ADE80'];
-            const accent = accentColors[i % accentColors.length];
-            const label = i === 0 ? 'Main Pot' : `Side Pot ${i}`;
-            const eligible = p.eligiblePlayers && p.eligiblePlayers.length > 0
-              ? p.eligiblePlayers.map(idx => seats[idx]?.playerName || `P${idx + 1}`)
-              : [];
-            return (
-              <div key={i} className="side-pot-item" style={{ borderLeftColor: accent }}>
-                <div className="side-pot-header">
-                  <span className="side-pot-label" style={{ color: accent }}>{label}</span>
-                  {i > 0 && <span className="side-pot-tag">ALL-IN</span>}
-                </div>
-                <div className="side-pot-amount">{p.amount.toLocaleString()}</div>
-                {eligible.length > 0 && (
-                  <div className="side-pot-players">
-                    {eligible.map((name, j) => (
-                      <span key={j} className="side-pot-player-chip">{name}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {/* Side-pot breakdown panel removed — the compact .side-pot-row
+          pills next to the phase label already surface Main Pot / Side
+          Pot N totals, and this floating panel was pure duplication. */}
 
       {/* Chopped Pot Display (#19) */}
       {gameState?.isChoppedPot && gameState?.chopDetails && (phase === 'Showdown' || phase === 'HandComplete') && (
