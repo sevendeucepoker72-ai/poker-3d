@@ -780,6 +780,7 @@ input, textarea {
    MULTI-TABLE TABS
    ================================================================ */
 .multi-table-tabs {
+  position: fixed !important;
   top: env(safe-area-inset-top, 0px) !important;
   left: 50% !important;
   transform: translateX(-50%) !important;
@@ -844,10 +845,12 @@ input, textarea {
    EMOTE WHEEL — centred, larger buttons
    ================================================================ */
 .emote-wheel {
+  position: fixed !important;
   bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important;
   left: 50% !important;
   transform: translateX(-50%) !important;
   right: auto !important;
+  max-width: calc(100vw - 16px) !important;
 }
 .emote-btn {
   width: 52px !important;
