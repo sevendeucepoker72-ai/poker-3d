@@ -2506,8 +2506,201 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         })}
       </div>
 
+      {/* Chip Skins — how your chips look in the seat stack */}
+      <SectionHeader>Chip Skins</SectionHeader>
+      <div className="lobby-card-backs-grid">
+        {[
+          { id: 'classic',      name: 'Classic',      bg: 'linear-gradient(135deg, #64748B, #475569)', emoji: '🪙', price: 0 },
+          { id: 'crimson',      name: 'Crimson',      bg: 'linear-gradient(135deg, #DC2626, #991B1B)', emoji: '🪙', price: 400 },
+          { id: 'cobalt',       name: 'Cobalt',       bg: 'linear-gradient(135deg, #2563EB, #1E40AF)', emoji: '🪙', price: 500 },
+          { id: 'emerald',      name: 'Emerald',      bg: 'linear-gradient(135deg, #059669, #047857)', emoji: '🪙', price: 600 },
+          { id: 'amethyst',     name: 'Amethyst',     bg: 'linear-gradient(135deg, #9333EA, #6B21A8)', emoji: '🪙', price: 800 },
+          { id: 'gold_rimmed',  name: 'Gold Rimmed',  bg: 'linear-gradient(135deg, #FFD700, #B8860B)', emoji: '🪙', price: 1200 },
+          { id: 'neon',         name: 'Neon',         bg: 'linear-gradient(135deg, #00FF88, #00CC6A)', emoji: '🪙', price: 1800 },
+          { id: 'holographic',  name: 'Holographic',  bg: 'linear-gradient(135deg, #A78BFA, #F472B6, #60A5FA)', emoji: '🪙', price: 2500 },
+          { id: 'mythic',       name: 'Mythic',       bg: 'linear-gradient(135deg, #FF1744, #FF5252)', emoji: '🪙', price: 4000 },
+        ].map((s) => {
+          const owned = isOwned('chip_skin', s.id) || s.price === 0;
+          const equipped = isEquipped('chip_skin', s.id);
+          return (
+            <div key={s.id} onClick={actionClick('chip_skin', s.id)}
+              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
+              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
+            >
+              <div className="lobby-card-back-preview" style={{ background: s.bg }}>
+                <span style={{ fontSize: '1.8rem' }}>{s.emoji}</span>
+              </div>
+              <span className="lobby-card-back-name">{s.name}</span>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+                {equipped ? 'Equipped' : owned ? 'Equip' : `${s.price} ⭐`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Card Fronts — alt face designs for hero's cards */}
+      <SectionHeader>Card Fronts</SectionHeader>
+      <div className="lobby-card-backs-grid">
+        {[
+          { id: 'standard',    name: 'Standard',    emoji: '🂱', price: 0 },
+          { id: 'minimal',     name: 'Minimal',     emoji: '♠', price: 400 },
+          { id: 'retro',       name: 'Retro',       emoji: '🃞', price: 600 },
+          { id: 'modern',      name: 'Modern',      emoji: '🂡', price: 800 },
+          { id: 'futuristic',  name: 'Futuristic',  emoji: '🂻', price: 1200 },
+          { id: 'luxury',      name: 'Luxury',      emoji: '👑', price: 1800 },
+          { id: 'hanafuda',    name: 'Hanafuda',    emoji: '🎴', price: 2200 },
+          { id: 'artistic',    name: 'Artistic',    emoji: '🖼', price: 2800 },
+        ].map((c) => {
+          const owned = isOwned('card_front', c.id) || c.price === 0;
+          const equipped = isEquipped('card_front', c.id);
+          return (
+            <div key={c.id} onClick={actionClick('card_front', c.id)}
+              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
+              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
+            >
+              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #fff, #e5e7eb)' }}>
+                <span style={{ fontSize: '1.8rem', color: '#0a0a0a' }}>{c.emoji}</span>
+              </div>
+              <span className="lobby-card-back-name">{c.name}</span>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+                {equipped ? 'Equipped' : owned ? 'Equip' : `${c.price} ⭐`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Dealer Voices */}
+      <SectionHeader>Dealer Voices</SectionHeader>
+      <div className="lobby-card-backs-grid">
+        {[
+          { id: 'standard',     name: 'Standard',       icon: '🎙', price: 0 },
+          { id: 'vegas_vet',    name: 'Vegas Veteran',  icon: '🎰', price: 600 },
+          { id: 'british_butler', name: 'British Butler', icon: '🎩', price: 800 },
+          { id: 'pirate',       name: 'Pirate',         icon: '🏴‍☠️', price: 900 },
+          { id: 'robot',        name: 'Robot',          icon: '🤖', price: 1100 },
+          { id: 'sportscaster', name: 'Sportscaster',   icon: '📢', price: 1400 },
+          { id: 'celebrity',    name: 'Celebrity',      icon: '⭐', price: 2200 },
+          { id: 'mythic_sage',  name: 'Mythic Sage',    icon: '🧙', price: 4000 },
+        ].map((v) => {
+          const owned = isOwned('dealer_voice', v.id) || v.price === 0;
+          const equipped = isEquipped('dealer_voice', v.id);
+          return (
+            <div key={v.id} onClick={actionClick('dealer_voice', v.id)}
+              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
+              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
+            >
+              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #7c2d12, #431407)' }}>
+                <span style={{ fontSize: '1.8rem' }}>{v.icon}</span>
+              </div>
+              <span className="lobby-card-back-name">{v.name}</span>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+                {equipped ? 'Active' : owned ? 'Equip' : `${v.price} ⭐`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Profile Backgrounds */}
+      <SectionHeader>Profile Backgrounds</SectionHeader>
+      <div className="lobby-card-backs-grid">
+        {[
+          { id: 'default',         name: 'Default',         bg: 'linear-gradient(135deg, #1e293b, #0f172a)', price: 0 },
+          { id: 'sunset',          name: 'Sunset',          bg: 'linear-gradient(135deg, #FB923C, #EF4444)', price: 200 },
+          { id: 'city_lights',     name: 'City Lights',     bg: 'linear-gradient(135deg, #1E3A8A, #312E81)', price: 350 },
+          { id: 'deep_space',      name: 'Deep Space',      bg: 'linear-gradient(135deg, #030712, #4C1D95)', price: 500 },
+          { id: 'aurora',          name: 'Aurora',          bg: 'linear-gradient(135deg, #14B8A6, #8B5CF6)', price: 700 },
+          { id: 'volcano',         name: 'Volcano',         bg: 'linear-gradient(135deg, #991B1B, #F59E0B)', price: 900 },
+          { id: 'underwater',      name: 'Underwater',      bg: 'linear-gradient(135deg, #0E7490, #1E3A8A)', price: 1100 },
+          { id: 'cherry_blossom',  name: 'Cherry Blossom',  bg: 'linear-gradient(135deg, #F472B6, #FBCFE8)', price: 1400 },
+          { id: 'diamond_rain',    name: 'Diamond Rain',    bg: 'linear-gradient(135deg, #B9F2FF, #60A5FA)', price: 2500 },
+        ].map((b) => {
+          const owned = isOwned('profile_bg', b.id) || b.price === 0;
+          const equipped = isEquipped('profile_bg', b.id);
+          return (
+            <div key={b.id} onClick={actionClick('profile_bg', b.id)}
+              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
+              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
+            >
+              <div className="lobby-card-back-preview" style={{ background: b.bg }} />
+              <span className="lobby-card-back-name">{b.name}</span>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+                {equipped ? 'Applied' : owned ? 'Apply' : `${b.price} ⭐`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Boosters — consumable XP / chip multipliers */}
+      <SectionHeader>Boosters</SectionHeader>
+      <div className="lobby-vip-packages">
+        {[
+          { id: 'xp_2x_15m',    name: '2× XP — 15 min',  desc: 'Doubles XP from wins for 15 minutes',   price: 200,  color: '#A78BFA' },
+          { id: 'xp_2x_1h',     name: '2× XP — 1 hour',  desc: 'Doubles XP from wins for 1 hour',       price: 600,  color: '#8B5CF6' },
+          { id: 'xp_2x_1d',     name: '2× XP — 1 day',   desc: 'Doubles XP from wins for 24 hours',     price: 2500, color: '#6D28D9' },
+          { id: 'chip_1p5x_1h', name: '1.5× Chips — 1h', desc: '+50% chip bonus on big wins (1 hour)',  price: 400,  color: '#F59E0B' },
+          { id: 'chip_1p5x_1d', name: '1.5× Chips — 1d', desc: '+50% chip bonus on big wins (1 day)',   price: 2000, color: '#D97706' },
+        ].map((b) => (
+          <div key={b.id} className="lobby-vip-package-card" style={{ borderLeftColor: b.color }}>
+            <div>
+              <div style={{ color: b.color, fontWeight: 700, fontSize: '0.95rem' }}>{b.name}</div>
+              <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{b.desc}</div>
+            </div>
+            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('booster', b.id)}>
+              {b.price.toLocaleString()} ⭐
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* VIP Passes */}
+      <SectionHeader>VIP Passes</SectionHeader>
+      <div className="lobby-vip-packages">
+        {[
+          { id: 'daily',    name: 'Daily VIP',    desc: '24 hours of premium perks',     price: 300,   color: '#06B6D4' },
+          { id: 'weekly',   name: 'Weekly VIP',   desc: '7 days of premium perks',       price: 1500,  color: '#3B82F6' },
+          { id: 'monthly',  name: 'Monthly VIP',  desc: '30 days of premium perks',      price: 5000,  color: '#8B5CF6' },
+          { id: 'lifetime', name: 'Lifetime VIP', desc: 'All premium perks, forever',    price: 50000, color: '#FFD700' },
+        ].map((v) => (
+          <div key={v.id} className="lobby-vip-package-card" style={{ borderLeftColor: v.color }}>
+            <div>
+              <div style={{ color: v.color, fontWeight: 700, fontSize: '0.95rem' }}>{v.name}</div>
+              <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{v.desc}</div>
+            </div>
+            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('vip_pass', v.id)}>
+              {v.price.toLocaleString()} ⭐
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Bundles — multi-item grants */}
+      <SectionHeader>Bundle Deals</SectionHeader>
+      <div className="lobby-vip-packages">
+        {[
+          { id: 'starter',       name: '🎁 Starter Bundle',    desc: '3 items — Silver Foil back, Nice Hand emote, Bronze frame',                price: 800,   color: '#84CC16' },
+          { id: 'collector',     name: '📦 Collector Bundle',  desc: '5 items — Gold back, Casino Royale, Silver frame, Crown emote, Chip Rain', price: 2500,  color: '#06B6D4' },
+          { id: 'tournament',    name: '🏆 Tournament Bundle', desc: '6 items — Tournament Champ title + premium cosmetics',                     price: 4000,  color: '#F59E0B' },
+          { id: 'whale_bundle',  name: '🐋 Whale Bundle',      desc: '8 items — Royal title, Cosmic Nebula, Diamond frame + more',               price: 10000, color: '#A78BFA' },
+          { id: 'mythic_bundle', name: '✨ Mythic Bundle',     desc: '9 items — Everything mythic-tier: God Mode title, Supernova, Mythic frame', price: 25000, color: '#FF1744' },
+        ].map((b) => (
+          <div key={b.id} className="lobby-vip-package-card" style={{ borderLeftColor: b.color }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: b.color, fontWeight: 700, fontSize: '0.95rem' }}>{b.name}</div>
+              <div style={{ color: '#8888AA', fontSize: '0.78rem', lineHeight: 1.35 }}>{b.desc}</div>
+            </div>
+            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('bundle', b.id)}>
+              {b.price.toLocaleString()} ⭐
+            </button>
+          </div>
+        ))}
+      </div>
+
       <div style={{ marginBottom: '24px', padding: '12px', textAlign: 'center', color: '#8888AA', fontSize: '0.8rem', background: 'rgba(0,217,255,0.05)', borderRadius: '8px', border: '1px solid rgba(0,217,255,0.15)' }}>
-        💡 Earn ⭐ stars by playing hands, winning pots, daily spins, leveling up, and completing missions.
+        💡 Earn ⭐ stars by playing hands, winning pots, daily spins, leveling up, and completing missions/achievements.
       </div>
 
     </div>
