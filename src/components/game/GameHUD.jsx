@@ -2643,6 +2643,12 @@ export default function GameHUD() {
                   onClick={() => { const socket = getSocket(); if (socket?.connected) socket.emit('triggerBombPot', {}); setShowOptions(false); }}>
                   💣 Bomb Pot
                 </button>
+                {/* Hard dismiss for the banner. Forces local suppression
+                    regardless of whatever the server-side flag says. */}
+                <button className="options-action-btn"
+                  onClick={() => { setBombPotSuppressed(true); setShowOptions(false); }}>
+                  ✕ Dismiss Bomb Pot Banner
+                </button>
                 <button className="options-action-btn" onClick={() => { setShowRangeChart(true); setShowOptions(false); }}>
                   📊 Range Chart
                 </button>
