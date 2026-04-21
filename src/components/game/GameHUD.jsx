@@ -707,33 +707,36 @@ export default function GameHUD() {
   }, [phase]);
 
   // Bomb Pot info
-  // Bomb-pot banner gating. The server flag can get stuck in the
-  // wild from old client state, so we layer THREE guards on top:
-  //   1. Server-authoritative gameState.bombPot flag
-  //   2. Per-hand kill switch: the client resets it every time a new
-  //      hand starts (tracked by handNumber change)
-  //   3. Hard 45s timeout — even if everything else lies, the banner
-  //      can never flash longer than one bomb-pot hand's natural life.
+  // Bomb-pot banner gating. Two independent suppression states:
+  //   1. `bombPotAutoSuppressed` — 45s per-hand timer safety net.
+  //      Resets between hands so a LEGITIMATE bomb pot can show on
+  //      the next hand if one is actually triggered.
+  //   2. `bombPotUserDismissed` — explicit user dismiss from Options.
+  //      PERMANENT for the session until the user themselves triggers
+  //      a new bomb pot (via the 💣 Bomb Pot button, which clears it
+  //      so the fresh one can show). Never auto-resets, so a stale
+  //      server flag can never bring the banner back after dismissal.
   const rawBombPotFlag = gameState?.bombPot || false;
   const handNumber = gameState?.handNumber;
-  const [bombPotSuppressed, setBombPotSuppressed] = useState(false);
+  const [bombPotAutoSuppressed, setBombPotAutoSuppressed] = useState(false);
+  const [bombPotUserDismissed, setBombPotUserDismissed] = useState(false);
   const lastBombPotHandRef = useRef(null);
   useEffect(() => {
-    // Reset suppression when a new hand starts (server cleared flag
-    // between hands => this hand has a clean state).
+    // Auto-suppression resets each new hand (so legitimate bomb pots
+    // can still fire on a fresh hand). User-dismiss is NOT touched.
     if (handNumber != null && handNumber !== lastBombPotHandRef.current) {
       lastBombPotHandRef.current = handNumber;
-      setBombPotSuppressed(false);
+      setBombPotAutoSuppressed(false);
     }
   }, [handNumber]);
   useEffect(() => {
     if (!rawBombPotFlag) return;
-    // 45s auto-suppress — no legitimate bomb-pot hand plays longer
-    // than that. After this, banner stays hidden until the next hand.
-    const t = setTimeout(() => setBombPotSuppressed(true), 45_000);
+    const t = setTimeout(() => setBombPotAutoSuppressed(true), 45_000);
     return () => clearTimeout(t);
   }, [rawBombPotFlag, handNumber]);
-  const isBombPot = rawBombPotFlag && !bombPotSuppressed;
+  const isBombPot = rawBombPotFlag && !bombPotAutoSuppressed && !bombPotUserDismissed;
+  // Alias kept for the Options "Dismiss" button below.
+  const setBombPotSuppressed = setBombPotUserDismissed;
 
   // Dealer's Choice info
   const isDealersChoice = gameState?.dealersChoice || false;
@@ -2640,7 +2643,14 @@ export default function GameHUD() {
                 </div>
                 <div className="options-divider" />
                 <button className="options-action-btn options-bomb"
-                  onClick={() => { const socket = getSocket(); if (socket?.connected) socket.emit('triggerBombPot', {}); setShowOptions(false); }}>
+                  onClick={() => {
+                    const socket = getSocket();
+                    if (socket?.connected) socket.emit('triggerBombPot', {});
+                    // A fresh bomb pot should actually show its banner
+                    // even if the user previously dismissed a stale one.
+                    setBombPotUserDismissed(false);
+                    setShowOptions(false);
+                  }}>
                   💣 Bomb Pot
                 </button>
                 {/* Hard dismiss for the banner. Forces local suppression
