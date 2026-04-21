@@ -2836,8 +2836,11 @@ export default function GameHUD() {
         </div>
       )}
 
-      {/* Bomb Pot Banner */}
-      {isBombPot && (
+      {/* Bomb Pot Banner — only during live hand phases. Without the
+          phase guard, a stale server-side bombPot flag (e.g. table went
+          idle before the flag cleared) would leave the banner flashing
+          forever at the top of the screen. */}
+      {isBombPot && phase && phase !== 'WaitingForPlayers' && phase !== 'HandComplete' && phase !== 'Showdown' && (
         <div className="bomb-pot-banner">
           BOMB POT!
         </div>
