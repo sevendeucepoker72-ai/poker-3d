@@ -315,11 +315,14 @@ input, textarea {
   width: 100% !important;
 }
 
-/* All action buttons: big, bold, easy to tap */
+/* All action buttons: big, bold, easy to tap. Trimmed from 80px →
+   72px per audit #6 — 80 was crowding the hole-cards above; 72 still
+   exceeds Apple HIG's 44pt minimum comfortably. Unified radius 14 to
+   match desktop (was 18 — slightly pill-y on 80px buttons). */
 .action-btn {
-  min-height: 80px !important;
-  border-radius: 18px !important;
-  font-size: 1.25rem !important;
+  min-height: 72px !important;
+  border-radius: 14px !important;
+  font-size: 1.18rem !important;
   font-weight: 900 !important;
   letter-spacing: 0.02em !important;
   padding: 0 6px !important;
@@ -335,10 +338,41 @@ input, textarea {
   min-width: 0 !important;
 }
 
-/* Hide inline preset buttons — they cause hit-target misalignment.
-   Raise amount is chosen in the gesture-raise slider panel. */
-.ab-presets { display: none !important; pointer-events: none !important; }
-.ab-timer   { display: none !important; pointer-events: none !important; }
+/* Raise presets re-enabled on phone. Displayed as a second row below
+   the main action buttons (flex-wraps thanks to action-bar-flat's
+   flex-wrap rule in GameHUD.css at <=720px). Gives thumb-friendly
+   access to ½ Pot / 2/3 Pot / Pot without opening the slider. */
+.ab-presets {
+  display: flex !important;
+  flex-basis: 100% !important;
+  order: 10 !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 2px 4px !important;
+  pointer-events: auto !important;
+}
+.ab-preset {
+  min-height: 44px !important;
+  flex: 1 1 0 !important;
+  max-width: 120px !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+  background: linear-gradient(180deg, rgba(234, 179, 8, 0.12), rgba(180, 83, 9, 0.15)) !important;
+  border: 1px solid rgba(245, 158, 11, 0.35) !important;
+  color: #FDE68A !important;
+  box-shadow: inset 0 1px 0 rgba(255, 243, 199, 0.15), 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+}
+.ab-preset:active {
+  transform: scale(0.95) !important;
+  filter: brightness(1.1) !important;
+}
+.ab-preset--active {
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.4), rgba(180, 83, 9, 0.4)) !important;
+  border-color: rgba(251, 191, 36, 0.7) !important;
+  color: #FEF3C7 !important;
+}
+.ab-timer { display: none !important; pointer-events: none !important; }
 
 /* ab-call-group is a div wrapper around the call button — make it grow too */
 .ab-call-group {
