@@ -31,7 +31,9 @@ export default function LevelUpPopup() {
         </div>
 
         <div className="levelup-crown">&#128081;</div>
-        <div className="levelup-title">LEVEL UP!</div>
+        <div className="levelup-title">
+          {levelUpData.isMilestone ? 'MILESTONE LEVEL!' : 'LEVEL UP!'}
+        </div>
         <div className="levelup-level">{levelUpData.newLevel}</div>
         <div className="levelup-rewards">
           <div className="levelup-reward-item">
@@ -42,6 +44,11 @@ export default function LevelUpPopup() {
             <span className="levelup-reward-icon stars-color">&#9733;</span>
             <span>+{levelUpData.bonusStars} Stars</span>
           </div>
+          {levelUpData.isMilestone && levelUpData.milestoneStars > 0 && (
+            <div className="levelup-reward-item" style={{ color: '#FFD700' }}>
+              <span>🎉 Milestone bonus: +{levelUpData.milestoneStars.toLocaleString()} stars</span>
+            </div>
+          )}
         </div>
         <button className="levelup-continue-btn" onClick={clearLevelUp}>
           Continue

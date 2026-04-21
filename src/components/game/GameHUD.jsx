@@ -41,6 +41,7 @@ import HandReplayViewer from '../replay/HandReplayViewer';
 
 // ─── Lazy-loaded overlays — only downloaded when first opened ─────────────────
 const HotkeySettings    = lazy(() => import('../ui/HotkeySettings'));
+const AchievementsPanel = lazy(() => import('../ui/AchievementsPanel'));
 const EquityCalculator  = lazy(() => import('../ui/EquityCalculator'));
 const ProvablyFair      = lazy(() => import('../ui/ProvablyFair'));
 const ShareReplay       = lazy(() => import('../ui/ShareReplay'));
@@ -266,6 +267,7 @@ export default function GameHUD() {
   // Range chart and equity calculator overlays
   const [showRangeChart, setShowRangeChart] = useState(false);
   const [showEquityCalc, setShowEquityCalc] = useState(false);
+  const [showAchievements, setShowAchievements] = useState(false);
 
   // New advanced features
   const [showProvablyFair, setShowProvablyFair] = useState(false);
@@ -2621,6 +2623,9 @@ export default function GameHUD() {
                 <button className="options-action-btn" onClick={() => { setShowEquityCalc(true); setShowOptions(false); }}>
                   🔢 Equity Calc
                 </button>
+                <button className="options-action-btn" onClick={() => { setShowAchievements(true); setShowOptions(false); }}>
+                  🏆 Achievements
+                </button>
                 <div className="options-divider" />
                 {/* Sound volume (#8) */}
                 <div className="options-row options-row--volume">
@@ -4242,9 +4247,11 @@ export default function GameHUD() {
           setShowGTOSolver(false);
           setShowPredictionMarket(false);
           setShowHeatmap(false);
+          setShowAchievements(false);
         }}
       >
       <Suspense fallback={null}>
+        {showAchievements && <AchievementsPanel onClose={() => setShowAchievements(false)} />}
         {showEquityCalc && <EquityCalculator onClose={() => setShowEquityCalc(false)} />}
 
         {/* GTO Overlay — always mounted, toggled via visibility */}

@@ -2,16 +2,23 @@ import { create } from 'zustand';
 
 let notificationIdCounter = 0;
 
-// ─── 500-level XP system ────────────────────────────────────────────────────
-const MAX_LEVEL = 500;
+// ─── 1000-level XP system ───────────────────────────────────────────────────
+const MAX_LEVEL = 1000;
 
-/** XP required to go from `level` to `level + 1`. */
+/** XP required to go from `level` to `level + 1`.
+ *  Unified curve — MUST match poker-server/src/progression/ProgressionManager.ts
+ *  (xpRequiredForLevel()) exactly or server↔client levels desync.
+ *  Formula: 100 + 35·L + 0.05·L²  (L = current level)
+ *  - L1→2 :       135 XP
+ *  - L10→11:      455 XP
+ *  - L100→101:  4,100 XP
+ *  - L500→501: 30,100 XP
+ *  - L1000→cap:     Infinity
+ *  Total XP to reach L1000 ≈ 13.5 million. */
 export function xpRequiredForLevel(level) {
   if (level <= 0) return 100;
   if (level >= MAX_LEVEL) return Infinity;
-  // Smooth curve: starts easy (100 XP), ramps to ~25 000 XP at level 500
-  // Formula: 100 + 40·L + 0.08·L²  (L = current level)
-  return Math.round(100 + 40 * level + 0.08 * level * level);
+  return Math.round(100 + 35 * level + 0.05 * level * level);
 }
 
 /** Total XP needed from 0 to reach `level`. */
@@ -39,15 +46,33 @@ export function levelFromTotalXp(totalXp) {
   };
 }
 
-/** Tier brackets for 500 levels. */
+/** Tier brackets for 1000 levels.
+ *  Mythic (900+) / Legendary (700+) / Master (500+) / Platinum (300+)
+ *  / Diamond (150+) / Gold (75+) / Silver (25+) / Bronze (default) */
 export function getLevelTier(level) {
-  if (level >= 400) return { name: 'Legendary',  color: '#FF4500', glow: '#FF6347' };
-  if (level >= 300) return { name: 'Master',     color: '#E040FB', glow: '#CE93D8' };
-  if (level >= 200) return { name: 'Platinum',   color: '#00E5FF', glow: '#00B8D4' };
-  if (level >= 100) return { name: 'Diamond',    color: '#B9F2FF', glow: '#00E5FF' };
-  if (level >= 50)  return { name: 'Gold',       color: '#FFD700', glow: '#FFA500' };
-  if (level >= 20)  return { name: 'Silver',     color: '#C0C0C0', glow: '#A0A0C0' };
+  if (level >= 900) return { name: 'Mythic',     color: '#FF1744', glow: '#FF5252' };
+  if (level >= 700) return { name: 'Legendary',  color: '#FF4500', glow: '#FF6347' };
+  if (level >= 500) return { name: 'Master',     color: '#E040FB', glow: '#CE93D8' };
+  if (level >= 300) return { name: 'Platinum',   color: '#00E5FF', glow: '#00B8D4' };
+  if (level >= 150) return { name: 'Diamond',    color: '#B9F2FF', glow: '#00E5FF' };
+  if (level >= 75)  return { name: 'Gold',       color: '#FFD700', glow: '#FFA500' };
+  if (level >= 25)  return { name: 'Silver',     color: '#C0C0C0', glow: '#A0A0C0' };
   return                   { name: 'Bronze',     color: '#CD7F32', glow: '#A0522D' };
+}
+
+/** Milestone stars bonus at given level (one-time on reaching).
+ *  Every 10 / 25 / 50 / 100 / 250 / 500 / 1000 gives escalating bonus.
+ *  Non-milestone levels get the base `level * 5` star reward only. */
+export function milestoneStarsBonus(level) {
+  if (level === 1000) return 10000;
+  if (level === 500)  return 5000;
+  if (level === 250)  return 2000;
+  if (level === 100)  return 500;
+  if (level % 100 === 0) return 300;
+  if (level % 50 === 0)  return 100;
+  if (level % 25 === 0)  return 40;
+  if (level % 10 === 0)  return 15;
+  return 0;
 }
 
 // ─── Leak Detection ──────────────────────────────────────────────────────────
