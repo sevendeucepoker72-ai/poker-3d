@@ -36,5 +36,10 @@ jobs:
       - name: Build (desktop)
         run: npm run build
 
-      - name: Build (mobile)
-        run: npm run build:mobile
+      # Mobile build intentionally NOT gated in CI — vite.config.mobile.js
+      # and index-mobile.html are local-only development artifacts that
+      # haven't been committed to the repo. If/when the mobile build is
+      # made part of the prod deploy pipeline, commit those files and
+      # re-enable the step here.
+      # - name: Build (mobile)
+      #   run: npm run build:mobile
