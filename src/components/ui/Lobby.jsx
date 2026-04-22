@@ -613,14 +613,18 @@ function InlineLeaderboard() {
     rank: i + 1,
     isCurrentPlayer: false,
   }));
-  // Insert player
-  data.splice(4, 0, {
+  // Insert player, then SORT by chips desc before assigning ranks.
+  // Prior version spliced at index 4 and re-ranked by position, which
+  // meant the player at 22,500 got rank #5 while the real #6 at 24,000
+  // sat just below — leaderboard positions didn't match the chip order
+  // (observed 2026-04-22 audit).
+  data.push({
     name: playerName || 'You',
     chipsWon: 22500,
-    rank: 5,
+    rank: 0, // placeholder, assigned after sort
     isCurrentPlayer: true,
   });
-  // Reassign ranks
+  data.sort((a, b) => b.chipsWon - a.chipsWon);
   data.forEach((d, i) => d.rank = i + 1);
 
   const getRankIcon = (rank) => {
@@ -1245,14 +1249,21 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     }
   }, [connected, requestTableList]);
 
-  // Auto-show login rewards if today's reward hasn't been claimed
+  // Auto-show login rewards if today's reward hasn't been claimed.
+  // Respects a per-day "dismissed" flag in sessionStorage so closing the
+  // modal without claiming doesn't keep reopening it every time the
+  // lobby re-mounts (observed 2026-04-22: modal re-appeared aggressively
+  // across navigations). The dismissed flag is sessionStorage-scoped so
+  // it resets when the browser closes — by tomorrow the modal will
+  // re-prompt (since the date rolls over too).
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem('app_poker_login_rewards');
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       const stored = raw ? JSON.parse(raw) : null;
-      if (!stored || stored.lastClaimDate !== todayStr) {
+      const dismissedToday = sessionStorage.getItem('app_poker_login_rewards_dismissed') === todayStr;
+      if ((!stored || stored.lastClaimDate !== todayStr) && !dismissedToday) {
         setShowLoginRewards(true);
         setLoginRewardsAutoOpened(true);
       }
@@ -2902,7 +2913,17 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
       {showLoginRewards && (
         <LoginRewards
-          onClose={() => setShowLoginRewards(false)}
+          onClose={() => {
+            setShowLoginRewards(false);
+            // Remember that we closed the modal TODAY so the auto-open
+            // effect doesn't re-show it on the next nav/re-mount.
+            // Scoped to sessionStorage so it naturally resets tomorrow.
+            try {
+              const today = new Date();
+              const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+              sessionStorage.setItem('app_poker_login_rewards_dismissed', todayStr);
+            } catch { /* ignore */ }
+          }}
           autoOpened={loginRewardsAutoOpened}
         />
       )}

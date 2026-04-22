@@ -306,26 +306,63 @@ input, textarea {
   gap: 6px !important;
 }
 
-/* Inner flat row — evenly distribute buttons */
+/* Inner flat row — evenly distribute buttons. MUST wrap, else the
+   raise-preset row (½ Pot / 2/3 Pot / Pot / 3x BB) overflows off
+   screen right and the Call/Raise buttons get truncated ("CALL" shows
+   as "L. 95" on 390px-wide phones — fixed 2026-04-21). */
 .action-bar-flat {
   display: flex !important;
-  flex-wrap: nowrap !important;
-  gap: 8px !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
   align-items: stretch !important;
   width: 100% !important;
 }
 
-/* All action buttons: big, bold, easy to tap. Trimmed from 80px →
-   72px per audit #6 — 80 was crowding the hole-cards above; 72 still
-   exceeds Apple HIG's 44pt minimum comfortably. Unified radius 14 to
-   match desktop (was 18 — slightly pill-y on 80px buttons). */
+/* Action buttons on mobile — made even taller for the slider-on-top
+   layout. 160→200 leaves room for the slider row above without
+   squashing the button labels. 2026-04-22 user request. */
 .action-btn {
-  min-height: 72px !important;
-  border-radius: 14px !important;
-  font-size: 1.18rem !important;
-  font-weight: 900 !important;
-  letter-spacing: 0.02em !important;
-  padding: 0 6px !important;
+  min-height: 200px !important;
+  border-radius: 12px !important;
+  font-size: 1.05rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.01em !important;
+  padding: 18px 4px !important;
+}
+
+/* FOLD pixel-trap fix 2026-04-22: FOLD used to be the leftmost + widest
+   button. Thumb reaching for CALL often hit FOLD and users lost hands to
+   accidental taps (even with the double-click-confirm, the prime tap still
+   reads as "I pressed fold" and leads to the 2nd tap). Move FOLD to the
+   right edge (order:10) and narrow it so it's not the default big target.
+   CALL/RAISE now occupy the center where the thumb naturally lands. */
+.action-bar-flat .action-btn.fold {
+  order: 4 !important;
+  flex: 0 0 auto !important;
+  min-width: 72px !important;
+  max-width: 110px !important;
+}
+.action-bar-flat .ab-call-group { order: 1 !important; }
+.action-bar-flat .raise-inline-group { order: 2 !important; }
+.action-bar-flat .action-btn.allin { order: 3 !important; }
+.action-bar-flat .action-btn.check { order: 1 !important; }
+/* Presets always on a second row below the main buttons (flex-basis:100%
+   already, kept at order 10 from the earlier rule above). */
+
+/* Kill the 6px countdown strip at the top of the action bar. Desktop has
+   a hide rule inside a @media block but it wasn't catching on the PWA
+   (shows as a 3rd redundant timer alongside the nameplate ring and the
+   seat-avatar ring). The nameplate timer-ring is the authoritative
+   hero countdown now. Removed 2026-04-22. */
+.action-timer-strip {
+  display: none !important;
+}
+
+/* Also kill the subtle top-border pulse-glow on the whole action bar
+   during hero's turn — the nameplate ring already announces "your turn". */
+.hud-bottom--my-turn {
+  border-top: none !important;
+  animation: none !important;
 }
 .action-btn:active {
   transform: scale(0.93) !important;
@@ -384,6 +421,61 @@ input, textarea {
 .ab-call-group .action-btn {
   flex: 1 !important;
   height: 100% !important;
+}
+
+/* Raise layout 2026-04-22 rework: slider moves to its OWN row at the
+   TOP of the action bar (full-width), and the Raise button joins the
+   other buttons (Fold / Call / Raise / All-In) on the button row —
+   matching their height. Previously the raise-group held both inline,
+   making the raise button shorter than its siblings and cramming the
+   slider sideways.
+   Implementation: .raise-inline-group uses `display: contents` to
+   dissolve itself — its two children (slider-wrap + raise button)
+   become direct flex children of .action-bar-flat. Slider-wrap then
+   gets flex-basis:100% + order:0 to claim the first row; raise button
+   stays at order:2 alongside Call/All-In. */
+.raise-inline-group {
+  display: contents !important;
+}
+.raise-inline-slider-wrap {
+  flex: 1 1 100% !important;
+  order: 0 !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 4px 8px !important;
+}
+.raise-inline-val {
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+  padding: 0 4px !important;
+  text-align: center !important;
+  min-width: 50px !important;
+  color: #FDE68A !important;
+}
+.raise-inline-slider {
+  flex: 1 !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 6px !important;
+}
+.raise-inline-slider::-webkit-slider-thumb {
+  width: 22px !important;
+  height: 22px !important;
+}
+.raise-inline-slider::-moz-range-thumb {
+  width: 22px !important;
+  height: 22px !important;
+}
+/* Raise button now at full button height alongside siblings */
+.action-bar-flat > .action-btn.raise,
+.action-bar-flat .raise-inline-group .action-btn.raise {
+  flex: 1 !important;
+  min-width: 0 !important;
+  order: 2 !important;
+  padding: 16px 4px !important;
 }
 
 /* Pre-action pills — large, easy to tap while waiting */
@@ -553,32 +645,53 @@ input, textarea {
    Action bar is ~96px (72px buttons + padding) + safe-area.
    Cards sit well above. Nameplate between cards and bar.
    ================================================================ */
+/* Hero floating cards sit HALF ON the table / half off — card vertical
+   center aligned with the felt's bottom edge so the cards straddle it.
+   On a 844h viewport the felt bottom sits ~58% down (~355px from bottom);
+   with scale(0.55) cards are 31x43 CSS px, so bottom:335 puts the center
+   at ~356. Must include scale() in the same !important transform, else
+   the transform: translateX(-50%) !important clobbers the scale(0.82)
+   from GameHUD.css:6793 (caused the "cards cover everything" regression
+   2026-04-21). */
 .hud-cards.hud-cards-floating {
   position: absolute !important;
-  bottom: calc(220px + env(safe-area-inset-bottom, 0px)) !important;
+  bottom: calc(286px + env(safe-area-inset-bottom, 0px)) !important;
   left: 50% !important;
-  transform: translateX(-50%) !important;
+  transform: translateX(-50%) scale(0.42) !important;
+  transform-origin: bottom center !important;
   z-index: 200 !important;
 }
-/* Correct class used by JSX is hud-nameplate-me (not hud-my-nameplate).
-   Mobile: nameplate TOP sits just below the cards with a small overlap
-   so the cards+name read as one unit. Cards are at bottom:214 (desktop
-   rule); mobile scales smaller but the same rule still places them
-   well above the action bar. */
+/* Mobile hero nameplate: barely overlaps the BOTTOM of the cards.
+   Cards at bottom:335 scale(0.55) → card bottom edge ~335, top edge
+   ~378. Nameplate bottom:315, height ~24 → top edge at ~339 — sits
+   4px into the card bottom giving the "reads as one unit" look.
+   All sizes shrunk from desktop for a tight, non-dominant footprint. */
 .hud-nameplate-me {
   position: absolute !important;
-  bottom: calc(222px + env(safe-area-inset-bottom, 0px)) !important;
+  bottom: calc(242px + env(safe-area-inset-bottom, 0px)) !important;
   left: 50% !important;
   transform: translateX(-50%) !important;
   z-index: 201 !important;
-  padding: 6px 14px 6px 6px !important;
-  border-radius: 12px !important;
+  padding: 1px 5px 1px 1px !important;
+  gap: 2px !important;
+  border-radius: 5px !important;
   border: 1px solid rgba(0,217,255,0.35) !important;
+  max-width: calc(100vw - 32px) !important;
 }
 .hud-np-avatar {
-  width: 50px !important;
-  height: 50px !important;
-  font-size: 22px !important;
+  width: 16px !important;
+  height: 16px !important;
+  font-size: 9px !important;
+}
+.hud-np-name {
+  font-size: 8px !important;
+}
+.hud-np-chips {
+  font-size: 7px !important;
+}
+.hud-np-pos {
+  font-size: 6px !important;
+  padding: 0 2px !important;
 }
 .hud-np-name {
   font-size: 18px !important;
@@ -987,12 +1100,26 @@ input, textarea {
    GAME HUD — right rail buttons (Last Hand, Replay, React, Emote)
    Default bottom: 70px puts them behind the action bar on mobile
    ================================================================ */
+/* Rails (Emote left, Last Hand right) — both at the SAME bottom so they
+   align horizontally. Desktop has 230; mobile-overrides originally put
+   right-rail at 100, leaving Last Hand ~120px below Emote. Both now at
+   220 so the user's "Last Hand even with Emote" request holds. */
 .right-rail-btns {
-  bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+  bottom: calc(220px + env(safe-area-inset-bottom, 0px)) !important;
   right: 8px !important;
   width: 72px !important;
   gap: 6px !important;
 }
+.left-rail-btns {
+  bottom: calc(220px + env(safe-area-inset-bottom, 0px)) !important;
+  left: 8px !important;
+  width: 72px !important;
+  gap: 6px !important;
+}
+
+/* Action bar stays anchored at bottom:0. User wanted it TALLER, not
+   raised off the bottom (my earlier bottom:135 was wrong — reverted).
+   Tallness comes from the action-btn min-height below. */
 .rail-btn {
   min-height: 44px !important;
   font-size: 0.68rem !important;

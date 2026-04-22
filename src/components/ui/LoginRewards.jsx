@@ -190,7 +190,11 @@ export default function LoginRewards({ onClose, autoOpened, inline }) {
             <div key={reward.day} className={cardClass}>
               <div className="reward-day-number">Day {reward.day}</div>
               <div className="reward-day-icon">
-                {isClaimed ? '\u{2705}' : reward.day === 7 ? '\u{1F381}' : '\u{1FA99}'}
+                {/* U+1FA99 (🪙 coin) requires Unicode 13 — not all Chrome +
+                    Windows emoji fonts have the glyph and users saw an
+                    empty box. Switched to U+1F4B0 (💰 money bag) which is
+                    universally supported. 2026-04-22 audit fix. */}
+                {isClaimed ? '\u{2705}' : reward.day === 7 ? '\u{1F381}' : '\u{1F4B0}'}
               </div>
               <div className="reward-day-chips">{reward.chips.toLocaleString()}</div>
               {reward.stars > 0 && (

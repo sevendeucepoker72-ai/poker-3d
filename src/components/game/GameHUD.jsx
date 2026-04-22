@@ -313,6 +313,15 @@ export default function GameHUD() {
 
   // Upgrade: fold confirmation micro-animation
   const [foldPending, setFoldPending] = useState(false);
+  // Ref mirrors foldPending state synchronously so the click handler sees
+  // the updated value within the same event-loop tick. Without it, a fast
+  // double-tap can produce two "click 1" runs (both seeing foldPending=
+  // false because React batches the state update), neither of which fires
+  // handleAction('fold') — the hand then times out on the server's 30s
+  // clock. Observed 2026-04-22 during audit: intended fold appeared to
+  // mis-fire as a later-hand action. Use the ref for the conditional,
+  // keep setFoldPending in sync with it for the visual pulse/hint.
+  const foldPendingRef = useRef(false);
   const foldTimerRef = useRef(null);
   // Hotkey hint fade-out — visible for 30s per turn, then fades. Reset on
   // every new turn so the user always gets a reminder on their first action
@@ -955,25 +964,42 @@ export default function GameHUD() {
     }
   }, [callAmount, preAction]);
 
-  // Upgrade 1: fire pre-action when it becomes our turn
+  // Upgrade 1: fire pre-action when it becomes our turn.
+  // Sets `hasSentActionRef` so a manual tap in the same tick gets dedup'd
+  // instead of causing a double-fire. Observed 2026-04-22: a user with
+  // Check/Fold pre-armed who then tapped Call saw their hand folded even
+  // though Call was tapped — pre-action fired first, user's tap landed on
+  // a disabled-button state but client already queued a send. Fix here
+  // also closes the race by bailing if an action was already sent this
+  // turn (e.g., the user manually acted milliseconds before the effect
+  // ran).
   const prevIsMyTurnForPreActionRef = useRef(false);
   useEffect(() => {
     if (isMyTurn && !prevIsMyTurnForPreActionRef.current && preAction) {
-      const action = preAction;
-      setPreAction(null);
-      if (action === 'checkFold') {
-        if (callAmount === 0) {
-          playSound('check'); sendAction('check');
-        } else {
-          playSound('fold'); sendAction('fold');
+      if (hasSentActionRef.current) {
+        // User already manually acted (or an action is mid-flight).
+        // Clear the pre-action silently; don't double-send.
+        setPreAction(null);
+      } else {
+        const action = preAction;
+        setPreAction(null);
+        hasSentActionRef.current = true;
+        if (action === 'checkFold') {
+          if (callAmount === 0) {
+            playSound('check'); sendAction('check');
+          } else {
+            playSound('fold'); sendAction('fold');
+          }
+        } else if (action === 'callAny') {
+          playSound('bet'); sendAction('call');
+        } else if (action === 'checkOnly') {
+          if (callAmount === 0) {
+            playSound('check'); sendAction('check');
+          } else {
+            // Not free — clear the flag so a manual action can fire.
+            hasSentActionRef.current = false;
+          }
         }
-      } else if (action === 'callAny') {
-        playSound('bet'); sendAction('call');
-      } else if (action === 'checkOnly') {
-        if (callAmount === 0) {
-          playSound('check'); sendAction('check');
-        }
-        // no action if there's a bet
       }
     }
     prevIsMyTurnForPreActionRef.current = isMyTurn;
@@ -2090,6 +2116,10 @@ export default function GameHUD() {
   // Action handlers with sound effects + bet sizing memory
   const handleAction = useCallback((type, amount) => {
     hasSentActionRef.current = true; // mark action sent — stops auto-fold timer race
+    // Also clear any queued pre-action so the useEffect can't double-fire
+    // a conflicting action (e.g., user tapped Call but had Check/Fold
+    // queued — without this, pre-action would fold them). 2026-04-22.
+    setPreAction(null);
     switch (type) {
       case 'fold':  haptic(200);              playSound('fold');  break;
       case 'check': haptic(50);               playSound('check'); break;
@@ -3436,30 +3466,43 @@ export default function GameHUD() {
                         ? `Confirm fold by tapping again. You would give up a call of ${callAmount.toLocaleString()} chips.`
                         : `Fold. Call amount ${callAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`
                   }
-                  onClick={() => {
+                  onClick={(e) => {
                     // Audit fix #12: dedupe — if an action already went out
                     // this turn, ignore subsequent clicks.
                     if (hasSentActionRef.current) return;
-                    // User request: ALL folds now require confirmation
-                    // (was only big-bet folds). First tap primes the
-                    // confirm state; second tap within 3s folds.
-                    if (!foldPending) {
+                    // Use the ref for the condition to avoid React batching
+                    // two click events into both seeing foldPending=false.
+                    if (!foldPendingRef.current) {
+                      foldPendingRef.current = true;
                       setFoldPending(true);
                       clearTimeout(foldTimerRef.current);
-                      foldTimerRef.current = setTimeout(() => setFoldPending(false), 3000);
+                      foldTimerRef.current = setTimeout(() => {
+                        foldPendingRef.current = false;
+                        setFoldPending(false);
+                      }, 3000);
                     } else {
                       clearTimeout(foldTimerRef.current);
+                      foldPendingRef.current = false;
                       handleAction('fold');
                       setFoldPending(false);
                     }
+                    // Stop the event so the click can't bubble to an
+                    // ancestor listener that re-routes it to another
+                    // action (root-cause theory for the 2026-04-22 audit
+                    // "fold became a raise" anomaly).
+                    e.stopPropagation();
                   }}
                 >
                   {/* Two-line layout: verb + confirm hint. When foldPending
                       is true, swap the hint to "Tap again" so the user has
                       an unambiguous next-step indicator. */}
                   <span className="action-verb">{foldPending ? 'Fold?' : 'Fold'}</span>
+                  {/* Short hint — the long "Double-click to confirm fold"
+                      was truncating to "Double..." after the button was
+                      narrowed and moved right (2026-04-22 audit). Short
+                      text avoids the ellipsis at every breakpoint. */}
                   <span className="fold-confirm-hint">
-                    {foldPending ? 'Tap again to confirm' : 'Double-click to confirm fold'}
+                    {foldPending ? 'Tap again' : 'Tap 2x'}
                   </span>
                 </button>
                 )}
@@ -3707,8 +3750,11 @@ export default function GameHUD() {
         document.body
       )}
 
-      {/* Pot odds — on the table below "AMERICAN PUB POKER" */}
-      {callAmount > 0 && potOddsDisplay && createPortal(
+      {/* Pot odds — on the table below "AMERICAN PUB POKER".
+          Gate by phase so the badge doesn't render "Pot Odds: 0:1" on
+          HandComplete (pot reset to 0 but callAmount can linger from
+          the final street). 2026-04-22 audit fix. */}
+      {callAmount > 0 && potOddsDisplay && phase !== 'HandComplete' && phase !== 'Showdown' && phase !== 'WaitingForPlayers' && createPortal(
         <div className={`table-pot-odds ${potOddsGood ? 'table-pot-odds--good' : 'table-pot-odds--bad'}`}>
           Pot Odds: {potOddsDisplay}
         </div>,
@@ -4214,7 +4260,11 @@ export default function GameHUD() {
         </div>
       )}
 
-      {/* Chat panel — memoized sub-component, only re-renders on message/open changes */}
+      {/* Chat panel — disabled 2026-04-22 per user request ("get rid of live
+          chat for now"). All chat state + handlers still live above so this
+          is a one-line revert when we want it back. ChatPanel component and
+          its styles intentionally preserved in the source. */}
+      {false && (
       <ChatPanel
         chatOpen={chatOpen}
         setChatOpen={setChatOpen}
@@ -4227,6 +4277,7 @@ export default function GameHUD() {
         handleSendChat={handleSendChat}
         handleChatKeyDown={handleChatKeyDown}
       />
+      )}
 
       {/* Dealer Voice Line bubble */}
       {dealerVoice && (

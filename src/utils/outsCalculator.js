@@ -241,10 +241,18 @@ export function analyzeBoardTexture(communityCards) {
     suitCounts[s] = (suitCounts[s] || 0) + 1;
   }
   const uniqueSuits = Object.keys(suitCounts).length;
+  const maxSuitCount = Math.max(...Object.values(suitCounts));
 
-  if (uniqueSuits === 1) {
+  // Use maxSuitCount, not uniqueSuits. Previous version labeled any board
+  // with ≥3 unique suits "Rainbow", which is wrong on turn+ (3♠9♣7♠J♦ has
+  // 3 unique suits but is still two-tone — two spades = flush draw live).
+  // Correct usage: Rainbow = no two cards share a suit (maxSuitCount === 1).
+  if (maxSuitCount === communityCards.length) {
     labels.push('Monotone');
-  } else if (uniqueSuits === 2) {
+  } else if (maxSuitCount >= 3) {
+    // 3 of one suit on turn/river — a flush is live with one more matching card
+    labels.push('Flush-draw');
+  } else if (maxSuitCount === 2) {
     labels.push('Two-tone');
   } else {
     labels.push('Rainbow');

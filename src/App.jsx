@@ -104,7 +104,20 @@ function ChooseUsernameScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = () => {
-    if (!name.trim() || name.trim().length < 2) { setError('Name must be at least 2 characters'); return; }
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length < 2) { setError('Name must be at least 2 characters'); return; }
+    if (trimmed.length > 20) { setError('Name must be 20 characters or less'); return; }
+    // Mirror the server-side whitelist (authManager.ts:DISPLAY_NAME_RE)
+    // so users get immediate feedback instead of a round-trip rejection.
+    // Server is still the real gate — never trust this check alone.
+    if (!/^[\p{L}\p{N} _.'-]+$/u.test(trimmed)) {
+      setError("Name can only contain letters, numbers, spaces, and _ . - '");
+      return;
+    }
+    if (!/[\p{L}\p{N}]/u.test(trimmed)) {
+      setError('Name must contain at least one letter or number');
+      return;
+    }
     setLoading(true);
     setError('');
     const socket = getSocket();

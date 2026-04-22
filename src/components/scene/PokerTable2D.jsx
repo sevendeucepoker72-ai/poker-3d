@@ -109,7 +109,9 @@ function getPositionLabel(seatIndex, dealerButtonSeat, occupiedSeats) {
   return labels[pos] ?? '';
 }
 
-/* ── 2-D seat layout ────────────────────────────────────────── */
+/* ── 2-D seat layout ──────────────────────────────────────────
+   Evenly-spaced seats around the ellipse starting at π/2 (bottom).
+   9 seats → 40° between each. No per-seat angle tweaks. */
 const SEAT_ANGLES = Array.from({ length: SEAT_COUNT }, (_, i) =>
   Math.PI / 2 + i * (2 * Math.PI / SEAT_COUNT)
 );
@@ -405,9 +407,14 @@ const SeatPod = memo(function SeatPod({
   const avatarColor = serverSeat?.avatar?.seatColor || serverSeat?.avatar?.skinTone || getAvatarColor(name || '?');
   const avatarPhoto = serverSeat?.avatar?.photo || null;
 
-  const winnerInfo = handResult?.winners?.find(w => w.seatIndex === seatIndex);
-  const isWinner = !!winnerInfo;
   const showdown = phase === 'Showdown' || phase === 'HandComplete';
+  // Only consider handResult valid during Showdown/HandComplete. If the server
+  // leaves handResult on state into the next PreFlop (which it currently does),
+  // the WINNER banner + dealer-D ghost from the prior hand stick on the seat
+  // during the new deal. Gating by phase drops those floaters at the hand
+  // boundary so observers don't see stale UI. Fixed 2026-04-22.
+  const winnerInfo = showdown ? handResult?.winners?.find(w => w.seatIndex === seatIndex) : null;
+  const isWinner = !!winnerInfo;
 
   const showCardsFaceUp = isMyPlayer || (showdown && holeCards?.length > 0 && holeCards[0]?.rank != null);
   const showCardBacks   = !isFolded && !isMyPlayer && phase !== 'WaitingForPlayers' && phase !== 'HandComplete';
@@ -502,9 +509,14 @@ const SeatPod = memo(function SeatPod({
         </div>
       )}
 
-      {/* Avatar with optional timer ring + all-in pulse ring */}
+      {/* Avatar with optional timer ring + all-in pulse ring.
+          Hero's own seat skips the avatar-ring: the nameplate timer-ring
+          (rendered by GameHUD) is the sole hero countdown now. Showing both
+          is redundant and caused the "3 timers at once" complaint
+          2026-04-22. Opponents still get the avatar ring so the player
+          knows whose turn it is. */}
       <div className="seat-pod__avatar-wrap">
-        {isActive && (
+        {isActive && !isMyPlayer && (
           <svg className="seat-pod__timer-ring" viewBox="0 0 50 50">
             <circle cx="25" cy="25" r="22" stroke="rgba(255,255,255,0.12)" strokeWidth="3" fill="none" />
             <circle

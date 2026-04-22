@@ -507,8 +507,12 @@
   padding: 14px 18px;
   background: rgba(18, 18, 42, 0.97);
   border-radius: 10px;
-  min-width: 280px;
-  max-width: 380px;
+  min-width: 240px;
+  /* Clamp to viewport minus the 16px right margin + 16px left safety so a
+     narrow phone in landscape or a PWA window can still fit the toast.
+     Was 380px fixed — on 390px-wide phones the toast clipped the screen
+     right edge (2026-04-22 audit). */
+  max-width: min(380px, calc(100vw - 48px));
   cursor: pointer;
   pointer-events: auto;
   animation: slideInRight 0.35s ease-out, fadeOutRight 0.35s ease-in 4.65s forwards;
@@ -563,6 +567,12 @@
   letter-spacing: 0.5px;
   font-weight: 700;
   margin-bottom: 2px;
+  /* Wrap long titles instead of letting them clip off-screen. Observed
+     2026-04-22: "ACHIEVEMENT UNLOCKED!" was cut as "ACHIEV..." on the
+     right rail. No explicit truncation in CSS, so the clip is happening
+     from the viewport edge — bound the text so word-break can wrap. */
+  white-space: normal;
+  word-break: break-word;
 }
 
 .mission-type .achievement-popup-title {
@@ -574,6 +584,8 @@
   color: #ffffff;
   font-weight: 600;
   margin-bottom: 4px;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .achievement-popup-reward {

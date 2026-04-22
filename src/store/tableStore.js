@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { getSocket } from '../services/socketService';
+import { getSocket, emitPlayerAction } from '../services/socketService';
 
 export const useTableStore = create((set, get) => ({
   // Game state from server
@@ -55,11 +55,18 @@ export const useTableStore = create((set, get) => ({
     set({ selectedDiscards: [] });
   },
 
-  // Actions - send to server (all check socket.connected)
+  // Actions - send to server. Uses emitPlayerAction which (a) attaches a
+  // nonce so the server can dedupe replays, and (b) queues the action if
+  // the socket is mid-reconnect instead of silently dropping it. The
+  // pending-action slot is single — if the user taps twice during a
+  // disconnect the latest intent wins, same as if they had been connected.
   sendAction: (type, amount) => {
-    const socket = getSocket();
-    if (socket?.connected) socket.emit('action', { type, amount });
-    else console.warn('[sendAction] Socket not connected');
+    const result = emitPlayerAction(type, amount);
+    if (!result.sent && !result.queued) {
+      console.warn('[sendAction] Action dropped');
+    } else if (result.queued) {
+      console.log('[sendAction] Queued during disconnect:', type);
+    }
   },
 
   // `expectedVariant` is optional but strongly recommended — it tells the

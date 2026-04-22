@@ -4712,12 +4712,19 @@
   filter: brightness(0.92);
 }
 
-/* Disabled — still visible but clearly inactive */
+/* Disabled — still visible but clearly inactive.
+   `pointer-events: none` added 2026-04-22 so a stray click on the
+   disabled Fold/Call/Raise/All-In while it's not the hero's turn can't
+   land on them. Audit observed Call clicks getting consumed by
+   pre-action buttons rendered just underneath when the main action bar
+   was disabled. Removing the hit target entirely eliminates the
+   ambiguity. */
 .action-btn:disabled {
   opacity: 0.6 !important;
   filter: saturate(0.6) brightness(0.7);
   cursor: default;
   transform: none !important;
+  pointer-events: none !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════

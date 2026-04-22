@@ -483,6 +483,50 @@ export default function SettingsPanel({ onClose }) {
             </div>
           </div>
         </div>
+
+        {/* ===== APP ===== */}
+        <div className="settings-section">
+          <div className="settings-section-title">App</div>
+          <div className="settings-row" style={{ flexWrap: 'wrap', gap: '8px' }}>
+            <span className="settings-label">Check for updates</span>
+            <button
+              className="btn-accent"
+              style={{
+                padding: '6px 14px',
+                fontSize: '0.85rem',
+                background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+                color: '#fff',
+              }}
+              onClick={async () => {
+                // Force a fresh load from the network, bypassing the service
+                // worker cache. The "reload toast" sometimes doesn't appear
+                // on low-activity tabs or on iOS PWAs, so this button is the
+                // escape hatch: unregister the SW, clear caches, hard-reload.
+                // Added 2026-04-22 after user reported the reload prompt
+                // wasn't showing.
+                try {
+                  if ('serviceWorker' in navigator) {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(regs.map((r) => r.unregister()));
+                  }
+                  if ('caches' in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map((k) => caches.delete(k)));
+                  }
+                } catch { /* ignore — reload will still fetch fresh network */ }
+                // `location.reload(true)` is deprecated; the param is ignored
+                // by modern browsers. But with SW gone, the network fetch IS
+                // uncached.
+                window.location.reload();
+              }}
+            >
+              Force reload
+            </button>
+            <span style={{ color: '#94a3b8', fontSize: '0.78rem', lineHeight: 1.3, width: '100%' }}>
+              Clears the cached app bundle and fetches the latest version.
+            </span>
+          </div>
+        </div>
       </div>
     </div>,
     document.body

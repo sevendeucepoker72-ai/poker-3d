@@ -11,6 +11,51 @@ if (!SERVER_URL) {
 }
 let socket = null;
 
+// Pending-action queue. A single slot: only one turn-action can be pending
+// at a time (you can't act twice on the same turn). If the socket drops
+// right as the user taps, we hold the action here and flush it on the
+// next 'connect' event. The server dedupes by nonce so a retry after a
+// successful-but-unack'd action is a no-op. Stale actions expire after
+// QUEUE_TTL_MS so a 30s disconnect doesn't replay a fold from two hands ago.
+const QUEUE_TTL_MS = 10_000;
+let _pendingAction = null; // { type, amount, nonce, queuedAt }
+
+function makeNonce() {
+  // 16 hex chars — enough entropy per-session; server compares against the
+  // last nonce per table:seat, so we just need locally-unique per action.
+  return Math.random().toString(16).slice(2, 10) + Date.now().toString(16);
+}
+
+function flushPendingAction() {
+  if (!_pendingAction || !socket?.connected) return;
+  if (Date.now() - _pendingAction.queuedAt > QUEUE_TTL_MS) {
+    console.warn('[socketService] Dropping stale queued action:', _pendingAction.type);
+    _pendingAction = null;
+    return;
+  }
+  const p = _pendingAction;
+  _pendingAction = null;
+  socket.emit('action', { type: p.type, amount: p.amount, nonce: p.nonce });
+}
+
+/**
+ * Emit a player action with automatic queue-on-disconnect + nonce dedup.
+ * If the socket is connected, emit immediately. If not, stash as the single
+ * pending action (overwriting any prior queued one — only the user's latest
+ * intent is valid) and flush on the next 'connect' event.
+ */
+export const emitPlayerAction = (type, amount) => {
+  const payload = { type, amount, nonce: makeNonce(), queuedAt: Date.now() };
+  if (socket?.connected) {
+    socket.emit('action', { type, amount, nonce: payload.nonce });
+    return { sent: true, nonce: payload.nonce };
+  }
+  _pendingAction = payload;
+  return { sent: false, queued: true, nonce: payload.nonce };
+};
+
+export const hasPendingAction = () => !!_pendingAction;
+
 // Connection status — subscribers get notified on change
 let _connectionStatus = 'disconnected'; // 'connected' | 'disconnected' | 'error'
 let _connectionError = '';
@@ -57,10 +102,14 @@ export const connectToServer = () => {
     timeout: 20_000,
   });
 
-  socket.on('connect', () => { console.log('Connected to server:', socket.id); setStatus('connected'); });
+  socket.on('connect', () => {
+    console.log('Connected to server:', socket.id);
+    setStatus('connected');
+    flushPendingAction();
+  });
   socket.on('disconnect', (reason) => { console.log('Disconnected:', reason); setStatus('disconnected'); });
   socket.on('connect_error', (err) => { console.log('Connection error:', err.message); setStatus('error', err.message); });
-  socket.on('reconnect', () => setStatus('connected'));
+  socket.on('reconnect', () => { setStatus('connected'); flushPendingAction(); });
   socket.on('reconnecting', () => setStatus('disconnected'));
 
   // PWA audit #1: explicit visibility-change kick so an iOS PWA resumed
