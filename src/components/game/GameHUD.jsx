@@ -2991,7 +2991,7 @@ export default function GameHUD() {
         <div className="chop-pot-banner">
           <div className="chop-pot-title">Split Pot!</div>
           <div className="chop-pot-shares">
-            {gameState.chopDetails.map((d, i) => (
+            {(gameState.chopDetails || []).map((d, i) => (
               <span key={i} className="chop-pot-share">
                 {d.playerName}: {d.share.toLocaleString()}
               </span>

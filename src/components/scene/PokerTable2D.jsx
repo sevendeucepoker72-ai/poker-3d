@@ -834,6 +834,13 @@ export default function PokerTable2D() {
   }, [phase]);
 
   /* ── Callbacks ────────────────────────────────────────────── */
+  // `_onOpenPlayerNotes` is a module-level `let` set via setOnOpenPlayerNotes
+  // (see top of file). Module bindings are read at CALL time, not captured
+  // at useCallback-definition time, so an empty deps array is correct here —
+  // every click reads the currently-registered handler, even if it was
+  // registered after this component mounted. Do NOT add `_onOpenPlayerNotes`
+  // to the deps array: it's not a React value and the lint rule would never
+  // flag it anyway.
   const onClickNameplate = useCallback(
     (playerName) => { if (_onOpenPlayerNotes) _onOpenPlayerNotes(playerName); },
     []

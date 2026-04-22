@@ -82,20 +82,41 @@ export function setAuthToken(token, remember) {
 export function clearAuthToken() {
   safeRemove(typeof window !== 'undefined' ? window.localStorage   : null, TOKEN_KEY);
   safeRemove(typeof window !== 'undefined' ? window.sessionStorage : null, TOKEN_KEY);
+  // Also clear the persisted username so shared-device accounts don't
+  // leak across users (see getAuthUsername rationale below).
+  safeRemove(typeof window !== 'undefined' ? window.localStorage   : null, USERNAME_KEY);
+  safeRemove(typeof window !== 'undefined' ? window.sessionStorage : null, USERNAME_KEY);
 }
 
-/** Persist the last-used username so the login screen can pre-fill it. */
+/**
+ * Persist the last-used username so the login screen can pre-fill it.
+ *
+ * Scoped to sessionStorage ONLY — writing to localStorage on a shared
+ * device (kiosk, household, venue terminal) would expose the previous
+ * user's handle to the next person, which violates the "never auto-fill
+ * member logins" rule. sessionStorage dies with the tab, so the hint is
+ * only useful within a single session.
+ */
 export function setAuthUsername(username) {
   if (!username) return;
-  safeSet(typeof window !== 'undefined' ? window.localStorage   : null, USERNAME_KEY, username);
+  // Defensive: sweep any stale localStorage copy from earlier builds that
+  // wrote there, so upgrading clients don't keep surfacing old usernames.
+  safeRemove(typeof window !== 'undefined' ? window.localStorage : null, USERNAME_KEY);
   safeSet(typeof window !== 'undefined' ? window.sessionStorage : null, USERNAME_KEY, username);
 }
 
 /** Read the last-used username (for pre-filling the login form). */
 export function getAuthUsername() {
-  return (
-    safeGet(typeof window !== 'undefined' ? window.localStorage   : null, USERNAME_KEY) ||
-    safeGet(typeof window !== 'undefined' ? window.sessionStorage : null, USERNAME_KEY) ||
-    null
-  );
+  // Match the write path — sessionStorage is authoritative now.
+  // Fall back to localStorage only to be swept+returned for one read so
+  // users mid-migration aren't hit with an empty field; the sweep on
+  // setAuthUsername / clearAuthToken will remove it over time.
+  const fromSession = safeGet(typeof window !== 'undefined' ? window.sessionStorage : null, USERNAME_KEY);
+  if (fromSession) return fromSession;
+  const fromLocal = safeGet(typeof window !== 'undefined' ? window.localStorage : null, USERNAME_KEY);
+  if (fromLocal) {
+    safeRemove(typeof window !== 'undefined' ? window.localStorage : null, USERNAME_KEY);
+    return fromLocal;
+  }
+  return null;
 }

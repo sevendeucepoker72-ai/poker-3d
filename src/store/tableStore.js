@@ -65,7 +65,11 @@ export const useTableStore = create((set, get) => ({
   // Send draw action to server
   sendDraw: (discardIndices) => {
     const socket = getSocket();
-    if (socket) socket.emit('playerDraw', { discardIndices });
+    if (socket?.connected) {
+      socket.emit('playerDraw', { discardIndices });
+    } else {
+      console.warn('[sendDraw] Socket not connected');
+    }
     set({ selectedDiscards: [] });
   },
 

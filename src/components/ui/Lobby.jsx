@@ -1235,6 +1235,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     if (val.trim().length < 2) { setPlayerSearchResults([]); setPlayerSearchLoading(false); return; }
     setPlayerSearchLoading(true);
     playerSearchTimerRef.current = setTimeout(() => {
+      // getSocket() is intentionally called INSIDE the setTimeout so if the
+      // socket reconnects between the debounce start and its fire, we use
+      // the current module-level socket — not a captured stale reference.
+      // Do not hoist `const sock = getSocket()` outside the timer.
       const socket = getSocket();
       socket?.emit('searchPlayers', { query: val.trim() });
     }, 350);
