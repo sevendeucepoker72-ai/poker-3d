@@ -24,6 +24,11 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Prevent new `console.log` from slipping into the production bundle.
+      // Allowed: `console.warn` / `console.error` (kept for prod observability).
+      // Started as "warn" (non-blocking) — flip to "error" once existing debt
+      // is pruned. Audit 2026-04-22.
+      'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
 ])
