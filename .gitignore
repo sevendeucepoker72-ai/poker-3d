@@ -1,3 +1,7 @@
 node_modules/
 dist/
 .env.local
+
+# Never commit FTP / deploy credentials
+.ftp-credentials
+.ftp-credentials.local
