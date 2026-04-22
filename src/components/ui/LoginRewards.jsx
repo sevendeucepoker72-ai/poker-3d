@@ -96,6 +96,15 @@ export default function LoginRewards({ onClose, autoOpened, inline }) {
   const activeListenerRef = useRef(null);
   const timeoutIdsRef = useRef(new Set());
   const mountedRef = useRef(true);
+  // Suppress playerProgress re-sync for a short window after a successful
+  // claim. Otherwise: user taps Claim → onResult updates local state →
+  // server pushes a fresh playerProgress a moment later → the re-sync
+  // useEffect below overwrites the local state with server values that
+  // might not yet reflect the claim (or that reflect it inconsistently
+  // while the animation is still running). Window fires either after
+  // 2.5s wall-clock or as soon as incoming progress confirms the claim
+  // (lastLoginClaimDate === today), whichever is first.
+  const suppressSyncUntilRef = useRef(0);
   useEffect(() => {
     return () => {
       mountedRef.current = false;
@@ -114,6 +123,14 @@ export default function LoginRewards({ onClose, autoOpened, inline }) {
     if (progress?.loginStreak == null && progress?.lastLoginClaimDate == null) return;
     const streak = progress.loginStreak || 0;
     const lastClaim = progress.lastLoginClaimDate || null;
+    // Suppress if we're inside the post-claim window AND the inbound
+    // progress doesn't yet confirm today's claim. Once the server echoes
+    // back lastLoginClaimDate === today, we let the re-sync proceed —
+    // at that point server and local state agree so nothing flickers.
+    const now = Date.now();
+    if (now < suppressSyncUntilRef.current && lastClaim !== today) {
+      return;
+    }
     const day = streak === 0 ? 1 : ((streak - 1) % 7) + 1;
     setState({
       streak,
@@ -143,6 +160,11 @@ export default function LoginRewards({ onClose, autoOpened, inline }) {
     }, 12000);
     timeoutIdsRef.current.add(timeoutGuard);
 
+    // Capture `onResult` as a local const — the activeListenerRef is used
+    // for cleanup-on-unmount, but the listener identity we .off() with must
+    // be this exact function, not whatever happens to be in the ref later
+    // (guards against a theoretical concurrent-claim overwriting the ref
+    // even though canClaim+claiming prevent that today).
     const onResult = (res) => {
       socket.off('dailyLoginClaimed', onResult);
       if (activeListenerRef.current === onResult) activeListenerRef.current = null;
@@ -154,7 +176,12 @@ export default function LoginRewards({ onClose, autoOpened, inline }) {
         setClaimError(res?.error || 'Could not claim');
         return;
       }
-      // Server awarded it — update UI optimistically; store will re-sync via playerProgress
+      // Server awarded it — update UI optimistically. Set a 2.5s suppression
+      // window so a re-sync from playerProgress can't revert the optimistic
+      // state mid-animation. (See suppressSyncUntilRef in the re-sync
+      // useEffect above — it lets inbound progress through as soon as it
+      // confirms today's claim, so the window closes early in the common case.)
+      suppressSyncUntilRef.current = Date.now() + 2500;
       setState((prev) => ({
         ...prev,
         streak: res.streak || prev.streak + 1,

@@ -26,11 +26,25 @@ export const useTableStore = create((set, get) => ({
   // messages hidden" badge ABOVE the scroll area when it detects a cap hit.
   chatMessages: [],
   addChatMessage: (msg) => set((state) => {
-    // Dedup on clientMessageId — if the server echoes the same message twice
-    // (transient connectivity, doubled emit, AT-LEAST-ONCE delivery) we drop
-    // the duplicate rather than doubling bubbles in the transcript.
+    // Dedup — primary key is clientMessageId (server echoes it back so we
+    // can match round-trip). Fallback: if the incoming msg has no
+    // clientMessageId (server-originated system messages, or older client
+    // code), dedup on (playerName, message, same-second timestamp bucket)
+    // so an identical message within 1000ms is still caught. Prevents
+    // double bubbles on flaky connectivity or when both sender-local
+    // echo and server-broadcast arrive.
     if (msg?.clientMessageId) {
       const dup = state.chatMessages.some(m => m.clientMessageId === msg.clientMessageId);
+      if (dup) return state;
+    } else if (msg?.message && msg?.playerName) {
+      const incomingTs = typeof msg.timestamp === 'number' ? msg.timestamp : Date.now();
+      const dup = state.chatMessages.some(m => {
+        if (!m.message || !m.playerName) return false;
+        if (m.playerName !== msg.playerName) return false;
+        if (m.message !== msg.message) return false;
+        const mTs = typeof m.timestamp === 'number' ? m.timestamp : 0;
+        return Math.abs(mTs - incomingTs) < 1000;
+      });
       if (dup) return state;
     }
     const updated = [...state.chatMessages, msg];
