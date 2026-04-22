@@ -8,9 +8,25 @@
  *   preloadAvatar(playerId); // async fetch and cache
  */
 
+import { getAuthToken } from '../services/tokenStorage';
+
 const MASTER_API = 'https://poker-prod-api-azeg4kcklq-uc.a.run.app/poker-api';
 const CACHE_KEY = 'poker-avatar-cache';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Build request headers with an optional Bearer token pulled from
+ * tokenStorage. The master API gates `/users/*` reads behind auth, so
+ * anonymous fetches will 401 and leave avatars blank. We fetch the token
+ * per-call (not once at module load) so the freshest value is used — the
+ * OIDC login flow can write it mid-session.
+ */
+function authHeaders(extra = {}) {
+  const headers = { ...extra };
+  const token = getAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
 
 // In-memory cache: playerId -> { url, fetchedAt }
 let memCache = {};
@@ -68,7 +84,9 @@ export async function preloadAvatar(playerId) {
 
   const promise = (async () => {
     try {
-      const res = await fetch(`${MASTER_API}/users/${playerId}/profile`);
+      const res = await fetch(`${MASTER_API}/users/${playerId}/profile`, {
+        headers: authHeaders(),
+      });
       if (!res.ok) return null;
       const data = await res.json();
       const profile = data.data?.profile;

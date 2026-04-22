@@ -5,9 +5,25 @@
  * the same backend and VAPID key.
  */
 
+import { getAuthToken } from '../services/tokenStorage';
+
 const MASTER_API =
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_MASTER_API_URL) ||
   'https://poker-prod-api-azeg4kcklq-uc.a.run.app/poker-api';
+
+/**
+ * Build request headers with an optional Bearer token pulled from
+ * tokenStorage. The master API gates `/notifications/*` endpoints behind
+ * auth for any per-user operation (subscribe / status / unsubscribe), so
+ * calls without the header would 401 and silently disable push on the
+ * device. Fetch per-call so mid-session login updates are picked up.
+ */
+function authHeaders(extra = {}) {
+  const headers = { ...extra };
+  const token = getAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
 
 function urlB64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -50,7 +66,9 @@ export async function subscribeToPush(userId) {
 
     const reg = await navigator.serviceWorker.ready;
 
-    const keyRes = await fetch(`${MASTER_API}/notifications/vapid-key`);
+    const keyRes = await fetch(`${MASTER_API}/notifications/vapid-key`, {
+      headers: authHeaders(),
+    });
     if (!keyRes.ok) return false;
     const { publicKey } = await keyRes.json();
     if (!publicKey) return false;
@@ -62,7 +80,7 @@ export async function subscribeToPush(userId) {
 
     const res = await fetch(`${MASTER_API}/notifications/push-subscribe`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ userId, subscription: subscription.toJSON() }),
     });
     return res.ok;
@@ -82,7 +100,7 @@ export async function unsubscribeFromPush(userId) {
     if (userId) {
       await fetch(`${MASTER_API}/notifications/push-unsubscribe`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ userId }),
       });
     }
@@ -97,7 +115,9 @@ export async function unsubscribeFromPush(userId) {
 export async function getPushStatus(userId) {
   if (!userId) return { push_enabled: false, has_subscription: false };
   try {
-    const res = await fetch(`${MASTER_API}/notifications/push-status/${userId}`);
+    const res = await fetch(`${MASTER_API}/notifications/push-status/${userId}`, {
+      headers: authHeaders(),
+    });
     return await res.json();
   } catch {
     return { push_enabled: false, has_subscription: false };
@@ -126,7 +146,7 @@ export async function checkSubscriptionHealth(userId) {
       try {
         const res = await fetch(`${MASTER_API}/notifications/push-subscribe`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ userId, subscription: browserSub.toJSON() }),
         });
         if (res.ok) return { status: 'resynced' };
