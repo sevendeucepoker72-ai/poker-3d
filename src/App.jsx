@@ -311,15 +311,20 @@ export default function App() {
     const quickGameTimeouts = new Set();
     const tournamentTimeouts = new Set();
 
-    socket.on('connect', () => useTableStore.getState().setConnected(true));
-    socket.on('disconnect', () => useTableStore.getState().setConnected(false));
-
-    // Re-authenticate on every socket connect (initial + reconnect). Railway
-    // restarts, brief network drops, and phone-locks all produce a new socket
-    // id on the server, so the authSessions entry for the old id is gone —
-    // we have to redo the handshake or any in-game action we emit next will
-    // be rejected as unauthenticated. Uses the stored OAuth access token.
+    // SINGLE 'connect' handler — previously we registered two separate
+    // listeners for this event (one setting connected state, one doing
+    // oauthLogin + syncTableState). Having two listeners means both
+    // fire on every reconnect, so oauthLogin ran twice per reconnect.
+    // Merged 2026-04-22 per audit finding #15.
     socket.on('connect', () => {
+      useTableStore.getState().setConnected(true);
+
+      // Re-authenticate on every socket connect (initial + reconnect). Railway
+      // restarts, brief network drops, and phone-locks all produce a new socket
+      // id on the server, so the authSessions entry for the old id is gone —
+      // we have to redo the handshake or any in-game action we emit next will
+      // be rejected as unauthenticated. Uses the stored OAuth access token.
+      //
       // Use tokenStorage so both localStorage (keep-signed-in) and
       // sessionStorage (tab-only) variants are checked on reconnect.
       const token = getAuthToken();
@@ -342,6 +347,7 @@ export default function App() {
         }, 350); // slight delay so oauthLogin auth completes first
       }
     });
+    socket.on('disconnect', () => useTableStore.getState().setConnected(false));
 
     // Handle both full state and delta patches from the server
     socket.on('gameState', (data) => {
@@ -353,9 +359,21 @@ export default function App() {
           state = data.state;
           useTableStore.getState().setGameState(state);
         } else {
-          // Partial delta — merge into current state
+          // Partial delta merge contract:
+          //   - delta[key] = <value>  → set prev[key] to <value>
+          //   - delta[key] = null     → CLEAR prev[key] (set to null). Use
+          //                             null explicitly; JSON.stringify drops
+          //                             `undefined` on the wire, so the server
+          //                             can't clear a field any other way.
+          //   - key absent from delta → prev[key] unchanged (standard spread)
+          //
+          // The raw `{...prev, ...data.delta}` spread is already mostly
+          // correct (null overwrites to null, undefined to undefined). This
+          // block hardens one edge case: if a downstream consumer treats
+          // `null` as "missing" but we want "explicitly cleared", the
+          // contract above is now documented and enforced below.
           const prev = useTableStore.getState().gameState;
-          state = prev ? { ...prev, ...data.delta } : data.delta;
+          state = prev ? { ...prev, ...data.delta } : { ...data.delta };
           // Clear stale hole cards whenever handId changes, regardless of
           // whether the delta itself includes fresh cards (they'll arrive in
           // a subsequent message). This prevents old cards leaking into a new hand.
@@ -609,6 +627,12 @@ export default function App() {
     });
 
     return () => {
+      // `socket.off(event)` without a second arg removes ALL listeners for
+      // that event (socket.io v4 semantics). This cleanly tears down every
+      // listener registered in this effect in one call per event, even if
+      // the same event had multiple handlers. Do NOT change to
+      // `socket.off(event, fn)` without a fn reference — would silently
+      // leak (no-op).
       socket.off('connect');
       socket.off('disconnect');
       socket.off('gameState');
