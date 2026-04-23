@@ -29,14 +29,42 @@ async function generateCodeChallenge(verifier) {
 
 // --- Auth flow ---
 
+// OAuth state + PKCE verifier in localStorage (cross-tab) with
+// sessionStorage fallback. See player-web authService.js comment for
+// rationale. Incident 2026-04-22: callback round-tripping to a different
+// tab hit "OAuth state mismatch — possible CSRF attack" (not actually
+// CSRF; just a per-tab storage scoping mismatch).
+
+function readOAuthItem(key) {
+  try {
+    const v = localStorage.getItem(key);
+    if (v != null) return v;
+  } catch {}
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function clearOAuthItem(key) {
+  try { localStorage.removeItem(key); } catch {}
+  try { sessionStorage.removeItem(key); } catch {}
+}
+
 export async function startLogin() {
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await generateCodeChallenge(codeVerifier);
   const state = crypto.randomUUID();
 
-  // Store for callback
-  sessionStorage.setItem('oauth_code_verifier', codeVerifier);
-  sessionStorage.setItem('oauth_state', state);
+  // Store for callback — localStorage for cross-tab; sessionStorage as a
+  // fallback for private-browsing modes that block localStorage.
+  try { localStorage.setItem('oauth_code_verifier', codeVerifier); } catch {}
+  try { localStorage.setItem('oauth_state', state); } catch {}
+  try {
+    sessionStorage.setItem('oauth_code_verifier', codeVerifier);
+    sessionStorage.setItem('oauth_state', state);
+  } catch {}
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -52,14 +80,14 @@ export async function startLogin() {
 }
 
 export async function handleCallback(code, state) {
-  const savedState = sessionStorage.getItem('oauth_state');
+  const savedState = readOAuthItem('oauth_state');
   if (state !== savedState) {
     throw new Error('OAuth state mismatch — possible CSRF attack');
   }
 
-  const codeVerifier = sessionStorage.getItem('oauth_code_verifier');
-  sessionStorage.removeItem('oauth_code_verifier');
-  sessionStorage.removeItem('oauth_state');
+  const codeVerifier = readOAuthItem('oauth_code_verifier');
+  clearOAuthItem('oauth_code_verifier');
+  clearOAuthItem('oauth_state');
 
   const response = await fetch(`${AUTH_SERVER}/token`, {
     method: 'POST',
