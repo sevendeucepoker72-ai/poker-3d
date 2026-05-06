@@ -1,0 +1,63 @@
+# Canonical Features Manifest — americanpubpoker.online (poker-3d)
+#
+# PURPOSE: prevent feature regressions on deploy. The FTP deploy script
+# (deploy-online.mjs) greps the BUILT bundle in dist/assets/** for every
+# non-comment/non-blank line in this file and ABORTS the deploy if any
+# are missing.
+#
+# Earned 2026-05-06 after a regression where the standalone poker-3d
+# tree at Downloads/developer setup/poker-3d/ had Phase 2 #5 native-OIDC
+# work that the mono-repo mirror at apps/poker-3d/ was missing. The FTP
+# deploy ran from the mono-repo mirror and silently shipped the stale
+# pre-OIDC build — Play Online sign-in broke. This manifest exists so
+# the next tree-drift is caught at deploy time instead of in production.
+#
+# RULES
+# - One token per line. Tokens matched as plain substrings.
+# - **Tokens MUST be minification-safe**: string literals (URL strings,
+#   localStorage keys, event names, error class names, JSON values, log
+#   tags). Function/variable/import names get mangled by Vite/Terser to
+#   single letters and will NOT survive — don't lock those.
+# - Lines starting with `#` are comments. Blank lines ignored.
+# - To deliberately retire a feature: DELETE the line in the SAME commit
+#   that retires the feature. The diff is the audit trail.
+
+# ─── Phase 2 #5 — native OIDC (Apr-May 2026) ────────────────────────
+# These string literals prove the OIDC stack compiled into the bundle.
+# Missing any = regression to the URL-bridge era and Jeremey-style
+# Play-Online sign-in failures.
+
+# Auth server URL — appears verbatim in authService.js
+auth.americanpubpoker.online
+# OIDC token error classes (preserved as `name` property even when minified)
+RefreshTokenRevokedError
+RefreshTokenTransientError
+# localStorage keys for OAuth tokens — string literals, survive minification
+poker_oauth_refresh
+poker_oauth_id_token
+poker_token_expiry
+oauth_pending
+oauth_access_token
+# Tab-resume event from sessionLifecycle.js — proves it compiled in
+poker3d:tab-resumed
+
+# ─── Bridge token (legacy / share-link fallback) ───────────────────
+# Socket emit name from App.jsx parseDeepLinkContext flow.
+authWithTicket
+
+# ─── Service worker security guards ────────────────────────────────
+# sanitizeUrl preserved as a top-level helper in sw.js.
+sanitizeUrl
+
+# ─── Push status return values (round-9 audit) ─────────────────────
+# These are string returns from getPushSupportStatus — only survive
+# if the function is actually USED somewhere downstream (e.g. wired
+# into SettingsPanel). If the lock fires for these, EITHER wire the
+# function in SettingsPanel.jsx OR remove the line.
+unsupported_browser
+
+# ─── Provably-fair deck verification ────────────────────────────────
+# deckCommitment + deckSeedRevealed are socket events emitted from
+# poker-server. Their handler names are present in client code that
+# subscribes to them.
+deckCommitment

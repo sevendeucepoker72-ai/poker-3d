@@ -52,10 +52,47 @@ export function isIosNonStandalone() {
   return isIos && !standalone;
 }
 
+// 2026-05-05 round-9 audit P1: detect in-app webviews (Instagram, Facebook,
+// Gmail, TikTok). Push subscribe silently fails inside these contexts —
+// without detection, a user opening the QR-flow link in those apps gets a
+// broken "Turn on" button.
+export function isInAppWebview() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /(Instagram|FBAN|FBAV|FB_IAB|FB4A|GSA\/|musical_ly|BytedanceWebview|Twitter|Line\/|MicroMessenger|Snapchat)/.test(ua);
+}
+
+export function isNonSafariIosBrowser() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  if (!/(?:iPhone|iPad|iPod) OS \d+/.test(ua)) return false;
+  return /(CriOS|FxiOS|EdgiOS|OPiOS|YaBrowser|MQQBrowser)/.test(ua) || isInAppWebview();
+}
+
+/**
+ * Granular support status. Returns: 'unsupported', 'unsupported_browser',
+ * 'ios_needs_install', 'ios_too_old', 'permission_denied', 'supported'.
+ */
+export function getPushSupportStatus() {
+  const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '';
+  const iosM = ua.match(/(?:iPhone|iPad|iPod) OS (\d+)[_.](\d+)/);
+  if (iosM) {
+    const major = parseInt(iosM[1], 10);
+    const minor = parseInt(iosM[2], 10);
+    if (major < 16 || (major === 16 && minor < 4)) return 'ios_too_old';
+  }
+  if (!isPushSupported()) return 'unsupported';
+  if (isNonSafariIosBrowser()) return 'unsupported_browser';
+  if (isIosNonStandalone()) return 'ios_needs_install';
+  if (Notification.permission === 'denied') return 'permission_denied';
+  return 'supported';
+}
+
 export async function requestPushPermission() {
   if (!('Notification' in window)) return 'unsupported';
   if (Notification.permission === 'granted') return 'granted';
   if (Notification.permission === 'denied') return 'denied';
+  if (isNonSafariIosBrowser()) return 'unsupported_browser';
   return await Notification.requestPermission();
 }
 
@@ -84,10 +121,17 @@ export async function subscribeToPush(userId) {
       applicationServerKey: urlB64ToUint8Array(publicKey),
     });
 
+    // 2026-05-05 round-9 audit P2 fix: explicitly tag origin='online' so the
+    // server stores the canonical short code instead of falling back to header
+    // mapping (host americanpubpoker.online → 'online').
     const res = await fetchWithTimeout(`${MASTER_API}/notifications/push-subscribe`, {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ userId, subscription: subscription.toJSON() }),
+      body: JSON.stringify({
+        userId,
+        subscription: subscription.toJSON(),
+        origin: 'online',
+      }),
     }, PUSH_FETCH_TIMEOUT_MS);
     return res.ok;
   } catch (e) {
@@ -153,7 +197,11 @@ export async function checkSubscriptionHealth(userId) {
         const res = await fetchWithTimeout(`${MASTER_API}/notifications/push-subscribe`, {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ userId, subscription: browserSub.toJSON() }),
+          body: JSON.stringify({
+            userId,
+            subscription: browserSub.toJSON(),
+            origin: 'online',
+          }),
         }, PUSH_FETCH_TIMEOUT_MS);
         if (res.ok) return { status: 'resynced' };
       } catch (e) {
