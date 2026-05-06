@@ -50,5 +50,26 @@ export default defineConfig({
       },
     },
     chunkSizeWarningLimit: 800,
+    // Fix modulepreload leak: Vite defaults to preloading EVERY transitive dep of
+    // the entry chunk, which drags heavy lazy-loaded chunks (game-overlays,
+    // lobby-features, vendor-three) into the initial HTML as <link rel="modulepreload">.
+    // Those should load only when their route/component is opened. Here we filter
+    // heavy side-chunks out of the initial preload list so the browser doesn't
+    // fetch them until the dynamic import that actually needs them fires.
+    // Ref: https://vite.dev/config/build-options.html#build-modulepreload
+    modulePreload: {
+      resolveDependencies: (_filename, deps /* , { hostId, hostType } */) => {
+        const HEAVY_LAZY_CHUNKS = [
+          'game-overlays',
+          'lobby-features',
+          'vendor-three',
+        ];
+        return deps.filter((dep) => {
+          // Keep small vendor chunks and app chunks preloaded for fast initial paint.
+          // Drop only the heavy chunks that are truly demand-loaded.
+          return !HEAVY_LAZY_CHUNKS.some((chunk) => dep.includes(chunk));
+        });
+      },
+    },
   },
 })
