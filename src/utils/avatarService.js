@@ -9,10 +9,16 @@
  */
 
 import { getAuthToken } from '../services/tokenStorage';
+import { fetchWithTimeout } from './fetchWithTimeout';
 
 const MASTER_API = 'https://poker-prod-api-azeg4kcklq-uc.a.run.app/poker-api';
 const CACHE_KEY = 'poker-avatar-cache';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+// Avatar fetches are best-effort and should never hang the lobby / UI on
+// a stalled mobile network. 8s is tighter than the notification budget
+// because nothing visible is blocked on these — we just fall back to
+// initials avatars when the fetch times out.
+const AVATAR_FETCH_TIMEOUT_MS = 8000;
 
 /**
  * Build request headers with an optional Bearer token pulled from
@@ -84,9 +90,9 @@ export async function preloadAvatar(playerId) {
 
   const promise = (async () => {
     try {
-      const res = await fetch(`${MASTER_API}/users/${playerId}/profile`, {
+      const res = await fetchWithTimeout(`${MASTER_API}/users/${playerId}/profile`, {
         headers: authHeaders(),
-      });
+      }, AVATAR_FETCH_TIMEOUT_MS);
       if (!res.ok) return null;
       const data = await res.json();
       const profile = data.data?.profile;

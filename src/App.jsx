@@ -2,16 +2,30 @@ import { useEffect, useState, useRef, Component, lazy, Suspense } from 'react';
 import { useGameStore } from './store/gameStore';
 import { useTableStore } from './store/tableStore';
 import { getAuthToken, setAuthToken, clearAuthToken, isKeepSignedIn } from './services/tokenStorage';
+import FriendlyErrorFallback from './components/ui/FriendlyErrorFallback';
 
+// Root ErrorBoundary (2026-04-22 audit fixes).
+// Previously this wrapped ONLY GameHUD and rendered the raw stack into the
+// DOM, which (a) left everything outside GameHUD unprotected, and (b)
+// leaked implementation detail to end users. The boundary now wraps the
+// full App tree at the default export site, and renders
+// FriendlyErrorFallback. The stack is still logged to console for devs.
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(error) { return { error }; }
-  componentDidCatch(error, info) { console.error('CAUGHT ERROR:', error.message, error.stack); }
+  componentDidCatch(error, _info) {
+    // eslint-disable-next-line no-console
+    console.error('[ErrorBoundary] caught:', error && error.stack ? error.stack : error);
+  }
   render() {
-    if (this.state.error) return <div style={{color:'red',padding:20,background:'#111',whiteSpace:'pre-wrap'}}>
-      <h2>GameHUD Crashed</h2><p>{this.state.error.message}</p><p>{this.state.error.stack}</p>
-      <button onClick={() => this.setState({error:null})}>Retry</button>
-    </div>;
+    if (this.state.error) {
+      return <FriendlyErrorFallback onReload={() => {
+        // Give the user a soft-reset escape hatch first; if the underlying
+        // render failure is deterministic, this will re-throw and they can
+        // hit Reload again for a hard page reload.
+        this.setState({ error: null });
+      }} />;
+    }
     return this.props.children;
   }
 }
@@ -20,8 +34,11 @@ import { connectToServer, getSocket, subscribeConnectionStatus } from './service
 import { initPersistence, syncToServer, installBeforeUnloadSync } from './services/persistenceService';
 import LoadingScreen from './components/ui/LoadingScreen';
 import LoginScreen from './components/ui/LoginScreen';
+// 2026-05-04 unified-push phase 3 — cross-site notification banner.
+import PlayerAppPushBanner from './components/PlayerAppPushBanner';
 import AuthCallback from './components/ui/AuthCallback';
-import { isAuthCallback as checkIsAuthCallback, refreshAccessToken } from './services/authService';
+import { isAuthCallback as checkIsAuthCallback, refreshAccessToken, RefreshTokenRevokedError } from './services/authService';
+import { startAuthCrossTabListener } from './services/authCrossTab';
 // Heavy screens loaded lazily — only when the user first navigates to them
 const Lobby = lazy(() => import('./components/ui/Lobby'));
 const AvatarCustomizer = lazy(() => import('./components/ui/AvatarCustomizer'));
@@ -145,6 +162,7 @@ function ChooseUsernameScreen() {
           type="text" value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSubmit()}
           placeholder="Enter display name" maxLength={20} autoFocus
+          aria-label="Enter display name"
           style={{
             width: '100%', padding: '14px 16px', borderRadius: 10, fontSize: '1rem',
             background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(0,217,255,0.3)',
@@ -170,7 +188,7 @@ function ChunkLoader() {
   return <div style={{ position:'fixed', inset:0, background:'#000000', display:'flex', alignItems:'center', justifyContent:'center', color:'#aaaaaa', fontFamily:'system-ui', fontSize:'0.9rem' }}>Loading…</div>;
 }
 
-export default function App() {
+function App() {
   const screen = useGameStore((s) => s.screen);
   const isLoggedIn = useGameStore((s) => s.isLoggedIn);
   const [connStatus, setConnStatus] = useState('disconnected');
@@ -316,7 +334,13 @@ export default function App() {
     // oauthLogin + syncTableState). Having two listeners means both
     // fire on every reconnect, so oauthLogin ran twice per reconnect.
     // Merged 2026-04-22 per audit finding #15.
-    socket.on('connect', () => {
+    //
+    // Capture handler refs so the effect cleanup below can call
+    // `socket.off('connect', handleConnect)` with the specific fn. Calling
+    // `socket.off('connect')` with no second arg tears down EVERY listener
+    // for that event, including the service-level status + pending-action
+    // flush handlers registered inside socketService.js.
+    const handleConnect = () => {
       useTableStore.getState().setConnected(true);
 
       // Re-authenticate on every socket connect (initial + reconnect). Railway
@@ -346,8 +370,10 @@ export default function App() {
           try { socket.emit('syncTableState', { tableId }); } catch {}
         }, 350); // slight delay so oauthLogin auth completes first
       }
-    });
-    socket.on('disconnect', () => useTableStore.getState().setConnected(false));
+    };
+    const handleDisconnect = () => useTableStore.getState().setConnected(false);
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
 
     // Handle both full state and delta patches from the server
     socket.on('gameState', (data) => {
@@ -372,12 +398,25 @@ export default function App() {
           // block hardens one edge case: if a downstream consumer treats
           // `null` as "missing" but we want "explicitly cleared", the
           // contract above is now documented and enforced below.
-          const prev = useTableStore.getState().gameState;
+          // 2026-04-22 audit fix: key `prev` on the delta's tableId. The old
+          // code read the currently-displayed gameState regardless of target,
+          // so a delta for table B would merge against table A's state when
+          // the player had A selected — corrupting B's cached state in the
+          // activeTables map. Fall back to the top-level gameState only when
+          // the delta carries no tableId (legacy single-table path).
+          const ts = useTableStore.getState();
+          const deltaTableId = data.delta?.tableId;
+          const prev = deltaTableId
+            ? (ts.activeTables.get(deltaTableId)?.gameState ?? null)
+            : ts.gameState;
           state = prev ? { ...prev, ...data.delta } : { ...data.delta };
           // Clear stale hole cards whenever handId changes, regardless of
           // whether the delta itself includes fresh cards (they'll arrive in
           // a subsequent message). This prevents old cards leaking into a new hand.
-          if (data.delta?.handId != null && prev?.handId != null && data.delta.handId !== prev.handId) {
+          // 2026-04-22 audit fix: dropped the `prev?.handId != null` guard so
+          // reconnect (where prev is null/empty) still clears stale handResult
+          // banners from the previous hand.
+          if (data.delta?.handId != null && data.delta.handId !== prev?.handId) {
             if (!data.delta.yourCards) state.yourCards = [];
             if (!data.delta.selectedDiscards) state.selectedDiscards = [];
             if (!data.delta.handResult) state.handResult = null;
@@ -392,10 +431,13 @@ export default function App() {
 
       useTableStore.getState().setMySeat(state?.yourSeat ?? -1);
 
-      // Handle spectator mode
-      if (state?.isSpectator) {
-        useTableStore.getState().setIsSpectating(true);
-      }
+      // Handle spectator mode.
+      // 2026-04-22 audit fix: unconditionally mirror the server flag so
+      // transitions OFF (sit down, claim a seat) actually flip the local
+      // UI back to player mode. Previously this only latched true, which
+      // left the UI stuck in spectator chrome after the server already
+      // considered the socket a seated player.
+      useTableStore.getState().setIsSpectating(!!state?.isSpectator);
 
       // Handle training data from server
       if (state?.trainingData) {
@@ -628,13 +670,15 @@ export default function App() {
 
     return () => {
       // `socket.off(event)` without a second arg removes ALL listeners for
-      // that event (socket.io v4 semantics). This cleanly tears down every
-      // listener registered in this effect in one call per event, even if
-      // the same event had multiple handlers. Do NOT change to
-      // `socket.off(event, fn)` without a fn reference — would silently
-      // leak (no-op).
-      socket.off('connect');
-      socket.off('disconnect');
+      // that event (socket.io v4 semantics). For 'connect' / 'disconnect'
+      // we MUST pass the specific handler ref, because socketService.js
+      // registers its own status + pending-action-flush listeners on those
+      // events — a bare `socket.off('connect')` would silently kill them
+      // and break the connection banner + action queue after this effect
+      // re-ran. For game-event listeners below, bare off() is fine since
+      // only this effect registers those.
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
       socket.off('gameState');
       socket.off('tableList');
       socket.off('error');
@@ -867,28 +911,86 @@ export default function App() {
 
     const refreshAt = expiry - 5 * 60 * 1000;
     const delay = refreshAt - Date.now();
-    if (delay <= 0) return;
 
-    const timer = setTimeout(async () => {
+    // Cross-tab logout propagation — if another tab clears the auth token
+    // or refresh token, drop the session here too. Wired into this same
+    // effect (instead of a new useEffect) so the listener lifecycle stays
+    // tied to having an active session; it's torn down alongside the
+    // refresh timer when oauthTokenExpiry resets to null.
+    const stopCrossTab = startAuthCrossTabListener(() => {
+      try {
+        const s = useGameStore.getState();
+        if (typeof s.logout === 'function' && s.isLoggedIn) s.logout();
+      } catch (err) {
+        console.error('[App] cross-tab logout handler threw:', err);
+      }
+    });
+
+    if (delay <= 0) return stopCrossTab;
+
+    // Shared by the scheduled refresh and the 30s retry. Returns true on
+    // success; throws on failure (caller decides retry vs logout based on
+    // the error class).
+    const attemptRefresh = async () => {
       // Check both stores for the refresh token (keep-signed-in lives in localStorage).
       let refresh = null;
       try { refresh = localStorage.getItem('poker_oauth_refresh') || sessionStorage.getItem('poker_oauth_refresh'); } catch {}
-      if (!refresh) return;
+      if (!refresh) return false;
+      const tokens = await refreshAccessToken(refresh);
+      setAuthToken(tokens.access_token);
+      const keep = isKeepSignedIn();
+      const store = keep ? localStorage : sessionStorage;
+      try { store.setItem('poker_oauth_refresh', tokens.refresh_token); } catch {}
+      try { store.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000)); } catch {}
+      const state = useGameStore.getState();
+      state.setAuth(state.userId, tokens.access_token);
+      return true;
+    };
+
+    // Retry-once pattern: on a transient error (network blip, 5xx,
+    // timeout) wait 30s and try again exactly once before forcing logout.
+    // On an explicit RefreshTokenRevokedError we surrender immediately —
+    // retrying will never succeed. No global banner mechanism exists in
+    // gameStore today, so surface via console.warn (per CLAUDE.md's "do
+    // not invent a new one"); swap to a real banner once one lands.
+    let retryTimer = null;
+    const forceLogout = (reason) => {
       try {
-        const tokens = await refreshAccessToken(refresh);
-        setAuthToken(tokens.access_token);
-        const keep = isKeepSignedIn();
-        const store = keep ? localStorage : sessionStorage;
-        try { store.setItem('poker_oauth_refresh', tokens.refresh_token); } catch {}
-        try { store.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000)); } catch {}
-        const state = useGameStore.getState();
-        state.setAuth(state.userId, tokens.access_token);
-      } catch {
-        // Refresh failed; user will need to re-login when token expires
+        console.warn('[App] OAuth refresh failed, logging out:', reason);
+        const s = useGameStore.getState();
+        if (typeof s.logout === 'function') s.logout();
+      } catch (err) {
+        console.error('[App] forceLogout threw:', err);
+      }
+    };
+
+    const timer = setTimeout(async () => {
+      try {
+        await attemptRefresh();
+      } catch (err) {
+        if (err instanceof RefreshTokenRevokedError) {
+          forceLogout(err);
+          return;
+        }
+        // Transient — wait 30s and retry once. The singleton inflight
+        // guard in authService.refreshAccessToken prevents us from
+        // racing an unrelated concurrent refresh on the retry.
+        console.warn('[App] OAuth refresh transient failure, retrying in 30s:', err?.message || err);
+        retryTimer = setTimeout(async () => {
+          try {
+            await attemptRefresh();
+          } catch (err2) {
+            forceLogout(err2);
+          }
+        }, 30000);
       }
     }, delay);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (retryTimer) clearTimeout(retryTimer);
+      stopCrossTab();
+    };
   }, [useGameStore((s) => s.oauthTokenExpiry)]);
 
   // Deep-link from player app. If it's a waitlist hand-off, emit
@@ -976,7 +1078,21 @@ export default function App() {
       if (connectHandler) socket.off('connect', connectHandler);
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [deepLinkContext, connStatus]);
+    // 2026-05-05 — was `[deepLinkContext, connStatus]`. The connStatus
+    // dep caused this effect to re-run on every socket reconnect, and
+    // the cleanup briefly removed the loginResult listener between runs.
+    // If the server's loginResult arrived during that gap (very common
+    // because authWithTicket completes within ms of `connect`, which is
+    // exactly when connStatus flips to 'connected' and triggers the
+    // re-run), the event was emitted to a listener that had already set
+    // `cancelled = true`, then handed off to a new listener that had
+    // never fired authWithTicket. Result: spinner stuck forever, no
+    // timeout (because the cleanup also clears the timer between runs).
+    // Mount-only deps keep the listener alive across reconnects; the
+    // socket.on('connect', emit) registration inside handles reconnect
+    // timing for the initial emit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkContext]);
 
   const handleSpinComplete = () => {
     setShowSpinReveal(false);
@@ -1113,8 +1229,17 @@ export default function App() {
     return (
       <div className={`screen-transition ${transitionClass}`} style={{ position: 'relative', width: '100vw', height: '100vh' }}>
         <MultiTableTabs />
+        {/* 2026-05-04 unified-push phase 3 — bottom-right banner inviting
+            online-poker players to set up tournament alerts in the league
+            player app (americanpub.poker). .online has no push of its own
+            by design; the player app is the canonical surface. */}
+        <PlayerAppPushBanner />
         <Suspense fallback={<ChunkLoader />}><GameScene /></Suspense>
-        <ErrorBoundary><Suspense fallback={null}><GameHUD /></Suspense></ErrorBoundary>
+        {/* 2026-04-22 audit fixes: the boundary moved up to the root wrapper
+            (see bottom of file). GameHUD no longer needs its own inner
+            boundary — the root one catches any render error in the whole
+            subtree and shows FriendlyErrorFallback. */}
+        <Suspense fallback={null}><GameHUD /></Suspense>
         <AchievementPopup />
         <LevelUpPopup />
         <MissionsPanel />
@@ -1250,4 +1375,17 @@ function getOrdinal(n) {
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;
   return s[(v - 20) % 10] || s[v] || s[0];
+}
+
+// Root-level wrapping (2026-04-22 audit fixes). The ErrorBoundary sits
+// OUTSIDE App so that any crash in any screen (lobby, login, table,
+// avatar, replay viewer) renders the FriendlyErrorFallback rather than
+// a white screen. Kept as a default export so main.jsx does not need
+// to change.
+export default function RootApp() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
 }

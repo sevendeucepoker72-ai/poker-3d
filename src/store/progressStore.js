@@ -108,6 +108,12 @@ function loadSavedProgress() {
 }
 
 function saveProgress(progress) {
+  // 2026-04-22 audit — fresh-init clobber gate. Never persist an
+  // un-hydrated (default-init) progress object to sessionStorage: on
+  // the next page load it would be read back as if it were real data
+  // and race the server's `playerProgress` event. See
+  // `setProgress` comment above and CLAUDE.md "User data MUST persist".
+  if (!progress || progress.hydrated !== true) return;
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
     // Also sync stats for AdvancedAnalytics leaks tab
@@ -201,10 +207,21 @@ function getDailySeed() {
   return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
 }
 
-/** Build a default progress object for a brand-new player. */
+/** Build a default progress object for a brand-new player.
+ *
+ * 2026-04-22 audit — fresh-init clobber risk:
+ * `hydrated: false` until the server's `playerProgress` event arrives.
+ * All write paths (saveProgress, persistenceService._doSync) MUST gate
+ * on `hydrated === true` — otherwise a slow-connect race lets these
+ * default values (chips=5000, level=1, stars=0) stomp the real DB row
+ * via `saveProgress` before the server hydrate completes.
+ * See CLAUDE.md "User data MUST persist — no exceptions" — this is the
+ * same bug class as the persistStars / ensureHydrated history there.
+ */
 function defaultProgress() {
   const info = levelFromTotalXp(0);
   return {
+    hydrated: false,
     playerName: sessionStorage.getItem('poker_username') || 'Player',
     level: 1,
     xp: 0,
@@ -288,7 +305,27 @@ export const useProgressStore = create((set, get) => ({
 
   setProgress: (incoming) => {
     const prev = get().progress || defaultProgress();
+    // NOTE (2026-04-22 audit): `{...prev, ...incoming}` is INTENTIONAL.
+    // If the server stops sending a field on a partial update, we keep
+    // the previous value rather than wiping it. Do NOT "fix" this into
+    // `{...incoming}` — that would erase any field the server omits on
+    // an incremental update (e.g. a delta that only sends `xp`/`chips`
+    // would blow away positionStats, handHistory, inventory, etc.).
+    // See CLAUDE.md "User data MUST persist" — this is the same class
+    // of regression as the persistStars fresh-init clobber.
     const merged = { ...prev, ...incoming };
+
+    // 2026-04-22 audit — fresh-init clobber gate:
+    // Mark progress as server-hydrated the first time we see a payload
+    // that looks like a real server hydrate (has a userId). Until this
+    // flag flips true, saveProgress() + persistenceService._doSync()
+    // refuse to write — preventing the in-memory `defaultProgress()`
+    // (chips=5000, level=1, stars=0) from stomping the DB on a slow
+    // connect race. Matches the server-side `hydrated` gate pattern in
+    // progressionManager.ts referenced in CLAUDE.md.
+    if (incoming && (incoming.userId != null || incoming.id != null)) {
+      merged.hydrated = true;
+    }
 
     // CRITICAL FIX: the server is authoritative for level/xp (it's
     // guarded by the `hydrated` flag + SQL GREATEST()). Previously this
@@ -626,8 +663,41 @@ export const useProgressStore = create((set, get) => ({
     set({ progress: updated });
   },
 
-  /** Update chip balance and persist. */
+  /**
+   * _internalSetChipsFromServer — reflect the server-authoritative chip
+   * balance into the client store.
+   *
+   * ⚠️ 2026-04-22 audit — chip-mutation boundary:
+   * This is a CLIENT-SIDE MIRROR ONLY. It does NOT write to the DB.
+   * The server is the sole authority for `users.chips` (see CLAUDE.md
+   * "Chip mutations flow through server-authoritative paths ONLY" —
+   * addChipsToUser / deductChips / pot-distribution are the only
+   * legitimate server write paths). This setter exists so the UI
+   * (HUD, lobby chip counter) stays in sync with what the server just
+   * told us the balance is.
+   *
+   * ONLY the `playerProgress` socket event handler in App.jsx is a
+   * legitimate caller. Any other caller is a symptom of a UI shortcut
+   * that is about to drift from the server — fix the shortcut, don't
+   * call this.
+   */
+  _internalSetChipsFromServer: (newChips) => {
+    const prev = get().progress || defaultProgress();
+    const updated = { ...prev, chips: newChips };
+    saveProgress(updated);
+    set({ progress: updated });
+  },
+
+  /** @deprecated — renamed to `_internalSetChipsFromServer` (2026-04-22
+   *  audit). Kept as a thin wrapper so existing callers don't break
+   *  while the audit-wave lands. New code: DO NOT call — see the
+   *  comment on `_internalSetChipsFromServer` above. */
   updateChips: (newChips) => {
+    if (typeof console !== 'undefined' && console.warn) {
+      // Intentionally loud — surfaces any non-`playerProgress` caller
+      // during the deprecation window.
+      console.warn('[progressStore] updateChips() is deprecated; only the playerProgress socket handler should update chip state. Use _internalSetChipsFromServer if you are that handler.');
+    }
     const prev = get().progress || defaultProgress();
     const updated = { ...prev, chips: newChips };
     saveProgress(updated);

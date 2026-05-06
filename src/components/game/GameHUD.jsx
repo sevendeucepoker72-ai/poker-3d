@@ -672,12 +672,25 @@ export default function GameHUD() {
   // Keep refs in sync immediately after derivation (no render lag)
   isMyTurnRef.current = isMyTurn;
 
-  // Auto-fold when the server is waiting on us but we're sitting out (joined mid-hand)
+  // Auto-fold when the server is waiting on us but we're sitting out (joined mid-hand).
+  //
+  // 2026-04-22 audit fixes:
+  //   - Block fold during Showdown/HandComplete (belt + suspenders over the
+  //     existing HandComplete check; Showdown slipped through previously).
+  //   - Delay the emit by 1s. On reconnect the client can see
+  //     serverThinksItsMyTurn flip true BEFORE hole cards / phase land in a
+  //     later delta, and we were folding a perfectly playable hand. A short
+  //     delay + cleanup gives the delta stream time to settle; if the turn
+  //     moves or the phase changes to Showdown/HandComplete first, the
+  //     cleanup cancels the pending fold.
   useEffect(() => {
     if (!serverThinksItsMyTurn) return;
     if (!sittingOutUntilNextHand.current) return;
-    if (!phase || phase === 'WaitingForPlayers' || phase === 'HandComplete') return;
-    sendAction('fold');
+    if (!phase || phase === 'WaitingForPlayers' || phase === 'HandComplete' || phase === 'Showdown') return;
+    const t = setTimeout(() => {
+      sendAction('fold');
+    }, 1000);
+    return () => clearTimeout(t);
   }, [serverThinksItsMyTurn, phase, sendAction]);
   const myChips = myPlayer?.chipCount ?? 0;
   const currentBetToMatch = Math.max(0, gameState?.currentBetToMatch || 0);
@@ -1448,9 +1461,18 @@ export default function GameHUD() {
         handId: gameState?.handId || gameState?.handNumber,
         raiseCount,
       });
-      if (mySeat?.chips != null) {
-        useProgressStore.getState().updateChips(mySeat.chips);
-      }
+      // 2026-04-22 audit fix: do NOT write mySeat.chips into the wallet.
+      // mySeat.chips is the on-table stack (buy-in minus losses plus
+      // winnings), NOT the player's off-table wallet balance. Mirroring
+      // it into progressStore.chips caused the HUD to briefly display
+      // the seated stack as the wallet total, and — worse — any code
+      // path that persisted progressStore.chips back to the server
+      // would be overwriting the real wallet with a seated-stack value.
+      //
+      // Wallet chips are server-authoritative and arrive via the
+      // `playerProgress` socket event (see CLAUDE.md — "Chip mutations
+      // flow through server-authoritative paths ONLY"). Leave that as
+      // the sole source of truth for users.chips on the client.
     }
   }, [phase, handResult, yourSeat, pot]);
 
@@ -2277,7 +2299,21 @@ export default function GameHUD() {
     }
   }, [chatInput, handleSendChat]);
 
-  // Sync color blind mode from sessionStorage changes
+  // Sync color blind mode from sessionStorage changes.
+  //
+  // Previously this block ran a 2s setInterval polling sessionStorage, which
+  // burned CPU / kept the tab non-idle every 2s for the entire session just to
+  // detect an occasional settings toggle. Replaced with an event-driven listener:
+  //
+  //   - 'storage' event: cross-tab sessionStorage mutations
+  //   - 'poker:settings-changed' custom event: same-tab mutations (dispatch this
+  //     from every `sessionStorage.setItem('app_poker_settings', ...)` call site)
+  //
+  // TODO(perf): dispatch window.dispatchEvent(new Event('poker:settings-changed'))
+  // at the write sites (currently GameHUD.jsx ~line 1827 `quickShowdown` useEffect
+  // and SettingsPanel.jsx STORAGE_KEY setter). Until both write sites emit the
+  // event, a 30s stopgap poll remains so a toggle eventually propagates to this
+  // instance; 30s is 15× cheaper than the previous 2s cadence.
   useEffect(() => {
     const handleStorage = () => {
       try {
@@ -2286,10 +2322,13 @@ export default function GameHUD() {
       } catch { /* ignore */ }
     };
     window.addEventListener('storage', handleStorage);
-    // Also poll periodically in case same-tab changes
-    const interval = setInterval(handleStorage, 2000);
+    window.addEventListener('poker:settings-changed', handleStorage);
+    // Stopgap fallback poll — 30s (was 2s). Remove once all write sites dispatch
+    // the 'poker:settings-changed' event.
+    const interval = setInterval(handleStorage, 30000);
     return () => {
       window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('poker:settings-changed', handleStorage);
       clearInterval(interval);
     };
   }, []);

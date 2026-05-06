@@ -240,6 +240,7 @@ export default function BankrollAI({ currentChips, onClose }) {
               <input
                 className="bai-input"
                 type="number"
+                inputMode="numeric"
                 min={0}
                 value={bankroll}
                 onChange={e => setBankroll(e.target.value)}
@@ -251,6 +252,7 @@ export default function BankrollAI({ currentChips, onClose }) {
               <input
                 className="bai-input"
                 type="number"
+                inputMode="numeric"
                 min={0}
                 value={sessions}
                 onChange={e => setSessions(e.target.value)}
@@ -262,6 +264,7 @@ export default function BankrollAI({ currentChips, onClose }) {
               <input
                 className="bai-input"
                 type="number"
+                inputMode="numeric"
                 value={winRate}
                 onChange={e => setWinRate(e.target.value)}
               />
@@ -272,6 +275,7 @@ export default function BankrollAI({ currentChips, onClose }) {
               <input
                 className="bai-input"
                 type="number"
+                inputMode="numeric"
                 min={1}
                 value={stdDev}
                 onChange={e => setStdDev(e.target.value)}

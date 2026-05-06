@@ -6,6 +6,12 @@
  */
 
 import { getAuthToken } from '../services/tokenStorage';
+import { fetchWithTimeout } from '../utils/fetchWithTimeout';
+
+// Per-call timeout for master-API notification endpoints. 10s is generous
+// for VAPID key fetch / subscribe POST; stalled mobile networks previously
+// hung these indefinitely, blocking the permission UI and queued work.
+const PUSH_FETCH_TIMEOUT_MS = 10000;
 
 const MASTER_API =
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_MASTER_API_URL) ||
@@ -66,9 +72,9 @@ export async function subscribeToPush(userId) {
 
     const reg = await navigator.serviceWorker.ready;
 
-    const keyRes = await fetch(`${MASTER_API}/notifications/vapid-key`, {
+    const keyRes = await fetchWithTimeout(`${MASTER_API}/notifications/vapid-key`, {
       headers: authHeaders(),
-    });
+    }, PUSH_FETCH_TIMEOUT_MS);
     if (!keyRes.ok) return false;
     const { publicKey } = await keyRes.json();
     if (!publicKey) return false;
@@ -78,11 +84,11 @@ export async function subscribeToPush(userId) {
       applicationServerKey: urlB64ToUint8Array(publicKey),
     });
 
-    const res = await fetch(`${MASTER_API}/notifications/push-subscribe`, {
+    const res = await fetchWithTimeout(`${MASTER_API}/notifications/push-subscribe`, {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ userId, subscription: subscription.toJSON() }),
-    });
+    }, PUSH_FETCH_TIMEOUT_MS);
     return res.ok;
   } catch (e) {
     console.error('[push] subscribe failed:', e);
@@ -98,11 +104,11 @@ export async function unsubscribeFromPush(userId) {
     const sub = await reg.pushManager.getSubscription();
     if (sub) await sub.unsubscribe();
     if (userId) {
-      await fetch(`${MASTER_API}/notifications/push-unsubscribe`, {
+      await fetchWithTimeout(`${MASTER_API}/notifications/push-unsubscribe`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ userId }),
-      });
+      }, PUSH_FETCH_TIMEOUT_MS);
     }
     return true;
   } catch (e) {
@@ -115,9 +121,9 @@ export async function unsubscribeFromPush(userId) {
 export async function getPushStatus(userId) {
   if (!userId) return { push_enabled: false, has_subscription: false };
   try {
-    const res = await fetch(`${MASTER_API}/notifications/push-status/${userId}`, {
+    const res = await fetchWithTimeout(`${MASTER_API}/notifications/push-status/${userId}`, {
       headers: authHeaders(),
-    });
+    }, PUSH_FETCH_TIMEOUT_MS);
     return await res.json();
   } catch {
     return { push_enabled: false, has_subscription: false };
@@ -144,11 +150,11 @@ export async function checkSubscriptionHealth(userId) {
     // Silent re-sync when the browser has a sub but the server doesn't.
     if (browserSub && !backendHas) {
       try {
-        const res = await fetch(`${MASTER_API}/notifications/push-subscribe`, {
+        const res = await fetchWithTimeout(`${MASTER_API}/notifications/push-subscribe`, {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ userId, subscription: browserSub.toJSON() }),
-        });
+        }, PUSH_FETCH_TIMEOUT_MS);
         if (res.ok) return { status: 'resynced' };
       } catch (e) {
         console.warn('[push] resync failed:', e);

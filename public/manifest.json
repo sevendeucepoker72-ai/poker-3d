@@ -2,6 +2,7 @@
   "name": "American Pub Poker",
   "short_name": "Pub Poker",
   "description": "The most advanced free online poker platform — play in 15 seconds, no download needed",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -10,9 +11,10 @@
   "theme_color": "#FFD700",
   "categories": ["games", "entertainment"],
   "lang": "en-US",
+  "_todo_maskable_pngs": "PWA audit: rasterize /poker-icon-192.svg and /poker-icon-512.svg into /poker-icon-192.png and /poker-icon-512.png (192x192 and 512x512, safe area = centered inner 80% per Android mask). Chromium installers require raster PNGs for purpose 'maskable' on Android; SVG maskable entries are ignored. Generate via `resvg`, Figma export, or `sharp` in a build step, then add these entries to the icons array below: { src: /poker-icon-192.png, sizes: 192x192, type: image/png, purpose: maskable } and { src: /poker-icon-512.png, sizes: 512x512, type: image/png, purpose: maskable }. Do NOT invent binary files.",
   "icons": [
-    { "src": "/poker-icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
-    { "src": "/poker-icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/poker-icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/poker-icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any" },
     { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
   "shortcuts": [

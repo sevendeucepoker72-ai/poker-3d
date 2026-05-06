@@ -16,8 +16,15 @@ html, body, #root {
 /* ── Global touch targets & tap feedback ──────────────────────── */
 * {
   -webkit-tap-highlight-color: transparent;
-  -webkit-touch-callout: none;
+}
+/* user-select: none tightened to interactive-only (2026-04-22 audit).
+   The former `* { user-select: none }` rule blocked text selection in
+   hand history, chat transcripts, showdown breakdowns, etc. Scope it to
+   elements users are expected to tap rather than read/copy. */
+button, [role="button"], .action-btn, .card, .seat, .nameplate {
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 input, textarea {
   user-select: text;
@@ -889,6 +896,17 @@ input, textarea {
 .nameplate__name  { font-size: 15px !important; font-weight: 800 !important; }
 .nameplate__chips { font-size: 13px !important; font-weight: 600 !important; }
 
+/* Ellipsis — long display names (15+ chars) overflow the 155px
+   nameplate and push the chip total off the card. Clip + ellipsis
+   keeps the card shape stable. (2026-04-22 mobile audit.) */
+.nameplate__name,
+.nameplate__chips {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
 /* ================================================================
    MULTI-TABLE TABS
    ================================================================ */
@@ -1270,5 +1288,40 @@ input, textarea {
   * {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* ================================================================
+   FORM INPUTS — 16px font-size on mobile prevents iOS zoom-on-focus
+   ================================================================
+   Safari iOS auto-zooms any focused text/number/tel/email/password
+   input whose computed font-size is < 16px — a massive UX regression
+   that breaks layout and requires a pinch-out to recover. Forcing 16px
+   at the boundary keeps every form sane. (2026-04-22 mobile audit.)
+   Specific login / raise / chat inputs already have their own 16px
+   rules above; this is the catch-all. */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ================================================================
+   PERF — disable heavy backdrop-filter blurs on narrow viewports
+   ================================================================
+   The global `@media (max-width: 767px) * { backdrop-filter: none }`
+   above already handles most cases, but these three translucent
+   surfaces (adv toolbar, chat panel, PWA install banner) also rely
+   on an opaque fallback background for readability — make that
+   explicit for the very-narrow viewport tier. (2026-04-22 audit.) */
+@media (max-width: 400px) {
+  .adv-toolbar,
+  .chat-panel,
+  .pwa-install-banner {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(0, 0, 0, 0.7) !important;
   }
 }

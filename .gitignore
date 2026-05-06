@@ -7,3 +7,8 @@ dist/
 # Never commit FTP / deploy credentials
 .ftp-credentials
 .ftp-credentials.local
+
+# 2026-05-06 — additional ignores
+.env.development.local
+dist-mobile/
+dist.zip

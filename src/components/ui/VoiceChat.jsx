@@ -92,7 +92,11 @@ export default function VoiceChat({ tableId, username, visible }) {
       const remoteStream = e.streams[0];
       const audio = new Audio();
       audio.srcObject = remoteStream;
-      audio.play().catch(() => {});
+      // Autoplay can reject on browsers with strict autoplay policies (the
+       // user hasn't interacted yet, or the tab is backgrounded). Swallow is
+       // safe — they'll hear audio once they gesture — but log at debug so
+       // the failure shows up in dev-tools when diagnosing "I can't hear X".
+      audio.play().catch((err) => { console.debug('[voice] remote audio autoplay blocked:', err?.name || err); });
       startSpeakingDetection(socketId, remoteStream);
     };
 

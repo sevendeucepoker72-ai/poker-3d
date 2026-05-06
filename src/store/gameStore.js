@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getSocket } from '../services/socketService';
+import { clearAllProgressionStorage, resetSyncState } from '../services/persistenceService';
 
 const AVATAR_STORAGE_KEY = 'poker_avatar';
 
@@ -103,10 +104,30 @@ export const useGameStore = create((set, get) => ({
       chips: userData.chips,
       screen: userData.needsUsername ? 'chooseUsername' : 'lobby',
     });
+    // 2026-05-05 Phase 3 — broadcast login to other same-origin tabs
+    // (e.g. user has .online open in two tabs and logs in on tab A;
+    //  tab B should pick up the session without a refresh).
+    try {
+      const mod = require('../services/authBroadcast');
+      if (mod && typeof mod.broadcastAuth === 'function') {
+        mod.broadcastAuth({ type: 'login', userId: userData.id });
+      }
+    } catch {}
   },
 
   logout: () => {
     const idToken = get().oauthIdToken;
+    const previousUserId = get().userId;
+    // 2026-05-05 Phase 3 — broadcast logout to other same-origin tabs
+    // BEFORE clearing local state, so peer tabs tear down their UI
+    // synchronously (no race window where they could read stale state).
+    try {
+      // Lazy require to avoid hoisting cycles with auth modules.
+      const mod = require('../services/authBroadcast');
+      if (mod && typeof mod.broadcastAuth === 'function') {
+        mod.broadcastAuth({ type: 'logout', userId: previousUserId });
+      }
+    } catch {}
     // Auth tokens — explicit logout wipes BOTH stores (localStorage +
     // sessionStorage) so "Keep me signed in" state from a prior tab
     // can't resurrect the session on the next page load.
@@ -122,10 +143,21 @@ export const useGameStore = create((set, get) => ({
     sessionStorage.removeItem('poker_player_stats');
     sessionStorage.removeItem('poker_remember_phone');
     // Cached progression state — stars, streak, battle pass, etc.
+    // `app_bp_premium` is in CLIENT_KEYS (cleared by the helper below);
+    // `app_poker_login_rewards` is not server-synced, clear it here.
     sessionStorage.removeItem('app_poker_login_rewards');
-    sessionStorage.removeItem('app_bp_premium');
     // Ephemeral UI caches
     sessionStorage.removeItem('poker_hand_history');
+    // 2026-04-22 audit — shared-device progression leak.
+    // Wipe every progression-cache key (career, missions, BP, notes,
+    // settings, bet sizes, autoRebuy, runItTwice, autoDeal, sfxVol) +
+    // the cached progressStore snapshot. Single source of truth for
+    // the key list lives in persistenceService.js (CLIENT_KEYS +
+    // EXTRA_PROGRESSION_KEYS) so we don't drift.
+    clearAllProgressionStorage();
+    // Zero the sync dedupe hash so the next account's first flush isn't
+    // silently skipped because its clientData happens to hash identically.
+    resetSyncState();
     set({
       isLoggedIn: false,
       userId: null,

@@ -1,10 +1,17 @@
 /**
  * American Pub Poker — Service Worker
  * Strategy:
- *   - App shell (HTML, CSS, JS chunks) → Cache First, with background refresh
- *   - Socket.io / API calls → Network Only (never cache live game data)
- *   - 3D model assets (.glb, textures) → Cache First (large, rarely change)
- *   - Offline fallback → serve cached index.html for navigation requests
+ *   - Navigation (HTML / '/') → Network First, falls back to cached '/' then /offline.html.
+ *     HTML must NOT go stale: the freshly-hashed /assets/*.js references live inside
+ *     it, and a stale shell points at asset URLs that no longer exist on the CDN.
+ *   - Hashed build assets (/assets/*.{js,css,woff2,...}) → Cache First, treated as
+ *     immutable. Vite emits content-hashed filenames so the URL itself changes on
+ *     any content change — we never need to revalidate.
+ *   - Other static assets (favicons, models, loose images in /public) → Cache First
+ *     with background refresh (URLs are stable; refresh catches in-place edits).
+ *   - Socket.io / API / auth calls → Network Only (never cache live game data).
+ *   - Offline fallback → dedicated /offline.html precached at install; navigation
+ *     falls back to it when both network and cached '/' are unavailable.
  */
 
 // Cache name is suffixed with a build-time token — the `build` npm script runs
@@ -20,11 +27,28 @@ if (!BUILD_TOKEN_OK) {
   // eslint-disable-next-line no-console
   console.error('[sw] BUILD_TIME token was not injected at build. Refusing to install.');
 }
-const CACHE_NAME = 'pub-poker-v2-' + (BUILD_TOKEN_OK ? BUILD_TOKEN : 'broken');
-const SHELL_URLS = ['/', '/manifest.json', '/favicon.svg'];
+const CACHE_NAME = 'pub-poker-v3-' + (BUILD_TOKEN_OK ? BUILD_TOKEN : 'broken');
+// Include /offline.html so navigation has a sensible fallback even when '/' is
+// unavailable (e.g. first-ever offline load before '/' was successfully
+// cached). '/' is still precached to serve the full SPA shell when reachable.
+const SHELL_URLS = ['/', '/offline.html', '/manifest.json', '/favicon.svg'];
 
 // Asset types that benefit from aggressive caching
 const CACHE_FIRST_EXTS = ['.js', '.css', '.woff2', '.woff', '.ttf', '.glb', '.jpg', '.png', '.svg', '.webp'];
+
+// Vite emits hashed filenames into /assets/. Those URLs are immutable — the
+// hash changes whenever the content changes, so we can treat cache hits as
+// authoritative and never revalidate. Non-hashed static files (favicons, /models,
+// loose images in /public) keep the cache-first-with-background-refresh path.
+function isImmutableAsset(url) {
+  try {
+    const u = new URL(url);
+    if (!u.pathname.startsWith('/assets/')) return false;
+    return CACHE_FIRST_EXTS.some((ext) => u.pathname.endsWith(ext));
+  } catch {
+    return false;
+  }
+}
 
 function isCacheFirst(url) {
   try {
@@ -76,15 +100,48 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const { request } = e;
 
-  // Navigation → serve cached index.html as fallback (SPA offline support)
+  // Navigation / HTML → Network First. A stale index.html is worse than a
+  // network round-trip because its inline <script type="module" src="/assets/xxx-<hash>.js">
+  // tags reference files that no longer exist after a redeploy. On network
+  // failure we fall back to the last-cached '/', then to the dedicated
+  // /offline.html shell so the user sees *something* instead of a browser error.
   if (isNavigationRequest(request)) {
-    e.respondWith(
-      fetch(request).catch(() => caches.match('/'))
-    );
+    e.respondWith((async () => {
+      try {
+        const fresh = await fetch(request);
+        // Opportunistically refresh the cached '/' shell so future offline
+        // loads get the latest HTML.
+        if (fresh && fresh.ok) {
+          const cache = await caches.open(CACHE_NAME);
+          cache.put('/', fresh.clone()).catch(() => {});
+        }
+        return fresh;
+      } catch {
+        const cache = await caches.open(CACHE_NAME);
+        return (await cache.match('/')) || (await cache.match('/offline.html')) || Response.error();
+      }
+    })());
     return;
   }
 
-  // Cache-first for static assets
+  // Cache-first IMMUTABLE for hashed /assets/* — URL changes on content change,
+  // so a cache hit is always correct. No background refresh (the file can't
+  // have changed without the URL changing).
+  if (isImmutableAsset(request.url)) {
+    e.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(request);
+      if (cached) return cached;
+      const response = await fetch(request);
+      if (response.ok) cache.put(request, response.clone());
+      return response;
+    })());
+    return;
+  }
+
+  // Cache-first WITH background refresh for other static assets (favicons,
+  // models, loose images under /public — URLs are stable; content may change
+  // in-place across deploys).
   if (isCacheFirst(request.url)) {
     e.respondWith(
       caches.open(CACHE_NAME).then(async (cache) => {

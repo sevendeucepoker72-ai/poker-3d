@@ -2,6 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Security: CSP fallback for environments where the server does not
+         set the Content-Security-Policy header (e.g. Apache without mod_headers).
+         frame-ancestors is intentionally omitted — it is ignored in <meta>.
+         Kept in sync with public/.htaccess. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://auth.americanpubpoker.online https://poker-server-production-60c0.up.railway.app wss://poker-server-production-60c0.up.railway.app https://poker-prod-api-azeg4kcklq-uc.a.run.app; img-src 'self' data: https:; font-src 'self' data:; base-uri 'self'; object-src 'none'; form-action 'self'" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <!-- Mobile audit M1: viewport-fit=cover makes env(safe-area-inset-*)
          actually compute on iPhones with the notch / Dynamic Island.
@@ -15,14 +21,18 @@
     <title>American Pub Poker</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Accessibility: skip link must be the first focusable element in the
+         document so keyboard / screen-reader users can jump past any
+         repeated chrome and land in the primary content. Styled in
+         src/a11y.css (visually hidden until focused). -->
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <main id="main-content">
+      <div id="root"></div>
+    </main>
+    <!-- 2026-05-05 — service-worker registration moved into main.jsx
+         (which is loaded as a same-origin module — allowed by CSP).
+         Inline <script> blocks were CSP-rejected (`script-src 'self'`)
+         and only logged a noisy console error without registering. -->
     <script type="module" src="/src/main.jsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
-        });
-      }
-    </script>
   </body>
 </html>

@@ -416,7 +416,19 @@ const SeatPod = memo(function SeatPod({
   const winnerInfo = showdown ? handResult?.winners?.find(w => w.seatIndex === seatIndex) : null;
   const isWinner = !!winnerInfo;
 
-  const showCardsFaceUp = isMyPlayer || (showdown && holeCards?.length > 0 && holeCards[0]?.rank != null);
+  // 2026-04-22 audit fix: tighten the phase gate on revealing other players'
+  // hole cards. Previously a lingering holeCards array (e.g. from a stale
+  // handResult or a delta that carried cards but no phase update yet) could
+  // briefly render opponent cards face-up outside Showdown/HandComplete.
+  // Require: Showdown or HandComplete phase AND the seat isn't folded/mucked.
+  // Defensive — never reveal cards just because the server sent them.
+  const canRevealAtShowdown =
+    (phase === 'Showdown' || phase === 'HandComplete') &&
+    !isFolded &&
+    !serverSeat?.mucked;
+  const showCardsFaceUp =
+    isMyPlayer ||
+    (canRevealAtShowdown && holeCards?.length > 0 && holeCards[0]?.rank != null);
   const showCardBacks   = !isFolded && !isMyPlayer && phase !== 'WaitingForPlayers' && phase !== 'HandComplete';
 
   // Derive timer % from server timestamp (timerTick forces re-render each second)

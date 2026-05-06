@@ -1602,7 +1602,9 @@
   border-radius: 4px;
   background: rgba(20, 20, 40, 0.8);
   color: #DDD;
-  font-size: 0.75rem;
+  /* 16px globally (not in a mobile media query) — iOS Safari zooms on
+     focus for any input < 16px even on landscape tablets. (2026-04-22 audit.) */
+  font-size: 16px;
   outline: none;
   transition: border-color 0.2s;
 }

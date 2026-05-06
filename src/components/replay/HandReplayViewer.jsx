@@ -355,14 +355,59 @@ export default function HandReplayViewer({ history, onClose }) {
   }, []);
 
   const handleShareHand = useCallback(() => {
-    // Encode history as base64 URL parameter — viewable by anyone without login
+    // Encode history as base64 URL parameter — viewable by anyone without login.
+    // Copy path: try async Clipboard API first, fall back to execCommand for
+    // older browsers / HTTP origins / sandboxed iframes, and alert the user
+    // with the URL if both paths fail (previously a silent .catch meant the
+    // "Link copied!" toast lied — the user thought it copied but it hadn't).
+    let url;
     try {
       const encoded = btoa(encodeURIComponent(JSON.stringify(history)));
-      const url = `${window.location.origin}${window.location.pathname}?replay=${encoded}`;
-      navigator.clipboard.writeText(url).catch(() => {});
-    } catch (_) {}
-    setShareToast(true);
-    setTimeout(() => setShareToast(false), 2500);
+      url = `${window.location.origin}${window.location.pathname}?replay=${encoded}`;
+    } catch (_) {
+      // Encoding failure — nothing to copy. Surface to user so they aren't
+      // left with a false "Link copied!" toast.
+      // eslint-disable-next-line no-alert
+      alert("Couldn't build share link — please try again.");
+      return;
+    }
+
+    const legacyCopy = () => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    };
+
+    const onSuccess = () => {
+      setShareToast(true);
+      setTimeout(() => setShareToast(false), 2500);
+    };
+    const onFailure = () => {
+      // eslint-disable-next-line no-alert
+      alert("Couldn't copy — please copy manually: " + url);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(onSuccess).catch(() => {
+        if (legacyCopy()) onSuccess();
+        else onFailure();
+      });
+    } else if (legacyCopy()) {
+      onSuccess();
+    } else {
+      onFailure();
+    }
   }, [history]);
 
   if (!history || steps.length === 0) return null;

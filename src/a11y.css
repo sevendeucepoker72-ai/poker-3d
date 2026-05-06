@@ -1,0 +1,94 @@
+/*
+ * Global accessibility rules.
+ *
+ * Imported FIRST in main.jsx (before index.css, themes.css, mobile.css and
+ * mobile-overrides.css) so component-specific `outline: 0` rules win at
+ * paint time for mouse users, while the `:focus-visible` rule here
+ * restores a visible ring for keyboard users. Browsers emit `:focus` on
+ * every focusable element regardless of input modality, but they only
+ * emit `:focus-visible` when the focus was produced by keyboard / AT —
+ * so `:focus { outline: none }` + `:focus-visible { outline: ... }`
+ * together preserve the "no ring on click" UX while restoring keyboard
+ * access.
+ */
+
+/* Remove the default focus outline on mouse / touch activation... */
+*:focus {
+  outline: none;
+}
+
+/* ...but restore a high-contrast ring for keyboard / AT focus. */
+*:focus-visible {
+  outline: 2px solid #00D9FF;
+  outline-offset: 2px;
+  /* Ensure the ring is painted above surrounding decorations (cards,
+     glow orbs, gradient backgrounds) that would otherwise obscure it. */
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.55);
+}
+
+/*
+ * Respect the user's reduced-motion preference. WinConfetti pieces and a
+ * handful of other looping JS-driven animations also self-gate via the
+ * `useReducedMotion` hook — this media query covers everything else
+ * (CSS keyframes, transitions, smooth-scroll).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * Skip-link — visible only when focused. First child of <body> in
+ * index.html. Clicking it jumps past the repetitive nav chrome and
+ * drops focus at #main-content so keyboard / screen-reader users can
+ * reach the primary content without tabbing through every header link.
+ */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  z-index: 9999;
+  background: #0a1628;
+  color: #00D9FF;
+  padding: 10px 16px;
+  border: 2px solid #00D9FF;
+  border-radius: 6px;
+  font: 600 0.95rem system-ui, -apple-system, sans-serif;
+  text-decoration: none;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  left: 12px;
+  top: 12px;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  outline: none;
+}
+
+/*
+ * Visually-hidden helper for screen-reader-only content (aria-live
+ * mirrors, off-screen labels, etc.). Using the "clip" pattern keeps
+ * the element in the accessibility tree while hiding it from sighted
+ * users — `display: none` would hide it from AT as well.
+ */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}

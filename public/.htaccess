@@ -1,3 +1,32 @@
+# Security headers — applied site-wide. Wrapped in mod_headers guard so a
+# misconfigured Apache without mod_headers loaded won't hard-fail; headers
+# simply won't be set (fall-back: CSP + referrer <meta> tags in index.html).
+<IfModule mod_headers.c>
+    # Content-Security-Policy — locks down where the app can load / talk to.
+    # connect-src origins:
+    #   self                                                       — same-origin API/static
+    #   https://auth.americanpubpoker.online                       — OIDC auth server (authService.js AUTH_SERVER)
+    #   https://poker-server-production-60c0.up.railway.app        — Railway socket backend (HTTPS upgrade)
+    #   wss://poker-server-production-60c0.up.railway.app          — Socket.IO websocket transport
+    #   https://poker-prod-api-azeg4kcklq-uc.a.run.app             — master poker-api (avatars, qualifiers)
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://auth.americanpubpoker.online https://poker-server-production-60c0.up.railway.app wss://poker-server-production-60c0.up.railway.app https://poker-prod-api-azeg4kcklq-uc.a.run.app; img-src 'self' data: https:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+
+    # Clickjacking — redundant with frame-ancestors 'none' but retained for older browsers.
+    Header always set X-Frame-Options "DENY"
+
+    # MIME sniffing — prevent browser from second-guessing Content-Type.
+    Header always set X-Content-Type-Options "nosniff"
+
+    # Referrer — prevents query-param tokens leaking to third-party origins.
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Permissions — explicitly deny sensor/payment APIs the poker app does not use.
+    Header always set Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=()"
+
+    # HSTS — force HTTPS for 1y including subdomains.
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</IfModule>
+
 Options -MultiViews
 RewriteEngine On
 RewriteBase /

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import useReducedMotion from '../../hooks/useReducedMotion';
 import './WinConfetti.css';
 
 const CONFETTI_COLORS = [
@@ -35,7 +36,8 @@ function generatePieces(count) {
   return pieces;
 }
 
-export default function WinConfetti({ chipsWon }) {
+export default function WinConfetti({ chipsWon, disabled }) {
+  const prefersReducedMotion = useReducedMotion();
   const [visible, setVisible] = useState(true);
   const [pieces] = useState(() => generatePieces(50));
   const timerRef = useRef(null);
@@ -50,6 +52,14 @@ export default function WinConfetti({ chipsWon }) {
     };
   }, []);
 
+  // Accessibility: skip the flood of animated particles for users who
+  // opted into reduced motion (vestibular / photosensitivity concerns) or
+  // when the caller explicitly disables the effect. Screen readers still
+  // pick up the "BIG WIN" announcement through the chip-award toast
+  // elsewhere in GameHUD, so we aren't dropping information — only the
+  // decorative particle animation. Render null so the component is also
+  // a no-op for `display: none` / layout purposes.
+  if (disabled || prefersReducedMotion) return null;
   if (!visible) return null;
 
   return (

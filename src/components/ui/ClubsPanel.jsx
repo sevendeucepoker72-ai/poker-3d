@@ -27,6 +27,48 @@ const VARIANT_OPTIONS = [
   { value: 'seven-card-stud', label: '7-Card Stud' },
 ];
 
+// ─── Clipboard helper (module-scoped) ───
+// Why this lives here: the two `navigator.clipboard.writeText(...).catch(() => {})`
+// call sites inside this file silently swallowed failures — on HTTP origins,
+// inside iframes without the permission, or in older browsers, the user
+// clicked "Copy" and nothing happened with no feedback. This helper adds:
+//   1) a legacy `document.execCommand('copy')` fallback for browsers where
+//      `navigator.clipboard` is undefined (iOS < 13.4, older Edge, http://),
+//   2) a user-visible alert when both paths fail, instead of silent loss.
+// Returns true on success, false otherwise.
+function copyTextToClipboard(text) {
+  if (text == null) return false;
+  const legacyCopy = () => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(() => {
+      if (!legacyCopy()) {
+        // eslint-disable-next-line no-alert
+        alert("Couldn't copy — please copy manually: " + text);
+      }
+    });
+    return true;
+  }
+  if (legacyCopy()) return true;
+  // eslint-disable-next-line no-alert
+  alert("Couldn't copy — please copy manually: " + text);
+  return false;
+}
+
 // ─── Sub-Components ───
 
 function RoleBadge({ role }) {
@@ -43,10 +85,23 @@ function RoleBadge({ role }) {
 function ClubCodeDisplay({ code }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
-    navigator.clipboard.writeText(code).then(() => {
+    // Route through the module-level helper: async Clipboard API with
+    // execCommand fallback, and a user-visible alert when both paths fail
+    // (previously a silent `.catch(() => {})` meant the user saw nothing).
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(() => {
+        if (copyTextToClipboard(code)) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }
+      });
+    } else if (copyTextToClipboard(code)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {});
+    }
   };
   return (
     <span className="club-code-display" onClick={handleCopy} title="Click to copy">
@@ -951,9 +1006,11 @@ export default function ClubsPanel({ onClose }) {
   };
 
   const handleCopyReferralCode = () => {
-    if (referralCode) {
-      navigator.clipboard.writeText(referralCode).catch(() => {});
-    }
+    if (!referralCode) return;
+    // copyTextToClipboard handles legacy execCommand fallback and surfaces
+    // an alert if both paths fail — previously the silent `.catch(() => {})`
+    // meant a failed copy was indistinguishable from success.
+    copyTextToClipboard(referralCode);
   };
 
   const handleJoinByReferral = () => {
@@ -1220,6 +1277,7 @@ export default function ClubsPanel({ onClose }) {
         <label>Max Members</label>
         <input
           type="number"
+          inputMode="numeric"
           className="clubs-input clubs-input-small"
           value={createMaxMembers}
           onChange={(e) => setCreateMaxMembers(Math.max(2, Math.min(500, Number(e.target.value) || 100)))}
@@ -1576,10 +1634,10 @@ export default function ClubsPanel({ onClose }) {
             <div className="clubs-form-group"><label>Tournament Name</label><input type="text" className="clubs-input" value={tourneyName} onChange={(e) => setTourneyName(e.target.value)} placeholder="Sunday Showdown" maxLength={40} /></div>
             <div className="clubs-form-group"><label>Format</label><select className="clubs-select" value={tourneyFormat} onChange={(e) => setTourneyFormat(e.target.value)}><option value="freezeout">Freezeout</option><option value="rebuy">Rebuy</option><option value="bounty">Bounty</option></select></div>
             <div className="clubs-form-row">
-              <div className="clubs-form-group"><label>Buy-In</label><input type="number" className="clubs-input clubs-input-small" value={tourneyBuyIn} onChange={(e) => setTourneyBuyIn(Number(e.target.value) || 100)} min={0} /></div>
-              <div className="clubs-form-group"><label>Starting Chips</label><input type="number" className="clubs-input clubs-input-small" value={tourneyStartingChips} onChange={(e) => setTourneyStartingChips(Number(e.target.value) || 5000)} min={100} /></div>
+              <div className="clubs-form-group"><label>Buy-In</label><input type="number" inputMode="numeric" className="clubs-input clubs-input-small" value={tourneyBuyIn} onChange={(e) => setTourneyBuyIn(Number(e.target.value) || 100)} min={0} /></div>
+              <div className="clubs-form-group"><label>Starting Chips</label><input type="number" inputMode="numeric" className="clubs-input clubs-input-small" value={tourneyStartingChips} onChange={(e) => setTourneyStartingChips(Number(e.target.value) || 5000)} min={100} /></div>
             </div>
-            <div className="clubs-form-group"><label>Max Players</label><input type="number" className="clubs-input clubs-input-small" value={tourneyMaxPlayers} onChange={(e) => setTourneyMaxPlayers(Math.max(2, Math.min(200, Number(e.target.value) || 20)))} min={2} max={200} /></div>
+            <div className="clubs-form-group"><label>Max Players</label><input type="number" inputMode="numeric" className="clubs-input clubs-input-small" value={tourneyMaxPlayers} onChange={(e) => setTourneyMaxPlayers(Math.max(2, Math.min(200, Number(e.target.value) || 20)))} min={2} max={200} /></div>
             <div className="clubs-form-group"><label>Scheduled Start</label><input type="datetime-local" className="clubs-input" value={tourneyScheduledAt} onChange={(e) => setTourneyScheduledAt(e.target.value)} /></div>
             <div className="clubs-modal-actions">
               <button className="clubs-btn" onClick={() => setShowCreateTournament(false)}>Cancel</button>
@@ -1597,12 +1655,12 @@ export default function ClubsPanel({ onClose }) {
             <div className="clubs-form-group"><label>Table Name</label><input type="text" className="clubs-input" value={schedTableName} onChange={(e) => setSchedTableName(e.target.value)} placeholder="Evening Cash Game" maxLength={30} /></div>
             <div className="clubs-form-group"><label>Variant</label><select className="clubs-select" value={schedTableVariant} onChange={(e) => setSchedTableVariant(e.target.value)}>{VARIANT_OPTIONS.map((v) => (<option key={v.value} value={v.value}>{v.label}</option>))}</select></div>
             <div className="clubs-form-row">
-              <div className="clubs-form-group"><label>Small Blind</label><input type="number" className="clubs-input clubs-input-small" value={schedTableSB} onChange={(e) => setSchedTableSB(Number(e.target.value) || 25)} min={1} /></div>
-              <div className="clubs-form-group"><label>Big Blind</label><input type="number" className="clubs-input clubs-input-small" value={schedTableBB} onChange={(e) => setSchedTableBB(Number(e.target.value) || 50)} min={2} /></div>
+              <div className="clubs-form-group"><label>Small Blind</label><input type="number" inputMode="numeric" className="clubs-input clubs-input-small" value={schedTableSB} onChange={(e) => setSchedTableSB(Number(e.target.value) || 25)} min={1} /></div>
+              <div className="clubs-form-group"><label>Big Blind</label><input type="number" inputMode="numeric" className="clubs-input clubs-input-small" value={schedTableBB} onChange={(e) => setSchedTableBB(Number(e.target.value) || 50)} min={2} /></div>
             </div>
             <div className="clubs-form-row">
-              <div className="clubs-form-group"><label>Min Buy-In</label><input type="number" className="clubs-input clubs-input-small" value={schedTableMinBuy} onChange={(e) => setSchedTableMinBuy(Number(e.target.value) || 1000)} min={1} /></div>
-              <div className="clubs-form-group"><label>Max Buy-In</label><input type="number" className="clubs-input clubs-input-small" value={schedTableMaxBuy} onChange={(e) => setSchedTableMaxBuy(Number(e.target.value) || 5000)} min={1} /></div>
+              <div className="clubs-form-group"><label>Min Buy-In</label><input type="number" inputMode="numeric" className="clubs-input clubs-input-small" value={schedTableMinBuy} onChange={(e) => setSchedTableMinBuy(Number(e.target.value) || 1000)} min={1} /></div>
+              <div className="clubs-form-group"><label>Max Buy-In</label><input type="number" inputMode="numeric" className="clubs-input clubs-input-small" value={schedTableMaxBuy} onChange={(e) => setSchedTableMaxBuy(Number(e.target.value) || 5000)} min={1} /></div>
             </div>
             <div className="clubs-form-group"><label>Scheduled Time</label><input type="datetime-local" className="clubs-input" value={schedTableTime} onChange={(e) => setSchedTableTime(e.target.value)} /></div>
             <div className="clubs-form-group clubs-form-toggle"><label>Recurring</label><button className={'clubs-toggle ' + (schedTableRecurring ? 'active' : '')} onClick={() => setSchedTableRecurring(!schedTableRecurring)}>{schedTableRecurring ? 'ON' : 'OFF'}</button></div>
@@ -1653,6 +1711,7 @@ export default function ClubsPanel({ onClose }) {
             <label>Small Blind</label>
             <input
               type="number"
+              inputMode="numeric"
               className="clubs-input clubs-input-small"
               value={tableSB}
               onChange={(e) => setTableSB(Number(e.target.value) || 5)}
@@ -1663,6 +1722,7 @@ export default function ClubsPanel({ onClose }) {
             <label>Big Blind</label>
             <input
               type="number"
+              inputMode="numeric"
               className="clubs-input clubs-input-small"
               value={tableBB}
               onChange={(e) => setTableBB(Number(e.target.value) || 10)}
@@ -1676,6 +1736,7 @@ export default function ClubsPanel({ onClose }) {
             <label>Min Buy-In</label>
             <input
               type="number"
+              inputMode="numeric"
               className="clubs-input clubs-input-small"
               value={tableMinBuy}
               onChange={(e) => setTableMinBuy(Number(e.target.value) || 100)}
@@ -1686,6 +1747,7 @@ export default function ClubsPanel({ onClose }) {
             <label>Max Buy-In</label>
             <input
               type="number"
+              inputMode="numeric"
               className="clubs-input clubs-input-small"
               value={tableMaxBuy}
               onChange={(e) => setTableMaxBuy(Number(e.target.value) || 5000)}
@@ -1886,7 +1948,7 @@ export default function ClubsPanel({ onClose }) {
           <div className="clubs-modal-overlay" onClick={() => setShowChallengeModal(false)}>
             <div className="clubs-modal" onClick={(e) => e.stopPropagation()}>
               <h3 className="clubs-modal-title">Challenge {challengeTargetName}</h3>
-              <div className="clubs-form-group"><label>Stakes</label><input type="number" className="clubs-input clubs-input-small" value={challengeStakes} onChange={(e) => setChallengeStakes(Number(e.target.value) || 0)} min={0} /></div>
+              <div className="clubs-form-group"><label>Stakes</label><input type="number" inputMode="numeric" className="clubs-input clubs-input-small" value={challengeStakes} onChange={(e) => setChallengeStakes(Number(e.target.value) || 0)} min={0} /></div>
               <div className="clubs-modal-actions">
                 <button className="clubs-btn" onClick={() => setShowChallengeModal(false)}>Cancel</button>
                 <button className="clubs-btn clubs-btn-gold" onClick={handleCreateChallenge} disabled={loading}>Send Challenge</button>
@@ -1941,6 +2003,7 @@ export default function ClubsPanel({ onClose }) {
         <label>Max Members</label>
         <input
           type="number"
+          inputMode="numeric"
           className="clubs-input clubs-input-small"
           value={settingsMaxMembers}
           onChange={(e) => setSettingsMaxMembers(Math.max(2, Math.min(500, Number(e.target.value) || 100)))}
@@ -2087,10 +2150,10 @@ export default function ClubsPanel({ onClose }) {
               {blindStructureLevels.map((lvl, i) => (
                 <div key={i} style={{ display: 'flex', gap: '4px', alignItems: 'center', marginBottom: '4px' }}>
                   <span style={{ color: '#6b6b8a', fontSize: '0.7rem', minWidth: '18px' }}>{i + 1}.</span>
-                  <input type="number" className="clubs-input" style={{ width: '60px', padding: '4px 6px', fontSize: '0.75rem' }} value={lvl.smallBlind} onChange={(e) => handleUpdateBlindLevel(i, 'smallBlind', e.target.value)} placeholder="SB" min={1} />
-                  <input type="number" className="clubs-input" style={{ width: '60px', padding: '4px 6px', fontSize: '0.75rem' }} value={lvl.bigBlind} onChange={(e) => handleUpdateBlindLevel(i, 'bigBlind', e.target.value)} placeholder="BB" min={2} />
-                  <input type="number" className="clubs-input" style={{ width: '50px', padding: '4px 6px', fontSize: '0.75rem' }} value={lvl.ante} onChange={(e) => handleUpdateBlindLevel(i, 'ante', e.target.value)} placeholder="Ante" min={0} />
-                  <input type="number" className="clubs-input" style={{ width: '50px', padding: '4px 6px', fontSize: '0.75rem' }} value={lvl.durationMinutes} onChange={(e) => handleUpdateBlindLevel(i, 'durationMinutes', e.target.value)} placeholder="Min" min={1} />
+                  <input type="number" inputMode="numeric" className="clubs-input" style={{ width: '60px', padding: '4px 6px', fontSize: '0.75rem' }} value={lvl.smallBlind} onChange={(e) => handleUpdateBlindLevel(i, 'smallBlind', e.target.value)} placeholder="SB" min={1} />
+                  <input type="number" inputMode="numeric" className="clubs-input" style={{ width: '60px', padding: '4px 6px', fontSize: '0.75rem' }} value={lvl.bigBlind} onChange={(e) => handleUpdateBlindLevel(i, 'bigBlind', e.target.value)} placeholder="BB" min={2} />
+                  <input type="number" inputMode="numeric" className="clubs-input" style={{ width: '50px', padding: '4px 6px', fontSize: '0.75rem' }} value={lvl.ante} onChange={(e) => handleUpdateBlindLevel(i, 'ante', e.target.value)} placeholder="Ante" min={0} />
+                  <input type="number" inputMode="numeric" className="clubs-input" style={{ width: '50px', padding: '4px 6px', fontSize: '0.75rem' }} value={lvl.durationMinutes} onChange={(e) => handleUpdateBlindLevel(i, 'durationMinutes', e.target.value)} placeholder="Min" min={1} />
                   <span style={{ color: '#6b6b8a', fontSize: '0.6rem' }}>min</span>
                   {blindStructureLevels.length > 1 && <button className="clubs-btn clubs-btn-danger clubs-btn-sm" style={{ padding: '2px 6px', fontSize: '0.65rem' }} onClick={() => handleRemoveBlindLevel(i)}>X</button>}
                 </div>

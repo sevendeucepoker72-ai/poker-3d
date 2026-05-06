@@ -1,7 +1,34 @@
 import { createRoot } from 'react-dom/client'
+// a11y.css first so global :focus-visible + prefers-reduced-motion rules
+// are registered before component-specific `outline: 0` stylesheets
+// override them. See src/a11y.css for rationale.
+import './a11y.css'
 import './index.css'
 import './themes.css'
 import './mobile.css'
+
+// Global error catch-alls (2026-04-22 audit fixes). These sit OUTSIDE the
+// React tree so they pick up errors that React's ErrorBoundary can't see:
+// rejected promises from socket handlers, async listeners, dynamic imports
+// that fail offline, and anything thrown from vanilla DOM code.
+//
+// 2026-05-05 — installErrorReporting() now POSTs the same events to
+// /auth-events/log so silent crashes (frozen scene, no console) become
+// visible server-side. The console.error listeners below are KEPT for
+// local-dev visibility — both the reporter and the console handlers are
+// independent listeners, so they fire additively.
+import { installErrorReporting } from './services/errorReporting.js'
+installErrorReporting()
+
+window.addEventListener('unhandledrejection', (e) => {
+  // eslint-disable-next-line no-console
+  console.error('[unhandledrejection]', e.reason);
+});
+window.addEventListener('error', (e) => {
+  // eslint-disable-next-line no-console
+  console.error('[window.onerror]', e.error || e.message);
+});
+
 // mobile-overrides.css carries the PWA mobile-specific rules (modal
 // positioning fixes, kill backdrop-filter for paint perf, etc.). It
 // was previously only imported from main-mobile.jsx (a separate
@@ -10,6 +37,52 @@ import './mobile.css'
 // 767px blur-kill rule that "shipped" but never ran in production.
 import './mobile-overrides.css'
 import App from './App.jsx'
+// 2026-05-05 Phase 1 — session lifecycle handler. Listens for
+// visibilitychange / focus / pageshow events and force-reconnects the
+// socket if it dropped while the tab was backgrounded. Started here at
+// module top-level (before React mounts) so the listener is in place
+// for any pre-mount tab state changes too.
+import * as sessionLifecycle from './services/sessionLifecycle.js'
+sessionLifecycle.start()
+
+// 2026-05-05 Phase 2 #5 — proactive OIDC token refresh scheduler.
+// Fires 5 min before access-token expiry so an idle .online tab never
+// sits on a stale token. Cooperates with sessionLifecycle (which calls
+// refreshNow on tab resume).
+import * as authScheduler from './services/authScheduler.js'
+authScheduler.start()
+
+// 2026-05-05 Phase 3 — cross-tab logout sync. When ANY same-origin .online
+// tab logs out, we tear down THIS tab's session immediately instead of
+// waiting for it to discover the lost session via a failing API call or
+// socket disconnect.
+import { onAuthEvent } from './services/authBroadcast.js'
+import { useGameStore } from './store/gameStore.js'
+onAuthEvent((evt) => {
+  if (evt.type === 'logout') {
+    try {
+      // Skip the redirect-to-auth-server side-effect (originating tab
+      // already did it). Just clear local state by setting isLoggedIn=false
+      // and zeroing tokens — same shape as the logout() action's set().
+      useGameStore.setState({
+        isLoggedIn: false,
+        userId: null,
+        authToken: null,
+        oauthAccessToken: null,
+        oauthRefreshToken: null,
+        oauthIdToken: null,
+        oauthTokenExpiry: null,
+        playerName: '',
+        chips: 10000,
+        screen: 'login',
+      })
+    } catch (_) {
+      // If state shape changes, fall back to a hard reload so we don't
+      // leave the tab in a half-logged-out state.
+      try { window.location.reload() } catch {}
+    }
+  }
+})
 
 // Register the service worker early so push-enrollment UI doesn't race on
 // `navigator.serviceWorker.ready`.
