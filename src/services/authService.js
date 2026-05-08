@@ -8,7 +8,73 @@ const SCOPES = 'openid profile offline_access';
 // Default timeout for every OAuth fetch (token exchange, refresh, revocation).
 // Beyond this we throw a transient error so callers can retry rather than
 // hang the UI behind a stalled auth-server request.
-const FETCH_TIMEOUT_MS = 10000;
+//
+// 2026-05-07 device-audit P0 — bumped 10000 → 12000 to match marketing/
+// player-web. Cold-start Cloud Run can take 2-3s; on slow 3G the double
+// round-trip can blow past 10s. 12s is permissive enough for real network
+// slowness while still ending the spinner before users assume breakage.
+const FETCH_TIMEOUT_MS = 12000;
+
+// 2026-05-07 device-audit P0 — `crypto.randomUUID` requires Safari 15.4 /
+// Chrome 92. Older devices throw TypeError. Fall back to v4 UUID via
+// getRandomValues, then to Math.random as a last resort.
+function _safeRandomUUID() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch {}
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const b = new Uint8Array(16);
+      crypto.getRandomValues(b);
+      b[6] = (b[6] & 0x0f) | 0x40;
+      b[8] = (b[8] & 0x3f) | 0x80;
+      const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+      return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+    }
+  } catch {}
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+// 2026-05-07 device-audit P0 — clear-error gate for browsers without
+// WebCrypto (insecure context, very old Safari, embedded webviews with
+// crypto disabled). Pre-fix, login failed with a generic toast.
+function _assertCryptoAvailable() {
+  const ok = typeof crypto !== 'undefined'
+    && crypto.subtle
+    && typeof crypto.subtle.digest === 'function'
+    && typeof crypto.getRandomValues === 'function';
+  if (!ok) {
+    const e = new Error(
+      'Secure sign-in is not available in this browser. Open this page in Chrome, Safari, or Firefox and make sure the URL starts with https://'
+    );
+    e.code = 'crypto_unsupported';
+    throw e;
+  }
+}
+
+// 2026-05-07 device-audit P0 — best-effort detection for in-app webviews
+// (Facebook, Instagram, TikTok, Line, etc.). These browsers strip third-
+// party cookies, block popups, and frequently break OAuth redirects in
+// ways the user can't recover from. Detect them so the UI can show an
+// "Open in Safari/Chrome" CTA instead of letting the login silently fail.
+export function detectInAppBrowser() {
+  try {
+    const ua = String(navigator.userAgent || '');
+    if (/fbav|fban|fbios|fbsv|fb_iab/i.test(ua)) return { inApp: true, app: 'Facebook' };
+    if (/instagram/i.test(ua))                   return { inApp: true, app: 'Instagram' };
+    if (/twitter\b/i.test(ua))                   return { inApp: true, app: 'Twitter / X' };
+    if (/tiktok|musical_ly|aweme/i.test(ua))     return { inApp: true, app: 'TikTok' };
+    if (/linkedinapp/i.test(ua))                 return { inApp: true, app: 'LinkedIn' };
+    if (/line\//i.test(ua))                      return { inApp: true, app: 'Line' };
+    if (/micromessenger/i.test(ua))              return { inApp: true, app: 'WeChat' };
+    if (/snapchat/i.test(ua))                    return { inApp: true, app: 'Snapchat' };
+    return { inApp: false };
+  } catch {
+    return { inApp: false };
+  }
+}
 
 // --- Error classes ------------------------------------------------------
 
@@ -147,15 +213,23 @@ function consumePending(state) {
   return null;
 }
 
-export async function startLogin() {
+export async function startLogin({ prompt = null, returnTo = null } = {}) {
+  // 2026-05-07 device-audit P0 — bail with a clear, actionable message
+  // for browsers without WebCrypto instead of a generic toast.
+  _assertCryptoAvailable();
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await generateCodeChallenge(codeVerifier);
-  const state = crypto.randomUUID();
+  const state = _safeRandomUUID();
 
   // Add THIS flow to the pending map without disturbing any other
   // concurrent flows. GC stale entries while we're here.
   const pending = gcPendingMap(readPendingMap());
-  pending[state] = { verifier: codeVerifier, createdAt: Date.now() };
+  pending[state] = {
+    verifier: codeVerifier,
+    createdAt: Date.now(),
+    returnTo: returnTo || null,
+    silent: prompt === 'none',
+  };
   writePendingMap(pending);
 
   const params = new URLSearchParams({
@@ -167,8 +241,36 @@ export async function startLogin() {
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
   });
+  // 2026-05-08 — see player-web authService.js for prompt= rationale.
+  if (prompt === 'none' || prompt === 'login') {
+    params.set('prompt', prompt);
+  }
 
   window.location.href = `${AUTH_SERVER}/auth?${params}`;
+}
+
+// 2026-05-08 — cold-start cross-site SSO entry point for .online.
+// See full design comment in apps/web/src/services/authService.js.
+export async function startSilentLogin({ returnTo = null } = {}) {
+  return startLogin({ prompt: 'none', returnTo });
+}
+
+// 2026-05-07 OAuth audit P0 — silent re-auth via the OIDC server's SSO cookie.
+//
+// When the refresh_token has expired (>30d on .online) but the SSO session
+// cookie at auth.americanpubpoker.online is still valid, redirecting through
+// /authorize returns a fresh code WITHOUT prompting the user — the auth-server
+// recognizes the SSO cookie and immediately redirects back to /auth/callback.
+//
+// User-visible: a brief flash to auth.americanpubpoker.online and back. No
+// login form unless the cookie is genuinely gone, in which case the regular
+// login form appears (which is the right behavior — better than dropping the
+// user with "your session expired" and forcing them to click Login).
+//
+// Used by App.jsx and authScheduler when a refresh fails with
+// RefreshTokenRevokedError. Equivalent to player-web's silentReauth().
+export function silentReauth() {
+  return startLogin();
 }
 
 export async function handleCallback(code, state) {
@@ -215,8 +317,123 @@ export async function handleCallback(code, state) {
 // token and kicks the user to logout.
 let _inflightRefresh = null;
 
+// 2026-05-07 OAuth audit P1 — cross-tab refresh single-flight, ported from
+// player-web/authService.js. Without it, two .online tabs whose access
+// tokens expire near-simultaneously each fire their own /token POST. Even
+// with rotation off (current auth-server config), this churns network +
+// emits paired refresh_success events and dispatches duplicate
+// poker:token-refreshed customEvents. With rotation eventually enabled,
+// it would invalidate the refresh-token family for the lagging tab.
+//
+// Pattern: localStorage lock keyed by per-attempt UUID so cross-tab waiters
+// can verify which lock signaled completion (defends against a leader tab
+// crashing mid-refresh). 5s TTL — well above the FETCH_TIMEOUT_MS for the
+// network call.
+export const REFRESH_LOCK_KEY = 'oauth_refresh_in_flight_at';
+export const REFRESH_DONE_KEY = 'oauth_refresh_completed_at';
+export const REFRESH_LOCK_TTL_MS = 5000;
+
+function _generateLockToken() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch {}
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function _readLock() {
+  try {
+    const raw = localStorage.getItem(REFRESH_LOCK_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      return {
+        token: parsed.token || null,
+        startedAt: Number(parsed.startedAt) || 0,
+      };
+    }
+  } catch {}
+  return null;
+}
+
+function _readDone() {
+  try {
+    const raw = localStorage.getItem(REFRESH_DONE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      return {
+        token: parsed.token || null,
+        completedAt: Number(parsed.completedAt) || 0,
+      };
+    }
+  } catch {}
+  return null;
+}
+
+export function isRefreshInFlight() {
+  const lock = _readLock();
+  if (!lock || !lock.startedAt) return false;
+  return (Date.now() - lock.startedAt) < REFRESH_LOCK_TTL_MS;
+}
+
+export async function waitForRefreshCompletion(timeoutMs = REFRESH_LOCK_TTL_MS) {
+  const startedAt = Date.now();
+  const initialLock = _readLock();
+  const watchedToken = initialLock?.token || null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 100));
+    const done = _readDone();
+    if (done) {
+      if (watchedToken && done.token && done.token === watchedToken) return true;
+      if (!watchedToken || !done.token) {
+        if (done.completedAt >= startedAt) return true;
+      }
+    }
+    if (!isRefreshInFlight()) return false;
+    if (watchedToken) {
+      const currentLock = _readLock();
+      if (currentLock?.token && currentLock.token !== watchedToken) return false;
+    }
+  }
+  return false;
+}
+
 export async function refreshAccessToken(refreshToken) {
+  // In-tab dedup first — cheapest possible path.
   if (_inflightRefresh) return _inflightRefresh;
+
+  // Cross-tab dedup: if another .online tab is already refreshing, wait for
+  // it to complete then read its result from localStorage. This avoids two
+  // tabs each consuming the refresh_token (which under rotation would burn
+  // one of them).
+  if (isRefreshInFlight()) {
+    const completed = await waitForRefreshCompletion();
+    if (completed) {
+      try {
+        const fresh = localStorage.getItem('poker_oauth_access');
+        const expRaw = localStorage.getItem('poker_token_expiry');
+        if (fresh) {
+          const expiresIn = expRaw
+            ? Math.max(0, Math.floor((parseInt(expRaw, 10) - Date.now()) / 1000))
+            : null;
+          return { access_token: fresh, expires_in: expiresIn };
+        }
+      } catch {}
+    }
+    // Fall through and try our own refresh — the leader tab probably crashed.
+  }
+
+  // Acquire the cross-tab lock BEFORE the network call.
+  const lockToken = _generateLockToken();
+  try {
+    localStorage.setItem(
+      REFRESH_LOCK_KEY,
+      JSON.stringify({ token: lockToken, startedAt: Date.now() })
+    );
+  } catch {}
 
   _inflightRefresh = (async () => {
     let response;
@@ -244,7 +461,33 @@ export async function refreshAccessToken(refreshToken) {
     }
 
     if (response.ok) {
-      return response.json();
+      const data = await response.json();
+      // Persist the new tokens to localStorage so any tab that was waiting
+      // on our cross-tab lock (waitForRefreshCompletion) can read them.
+      try {
+        if (data.access_token) {
+          // Mirror to a stable key the waiter polls. Keep also writing
+          // poker_token_expiry so the existing scheduler keeps working.
+          localStorage.setItem('poker_oauth_access', data.access_token);
+        }
+        if (data.expires_in) {
+          const expiresAt = Date.now() + Number(data.expires_in) * 1000;
+          localStorage.setItem('poker_token_expiry', String(expiresAt));
+        }
+        if (data.refresh_token) {
+          localStorage.setItem('poker_oauth_refresh', data.refresh_token);
+        }
+        if (data.id_token) {
+          localStorage.setItem('poker_oauth_id_token', data.id_token);
+        }
+        // Order matters: drop the lock AFTER tokens land, then stamp completion.
+        localStorage.removeItem(REFRESH_LOCK_KEY);
+        localStorage.setItem(
+          REFRESH_DONE_KEY,
+          JSON.stringify({ token: lockToken, completedAt: Date.now() })
+        );
+      } catch {}
+      return data;
     }
 
     // Try to parse a JSON error body so we can distinguish `invalid_grant`
@@ -276,6 +519,11 @@ export async function refreshAccessToken(refreshToken) {
 
   try {
     return await _inflightRefresh;
+  } catch (err) {
+    // On any failure, drop the lock so other tabs don't sit waiting for a
+    // completion stamp that will never come.
+    try { localStorage.removeItem(REFRESH_LOCK_KEY); } catch {}
+    throw err;
   } finally {
     _inflightRefresh = null;
   }
@@ -365,12 +613,113 @@ export function isAuthCallback() {
   return window.location.pathname === '/auth/callback';
 }
 
+// 2026-05-07 OAuth audit P0 — iOS PWA recurring-login fix.
+//
+// On iOS Safari, when a user launches the app from the Home Screen and the
+// auth-server redirects back to /auth/callback, `window.location.search` is
+// frequently EMPTY by the time JS runs even though the URL bar visually
+// contains `?code=...&state=...`. This is iOS's "PWA cold launch URL
+// stripping" — the OS hands the WebKit view a stripped URL, then `pushState`s
+// the full URL into the bar shortly after. By then `URLSearchParams(search)`
+// has already returned nothing.
+//
+// Symptoms (matches user complaint "tired of not being able to login to
+// .online"): callback fires with code=null/state=null, the flow aborts with
+// "Invalid callback — missing parameters", user is bounced back to login.
+// Lather, rinse, repeat.
+//
+// Fix: try multiple sources in priority order, the FIRST that yields a code
+// wins, and cache the successful read in sessionStorage so any re-mount of
+// AuthCallback (StrictMode double-mount, route remount) sees the same params
+// even after `history.replaceState({}, '', '/')` scrubs them from the URL.
+//
+// Sources tried (the union of every place iOS / Safari / PWA may have the
+// query string):
+//   1. window.location.search     — normal browsers
+//   2. window.location.href       — sometimes search is empty but href is full
+//   3. document.URL               — Safari occasionally only populates this
+//   4. sessionStorage cache       — for re-mounts after replaceState scrub
+//   5. window.location.hash       — fragment-encoded code (some PWA configs)
+const CALLBACK_CACHE_KEY = 'oauth_callback_params_cache';
+
+function _readCallbackFromAnySource() {
+  // 1. Standard search string.
+  try {
+    const sp = new URLSearchParams(window.location.search || '');
+    if (sp.get('code') || sp.get('error')) return sp;
+  } catch {}
+
+  // 2. Parse out of the full href (catches the iOS PWA edge case where
+  //    `search` is empty but `href` has the query string).
+  try {
+    const href = window.location.href || '';
+    const qIdx = href.indexOf('?');
+    if (qIdx >= 0) {
+      const after = href.slice(qIdx + 1);
+      const hashCut = after.indexOf('#');
+      const qs = hashCut >= 0 ? after.slice(0, hashCut) : after;
+      const sp = new URLSearchParams(qs);
+      if (sp.get('code') || sp.get('error')) return sp;
+    }
+  } catch {}
+
+  // 3. document.URL — independent of window.location's flakiness in PWA.
+  try {
+    const docUrl = (typeof document !== 'undefined' && document.URL) || '';
+    const qIdx = docUrl.indexOf('?');
+    if (qIdx >= 0) {
+      const after = docUrl.slice(qIdx + 1);
+      const hashCut = after.indexOf('#');
+      const qs = hashCut >= 0 ? after.slice(0, hashCut) : after;
+      const sp = new URLSearchParams(qs);
+      if (sp.get('code') || sp.get('error')) return sp;
+    }
+  } catch {}
+
+  // 4. sessionStorage cache from an earlier read this navigation.
+  try {
+    const raw = sessionStorage.getItem(CALLBACK_CACHE_KEY);
+    if (raw) {
+      const sp = new URLSearchParams(raw);
+      if (sp.get('code') || sp.get('error')) return sp;
+    }
+  } catch {}
+
+  // 5. Hash fragment fallback. Some PWA setups encode the response in the
+  //    fragment (response_mode=fragment). We don't request that mode but
+  //    iOS can rewrite the URL into one in rare cases. Strip leading '#'.
+  try {
+    const hash = (window.location.hash || '').replace(/^#/, '');
+    if (hash) {
+      const sp = new URLSearchParams(hash);
+      if (sp.get('code') || sp.get('error')) return sp;
+    }
+  } catch {}
+
+  // Nothing — return an empty params object so callers see code=null.
+  return new URLSearchParams('');
+}
+
 export function getCallbackParams() {
-  const params = new URLSearchParams(window.location.search);
+  const params = _readCallbackFromAnySource();
+  // Cache for any subsequent call (e.g. AuthCallback re-mount after
+  // replaceState scrubs the URL bar). Best-effort.
+  try {
+    if (params.get('code') || params.get('error')) {
+      sessionStorage.setItem(CALLBACK_CACHE_KEY, params.toString());
+    }
+  } catch {}
   return {
     code: params.get('code'),
     state: params.get('state'),
     error: params.get('error'),
     errorDescription: params.get('error_description'),
   };
+}
+
+// Clear the callback cache. Called by AuthCallback after the token exchange
+// completes (success OR terminal failure) so a subsequent /auth/callback
+// navigation in the same browser tab starts fresh.
+export function clearCallbackParamsCache() {
+  try { sessionStorage.removeItem(CALLBACK_CACHE_KEY); } catch {}
 }

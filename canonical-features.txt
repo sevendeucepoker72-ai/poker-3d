@@ -61,3 +61,45 @@ unsupported_browser
 # poker-server. Their handler names are present in client code that
 # subscribes to them.
 deckCommitment
+
+# ─── 2026-05-07 OAuth audit P0 fixes ─────────────────────────────────
+# iOS PWA query-string stripping fix in authService.getCallbackParams.
+# On iOS PWA cold launches, window.location.search arrives empty; the
+# fallback chain (href → document.URL → sessionStorage cache) is what
+# makes login work for Home Screen launches. The cache key is a unique
+# string literal — if Terser drops it, the fix has been removed.
+oauth_callback_params_cache
+# Cross-tab refresh single-flight lock (ported from player-web). The
+# two unique localStorage keys below survive minification. A build that
+# drops the lock loses both — meaning two .online tabs whose tokens
+# expire near-simultaneously will race the auth-server /token endpoint.
+oauth_refresh_in_flight_at
+oauth_refresh_completed_at
+
+# ─── 2026-05-07 — cross-site SSO via bridge tokens ───────────────────
+# Cookie-based cross-site SSO is dead in modern Chrome (CHIPS partition
+# keys, 3p cookie blocking). Replaced with bridge tokens: each outbound
+# link to a sibling site appends #bridge_id_token=<jwt>. Receiving site
+# exchanges via grant_type=urn:apk:bridge for its own full token set.
+# Anchor on the unique grant type name + the URL fragment key.
+urn:apk:bridge
+bridge_id_token
+
+# ─── 2026-05-07 device-audit P0 fixes ────────────────────────────────
+# Clear-error message for browsers without WebCrypto / on insecure
+# context (HTTP). Pre-fix, login failed with a generic toast. Anchor on
+# the user-facing string so a refactor can't silently revert.
+Secure sign-in is not available in this browser
+# In-app webview detection (FB/IG/TikTok strip 3rd-party cookies and
+# break the OAuth callback). Anchor on UA tokens we test for + the
+# user-facing CTA copy.
+fbav|fban
+Open in Safari
+
+# ─── 2026-05-08 — cross-site silent SSO via cold-start prompt=none ──
+# THE mechanism that makes "log in on one site → automatically logged in
+# on the others" work for typed URLs / bookmarks / push deep links.
+# Anchor on unique log tag + sessionStorage keys.
+[silent-sso] cold-start
+oauth_silent_attempted
+oauth_silent_return_to

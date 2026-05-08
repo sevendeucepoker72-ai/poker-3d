@@ -9,6 +9,14 @@ export default defineConfig({
     dedupe: ['react', 'react-dom', 'zustand'],
   },
   build: {
+    // 2026-05-07 device-audit P1 — pin browser targets so Vite/esbuild
+    // transpiles modern syntax (optional chaining, nullish coalescing,
+    // class fields, async/await chains) for users on iOS 13/14 + older
+    // Chromium. Default 'modules' target = esnext-ish, which left
+    // pre-Safari 14 / Chrome 87 users with a parse error white screen.
+    // safari14 = iOS 14+; chrome87 = late 2020+; firefox78 = ESR baseline;
+    // edge88 matches Chromium baseline.
+    target: ['es2019', 'safari14', 'chrome87', 'firefox78', 'edge88'],
     rollupOptions: {
       output: {
         // rolldown (Vite 8) requires manualChunks as a function

@@ -37,6 +37,12 @@ import LoginScreen from './components/ui/LoginScreen';
 // 2026-05-04 unified-push phase 3 — cross-site notification banner.
 import PlayerAppPushBanner from './components/PlayerAppPushBanner';
 import AuthCallback from './components/ui/AuthCallback';
+// 2026-05-07 — SilentCallback + trySilentLogin retired. iframe-based silent
+// SSO is broken in modern Chrome regardless of cookie config (CHIPS partition
+// keys for iframe contexts are scoped to embedding site, not auth-server).
+// Cross-site SSO now relies on top-level redirect from LoginScreen, which
+// works because top-level navigation to auth-server makes its cookies
+// first-party for the duration of the redirect.
 import { isAuthCallback as checkIsAuthCallback, refreshAccessToken, RefreshTokenRevokedError } from './services/authService';
 import { startAuthCrossTabListener } from './services/authCrossTab';
 // Heavy screens loaded lazily — only when the user first navigates to them
@@ -737,6 +743,56 @@ function App() {
       }
     };
 
+    // 2026-05-07 — Bridge-token boot consumer. If we arrived via a link
+    // from another American Pub Poker site, the URL fragment contains
+    // bridge_id_token=<jwt>. Exchange it for our own tokens, then run the
+    // normal socket-side oauthLogin flow. If no bridge token, this is a
+    // no-op (consumeBridgeIfPresent returns reason='no-bridge').
+    (async () => {
+      try {
+        const { consumeBridgeIfPresent } = await import('./services/bridge');
+        const result = await consumeBridgeIfPresent();
+        if (cancelled || !result?.ok) return;
+        // Tokens are now persisted. Drive the same socket-side oauthLogin
+        // flow the refresh path uses (extracted as runOauthLoginViaSocket).
+        const tokens = result.tokens;
+        if (!tokens?.access_token) return;
+        let resultListener = null;
+        let connectHandler = null;
+        let timeoutId = null;
+        const handleResult = (r) => {
+          if (cancelled) return;
+          socket.off('loginResult', handleResult);
+          resultListener = null;
+          if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+          if (r?.success && r.userData) {
+            useGameStore.getState().oauthLogin(tokens, r.userData);
+          } else {
+            clearStoredTokens();
+          }
+        };
+        const doAuth = () => {
+          if (cancelled) return;
+          connectHandler = null;
+          socket.emit('oauthLogin', { accessToken: tokens.access_token });
+          timeoutId = setTimeout(() => {
+            if (cancelled) return;
+            timeoutId = null;
+            if (resultListener) {
+              socket.off('loginResult', resultListener);
+              resultListener = null;
+            }
+          }, 12000);
+        };
+        resultListener = handleResult;
+        socket.on('loginResult', handleResult);
+        if (socket.connected) doAuth();
+        else { connectHandler = doAuth; socket.once('connect', doAuth); }
+      } catch {
+        // Silent failure — fall through to the normal boot path below.
+      }
+    })();
+
     // Attempt OAuth refresh token flow — check localStorage first
     // (keep-signed-in) then sessionStorage fallback.
     const oauthRefresh = (() => {
@@ -875,6 +931,11 @@ function App() {
       else socket.once('connect', doLogin);
     }
 
+    // 2026-05-07 — iframe-based silent SSO retired (broken in modern Chrome
+    // CHIPS semantics). Cross-site SSO now flows through LoginScreen + a
+    // top-level redirect to /authorize when the user clicks "Sign In". If
+    // the auth-server SSO cookie is alive, the redirect auto-bounces back
+    // with a code; otherwise the password form shows.
     tryLegacyAutoLogin();
     return () => { cancelled = true; };
   }, [isOAuthCallback]);

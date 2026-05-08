@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { getSocket } from '../../services/socketService';
-import { handleCallback, getCallbackParams } from '../../services/authService';
+import { handleCallback, getCallbackParams, clearCallbackParamsCache } from '../../services/authService';
 import { setAuthToken, isKeepSignedIn } from '../../services/tokenStorage';
 
 export default function AuthCallback() {
@@ -29,8 +29,26 @@ export default function AuthCallback() {
     let cancelled = false;
 
     if (error) {
+      // 2026-05-08 — silent SSO returned login_required (no auth-server
+      // session). This was an expected outcome of the cold-start
+      // prompt=none redirect, NOT a real failure. Don't show "Login
+      // failed"; quietly route the user back to the login screen so they
+      // can sign in normally. The session-scoped flag in main.jsx's
+      // cold-start guard prevents a re-attempt loop.
+      if (error === 'login_required' || error === 'interaction_required' || error === 'consent_required') {
+        try { clearCallbackParamsCache(); } catch {}
+        try { sessionStorage.removeItem('oauth_silent_return_to'); } catch {}
+        window.history.replaceState({}, '', '/');
+        useGameStore.getState().setScreen('login');
+        return () => {
+          cancelled = true;
+          pendingTimeouts.forEach(clearTimeout);
+          pendingTimeouts.clear();
+        };
+      }
       console.error('OAuth error:', error, errorDescription);
       setStatus(`Login failed: ${errorDescription || error}`);
+      try { clearCallbackParamsCache(); } catch {}
       schedule(() => {
         window.history.replaceState({}, '', '/');
         useGameStore.getState().setScreen('login');
@@ -43,11 +61,16 @@ export default function AuthCallback() {
     }
 
     if (!code || !state) {
-      setStatus('Invalid callback — missing parameters');
+      // 2026-05-07 OAuth audit: this is the iOS-PWA failure mode — getCallbackParams
+      // already tried every URL source and the sessionStorage cache. If we still
+      // have nothing, the redirect arrived without query params at all (rare) or
+      // the user navigated to /auth/callback by hand. Show a clear message.
+      setStatus('Sign-in link is incomplete — please try logging in again');
+      try { clearCallbackParamsCache(); } catch {}
       schedule(() => {
         window.history.replaceState({}, '', '/');
         useGameStore.getState().setScreen('login');
-      }, 2000);
+      }, 2500);
       return () => {
         cancelled = true;
         pendingTimeouts.forEach(clearTimeout);
@@ -62,6 +85,9 @@ export default function AuthCallback() {
     handleCallback(code, state)
       .then((tokens) => {
         if (cancelled) return;
+        // Successful exchange — clear the cached callback params so a subsequent
+        // visit to /auth/callback in the same tab doesn't replay stale state.
+        try { clearCallbackParamsCache(); } catch {}
 
         // Route tokens to localStorage or sessionStorage based on the
         // keep-signed-in flag the user set on the login screen (already
@@ -132,6 +158,9 @@ export default function AuthCallback() {
       .catch((err) => {
         if (cancelled) return;
         console.error('OAuth callback error:', err);
+        // Clear cached callback params — the auth-code is single-use, so even
+        // a transient error means it's burned. Next attempt must re-start the flow.
+        try { clearCallbackParamsCache(); } catch {}
         setStatus(`Authentication failed: ${err.message}`);
         schedule(() => {
           window.history.replaceState({}, '', '/');
