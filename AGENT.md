@@ -43,6 +43,7 @@ Wraps `poker-3d/deploy-online.mjs`.
 | 7 | **`tableStore.sendAction` routes through `emitPlayerAction`** (in `services/socketService.js`). Nonce + reconnect-queue. Do NOT introduce a direct `socket.emit('action', ...)` — bypasses both. | Convention |
 | 8 | **Player action nonces are deduped server-side** at `poker-server/src/index.ts:~5700`. Replays return "Duplicate action" — client treats as success (idempotent retry). | Convention |
 | 9 | **Provably-fair deck commitments are user-visible.** `poker-server` exposes `/api/fairness/:tableId/:handNumber` for verification. Don't break the commitment buffer in `ensureTableProgressListener`. | 2026-04-22 |
+| 10 | **Every `useGameStore` field the API can change has a self-heal merge on mount + tab-resume (CLAUDE.md Pattern B).** Template: `refreshUserRolesFromMe` in `App.jsx`, which fetches `/users/:id/me` and merges roles/VIP via `mergeServerUserFields`. When you add a new server-controlled field to `useGameStore`, ship the merge in the same commit. Never stamp a server-controlled field once at `oauthLogin` and forget. | 2026-05-12 |
 
 ## Surface area
 

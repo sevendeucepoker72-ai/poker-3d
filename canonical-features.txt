@@ -103,3 +103,13 @@ Open in Safari
 [silent-sso] cold-start
 oauth_silent_attempted
 oauth_silent_return_to
+
+# ─── 2026-05-12 — CLAUDE.md Pattern B self-heal (port from player-web) ─
+# Roles / VIP fields are refreshed from /users/:id/me on mount AND on
+# every tab-resume, so an admin grant/revoke or VIP extension reaches
+# this tab without sign-out + sign-in. Without this, a field stamped
+# once at handleLogin stays stuck on its initial value forever — exactly
+# the Pattern B regression that broke dealer hubs on player-web in May
+# 2026. Both log tags are emitted ONLY when the value actually changes.
+[dealer-auto-heal] userRoles merged from /me
+[vip-auto-heal] isVip merged from /me

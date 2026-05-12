@@ -312,6 +312,98 @@ function App() {
     return () => setOnOpenPlayerNotes(null);
   }, []);
 
+  // 2026-05-12 — CLAUDE.md Pattern B self-heal port from player-web.
+  // Refresh `userRoles`, `isVip`, `vipLevel`, `vipExpiration` from
+  // GET /users/:id/me on mount and on every tab-resume, merging into
+  // useGameStore. This auto-heals stale-session fields underneath the
+  // user without requiring sign-out + back-in (e.g. admin grants the
+  // user `dealer`, or extends VIP — that change must reach this tab).
+  //
+  // Storage note: poker-3d uses a zustand store (useGameStore), NOT a
+  // localStorage `pokerSession` blob like player-web. So the merge
+  // target is `mergeServerUserFields` on the store; there is no
+  // localStorage rewrite step here.
+  //
+  // The log tags `[dealer-auto-heal]` and `[vip-auto-heal]` are the
+  // canonical-features anchors for this feature — Terser preserves
+  // string literals, so the deploy guard greps the built bundle for
+  // these exact tags.
+  useEffect(() => {
+    const userId = useGameStore.getState().userId;
+    if (!isLoggedIn || !userId) return;
+
+    // Async import to avoid pulling sessionLifecycle into the App
+    // bundle's eager chunk; it's a tiny module but the dynamic import
+    // matches the rest of the App.jsx lazy-load pattern.
+    let cancelled = false;
+    let removeOnResume = null;
+
+    const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE_URL)
+      || 'https://poker-prod-api-azeg4kcklq-uc.a.run.app/poker-api';
+
+    const refreshUserRolesFromMe = async () => {
+      try {
+        // /users/:id/me is fetched unauthenticated (Pattern A contract:
+        // the public-safe shape always contains `roles`, `isVip`,
+        // `vipLevel`, `vipExpiration` for this exact use case). The
+        // auth-server's extraTokenClaims uses the same path; we are a
+        // peer caller.
+        const resp = await fetch(
+          `${API_BASE}/users/${encodeURIComponent(userId)}/me`,
+          { method: 'GET', credentials: 'omit' },
+        );
+        if (cancelled || !resp.ok) return;
+        const body = await resp.json().catch(() => null);
+        const user = body?.data || body;
+        if (!user) return;
+
+        const patch = {};
+        if (Array.isArray(user.roles)) patch.userRoles = user.roles;
+        if (typeof user.isVip === 'boolean') patch.isVip = user.isVip;
+        if (typeof user.vipLevel === 'number') patch.vipLevel = user.vipLevel;
+        const vipExp = user.vipExpiration ?? user.vipLevelExpiration ?? null;
+        if (vipExp !== null) patch.vipExpiration = vipExp;
+        if (!Object.keys(patch).length) return;
+
+        const before = useGameStore.getState();
+        useGameStore.getState().mergeServerUserFields(patch);
+        const after = useGameStore.getState();
+
+        // Log tags only when the value actually changed — keeps the
+        // console quiet on no-op refreshes while still surfacing real
+        // self-heal events for incident triage.
+        if (patch.userRoles && before.userRoles !== after.userRoles) {
+          try { console.debug('[dealer-auto-heal] userRoles merged from /me'); } catch {}
+        }
+        if (patch.isVip !== undefined && before.isVip !== after.isVip) {
+          try { console.debug('[vip-auto-heal] isVip merged from /me'); } catch {}
+        }
+      } catch {
+        // Swallow — reactive 401 paths (api fetches, socket reconnect)
+        // catch real auth failures. This refresh is best-effort.
+      }
+    };
+
+    // Fire once on mount.
+    refreshUserRolesFromMe();
+
+    // Re-fire on every tab-resume. sessionLifecycle.onResume returns an
+    // unsubscriber.
+    import('./services/sessionLifecycle.js').then((mod) => {
+      if (cancelled) return;
+      if (typeof mod.onResume === 'function') {
+        removeOnResume = mod.onResume(() => {
+          refreshUserRolesFromMe();
+        });
+      }
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+      try { if (typeof removeOnResume === 'function') removeOnResume(); } catch {}
+    };
+  }, [isLoggedIn]);
+
   // Install persistence: flush to server on tab close + sync every 30s
   useEffect(() => {
     const cleanupBeforeUnload = installBeforeUnloadSync();

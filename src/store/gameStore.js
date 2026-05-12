@@ -66,6 +66,42 @@ export const useGameStore = create((set, get) => ({
   oauthIdToken: null,
   oauthTokenExpiry: null,
 
+  // 2026-05-12 — CLAUDE.md Pattern B self-heal fields.
+  // These are populated/merged from GET /users/:id/me on mount and on
+  // tab-resume by refreshUserRolesFromMe in App.jsx. They must be
+  // settable underneath us: an admin granting/revoking a role or
+  // extending VIP must reach this store without the user signing out
+  // and back in. NEVER stamp these once at handleLogin and forget.
+  userRoles: [],
+  isVip: false,
+  vipLevel: null,
+  vipExpiration: null,
+  // Bulk-merge action used by refreshUserRolesFromMe. Accepts a partial
+  // object; only the fields present are written. Array equality is
+  // checked for userRoles so an unchanged-roles refresh is a no-op
+  // (avoids churning subscribers).
+  mergeServerUserFields: (patch) =>
+    set((state) => {
+      if (!patch || typeof patch !== 'object') return state;
+      const next = {};
+      if (Array.isArray(patch.userRoles)) {
+        const prev = state.userRoles || [];
+        const same = prev.length === patch.userRoles.length
+          && prev.every((r, i) => r === patch.userRoles[i]);
+        if (!same) next.userRoles = patch.userRoles;
+      }
+      if (typeof patch.isVip === 'boolean' && patch.isVip !== state.isVip) {
+        next.isVip = patch.isVip;
+      }
+      if (typeof patch.vipLevel === 'number' && patch.vipLevel !== state.vipLevel) {
+        next.vipLevel = patch.vipLevel;
+      }
+      if (patch.vipExpiration !== undefined && patch.vipExpiration !== state.vipExpiration) {
+        next.vipExpiration = patch.vipExpiration;
+      }
+      return Object.keys(next).length ? next : state;
+    }),
+
   login: (userData, token) => {
     // Invalidate the cached progress blob so the UI can't render a stale
     // level from a prior session before the server's `playerProgress`
@@ -169,6 +205,12 @@ export const useGameStore = create((set, get) => ({
       playerName: '',
       chips: 10000,
       screen: 'login',
+      // Pattern B fields — reset so logout doesn't leak roles/VIP into
+      // the next user's session on the same tab.
+      userRoles: [],
+      isVip: false,
+      vipLevel: null,
+      vipExpiration: null,
     });
     // SSO logout: redirect to auth server to clear session cookie
     if (idToken) {
