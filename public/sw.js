@@ -67,10 +67,14 @@ function isNavigationRequest(request) {
 
 // ── Install: pre-cache shell ──────────────────────────────────────────────────
 self.addEventListener('install', (e) => {
-  if (!BUILD_TOKEN_OK) {
-    e.waitUntil(Promise.reject(new Error('sw: BUILD_TIME token not injected')));
-    return;
-  }
+  // 2026-05-12 audit: previously this branch rejected the install when
+  // BUILD_TIME wasn't substituted, which broke `vite dev` PWA installs
+  // because the postbuild step that replaces `__BUILD_TIME__` only runs
+  // on `npm run build`. Mirror the marketing SW pattern instead — fall
+  // back to a `-broken` cache name so dev installs cleanly and the
+  // next prod deploy auto-evicts the stale cache when the real numeric
+  // token replaces `broken`. The earlier console.error remains so ops
+  // still see the misconfiguration in DevTools.
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_URLS))
   );

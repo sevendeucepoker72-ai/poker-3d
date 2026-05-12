@@ -1964,9 +1964,11 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           const handler = (res) => {
             socket.off('adminRestoreBalanceResult', handler);
             if (res?.success) {
-              alert(`Restored ${res.chips.toLocaleString()} chips + ${res.stars.toLocaleString()} stars`);
+              setJoinError(`Restored ${res.chips.toLocaleString()} chips + ${res.stars.toLocaleString()} stars`);
+              setTimeout(() => setJoinError(null), 4000);
             } else {
-              alert(`Restore failed: ${res?.error || 'unknown'}`);
+              setJoinError(`Restore failed: ${res?.error || 'unknown'}`);
+              setTimeout(() => setJoinError(null), 4000);
             }
           };
           socket.on('adminRestoreBalanceResult', handler);
