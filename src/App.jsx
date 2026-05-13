@@ -133,11 +133,13 @@ function ChooseUsernameScreen() {
     // Mirror the server-side whitelist (authManager.ts:DISPLAY_NAME_RE)
     // so users get immediate feedback instead of a round-trip rejection.
     // Server is still the real gate — never trust this check alone.
-    if (!/^[\p{L}\p{N} _.'-]+$/u.test(trimmed)) {
-      setError("Name can only contain letters, numbers, spaces, and _ . - '");
+    // 2026-05-13 — narrowed to ASCII-only to match the server-side
+    // tightening (display names must be plain English).
+    if (!/^[A-Za-z0-9 _.'-]+$/.test(trimmed)) {
+      setError("Name can only contain English letters, numbers, spaces, and _ . - '");
       return;
     }
-    if (!/[\p{L}\p{N}]/u.test(trimmed)) {
+    if (!/[A-Za-z0-9]/.test(trimmed)) {
       setError('Name must contain at least one letter or number');
       return;
     }
