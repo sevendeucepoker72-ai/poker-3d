@@ -413,18 +413,41 @@ export const useProgressStore = create((set, get) => ({
   },
 
   /**
-   * Award XP and persist. Handles level-ups automatically.
-   * Returns { levelsGained, newLevel } so callers can show popups.
+   * Award XP and persist locally. Does NOT trigger the level-up popup or
+   * award bonus chips — those are server-driven via the `levelUp` socket
+   * event (see App.jsx) and the `playerProgress` chip update.
+   *
+   * 2026-05-19 audit — empirical bug observed in real Chrome play test:
+   * "LEVEL UP! 2" modal fired three times in a row for the same hand,
+   * with different reward amounts (200/0 → 200/0 → 1,000/10). Root
+   * cause: this method previously called set({ levelUpData: ... }) whenever
+   * `info.level > prev.level`, but `prev.totalXp` was frequently a stale
+   * client-side value (the server's `playerProgress` event hadn't yet
+   * landed when `recordHand` ran from the table HUD's HandComplete
+   * useEffect). Result: client computed a phantom level-up that did NOT
+   * match the server's authoritative state — the lobby/profile then
+   * correctly showed Level 1 while three Level-2 popups had fired (BUG 11
+   * "profile shows Level 1 despite Level Up modal").
+   *
+   * The server's progressionManager is the authoritative source for level
+   * + chips: it emits `playerProgress` (sets level/xp), then `levelUp`
+   * (triggers the popup with correct rewards). The client side just needs
+   * to mirror local stats (XP into level, totalXp) for instant UI
+   * feedback before the server round-trip — without firing UI events
+   * that would race the server.
    */
   awardXP: (amount) => {
     const prev = get().progress || defaultProgress();
-    const oldLevel = prev.level;
     const newTotalXp = (prev.totalXp || 0) + amount;
     const info = levelFromTotalXp(newTotalXp);
 
     const updated = {
       ...prev,
       totalXp: newTotalXp,
+      // NOTE: we DO update level here for instant UI feedback (xp bar
+      // progress), but we DO NOT trigger the level-up popup. The server's
+      // `levelUp` socket event is the sole trigger for the popup, with
+      // correct reward amounts.
       level: info.level,
       xp: info.xp,
       xpToNextLevel: info.xpToNextLevel,
@@ -432,25 +455,7 @@ export const useProgressStore = create((set, get) => ({
     saveProgress(updated);
     set({ progress: updated });
 
-    const levelsGained = info.level - oldLevel;
-    if (levelsGained > 0) {
-      const bonusChips = levelsGained * 200;
-      // Trigger level-up popup
-      set({
-        levelUpData: {
-          newLevel: info.level,
-          bonusChips,
-          bonusStars: levelsGained >= 2 ? levelsGained * 5 : 0,
-        },
-      });
-      // Award bonus chips — read latest progress to avoid overwrite races
-      const latest = get().progress;
-      const withBonus = { ...latest, chips: (latest.chips || 0) + bonusChips };
-      saveProgress(withBonus);
-      set({ progress: withBonus });
-    }
-
-    return { levelsGained, newLevel: info.level };
+    return { levelsGained: info.level - prev.level, newLevel: info.level };
   },
 
   /** Record a completed hand — awards XP and updates all stats. */
@@ -609,34 +614,36 @@ export const useProgressStore = create((set, get) => ({
     }
     updated.dailyMissions = missions;
 
-    // Check achievements
-    const unlocked = [...(prev.unlockedAchievements || [])];
-    const newlyUnlocked = [];
-    for (const ach of ACHIEVEMENTS) {
-      if (!unlocked.includes(ach.id) && ach.check(updated)) {
-        unlocked.push(ach.id);
-        newlyUnlocked.push(ach);
-      }
-    }
-    updated.unlockedAchievements = unlocked;
-
+    // 2026-05-19 audit — REMOVED client-side achievement check.
+    //
+    // Empirical bug observed in Chrome play test: "First Blood — Win your
+    // first hand" achievement notification fires TWICE (one toast from
+    // the client-side ACHIEVEMENTS loop here, one from the server's
+    // `achievementUnlocked` socket event). Same root cause as the
+    // duplicate level-up popup (see awardXP comment above): the client
+    // and server were BOTH evaluating the same achievement criteria off
+    // overlapping state.
+    //
+    // The server's progressionManager checkAchievements() is the
+    // authoritative source for achievement unlocks. It pushes
+    // `achievementUnlocked` events that App.jsx's socket listener
+    // converts to notifications. Removing the duplicate client-side path
+    // here also incidentally fixes BUG 10 (the "Warmup — Play 5 hands"
+    // achievement firing after only 3 played hands), because the client
+    // was counting BOTH its own recordHand calls AND the server's
+    // achievementUnlocked events, effectively double-counting toward
+    // the "play N hands today" criteria.
+    //
+    // The local stats above (handsPlayed, vpip, pfr, position stats,
+    // hand history, etc.) ARE still tracked client-side for the
+    // post-hand analytics + advanced stats panels — only the
+    // notifications + chip rewards moved to server-only.
     saveProgress(updated);
     set({ progress: updated });
 
-    // Show achievement popups and apply rewards
-    const achievementChips = newlyUnlocked.length * 1000;
-    if (achievementChips > 0) {
-      updated.chips = (updated.chips || 0) + achievementChips;
-      saveProgress(updated);
-      set({ progress: updated });
-    }
-    for (const ach of newlyUnlocked) {
-      get().addNotification({ type: 'achievement', message: `${ach.name} - ${ach.desc}`, reward: { xp: 100, chips: 1000 } });
-    }
-
-    // Now award XP (which also saves)
-    const achievementBonus = newlyUnlocked.length * 100;
-    get().awardXP(xpEarned + achievementBonus);
+    // Award XP locally for the XP bar progress animation. No notifications,
+    // no level-up popup, no bonus chips — those are all server-driven.
+    get().awardXP(xpEarned);
   },
 
   /** Claim a daily mission reward. */

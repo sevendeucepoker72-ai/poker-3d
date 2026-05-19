@@ -118,6 +118,11 @@ export const useGameStore = create((set, get) => ({
       phone: userData.phone || '',
       needsUsername: userData.needsUsername || false,
       chips: userData.chips,
+      // 2026-05-19 audit — store isAdmin so the lobby can hide
+      // admin-only UI (e.g. "Restore Missing Balance" button) from
+      // non-admin users. Server enforcement still rejects non-admin
+      // calls regardless; this is UX cleanup, not a security gate.
+      isAdmin: !!userData.isAdmin,
       screen: userData.needsUsername ? 'chooseUsername' : 'lobby',
     });
   },
@@ -138,6 +143,10 @@ export const useGameStore = create((set, get) => ({
       phone: userData.phone || '',
       needsUsername: userData.needsUsername || false,
       chips: userData.chips,
+      // 2026-05-19 audit — see comment in `login` above. Mirror the
+      // isAdmin flag from the server's loginResult userData so admin-
+      // only UI can hide itself for guest + regular players.
+      isAdmin: !!userData.isAdmin,
       screen: userData.needsUsername ? 'chooseUsername' : 'lobby',
     });
     // 2026-05-05 Phase 3 — broadcast login to other same-origin tabs

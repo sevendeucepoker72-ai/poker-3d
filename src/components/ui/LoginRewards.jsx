@@ -189,6 +189,28 @@ export default function LoginRewards({ onClose, autoOpened, inline }) {
         lastClaimDate: today,
         claimedDays: [...prev.claimedDays, res.day || prev.currentDay],
       }));
+      // 2026-05-19 audit — also write back to the global progress store
+      // so subsequent re-mounts of this component (e.g. close modal +
+      // reopen from lobby's "Daily Bonus Ready" tile) see the updated
+      // streak. Pre-fix: re-mount would read `progress.loginStreak`
+      // which was 0 (server emits `playerProgress` with the field named
+      // `dailyLoginStreak`, but the client reads `loginStreak` — separate
+      // bug also being fixed in ProgressionManager.ts). User saw the
+      // modal flip back to "0 Day Streak / Day 1 / Claim button" after
+      // already claiming. SHOP tab read from durableState (correctly
+      // named loginStreak) so it was fine — this re-mount mismatch is
+      // specific to the LoginRewards modal.
+      try {
+        const store = useProgressStore.getState();
+        const prevProg = store.progress || {};
+        useProgressStore.setState({
+          progress: {
+            ...prevProg,
+            loginStreak: res.streak || (prevProg.loginStreak || 0) + 1,
+            lastLoginClaimDate: today,
+          },
+        });
+      } catch { /* non-fatal — local state still shows claimed */ }
     };
     activeListenerRef.current = onResult;
     socket.on('dailyLoginClaimed', onResult);

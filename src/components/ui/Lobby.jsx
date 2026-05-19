@@ -1954,29 +1954,37 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         My Stats
       </button>
 
-      {/* Admin-only: manual restore button. Server rejects non-admins. */}
-      <button
-        className="btn-accent lobby-full-width-btn"
-        style={{ marginBottom: '12px', background: 'linear-gradient(135deg, #F59E0B, #D97706)', color: '#0a0a1a', fontWeight: 800 }}
-        onClick={() => {
-          const socket = getSocket();
-          if (!socket?.connected) return;
-          const handler = (res) => {
-            socket.off('adminRestoreBalanceResult', handler);
-            if (res?.success) {
-              setJoinError(`Restored ${res.chips.toLocaleString()} chips + ${res.stars.toLocaleString()} stars`);
-              setTimeout(() => setJoinError(null), 4000);
-            } else {
-              setJoinError(`Restore failed: ${res?.error || 'unknown'}`);
-              setTimeout(() => setJoinError(null), 4000);
-            }
-          };
-          socket.on('adminRestoreBalanceResult', handler);
-          socket.emit('adminRestoreBalance');
-        }}
-      >
-        🔁 Restore Missing Balance (Admin)
-      </button>
+      {/* Admin-only: manual restore button. Server rejects non-admins.
+          2026-05-19 audit — also hide from the client-side UI if the
+          user isn't an admin (UX cleanup). Empirical bug from Chrome
+          play test: a guest user (no admin role) was shown this button
+          and the "Admin" link in the top-right header. Server enforces
+          (returns "Access denied. Admin privileges required.") but a
+          guest seeing those affordances is confusing. */}
+      {useGameStore.getState().isAdmin && (
+        <button
+          className="btn-accent lobby-full-width-btn"
+          style={{ marginBottom: '12px', background: 'linear-gradient(135deg, #F59E0B, #D97706)', color: '#0a0a1a', fontWeight: 800 }}
+          onClick={() => {
+            const socket = getSocket();
+            if (!socket?.connected) return;
+            const handler = (res) => {
+              socket.off('adminRestoreBalanceResult', handler);
+              if (res?.success) {
+                setJoinError(`Restored ${res.chips.toLocaleString()} chips + ${res.stars.toLocaleString()} stars`);
+                setTimeout(() => setJoinError(null), 4000);
+              } else {
+                setJoinError(`Restore failed: ${res?.error || 'unknown'}`);
+                setTimeout(() => setJoinError(null), 4000);
+              }
+            };
+            socket.on('adminRestoreBalanceResult', handler);
+            socket.emit('adminRestoreBalance');
+          }}
+        >
+          🔁 Restore Missing Balance (Admin)
+        </button>
+      )}
 
       {/* Tools section */}
       <SectionHeader>Tools</SectionHeader>
@@ -2869,14 +2877,23 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           >
             &#9881;
           </button>
-          <button
-            className="lobby-top-bar-settings"
-            onClick={() => setShowAdminDashboard(true)}
-            title="Admin"
-            style={{ fontSize: '0.7rem', color: '#F97316' }}
-          >
-            Admin
-          </button>
+          {/* Admin link only renders for users whose loginResult flagged
+              them as admin. Server enforces the actual privilege; this
+              just hides the affordance from guest + regular players.
+              Empirical bug from Chrome play test: a `Play as Guest`
+              account saw the "Admin" link at top-right and a "Restore
+              Missing Balance (Admin)" button in the lobby — both went
+              to access-denied screens. UX cleanup. 2026-05-19. */}
+          {useGameStore.getState().isAdmin && (
+            <button
+              className="lobby-top-bar-settings"
+              onClick={() => setShowAdminDashboard(true)}
+              title="Admin"
+              style={{ fontSize: '0.7rem', color: '#F97316' }}
+            >
+              Admin
+            </button>
+          )}
           {isLoggedIn && (
             <button
               className="lobby-top-bar-settings"
