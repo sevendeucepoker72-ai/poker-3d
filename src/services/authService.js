@@ -539,7 +539,14 @@ export async function refreshAccessToken(refreshToken) {
  */
 function revokeRefreshTokenFireAndForget(refreshToken) {
   if (!refreshToken) return;
-  const url = `${AUTH_SERVER}/token/revoke`;
+  // 2026-05-15 — corrected path from `/token/revoke` to `/token/revocation`.
+  // The auth-server's discovery doc advertises revocation_endpoint as
+  // /token/revocation (RFC 7009 standard for oidc-provider). The old
+  // /token/revoke was returning 404 silently, which fire-and-forget
+  // swallowed — meaning every poker-3d logout for months left the
+  // refresh token alive for its full 30-day TTL. Verified via
+  // curl https://auth.americanpubpoker.online/.well-known/openid-configuration.
+  const url = `${AUTH_SERVER}/token/revocation`;
   const body = new URLSearchParams({
     token: refreshToken,
     token_type_hint: 'refresh_token',
@@ -603,9 +610,12 @@ export function startLogout(idToken, refreshToken) {
   }
 
   const params = new URLSearchParams({
-    id_token_hint: idToken,
     post_logout_redirect_uri: window.location.origin,
   });
+  // 2026-05-15 — guard against literal 'undefined' in URL; matches player + admin behavior.
+  if (idToken) {
+    params.set('id_token_hint', idToken);
+  }
   window.location.href = `${AUTH_SERVER}/session/end?${params}`;
 }
 

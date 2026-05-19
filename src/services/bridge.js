@@ -87,7 +87,8 @@ export async function consumeBridgeIfPresent() {
     const store = keep ? localStorage : sessionStorage;
     if (tokens.refresh_token) store.setItem('poker_oauth_refresh', tokens.refresh_token);
     if (tokens.id_token) store.setItem('poker_oauth_id_token', tokens.id_token);
-    if (tokens.expires_in) {
+    // 2026-05-15 — explicit non-null check; falsy 0 was silently dropped.
+    if (tokens.expires_in != null) {
       store.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000));
     }
   } catch {}
