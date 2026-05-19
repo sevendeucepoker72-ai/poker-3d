@@ -117,6 +117,15 @@ export default function AuthCallback() {
           if (cancelled) return;
           socket.off('loginResult', handleResult);
           activeLoginListener = null;
+          // 2026-05-19 — also remove the 'connect' re-emit listener now
+          // that login is resolved. Otherwise it stays attached and would
+          // re-fire oauthLogin on every future reconnect of this socket,
+          // duplicating audit events and (worse) potentially racing with
+          // a graceful logout the user might trigger seconds later.
+          if (activeConnectHandler) {
+            socket.off('connect', activeConnectHandler);
+            activeConnectHandler = null;
+          }
 
           if (result?.success && result.userData) {
             useGameStore.getState().oauthLogin(tokens, result.userData);
@@ -131,11 +140,26 @@ export default function AuthCallback() {
         activeLoginListener = handleResult;
         socket.on('loginResult', handleResult);
 
+        // 2026-05-19 — fix the "Login timed out" race documented in this
+        // session: the server emits `loginResult` on the SAME socket that
+        // received `oauthLogin`. If that socket disconnects between emit
+        // and response (Railway scale-up, transient network, Safari
+        // backgrounding), the emit goes to a dead socket and the client
+        // never receives it — 10s timeout fires, user sees
+        // "Login timed out — please try again" and "Play Online" appears
+        // broken on americanpubpoker.online.
+        //
+        // Fix: register a PERSISTENT 'connect' listener (was `.once` —
+        // only fired once) that re-emits oauthLogin on EVERY connect of
+        // this socket. socket.io's Manager keeps the listener across its
+        // own reconnect loop, so each fresh connection triggers a fresh
+        // oauthLogin, and the server's next loginResult emit lands on
+        // the live socket. handleResult above removes both listeners on
+        // success so we don't keep re-emitting forever.
+        activeConnectHandler = doSocketAuth;
+        socket.on('connect', doSocketAuth);
         if (socket.connected) {
           doSocketAuth();
-        } else {
-          activeConnectHandler = doSocketAuth;
-          socket.once('connect', doSocketAuth);
         }
 
         // Timeout

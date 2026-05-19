@@ -858,6 +858,14 @@ function App() {
           if (cancelled) return;
           socket.off('loginResult', handleResult);
           resultListener = null;
+          // 2026-05-19 — also remove the 'connect' re-emit listener so it
+          // doesn't keep re-firing oauthLogin on future reconnects of
+          // this socket (would duplicate audit events + race a future
+          // graceful logout).
+          if (connectHandler) {
+            socket.off('connect', connectHandler);
+            connectHandler = null;
+          }
           if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
           if (r?.success && r.userData) {
             useGameStore.getState().oauthLogin(tokens, r.userData);
@@ -867,21 +875,37 @@ function App() {
         };
         const doAuth = () => {
           if (cancelled) return;
-          connectHandler = null;
           socket.emit('oauthLogin', { accessToken: tokens.access_token });
-          timeoutId = setTimeout(() => {
-            if (cancelled) return;
-            timeoutId = null;
-            if (resultListener) {
-              socket.off('loginResult', resultListener);
-              resultListener = null;
-            }
-          }, 12000);
         };
         resultListener = handleResult;
         socket.on('loginResult', handleResult);
+        // 2026-05-19 — bridge handoff (Play Online from americanpub.poker
+        // → americanpubpoker.online via #bridge_id_token=...) used to use
+        // `.once('connect', doAuth)`, which fired only on the FIRST
+        // connect of this socket. If the socket disconnected between
+        // that emit and the server's `loginResult` response (Railway
+        // scale-up cold start, Safari background throttle, network
+        // blip), the server's emit landed on a dead socket and the
+        // client's 12s timeout silently cleaned up without a status
+        // message — user stuck on "Signing in…" forever. Switching to
+        // a persistent `.on('connect', doAuth)` re-fires oauthLogin on
+        // every reconnect; handleResult above removes both listeners on
+        // success so we don't keep re-emitting.
+        connectHandler = doAuth;
+        socket.on('connect', doAuth);
         if (socket.connected) doAuth();
-        else { connectHandler = doAuth; socket.once('connect', doAuth); }
+        timeoutId = setTimeout(() => {
+          if (cancelled) return;
+          timeoutId = null;
+          if (resultListener) {
+            socket.off('loginResult', resultListener);
+            resultListener = null;
+          }
+          if (connectHandler) {
+            socket.off('connect', connectHandler);
+            connectHandler = null;
+          }
+        }, 12000);
       } catch {
         // Silent failure — fall through to the normal boot path below.
       }
@@ -916,6 +940,13 @@ function App() {
             if (cancelled) return;
             socket.off('loginResult', handleResult);
             oauthResultListener = null;
+            // 2026-05-19 — also remove the persistent 'connect' re-emit
+            // listener so it doesn't keep firing oauthLogin on every
+            // future reconnect of this socket.
+            if (oauthConnectHandler) {
+              socket.off('connect', oauthConnectHandler);
+              oauthConnectHandler = null;
+            }
             if (oauthTimeoutId) {
               clearTimeout(oauthTimeoutId);
               oauthTimeoutId = null;
@@ -929,33 +960,34 @@ function App() {
 
           const doAuth = () => {
             if (cancelled) return;
-            oauthConnectHandler = null;
             socket.emit('oauthLogin', { accessToken: tokens.access_token });
-            // Start the 8s watchdog ONLY after we actually emit — previously the
-            // timer started at setup time, so a slow `connect` could eat the
-            // whole budget before the emit ever fired.
-            // 12s budget: the server's per-hop Master API timeout is 6s
-            // and there are up to two hops (introspect + /me). 8s was too
-            // tight under cold-start conditions — the client would kill
-            // the listener before the second hop even finished.
-            oauthTimeoutId = setTimeout(() => {
-              if (cancelled) return;
-              oauthTimeoutId = null;
-              if (oauthResultListener) {
-                socket.off('loginResult', oauthResultListener);
-                oauthResultListener = null;
-              }
-            }, 12000);
           };
 
           oauthResultListener = handleResult;
           socket.on('loginResult', handleResult);
-          if (socket.connected) {
-            doAuth();
-          } else {
-            oauthConnectHandler = doAuth;
-            socket.once('connect', doAuth);
-          }
+          // 2026-05-19 — persistent 'connect' listener (was `.once`) so a
+          // socket reconnect mid-login re-emits oauthLogin to the new
+          // socket. Server's `loginResult` emit follows the latest
+          // connection, listener catches it, handleResult clears both.
+          // See AuthCallback.jsx for the full rationale.
+          oauthConnectHandler = doAuth;
+          socket.on('connect', doAuth);
+          if (socket.connected) doAuth();
+          // 12s watchdog: covers worst-case Railway cold-start
+          // (introspect + /me, ~6s each). Fires only as a safety net;
+          // the re-emit-on-reconnect path above is the primary fix.
+          oauthTimeoutId = setTimeout(() => {
+            if (cancelled) return;
+            oauthTimeoutId = null;
+            if (oauthResultListener) {
+              socket.off('loginResult', oauthResultListener);
+              oauthResultListener = null;
+            }
+            if (oauthConnectHandler) {
+              socket.off('connect', oauthConnectHandler);
+              oauthConnectHandler = null;
+            }
+          }, 12000);
         })
         .catch(() => {
           if (cancelled) return;
