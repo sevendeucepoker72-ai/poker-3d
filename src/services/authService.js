@@ -584,30 +584,25 @@ function revokeRefreshTokenFireAndForget(refreshToken) {
 }
 
 export function startLogout(idToken, refreshToken) {
-  // Revoke the refresh_token server-side BEFORE the browser redirect so a
-  // leaked token can't be replayed after the user thinks they logged out.
-  // Resolves the "refresh_token lives forever in localStorage" gap — even
-  // if localStorage is wiped client-side on logout, anything that already
-  // exfiltrated the token before logout is now useless.
+  // 2026-05-19 — DO NOT call revokeRefreshTokenFireAndForget here.
   //
-  // Back-compat: existing callers (gameStore.logout) invoke startLogout with
-  // just the idToken, and the refresh_token may already have been cleared
-  // from storage by the time we run. Prefer an explicit argument; fall back
-  // to reading storage directly so we still get the revocation whenever
-  // possible.
-  let tokenToRevoke = refreshToken;
-  if (!tokenToRevoke) {
-    try {
-      tokenToRevoke =
-        localStorage.getItem('poker_oauth_refresh') ||
-        sessionStorage.getItem('poker_oauth_refresh');
-    } catch {
-      tokenToRevoke = null;
-    }
-  }
-  if (tokenToRevoke) {
-    revokeRefreshTokenFireAndForget(tokenToRevoke);
-  }
+  // The 2026-05-15 attempt to fire a sendBeacon /token/revocation BEFORE
+  // navigating to /session/end re-introduced the EXACT race documented
+  // in auth-server/src/config.ts:41-54 (2026-05-07 P0). /token/revocation
+  // calls Grant.destroy() (RFC 7009 — revoking an RT revokes the entire
+  // token family), which DELETEs every oidc_payloads row where
+  // grant_id = X. /session/end is then reached while the grant is in
+  // the process of being torn down; the Logout interaction it creates
+  // can't find its parent grant by the time /session/end/confirm runs,
+  // and the auto-submit returns
+  //   "Authentication Error: invalid_request: could not find logout details"
+  //
+  // The revoke is also redundant: auth-server's postLogoutSuccessSource
+  // destroys the grant for the requesting client AFTER /session/end/confirm
+  // completes successfully. That kills the refresh_token row alongside the
+  // access_token row — without racing.
+  // (refreshToken parameter kept for back-compat with existing callers.)
+  void refreshToken;
 
   const params = new URLSearchParams({
     post_logout_redirect_uri: window.location.origin,
