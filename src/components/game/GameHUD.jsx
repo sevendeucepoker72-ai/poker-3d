@@ -692,7 +692,15 @@ export default function GameHUD() {
     }, 1000);
     return () => clearTimeout(t);
   }, [serverThinksItsMyTurn, phase, sendAction]);
-  const myChips = myPlayer?.chipCount ?? 0;
+  // 2026-05-26 — fall back to `chips` field. The seat object's
+  // canonical field is `chipCount`, but some broadcast paths (notably
+  // the post-handComplete settle pass + the levelUp/awardChips payloads)
+  // surface the at-table stack as `chips`. Reading only `chipCount`
+  // here caused the upper-right HUD balance to flash "Josh Hall 0"
+  // between hands while the player's actual stack was intact. Line 3331
+  // (the nameplate me below) already had the dual fallback —
+  // synchronizing this one closes the discrepancy.
+  const myChips = myPlayer?.chipCount ?? myPlayer?.chips ?? 0;
   const currentBetToMatch = Math.max(0, gameState?.currentBetToMatch || 0);
   const myCurrentBet = myPlayer?.currentBet || 0;
   const callAmount = Math.max(0, currentBetToMatch - myCurrentBet);
@@ -1951,6 +1959,27 @@ export default function GameHUD() {
       setMissedBlindsType(null);
     }
   }, [gameState?.missedBlinds, gameState?.missedBlindType]);
+
+  // 2026-05-26 defensive belt-and-braces clear: if the player is dealt
+  // hole cards in a fresh hand and is not flagged as sitting out, the
+  // missed-blind debt cannot logically still be open — the server posts
+  // any owed dead-blind chips at the start of every hand (PokerTable.ts
+  // ~line 583, `deadBlindOwedChips` auto-paid in startHand). So when we
+  // see PreFlop + own hole cards + not sitting out, clear locally even
+  // if the server's delta forgot to send `missedBlinds: null`. This
+  // protects against future regressions in the server-side null-clear
+  // and against any delta race where the missedBlinds field is stale
+  // between the post-resolution and the next broadcast.
+  useEffect(() => {
+    const inActiveHand =
+      (phase === 'PreFlop' || phase === 'Flop' || phase === 'Turn' || phase === 'River') &&
+      yourCards.length > 0 &&
+      !sittingOut;
+    if (inActiveHand && missedBlindsAmount > 0) {
+      setMissedBlindsAmount(0);
+      setMissedBlindsType(null);
+    }
+  }, [phase, yourCards.length, sittingOut, missedBlindsAmount]);
 
   // === Mucked Hand Reveal: show button for 5 seconds after folding ===
   const prevFoldedRef = useRef(false);
