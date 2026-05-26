@@ -441,13 +441,25 @@ export async function refreshAccessToken(refreshToken) {
       response = await fetchWithTimeout(`${AUTH_SERVER}/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        // 2026-05-26 — dropped the explicit `scope` param.
+        //
+        // RFC 6749 §6 allows clients to re-assert scope on refresh to
+        // prevent silent narrowing, but oidc-provider was rejecting
+        // matched scopes with `400 invalid_scope` for refresh_tokens
+        // originally minted before offline_access was forced into every
+        // grant (see config.ts loadExistingGrant). Every returning user
+        // on .online hit this and got force-logged-out via
+        // RefreshTokenRevokedError, which then triggered the SSO
+        // round-trip that ran into the AuthCallback 10s timeout
+        // (now bumped to 25s).
+        //
+        // Per RFC 6749 §6 omitting `scope` is "treated as equal to the
+        // scope originally granted" — exactly the behavior we want, and
+        // it bypasses the provider's strict-equality check.
         body: new URLSearchParams({
           grant_type: 'refresh_token',
           client_id: CLIENT_ID,
           refresh_token: refreshToken,
-          // Re-assert the original scope so the auth server doesn't silently
-          // narrow it on rotation (RFC 6749 §6). Must match initial grant.
-          scope: SCOPES,
         }),
       });
     } catch (err) {

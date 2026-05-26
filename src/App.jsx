@@ -905,7 +905,12 @@ function App() {
             socket.off('connect', connectHandler);
             connectHandler = null;
           }
-        }, 12000);
+        }, 25000);
+        // 2026-05-26 — bumped 12s → 25s to match AuthCallback after
+        // live-reproducing "Login timed out — please try again" on
+        // .online. Bridge handoff races the same Railway-cold-start +
+        // socket.io handshake the auth-callback path does; 12s wasn't
+        // enough headroom for the 5–8s websocket upgrade on a cold edge.
       } catch {
         // Silent failure — fall through to the normal boot path below.
       }
@@ -973,9 +978,13 @@ function App() {
           oauthConnectHandler = doAuth;
           socket.on('connect', doAuth);
           if (socket.connected) doAuth();
-          // 12s watchdog: covers worst-case Railway cold-start
-          // (introspect + /me, ~6s each). Fires only as a safety net;
-          // the re-emit-on-reconnect path above is the primary fix.
+          // 25s watchdog: covers worst-case Railway cold-start
+          // (socket.io websocket upgrade can take 5–8s on a cold edge
+          // POP) plus introspect + /me (~6s each). Bumped 12s → 25s
+          // 2026-05-26 after live-reproducing "Login timed out — please
+          // try again" on .online; see AuthCallback.jsx for the same
+          // fix and the full timeline. Fires only as a safety net; the
+          // re-emit-on-reconnect path above is the primary fix.
           oauthTimeoutId = setTimeout(() => {
             if (cancelled) return;
             oauthTimeoutId = null;
@@ -987,7 +996,7 @@ function App() {
               socket.off('connect', oauthConnectHandler);
               oauthConnectHandler = null;
             }
-          }, 12000);
+          }, 25000);
         })
         .catch(() => {
           if (cancelled) return;

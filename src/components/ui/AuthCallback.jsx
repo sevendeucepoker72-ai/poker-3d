@@ -162,7 +162,34 @@ export default function AuthCallback() {
           doSocketAuth();
         }
 
-        // Timeout
+        // Timeout.
+        //
+        // 2026-05-26 — bumped 10s → 25s after live-reproducing "Login
+        // timed out — please try again" on .online. The flow:
+        //
+        //   click "Sign In" → auth-server silent SSO (1–3s) → 302 back
+        //   to /auth/callback → SPA cold-load + lazy chunk parse (1–4s)
+        //   → /token POST (~150ms) → socket.io handshake to Railway
+        //   (1–8s on a cold edge POP)
+        //
+        // Total p99 is 15–18s on a slow mobile uplink against a cold
+        // Railway revision. 10s was firing BEFORE the socket connected,
+        // which removed the loginResult listener and the persistent
+        // connect-reemit handler, so even when the socket eventually
+        // came up the oauthLogin emit went nowhere. 25s gives the
+        // socket.io 20s connect timeout (see socketService.js) enough
+        // headroom to either succeed or fail definitively. The persistent
+        // connect listener already handles the reconnect case for sockets
+        // that drop mid-flight — extending the wall-clock timeout fixes
+        // the initial-cold-connect case it didn't cover.
+        //
+        // On timeout, reload to '/' instead of useGameStore.setScreen.
+        // The parent App.jsx captures isOAuthCallback in mount-only
+        // state, so we're stuck rendering <AuthCallback /> until a full
+        // page load reinitializes that state. Tokens are already in
+        // storage from the successful /token exchange above, so the
+        // auto-login useEffect on the fresh load picks them up via the
+        // refresh-token path and signs the user in transparently.
         schedule(() => {
           if (activeLoginListener) {
             socket.off('loginResult', activeLoginListener);
@@ -172,12 +199,16 @@ export default function AuthCallback() {
             socket.off('connect', activeConnectHandler);
             activeConnectHandler = null;
           }
-          setStatus('Login timed out — please try again');
+          setStatus('Login timed out — reconnecting…');
           schedule(() => {
-            window.history.replaceState({}, '', '/');
-            useGameStore.getState().setScreen('login');
-          }, 2000);
-        }, 10000);
+            try {
+              window.location.href = '/';
+            } catch {
+              window.history.replaceState({}, '', '/');
+              useGameStore.getState().setScreen('login');
+            }
+          }, 1500);
+        }, 25000);
       })
       .catch((err) => {
         if (cancelled) return;
