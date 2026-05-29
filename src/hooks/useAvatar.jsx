@@ -72,7 +72,13 @@ export function PlayerAvatar({ playerId, name, size = 40, style = {} }) {
     );
   }
 
-  if (emoji) {
+  // 2026-05-29 RE-REVERT — chip-* default emojis are NOT "an avatar"
+  // in ops mental model; they're auto-assigned placeholders. Render
+  // emoji ONLY when the user picked a non-chip preset (e.g. top hat).
+  // Chip emojis (and any user who never picked) fall through to
+  // initials. Matches player-web + admin kiosk behavior.
+  const defaultChips = ['🔴','🔵','🟢','⚫','⚪','🟡','🟠','🟣'];
+  if (emoji && !defaultChips.includes(emoji)) {
     return (
       <div style={{
         width: size, height: size, borderRadius: '50%',
