@@ -1,40 +1,52 @@
 import { useState, useEffect } from 'react';
-import { getAvatarUrl, preloadAvatar } from '../utils/avatarService';
+import { getAvatarInfo, preloadAvatar } from '../utils/avatarService';
 
 /**
- * React hook that returns the avatar URL for a player.
- * Auto-fetches from master API if not cached.
- * Returns { url: string|null, loading: boolean }
+ * React hook that returns the unified avatar info for a player.
+ * Auto-fetches from master API (/avatars/display/:id) if not cached.
+ *
+ * 2026-05-29 audit P1-4: returns { info, loading } now — info carries
+ * the full { type, url, emoji, presetId, frameId } shape so callers
+ * can render emoji presets too, not just uploaded photos. Backward-
+ * compat: `url` is still exposed as a top-level field.
  */
 export function useAvatar(playerId) {
-  const [url, setUrl] = useState(() => getAvatarUrl(playerId));
-  const [loading, setLoading] = useState(!url && !!playerId);
+  const [info, setInfo] = useState(() => getAvatarInfo(playerId));
+  const [loading, setLoading] = useState(!info && !!playerId);
 
   useEffect(() => {
-    if (!playerId) { setUrl(null); setLoading(false); return; }
+    if (!playerId) { setInfo(null); setLoading(false); return; }
 
-    const cached = getAvatarUrl(playerId);
-    if (cached !== null) {
-      setUrl(cached || null);
+    const cached = getAvatarInfo(playerId);
+    if (cached) {
+      setInfo(cached);
       setLoading(false);
       return;
     }
 
     setLoading(true);
     preloadAvatar(playerId).then(result => {
-      setUrl(result || null);
+      setInfo(result || null);
       setLoading(false);
     });
   }, [playerId]);
 
-  return { url, loading };
+  return { info, url: info?.url || null, emoji: info?.emoji || null, loading };
 }
 
 /**
- * Avatar component — renders an img with fallback to initials.
+ * Avatar component — renders, in order of preference:
+ *   1. Uploaded photo (img) when info.type='upload'
+ *   2. Preset emoji span when info.type='preset' (incl. chip-* defaults)
+ *   3. Initials + deterministic color when neither is present
+ *
+ * 2026-05-29 audit P1-4: previously only path #1 + #3 existed, so users
+ * with the default chip-red preset (i.e. most users) rendered initials.
+ * Now the chip emojis show in 3D nameplates too, matching player-web
+ * and admin kiosk behavior.
  */
 export function PlayerAvatar({ playerId, name, size = 40, style = {} }) {
-  const { url } = useAvatar(playerId);
+  const { url, emoji } = useAvatar(playerId);
   const initial = (name || '?')[0].toUpperCase();
 
   // Generate consistent color from name
@@ -57,6 +69,21 @@ export function PlayerAvatar({ playerId, name, size = 40, style = {} }) {
         }}
         onError={(e) => { e.target.style.display = 'none'; }}
       />
+    );
+  }
+
+  if (emoji) {
+    return (
+      <div style={{
+        width: size, height: size, borderRadius: '50%',
+        background: 'rgba(255,255,255,0.08)',
+        border: '1px solid rgba(255,255,255,0.15)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: size * 0.6, lineHeight: 1,
+        ...style,
+      }}>
+        {emoji}
+      </div>
     );
   }
 

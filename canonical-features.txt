@@ -113,3 +113,11 @@ oauth_silent_return_to
 # 2026. Both log tags are emitted ONLY when the value actually changes.
 [dealer-auto-heal] userRoles merged from /me
 [vip-auto-heal] isVip merged from /me
+
+# ─── 2026-05-29 audit P1-4 — unified avatar with emoji preset support ───
+# poker-3d nameplate now hits /avatars/display/:userId (unauth) and
+# renders chip-red/blue/etc. preset emojis, not just uploaded photos.
+# Lock the cache key + the API path so a regression that drops emoji
+# support fails the deploy guardrail.
+poker-avatar-cache-v2
+/avatars/display/

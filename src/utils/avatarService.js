@@ -1,18 +1,29 @@
 /**
- * Avatar Service — fetches player profile photos from the master API
- * and caches them in memory + sessionStorage for fast access.
+ * Avatar Service — fetches the player's unified avatar display info
+ * from the master API and caches it in memory + sessionStorage.
+ *
+ * 2026-05-29 audit P1-4 fix: switched from /users/:id/profile (auth-
+ * gated; returns only avatarUrl for upload-type avatars) to
+ * /avatars/display/:userId (public; returns the full unified shape
+ * including emoji presets, frame id, etc.). Pre-fix, ~all players in
+ * the 3D nameplate showed initials because everyone defaults to a
+ * chip-* preset which the old endpoint discarded.
+ *
+ * Cache shape now: { type, url, emoji, presetId, frameId, fetchedAt }
+ * Consumers (useAvatar hook + PlayerAvatar component) render emoji
+ * spans when no url, falling through to initials only when neither
+ * is set.
  *
  * Usage:
- *   import { getAvatarUrl, preloadAvatar } from '../utils/avatarService';
- *   const url = getAvatarUrl(playerId); // returns cached URL or null
- *   preloadAvatar(playerId); // async fetch and cache
+ *   import { getAvatarInfo, preloadAvatar } from '../utils/avatarService';
+ *   const info = getAvatarInfo(playerId); // { type, url, emoji, ... } | null
  */
 
 import { getAuthToken } from '../services/tokenStorage';
 import { fetchWithTimeout } from './fetchWithTimeout';
 
 const MASTER_API = 'https://poker-prod-api-azeg4kcklq-uc.a.run.app/poker-api';
-const CACHE_KEY = 'poker-avatar-cache';
+const CACHE_KEY = 'poker-avatar-cache-v2';  // bumped because shape changed
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 // Avatar fetches are best-effort and should never hang the lobby / UI on
 // a stalled mobile network. 8s is tighter than the notification budget
@@ -34,7 +45,7 @@ function authHeaders(extra = {}) {
   return headers;
 }
 
-// In-memory cache: playerId -> { url, fetchedAt }
+// In-memory cache: playerId -> { type, url, emoji, presetId, frameId, fetchedAt }
 let memCache = {};
 
 // Load from sessionStorage on init
@@ -62,50 +73,75 @@ function saveToStorage() {
 const pending = new Map();
 
 /**
- * Get cached avatar URL for a player. Returns null if not cached.
+ * Get cached avatar info for a player. Returns null if not cached.
  * Call preloadAvatar() to fetch it.
+ *
+ * Shape: { type: 'upload'|'preset'|'initials'|null,
+ *          url: string|null,    // absolute URL when type='upload'
+ *          emoji: string|null,  // when type='preset'
+ *          presetId: string|null,
+ *          frameId: string|null }
  */
-export function getAvatarUrl(playerId) {
+export function getAvatarInfo(playerId) {
   if (!playerId) return null;
   const entry = memCache[playerId];
   if (entry && Date.now() - entry.fetchedAt < CACHE_TTL) {
-    return entry.url;
+    return entry;
   }
   return null;
 }
 
 /**
- * Fetch and cache avatar URL for a player.
- * Returns the URL or null if no avatar.
+ * Backward-compat alias used by some older call sites. Returns only the
+ * URL (or '' when the player has no upload, including users with preset
+ * emojis — consumers should migrate to getAvatarInfo to see emoji too).
+ */
+export function getAvatarUrl(playerId) {
+  const info = getAvatarInfo(playerId);
+  return info ? (info.url || null) : null;
+}
+
+/**
+ * Fetch + cache the unified avatar display info for a player.
+ * Returns the same shape as getAvatarInfo (or null on error).
  */
 export async function preloadAvatar(playerId) {
   if (!playerId) return null;
 
-  // Already cached?
-  const cached = getAvatarUrl(playerId);
-  if (cached !== null) return cached;
+  const cached = getAvatarInfo(playerId);
+  if (cached) return cached;
 
-  // Already fetching?
   if (pending.has(playerId)) return pending.get(playerId);
 
   const promise = (async () => {
     try {
-      const res = await fetchWithTimeout(`${MASTER_API}/users/${playerId}/profile`, {
+      // /avatars/display/:userId is unauth and returns the unified
+      // shape (type + url|emoji|presetId|frameId). Auth header attached
+      // when available so we get fresh data on profile edits, but the
+      // call works for anonymous viewers (kiosk-mode .online users).
+      const res = await fetchWithTimeout(`${MASTER_API}/avatars/display/${playerId}`, {
         headers: authHeaders(),
       }, AVATAR_FETCH_TIMEOUT_MS);
-      if (!res.ok) return null;
-      const data = await res.json();
-      const profile = data.data?.profile;
-      if (profile?.avatarUrl) {
-        const url = `${MASTER_API}${profile.avatarUrl}`;
-        memCache[playerId] = { url, fetchedAt: Date.now() };
+      if (!res.ok) {
+        // Cache a brief negative so we don't hammer the API on 404s.
+        const empty = { type: null, url: null, emoji: null, presetId: null, frameId: null, fetchedAt: Date.now() };
+        memCache[playerId] = empty;
         saveToStorage();
-        return url;
+        return empty;
       }
-      // No avatar — cache null to avoid re-fetching
-      memCache[playerId] = { url: '', fetchedAt: Date.now() };
+      const data = await res.json();
+      const a = data?.avatar || data?.data?.avatar || {};
+      const info = {
+        type: a.type || null,
+        url: a.url ? (a.url.startsWith('http') ? a.url : `${MASTER_API}${a.url}`) : null,
+        emoji: a.emoji || null,
+        presetId: a.presetId || null,
+        frameId: a.frameId || null,
+        fetchedAt: Date.now(),
+      };
+      memCache[playerId] = info;
       saveToStorage();
-      return '';
+      return info;
     } catch {
       return null;
     } finally {
@@ -122,17 +158,17 @@ export async function preloadAvatar(playerId) {
  */
 export function preloadAvatars(playerIds) {
   for (const id of playerIds) {
-    if (id && !getAvatarUrl(id)) {
+    if (id && !getAvatarInfo(id)) {
       preloadAvatar(id);
     }
   }
 }
 
 /**
- * React hook-friendly: get avatar URL with auto-fetch.
- * Returns url string or null.
+ * React hook-friendly: get avatar info with auto-fetch.
+ * Returns the cached info object (or null when uncached).
  */
 export function useAvatar(playerId) {
-  // This is a simple sync getter — for React, use the hook in avatarHook.js
-  return getAvatarUrl(playerId);
+  // Simple sync getter — for React, use the hook in hooks/useAvatar.jsx.
+  return getAvatarInfo(playerId);
 }
