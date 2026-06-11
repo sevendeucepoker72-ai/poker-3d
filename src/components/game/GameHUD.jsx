@@ -871,8 +871,12 @@ export default function GameHUD() {
   // and we check if we are the first actor (UTG position)
   const isUTG = phase === 'PreFlop' && isMyTurn && gameState?.isFirstActor;
 
-  // Insurance: player is all-in and waiting for remaining community cards
-  const isPlayerAllIn = myPlayer?.isAllIn || (myPlayer?.chipCount === 0 && myPlayer?.currentBet > 0);
+  // Insurance: player is all-in and waiting for remaining community cards.
+  // 2026-06-11 audit M6: the server sends `allIn` (never `isAllIn`), so the
+  // old `myPlayer?.isAllIn` was always undefined and this fell through to the
+  // chipCount/currentBet heuristic — which misses an all-in player after a
+  // street reset (chipCount 0 but currentBet back to 0). Read `allIn` directly.
+  const isPlayerAllIn = myPlayer?.allIn || (myPlayer?.chipCount === 0 && myPlayer?.currentBet > 0);
   const cardsStillToCome = phase === 'PreFlop' ? 5 - communityCards.length :
     phase === 'Flop' ? 5 - communityCards.length :
     phase === 'Turn' ? 5 - communityCards.length : 0;
@@ -1938,13 +1942,27 @@ export default function GameHUD() {
         try { addToast(data.message, data.code === 'insufficient_chips' ? 'error' : 'warn', 3500); } catch {}
       }
     };
+    // 2026-06-11 audit M7: when the server REJECTS an action (e.g. "Not your
+    // turn", "Invalid action", "Duplicate action") it does NOT advance the
+    // turn — so hasSentActionRef stayed true and every subsequent tap was
+    // dedup'd, locking the player out of acting for the rest of their turn.
+    // Clear the ref on any server error so they can retry, and surface the
+    // reason (previously action errors only hit console.error in App.jsx).
+    const actionErrorHandler = (data) => {
+      hasSentActionRef.current = false;
+      if (data?.message) {
+        try { addToast(data.message, 'warn', 3000); } catch {}
+      }
+    };
     socket.on('missedBlinds', handler);
     socket.on('missedBlindsPosted', postedHandler);
     socket.on('missedBlindsError', errorHandler);
+    socket.on('error', actionErrorHandler);
     return () => {
       socket.off('missedBlinds', handler);
       socket.off('missedBlindsPosted', postedHandler);
       socket.off('missedBlindsError', errorHandler);
+      socket.off('error', actionErrorHandler);
     };
   }, []);
 
