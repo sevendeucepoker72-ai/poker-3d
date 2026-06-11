@@ -605,6 +605,27 @@ function App() {
     socket.on('playerProgress', (progress) => {
       useProgressStore.getState().setProgress(progress);
       initPersistence(progress);
+      // 2026-06-10 audit (Pattern B self-heal for the wallet): keep the
+      // lobby wallet (useGameStore.chips) live. It was stamped once at
+      // oauthLogin from userData.chips and never refreshed, so any post-
+      // login balance change — daily reward, buy-in refund, stand-up
+      // cash-out, admin grant — didn't show until the user signed out and
+      // back in. The lobby reads useGameStore.chips first (see Lobby.jsx
+      // chipCount precedence), so syncing it here fixes every reader.
+      //
+      // progress.chips on this payload is the server's authoritative
+      // in-memory balance: poker-server only emits playerProgress AFTER
+      // hydrateFromDB (index.ts hydrateAndPushProgress / sendProgressToPlayer
+      // → getClientProgress.chips), so it's always the real DB value, not
+      // the client-side 5000 default the original Lobby precedence guarded
+      // against. We only sync when it's a finite number so a malformed
+      // partial can't zero the wallet. NOTE: master-API /users/:id/me does
+      // NOT return chips — poker-server's socket is the only live wallet
+      // source for .online, which is why this lives here and not in
+      // App.jsx's refreshUserRolesFromMe.
+      if (progress && Number.isFinite(progress.chips)) {
+        try { useGameStore.getState().setChips(progress.chips); } catch {}
+      }
       // First playerProgress after login → pull durable state (inventory, BP claims, prefs…)
       if (!socket.__durableFetched) {
         socket.__durableFetched = true;
