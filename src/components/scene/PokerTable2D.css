@@ -1221,11 +1221,14 @@
 
 /* ── Sitting-out / Away state ─────────────────────────────── */
 .seat-pod--sitout {
-  opacity: 0.6;
+  /* 2026-06-11: was 0.6 — combined with the avatar dim below a sitting-out
+     player faded to ~42% greyed and read as "gone." The away-badge already
+     signals the state, so keep the seat clearly visible. */
+  opacity: 0.85;
 }
 .seat-pod--sitout .seat-pod__avatar {
-  filter: grayscale(0.8);
-  opacity: 0.7;
+  filter: grayscale(0.3);
+  opacity: 0.9;
 }
 .seat-pod__away-badge {
   position: absolute;

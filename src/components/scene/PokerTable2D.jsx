@@ -357,8 +357,18 @@ const SeatPod = memo(function SeatPod({
      skipped rendering entirely, so the seat position was physically
      missing from the oval — visually the table looked like it had
      fewer than 9 seats. Treating eliminated-but-still-there as "Open"
-     matches player intuition: a busted-out seat is available to sit. */
-  if (!serverSeat || (!isOccupied && !isSittingOut) || eliminated) {
+     matches player intuition: a busted-out seat is available to sit.
+
+     2026-06-11 — but ONLY for tournaments. `eliminated` is set the instant
+     a seat's chipCount hits 0 (PokerTable.ts:444 / index.ts:2747 — i.e. the
+     moment a player goes all-in or busts). At a CASH table that player is
+     reloaded to the min buy-in on the very next hand, so rendering them as
+     an empty "Open" seat for that window made the player VANISH from their
+     seat and pop back a moment later — the long-standing "random players
+     disappearing mid-hand" report. Gate on isTournament so a cash bust
+     stays visibly seated (it just shows 0 chips) right through the reload;
+     a real tournament bust still clears to Open. */
+  if (!serverSeat || (!isOccupied && !isSittingOut) || (eliminated && isTournament)) {
     // Disable "Sit Here" for tournament tables — TournamentManager owns
     // seating there. Still show the "Open" placeholder so the oval layout
     // stays 9-wide and spectators can see where the empty seats are.
