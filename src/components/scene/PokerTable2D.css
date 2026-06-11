@@ -282,7 +282,11 @@
 }
 
 .seat-pod--folded {
-  filter: grayscale(0.7) brightness(0.55);
+  /* 2026-06-11: was grayscale(0.7) brightness(0.55). Stacked on top of the
+     avatar/nameplate dims below, that knocked a folded player to ~25% visible
+     grey on the dark felt — players reported folded opponents "disappearing"
+     mid-hand. Gentler so folded seats stay clearly on the table, just muted. */
+  filter: grayscale(0.3) brightness(0.9);
 }
 
 /* ── Avatar circle wrapper ────────────────────────────────── */
@@ -1253,13 +1257,15 @@
 
 /* ── Fold-dim nameplate ───────────────────────────────────── */
 .seat-pod--folded .seat-pod__nameplate {
-  opacity: 0.32;
-  filter: grayscale(0.65);
+  opacity: 0.7;
+  filter: grayscale(0.3);
   transition: opacity 0.4s ease, filter 0.4s ease;
 }
 .seat-pod--folded .seat-pod__avatar {
-  opacity: 0.45;
-  filter: grayscale(0.6);
+  /* Keep the folded player's avatar clearly visible (was 0.45 / grayscale .6,
+     which combined with the pod dim made it vanish). */
+  opacity: 0.92;
+  filter: grayscale(0.12);
   transition: opacity 0.4s ease, filter 0.4s ease;
 }
 
