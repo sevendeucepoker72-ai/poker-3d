@@ -7141,8 +7141,15 @@ html.kb-open .table-pot-odds {
    which flickered it out for a frame ("players disappearing as actions are
    made"). The avatar + nameplate already carry box-shadow depth. */
 
-/* active player — pulsing gold halo behind the pod */
-.seat-pod--active{ position:relative; }
+/* active player — gold halo behind the pod.
+   2026-06-11 ROOT-CAUSE FIX: do NOT set `position` on .seat-pod--active. The
+   base .seat-pod is `position:absolute` (placed around the oval by its inline
+   left/top %). Overriding it to `relative` while the seat was active re-based
+   those offsets to normal flow, yanking the entire active pod — name badge,
+   avatar, cards — out of its seat. THAT is the "players disappearing when it's
+   their turn" bug, and DOM/opacity instrumentation cannot see it (the element
+   stays present at full opacity, just positioned off its seat). The base
+   absolute box is already the containing block this ::after anchors to. */
 .seat-pod--active::after{
   content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
   width:190px; height:115px; border-radius:50%;
