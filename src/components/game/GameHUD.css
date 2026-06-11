@@ -7119,10 +7119,14 @@ html.kb-open .table-pot-odds {
   box-shadow:
     0 0 0 14px #0a0f20, 0 0 0 18px #2e54a0, 0 0 0 22px #0a0f20,
     0 28px 110px 26px rgba(0,0,0,.85),
-    inset 0 0 110px rgba(0,0,0,.5), inset 0 8px 30px rgba(150,190,255,.08) !important;
-  animation: appRimGlow 4s ease-in-out infinite !important;
+    inset 0 0 110px rgba(0,0,0,.5), inset 0 8px 30px rgba(150,190,255,.08),
+    0 0 70px 12px rgba(45,95,205,.30) !important;
+  /* 2026-06-11: REMOVED `animation: appRimGlow`. It animated a
+     `filter: drop-shadow` on the felt — continuously re-rasterizing a filter
+     layer that the seat pods/cards composite against. On many GPUs that
+     flickered the pods ("players disappearing mid-hand"). The static rim glow
+     is now the extra box-shadow on the line above; no animated filter. */
 }
-@keyframes appRimGlow{0%,100%{filter:drop-shadow(0 0 46px rgba(45,95,205,.26));}50%{filter:drop-shadow(0 0 78px rgba(60,120,235,.5));}}
 
 /* avatars — flat circles → glossy 3D orbs */
 .hud-np-avatar, .seat-pod__avatar{
@@ -7132,20 +7136,23 @@ html.kb-open .table-pot-odds {
 
 /* nameplates — soft depth */
 .hud-nameplate-me{ box-shadow:0 10px 26px rgba(0,0,0,.55), inset 0 1px 0 rgba(150,190,255,.12) !important; }
-.seat-pod{ filter:drop-shadow(0 8px 18px rgba(0,0,0,.5)); }
+/* 2026-06-11: `.seat-pod { filter: drop-shadow }` REMOVED. A filter on a pod
+   that re-renders on every game-state update re-rasterizes the pod each time,
+   which flickered it out for a frame ("players disappearing as actions are
+   made"). The avatar + nameplate already carry box-shadow depth. */
 
 /* active player — pulsing gold halo behind the pod */
 .seat-pod--active{ position:relative; }
 .seat-pod--active::after{
   content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
   width:190px; height:115px; border-radius:50%;
-  background:radial-gradient(closest-side, rgba(245,196,81,.30), transparent 75%);
-  animation:appHalo 2.2s ease-in-out infinite; z-index:-1; pointer-events:none;
+  background:radial-gradient(closest-side, rgba(245,196,81,.34), transparent 75%);
+  z-index:-1; pointer-events:none; /* 2026-06-11: static glow, animation removed */
 }
-@keyframes appHalo{50%{transform:translate(-50%,-50%) scale(1.18);opacity:.55;}}
 
 /* hole cards — gloss + lift */
-.card-peek{ filter:drop-shadow(0 12px 26px rgba(0,0,0,.55)) drop-shadow(0 0 14px rgba(80,150,255,.2)); }
+/* card depth via box-shadow, not filter (see felt/seat-pod notes above) */
+.card-peek{ box-shadow:0 12px 26px rgba(0,0,0,.55), 0 0 14px rgba(80,150,255,.2); }
 
 /* action buttons — tactile premium finish (colors unchanged) */
 .action-btn{
@@ -7153,13 +7160,8 @@ html.kb-open .table-pot-odds {
   box-shadow:0 6px 0 rgba(0,0,0,.30), 0 13px 28px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.28) !important;
   border-top:1px solid rgba(255,255,255,.2) !important;
 }
-.action-btn.call{ position:relative; overflow:hidden; }
-.action-btn.call::after{
-  content:""; position:absolute; top:0; bottom:0; width:36%; left:-50%;
-  background:linear-gradient(100deg, transparent, rgba(255,255,255,.30), transparent);
-  transform:skewX(-18deg); pointer-events:none; animation:appSheen 3.4s ease-in-out infinite;
-}
-@keyframes appSheen{0%{left:-50%;}55%,100%{left:135%;}}
+/* 2026-06-11: Call-button sheen-sweep REMOVED. It animated `left` (a
+   paint-triggering property) continuously; static finish only now. */
 
 /* preset pills — segmented + active blue */
 .ab-preset{ border-radius:9px !important; border:1px solid rgba(90,140,230,.3) !important; box-shadow:inset 0 1px 0 rgba(255,255,255,.1) !important; }
