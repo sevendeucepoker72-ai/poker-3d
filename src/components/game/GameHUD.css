@@ -7168,3 +7168,25 @@ html.kb-open .table-pot-odds {
 /* bet slider — glowing gold thumb */
 .raise-slider::-webkit-slider-thumb{ box-shadow:0 0 16px rgba(245,180,60,.85), 0 2px 6px rgba(0,0,0,.5) !important; }
 .raise-slider::-moz-range-thumb{ box-shadow:0 0 16px rgba(245,180,60,.85), 0 2px 6px rgba(0,0,0,.5) !important; }
+
+/* ── action dock (2026-06-11) — dark dock bar + iconed buttons ──────────
+   Makes the action bar read as redesigned: a dark dock panel behind the
+   row + a leading glyph on each button. Buttons keep their position (no
+   re-flow, no overlap with the raise-amount nudge) so it's responsive-safe. */
+.hud-actions{
+  background:linear-gradient(180deg, rgba(10,18,40,0), rgba(8,14,32,.82) 28%, rgba(6,11,24,.97)) !important;
+  border-top:1px solid rgba(90,140,230,.28) !important;
+}
+.action-btn{
+  position:relative !important;
+  box-shadow:0 5px 0 rgba(0,0,0,.32), 0 12px 26px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.30) !important;
+}
+.action-btn::before{
+  position:absolute; left:18px; top:50%; transform:translateY(-50%);
+  font-size:24px; font-weight:700; opacity:.9; line-height:1; pointer-events:none;
+}
+.action-btn.fold::before{ content:"\2715"; }
+.action-btn.check::before{ content:"\2713"; }
+.action-btn.call::before{ content:"\2713"; }
+.action-btn.raise::before{ content:"\2191"; }
+.action-btn.allin::before{ content:"\21C8"; }
