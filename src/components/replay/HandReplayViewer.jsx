@@ -197,27 +197,27 @@ function buildReplaySteps(history) {
     });
   }
 
-  // Add remaining community cards if not shown yet
-  if (!flopAdded && cc.length >= 3) {
+  // Add any remaining community cards not shown yet — e.g. short all-in
+  // hands where the action loop ended before a street's reveal threshold,
+  // so the board still runs out before showdown. Drives off the same
+  // variant-aware streetState used in the action loop above.
+  //
+  // 2026-06-11: this block previously referenced flopAdded / turnAdded /
+  // riverAdded, which were removed when the per-street reveal was
+  // generalized into streetState. Those undefined references threw
+  // `ReferenceError: flopAdded is not defined` inside the buildReplaySteps
+  // useMemo on EVERY open, so the "Last Hand" replay always failed with the
+  // generic "Hand Replay couldn't load" overlay. Rewritten to use
+  // street.added / street.upToCard like the in-loop reveal.
+  for (const street of streetState) {
+    if (street.added) continue;
+    if (cc.length < street.upToCard) continue;
     steps.push({
-      type: 'community', phase: 'Flop', label: 'Flop revealed',
-      activeSeat: -1, pot: currentPot, communityCards: cc.slice(0, 3),
+      type: 'community', phase: street.phase, label: street.label,
+      activeSeat: -1, pot: currentPot, communityCards: cc.slice(0, street.upToCard),
       playerStates: steps[steps.length - 1].playerStates.map((p) => ({ ...p, currentAction: null })),
     });
-  }
-  if (!turnAdded && cc.length >= 4) {
-    steps.push({
-      type: 'community', phase: 'Turn', label: 'Turn revealed',
-      activeSeat: -1, pot: currentPot, communityCards: cc.slice(0, 4),
-      playerStates: steps[steps.length - 1].playerStates.map((p) => ({ ...p, currentAction: null })),
-    });
-  }
-  if (!riverAdded && cc.length >= 5) {
-    steps.push({
-      type: 'community', phase: 'River', label: 'River revealed',
-      activeSeat: -1, pot: currentPot, communityCards: cc.slice(0, 5),
-      playerStates: steps[steps.length - 1].playerStates.map((p) => ({ ...p, currentAction: null })),
-    });
+    street.added = true;
   }
 
   // Showdown step
