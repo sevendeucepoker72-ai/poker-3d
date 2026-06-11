@@ -7128,6 +7128,17 @@ html.kb-open .table-pot-odds {
      is now the extra box-shadow on the line above; no animated filter. */
 }
 
+/* felt rim-glow BREATHING — re-added 2026-06-11, GPU-safe: pulses a pseudo's
+   OPACITY (compositor-only — no repaint, no filter, and it never touches the
+   felt's own transform/centering, so nothing can be knocked out of place). */
+.table2d-felt::after{
+  content:""; position:absolute; inset:0; border-radius:inherit;
+  box-shadow:0 0 95px 18px rgba(60,120,235,.5);
+  opacity:.4; z-index:-1; pointer-events:none;
+  animation: appFeltGlow 5s ease-in-out infinite;
+}
+@keyframes appFeltGlow{ 0%,100%{ opacity:.35; } 50%{ opacity:.9; } }
+
 /* avatars — flat circles → glossy 3D orbs */
 .hud-np-avatar, .seat-pod__avatar{
   box-shadow:0 4px 12px rgba(0,0,0,.5), inset 0 2px 5px rgba(255,255,255,.4), inset 0 -3px 6px rgba(0,0,0,.38) !important;
@@ -7153,9 +7164,14 @@ html.kb-open .table-pot-odds {
 .seat-pod--active::after{
   content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
   width:190px; height:115px; border-radius:50%;
-  background:radial-gradient(closest-side, rgba(245,196,81,.34), transparent 75%);
-  z-index:-1; pointer-events:none; /* 2026-06-11: static glow, animation removed */
+  background:radial-gradient(closest-side, rgba(245,196,81,.38), transparent 75%);
+  z-index:-1; pointer-events:none;
+  /* 2026-06-11: pulse re-added — transform + opacity ONLY (compositor-safe),
+     anchored to the base absolute .seat-pod. NO position override on the pod
+     itself (that override was the disappearing-player bug). */
+  animation: appHaloPulse 2.1s ease-in-out infinite;
 }
+@keyframes appHaloPulse{ 50%{ transform:translate(-50%,-50%) scale(1.16); opacity:.62; } }
 
 /* hole cards — gloss + lift */
 /* card depth via box-shadow, not filter (see felt/seat-pod notes above) */
@@ -7167,8 +7183,23 @@ html.kb-open .table-pot-odds {
   box-shadow:0 6px 0 rgba(0,0,0,.30), 0 13px 28px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.28) !important;
   border-top:1px solid rgba(255,255,255,.2) !important;
 }
-/* 2026-06-11: Call-button sheen-sweep REMOVED. It animated `left` (a
-   paint-triggering property) continuously; static finish only now. */
+/* Call-button sheen — re-added 2026-06-11, GPU-safe: animates `transform`
+   (compositor-only), not `left`. The button is position:relative below. */
+.action-btn.call{ overflow:hidden; }
+.action-btn.call::after{
+  content:""; position:absolute; top:0; bottom:0; left:0; width:38%;
+  background:linear-gradient(100deg, transparent, rgba(255,255,255,.30), transparent);
+  transform:translateX(-160%) skewX(-18deg); pointer-events:none;
+  animation: appSheen 3.6s ease-in-out infinite;
+}
+@keyframes appSheen{ 0%{ transform:translateX(-160%) skewX(-18deg); } 55%,100%{ transform:translateX(360%) skewX(-18deg); } }
+
+/* Accessibility: honor reduced-motion — kill the re-added pulses/sheen. */
+@media (prefers-reduced-motion: reduce){
+  .table2d-felt::after,
+  .seat-pod--active::after,
+  .action-btn.call::after{ animation:none !important; }
+}
 
 /* preset pills — segmented + active blue */
 .ab-preset{ border-radius:9px !important; border:1px solid rgba(90,140,230,.3) !important; box-shadow:inset 0 1px 0 rgba(255,255,255,.1) !important; }
