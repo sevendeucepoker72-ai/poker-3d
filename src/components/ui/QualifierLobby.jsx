@@ -271,6 +271,23 @@ export default function QualifierLobby({ onSpectate }) {
               </div>
             )}
 
+            {/* How to qualify — official guidelines surfaced onto the card itself
+                (was previously only inside the click-in dashboard modal). The
+                rules match marketing (Home/HowToPlay/Promotions/Championship/FAQ)
+                and QualifierDashboard.jsx. 2026-06-11. */}
+            <div style={{
+              marginBottom: 12, padding: '10px 12px', borderRadius: 8,
+              background: 'rgba(90,140,230,0.06)', border: '1px solid rgba(90,140,230,0.18)',
+              fontSize: '0.76rem', color: '#9fb4d8', lineHeight: 1.5,
+            }}>
+              <div style={{ color: '#cfe0ff', fontWeight: 700, marginBottom: 4, fontSize: '0.7rem', letterSpacing: '0.05em' }}>📋 HOW TO QUALIFY</div>
+              {q.type === 'Weekly' ? (
+                <>Finish <strong style={{ color: '#fff' }}>top 5 in any live game</strong> at any venue to earn a credit and an entry here. Top 3 here win a seat to the Championship at Bally's Blackhawk; the top 10% advance to the Monthly Major.</>
+              ) : (
+                <>Three ways in: <strong style={{ color: '#fff' }}>top 10%</strong> of any Weekly online qualifier · <strong style={{ color: '#fff' }}>top 20%</strong> of last month's points at any venue (auto-added on the 1st) · <strong style={{ color: '#fff' }}>top 20%</strong> of your venue's average attendance. Top 6 here win Bally's seats.</>
+              )}
+            </div>
+
             {/* Action area */}
             {loading ? (
               <div style={{ color: '#666', fontSize: '0.8rem', padding: '10px 0' }}>Checking qualification...</div>
@@ -337,7 +354,9 @@ export default function QualifierLobby({ onSpectate }) {
                 background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)',
                 color: '#F87171', fontSize: '0.82rem', textAlign: 'center',
               }}>
-                Not yet qualified — finish top 5 at a live game to earn entry
+                {q.type === 'Weekly'
+                  ? 'Not yet qualified — finish top 5 in any live game to earn entry'
+                  : 'Not yet qualified — qualify via a Weekly, venue points, or attendance (see above)'}
               </div>
             )}
           </div>
