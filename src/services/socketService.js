@@ -255,8 +255,18 @@ export const disconnectFromServer = () => {
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   const onVisible = () => {
     if (document.visibilityState !== 'visible') return;
-    if (_socket && !_socket.connected) {
+    if (!_socket) return;
+    if (!_socket.connected) {
+      // Dropped while backgrounded (mobile / OS suspend) — kick the reconnect
+      // now instead of waiting out socket.io's backoff. Fresh full state then
+      // arrives via the server's reconnect path.
       try { _socket.connect(); } catch { /* ignore */ }
+    } else {
+      // 2026-06-12 — Still connected, but the render loop was frozen while the
+      // tab was hidden, so the table can look a few frames stale. Pull a fresh
+      // full snapshot so we snap to the live hand instead of catching up
+      // frame-by-frame. (Server handler: socket.on('requestState').)
+      try { _socket.emit('requestState'); } catch { /* ignore */ }
     }
   };
   document.addEventListener('visibilitychange', onVisible);

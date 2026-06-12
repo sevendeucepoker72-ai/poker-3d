@@ -284,7 +284,7 @@ export default function QualifierLobby({ onSpectate }) {
               {q.type === 'Weekly' ? (
                 <>Finish <strong style={{ color: '#fff' }}>top 5 in any live game</strong> at any venue to earn a credit and an entry here. Top 3 here win a seat to the Championship at Bally's Blackhawk; the top 10% advance to the Monthly Major.</>
               ) : (
-                <>Three ways in: <strong style={{ color: '#fff' }}>top 10%</strong> of any Weekly online qualifier · <strong style={{ color: '#fff' }}>top 20%</strong> of last month's points at any venue (auto-added on the 1st) · <strong style={{ color: '#fff' }}>top 20%</strong> of your venue's average attendance. Top 6 here win Bally's seats.</>
+                <>Three ways in: <strong style={{ color: '#fff' }}>top 10%</strong> of any Weekly online qualifier · <strong style={{ color: '#fff' }}>top 20%</strong> of each league's leaderboard (auto-added on the 1st) · <strong style={{ color: '#fff' }}>top 20%</strong> of your venue's average attendance. Top 6 here win Bally's seats.</>
               )}
             </div>
 
@@ -356,7 +356,7 @@ export default function QualifierLobby({ onSpectate }) {
               }}>
                 {q.type === 'Weekly'
                   ? 'Not yet qualified — finish top 5 in any live game to earn entry'
-                  : 'Not yet qualified — qualify via a Weekly, venue points, or attendance (see above)'}
+                  : 'Not yet qualified — qualify via a Weekly, league standings, or attendance (see above)'}
               </div>
             )}
           </div>

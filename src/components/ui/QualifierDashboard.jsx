@@ -193,7 +193,7 @@ export default function QualifierDashboard({ qualifier, tournamentData, isRegist
                 {qualifier.type === 'Weekly' ? (
                   <p>Top 5 finishers at any live American Pub Poker game earn a qualification credit for this weekly online qualifier. Top 3 in this qualifier win seats to the Championship at Bally's Blackhawk; the top 10% advance to the monthly online qualifier.</p>
                 ) : (
-                  <p>Monthly Major Qualifier — three ways in: (1) finish top 10% in any weekly online qualifier, (2) finish the previous month in the top 20% of points at any venue (auto-added on the 1st), or (3) finish in the top 20% of your venue's average attendance for a direct championship seat. Top 6 of this qualifier win seats to the Championship.</p>
+                  <p>Monthly Major Qualifier — three ways in: (1) finish top 10% in any weekly online qualifier, (2) finish in the top 20% of each league's leaderboard (auto-added on the 1st), or (3) finish in the top 20% of your venue's average attendance for a direct championship seat. Top 6 of this qualifier win seats to the Championship.</p>
                 )}
               </div>
 
