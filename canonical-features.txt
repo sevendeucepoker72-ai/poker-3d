@@ -121,3 +121,12 @@ oauth_silent_return_to
 # support fails the deploy guardrail.
 poker-avatar-cache-v2
 /avatars/display/
+
+# ─── 2026-06-12 — 50k starting bankroll + unlimited broke-refill ───
+# New accounts start with 50,000 (server DEFAULT_CHIPS). A player whose
+# wallet falls below the cheapest cash table's 5,000 min buy-in sees the
+# lobby "Out of chips?" banner and can claim unlimited +5,000 top-ups
+# (server claimRefill enforces the < 5,000 gate). Lock the button label +
+# socket event so a Lobby refactor can't silently drop the refill path.
+Get 5,000 free chips
+claimRefill

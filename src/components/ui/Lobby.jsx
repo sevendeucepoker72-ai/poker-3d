@@ -1014,6 +1014,12 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // and surface an error so the user isn't stranded on a blank spinner.
   const [joining, setJoining] = useState(null); // null | { since: number, label: string }
   const [joinError, setJoinError] = useState(null);
+  // "Broke refill" — when the wallet drops below the cheapest cash table's
+  // 5,000 min buy-in, the player can claim unlimited +5,000 top-ups to keep
+  // playing (server enforces the < 5,000 gate). Drives the banner button.
+  const [refilling, setRefilling] = useState(false);
+  const [refillToast, setRefillToast] = useState(null); // null | { ok: bool, text }
+  const refillTimerRef = useRef(null);
   const beginJoin = (label, action) => {
     setJoinError(null);
     setJoining({ since: Date.now(), label });
@@ -1065,6 +1071,43 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       socket.off('joinError', onServerError);
     };
   }, [joining]);
+
+  // Broke-refill claim. The refilled balance itself arrives via the normal
+  // playerProgress → gameStore.chips sync (App.jsx), so we only drive the
+  // button state + a small confirmation toast off the `refillResult` ack.
+  const handleClaimRefill = () => {
+    const socket = getSocket();
+    if (!socket) { setRefillToast({ ok: false, text: 'Not connected — try again.' }); return; }
+    setRefilling(true);
+    setRefillToast(null);
+    socket.emit('claimRefill');
+    // Safety net: if the socket dropped and no ack returns, re-enable the button.
+    if (refillTimerRef.current) clearTimeout(refillTimerRef.current);
+    refillTimerRef.current = setTimeout(() => {
+      refillTimerRef.current = null;
+      setRefilling(false);
+      setRefillToast({ ok: false, text: 'Timed out — try again.' });
+    }, 8000);
+  };
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const onRefill = (res) => {
+      if (refillTimerRef.current) { clearTimeout(refillTimerRef.current); refillTimerRef.current = null; }
+      setRefilling(false);
+      if (res?.success) {
+        setRefillToast({ ok: true, text: `+${(res.added || 5000).toLocaleString()} chips added. Good luck!` });
+        setTimeout(() => setRefillToast(null), 3500);
+      } else if (res?.error === 'not_broke') {
+        // Balance already recovered (a hand paid out / grant landed) — silently clear.
+        setRefillToast(null);
+      } else {
+        setRefillToast({ ok: false, text: 'Could not add chips — try again.' });
+      }
+    };
+    socket.on('refillResult', onRefill);
+    return () => socket.off('refillResult', onRefill);
+  }, []);
 
   // Session tracker
   const sessionStartRef = useRef(Date.now());
@@ -2817,6 +2860,41 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           onClick={() => setJoinError(null)}
         >
           ⚠ {joinError} <span style={{ opacity: 0.7, marginLeft: 8 }}>(tap to dismiss)</span>
+        </div>
+      )}
+
+      {/* Broke-refill banner — appears whenever the wallet can't cover the
+          cheapest cash table (5,000 min buy-in). Unlimited free top-ups keep
+          a busted player in the game; the server enforces the < 5,000 gate. */}
+      {Number.isFinite(chips) && chips < 5000 && !joining && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 3100, display: 'flex', flexDirection: 'column', alignItems: 'center',
+          gap: 6, background: 'linear-gradient(135deg, #065f46, #047857)', color: '#fff',
+          padding: '14px 22px', borderRadius: 14, maxWidth: 340, textAlign: 'center',
+          boxShadow: '0 6px 28px rgba(0,0,0,0.55)', border: '1px solid rgba(16,185,129,0.6)',
+        }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>Out of chips?</div>
+          <div style={{ fontSize: 12.5, opacity: 0.9, lineHeight: 1.35 }}>
+            You have {(chips || 0).toLocaleString()}. Grab 5,000 free to sit back down — as many times as you need.
+          </div>
+          <button
+            onClick={handleClaimRefill}
+            disabled={refilling}
+            style={{
+              marginTop: 4, padding: '10px 20px', fontSize: 14, fontWeight: 700,
+              color: '#064e3b', background: refilling ? '#a7f3d0' : '#34d399',
+              border: 'none', borderRadius: 10, cursor: refilling ? 'default' : 'pointer',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+            }}
+          >
+            {refilling ? 'Adding…' : 'Get 5,000 free chips'}
+          </button>
+          {refillToast && (
+            <div style={{ fontSize: 12, marginTop: 2, color: refillToast.ok ? '#d1fae5' : '#fecaca' }}>
+              {refillToast.text}
+            </div>
+          )}
         </div>
       )}
 
