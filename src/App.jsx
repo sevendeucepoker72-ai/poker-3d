@@ -44,6 +44,7 @@ import AuthCallback from './components/ui/AuthCallback';
 // works because top-level navigation to auth-server makes its cookies
 // first-party for the duration of the redirect.
 import { isAuthCallback as checkIsAuthCallback, refreshAccessToken, RefreshTokenRevokedError } from './services/authService';
+import { logAuthEvent } from './services/authEvents';
 import { startAuthCrossTabListener } from './services/authCrossTab';
 // Heavy screens loaded lazily — only when the user first navigates to them
 const Lobby = lazy(() => import('./components/ui/Lobby'));
@@ -889,8 +890,10 @@ function App() {
           }
           if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
           if (r?.success && r.userData) {
+            try { logAuthEvent('login_success', { via: 'bridge' }); } catch {}
             useGameStore.getState().oauthLogin(tokens, r.userData);
           } else {
+            try { logAuthEvent('login_failed', { reason: 'bridge_socket_auth_failed' }); } catch {}
             clearStoredTokens();
           }
         };
@@ -918,6 +921,7 @@ function App() {
         timeoutId = setTimeout(() => {
           if (cancelled) return;
           timeoutId = null;
+          try { logAuthEvent('login_failed', { reason: 'bridge_socket_timeout' }); } catch {}
           if (resultListener) {
             socket.off('loginResult', resultListener);
             resultListener = null;

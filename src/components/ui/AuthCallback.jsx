@@ -3,6 +3,7 @@ import { useGameStore } from '../../store/gameStore';
 import { getSocket } from '../../services/socketService';
 import { handleCallback, getCallbackParams, clearCallbackParamsCache } from '../../services/authService';
 import { setAuthToken, isKeepSignedIn } from '../../services/tokenStorage';
+import { logAuthEvent } from '../../services/authEvents';
 
 export default function AuthCallback() {
   const [status, setStatus] = useState('Signing in...');
@@ -36,6 +37,7 @@ export default function AuthCallback() {
       // can sign in normally. The session-scoped flag in main.jsx's
       // cold-start guard prevents a re-attempt loop.
       if (error === 'login_required' || error === 'interaction_required' || error === 'consent_required') {
+        try { logAuthEvent('silent_no_session', { error }); } catch {}
         try { clearCallbackParamsCache(); } catch {}
         try { sessionStorage.removeItem('oauth_silent_return_to'); } catch {}
         window.history.replaceState({}, '', '/');
@@ -47,6 +49,7 @@ export default function AuthCallback() {
         };
       }
       console.error('OAuth error:', error, errorDescription);
+      try { logAuthEvent('login_failed', { reason: 'oauth_error', error, errorDescription }); } catch {}
       setStatus(`Login failed: ${errorDescription || error}`);
       try { clearCallbackParamsCache(); } catch {}
       schedule(() => {
@@ -66,6 +69,7 @@ export default function AuthCallback() {
       // have nothing, the redirect arrived without query params at all (rare) or
       // the user navigated to /auth/callback by hand. Show a clear message.
       setStatus('Sign-in link is incomplete — please try logging in again');
+      try { logAuthEvent('login_failed', { reason: 'incomplete_callback' }); } catch {}
       try { clearCallbackParamsCache(); } catch {}
       schedule(() => {
         window.history.replaceState({}, '', '/');
@@ -128,8 +132,10 @@ export default function AuthCallback() {
           }
 
           if (result?.success && result.userData) {
+            try { logAuthEvent('login_success'); } catch {}
             useGameStore.getState().oauthLogin(tokens, result.userData);
           } else {
+            try { logAuthEvent('login_failed', { reason: 'socket_auth_failed' }); } catch {}
             setStatus('Server authentication failed — please try again');
             schedule(() => {
               useGameStore.getState().setScreen('login');
@@ -199,6 +205,7 @@ export default function AuthCallback() {
             socket.off('connect', activeConnectHandler);
             activeConnectHandler = null;
           }
+          try { logAuthEvent('login_failed', { reason: 'socket_timeout' }); } catch {}
           setStatus('Login timed out — reconnecting…');
           schedule(() => {
             try {
@@ -213,6 +220,10 @@ export default function AuthCallback() {
       .catch((err) => {
         if (cancelled) return;
         console.error('OAuth callback error:', err);
+        try {
+          const t = /state mismatch/i.test(err?.message || '') ? 'state_mismatch' : 'login_failed';
+          logAuthEvent(t, { reason: 'callback_exchange', message: (err?.message || '').slice(0, 120) });
+        } catch {}
         // Clear cached callback params — the auth-code is single-use, so even
         // a transient error means it's burned. Next attempt must re-start the flow.
         try { clearCallbackParamsCache(); } catch {}
