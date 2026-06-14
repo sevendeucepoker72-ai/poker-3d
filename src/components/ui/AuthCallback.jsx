@@ -168,6 +168,21 @@ export default function AuthCallback() {
           doSocketAuth();
         }
 
+        // 2026-06-14 — staged feedback so a cold Railway socket doesn't look
+        // FROZEN on "Signing in…" for up to 25s (the #1 .online "can't log in"
+        // complaint). Status text only — the socket logic + persistent connect
+        // re-emit + 25s hard timeout below are unchanged. We deliberately do
+        // NOT flip the lobby to logged-in early: the lobby renders the chip
+        // balance from the server's loginResult (gameStore.oauthLogin →
+        // userData.chips), and showing a wrong/zero balance would violate the
+        // "never show a wrong balance" rule. Better to wait with honest status.
+        schedule(() => {
+          if (!cancelled && activeLoginListener) setStatus('Waking up the game server…');
+        }, 7000);
+        schedule(() => {
+          if (!cancelled && activeLoginListener) setStatus('Almost there — connecting you to the table…');
+        }, 14000);
+
         // Timeout.
         //
         // 2026-05-26 — bumped 10s → 25s after live-reproducing "Login
