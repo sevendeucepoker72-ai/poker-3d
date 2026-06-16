@@ -16,6 +16,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
+// 2026-06-16 — bridge the cross-site link so an already-signed-in .online user
+// lands on the player app logged in (cookieless SSO), instead of hitting the
+// login screen. withBridge appends #bridge_id_token=<our id_token> when present
+// and returns the URL unchanged when the user isn't signed in.
+import { withBridge } from '../services/bridge';
 
 const STORAGE_KEY = 'apk_online_push_banner_dismissed_at';
 // 2026-05-04 audit P2 #27 — aligned to marketing's 30d TTL (was 60d) so
@@ -43,6 +48,11 @@ export default function PlayerAppPushBanner() {
   };
 
   if (!visible) return null;
+
+  // Bridged target carries the SSO id_token so the player app logs the user in
+  // without a password prompt. Recomputed each render so it reflects the current
+  // signed-in state (returns the bare URL when signed out).
+  const target = withBridge(PLAYER_APP_LINK);
 
   return (
     <div
@@ -75,7 +85,7 @@ export default function PlayerAppPushBanner() {
         </div>
       </div>
       <a
-        href={PLAYER_APP_LINK}
+        href={target}
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => {
@@ -84,7 +94,7 @@ export default function PlayerAppPushBanner() {
           // popup blocker; in that case keep the banner visible so the
           // user can try again or copy the URL.
           try {
-            const opened = window.open(PLAYER_APP_LINK, '_blank', 'noopener,noreferrer');
+            const opened = window.open(target, '_blank', 'noopener,noreferrer');
             if (opened) {
               e.preventDefault();
               dismiss();
