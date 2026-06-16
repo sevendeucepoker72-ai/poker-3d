@@ -5,12 +5,15 @@ const CLIENT_ID = 'poker-3d';
 const REDIRECT_URI = `${window.location.origin}/auth/callback`;
 const SCOPES = 'openid profile offline_access';
 
-// 2026-06-16 Phase 3 — RFC 8707 resource indicator. .online already sends the
-// access_token as its API bearer (setAuthToken(tokens.access_token)); requesting
-// this resource makes that access_token a verifiable RFC 9068 JWT
-// (aud=API_RESOURCE, 15-min TTL) instead of the opaque token requireAuth
-// currently can't verify. MUST match auth-server config.ts API_RESOURCE.
-// (oidc-provider introspection — used by poker-server — accepts JWT ATs too.)
+// 2026-06-16 Phase 3 — RFC 8707 resource indicator. .online sends the
+// access_token as its API bearer (setAuthToken(tokens.access_token)). Sent ONLY
+// on the authorize request (binds it to the grant); token-exchange + refresh do
+// NOT pass it and rely on auth-server's useGrantedResource:true. Passing it
+// explicitly on token/refresh throws `invalid_target` for grants that predate
+// this change (existing sessions) → 401-stormed refreshes (auth-health
+// 2026-06-16). New logins get a verifiable RFC 9068 JWT access token; old
+// sessions get an opaque AT until their next fresh login (poker-server
+// introspection accepts both). MUST match auth-server config.ts API_RESOURCE.
 const API_RESOURCE = 'https://poker-prod-api-azeg4kcklq-uc.a.run.app/poker-api';
 
 // Default timeout for every OAuth fetch (token exchange, refresh, revocation).
@@ -301,8 +304,6 @@ export async function handleCallback(code, state) {
         redirect_uri: REDIRECT_URI,
         client_id: CLIENT_ID,
         code_verifier: codeVerifier,
-        // 2026-06-16 Phase 3 — JWT access token bound to the API audience.
-        resource: API_RESOURCE,
       }),
     });
   } catch (err) {
@@ -472,8 +473,6 @@ export async function refreshAccessToken(refreshToken) {
           grant_type: 'refresh_token',
           client_id: CLIENT_ID,
           refresh_token: refreshToken,
-          // 2026-06-16 Phase 3 — keep refreshed access tokens JWT-formatted.
-          resource: API_RESOURCE,
         }),
       });
     } catch (err) {
