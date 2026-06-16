@@ -5,6 +5,14 @@ const CLIENT_ID = 'poker-3d';
 const REDIRECT_URI = `${window.location.origin}/auth/callback`;
 const SCOPES = 'openid profile offline_access';
 
+// 2026-06-16 Phase 3 — RFC 8707 resource indicator. .online already sends the
+// access_token as its API bearer (setAuthToken(tokens.access_token)); requesting
+// this resource makes that access_token a verifiable RFC 9068 JWT
+// (aud=API_RESOURCE, 15-min TTL) instead of the opaque token requireAuth
+// currently can't verify. MUST match auth-server config.ts API_RESOURCE.
+// (oidc-provider introspection — used by poker-server — accepts JWT ATs too.)
+const API_RESOURCE = 'https://poker-prod-api-azeg4kcklq-uc.a.run.app/poker-api';
+
 // Default timeout for every OAuth fetch (token exchange, refresh, revocation).
 // Beyond this we throw a transient error so callers can retry rather than
 // hang the UI behind a stalled auth-server request.
@@ -240,6 +248,8 @@ export async function startLogin({ prompt = null, returnTo = null } = {}) {
     state,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
+    // 2026-06-16 Phase 3 — request the API resource so the access_token is a JWT.
+    resource: API_RESOURCE,
   });
   // 2026-05-08 — see player-web authService.js for prompt= rationale.
   if (prompt === 'none' || prompt === 'login') {
@@ -291,6 +301,8 @@ export async function handleCallback(code, state) {
         redirect_uri: REDIRECT_URI,
         client_id: CLIENT_ID,
         code_verifier: codeVerifier,
+        // 2026-06-16 Phase 3 — JWT access token bound to the API audience.
+        resource: API_RESOURCE,
       }),
     });
   } catch (err) {
@@ -460,6 +472,8 @@ export async function refreshAccessToken(refreshToken) {
           grant_type: 'refresh_token',
           client_id: CLIENT_ID,
           refresh_token: refreshToken,
+          // 2026-06-16 Phase 3 — keep refreshed access tokens JWT-formatted.
+          resource: API_RESOURCE,
         }),
       });
     } catch (err) {
