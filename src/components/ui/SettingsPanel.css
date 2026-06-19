@@ -319,7 +319,7 @@
 }
 
 .light-theme .settings-title {
-  color: #0099CC;
+  color: #3b82f6;
 }
 
 .light-theme .settings-close {
@@ -329,7 +329,7 @@
 
 .light-theme .settings-close:hover {
   color: #222;
-  border-color: #0099CC;
+  border-color: #3b82f6;
 }
 
 .light-theme .settings-section-title {
@@ -354,7 +354,7 @@
 }
 
 .light-theme .settings-slider::-webkit-slider-thumb {
-  background: #0099CC;
+  background: #3b82f6;
   box-shadow: 0 2px 6px rgba(184, 134, 11, 0.3);
 }
 
@@ -394,7 +394,7 @@
 }
 
 .light-theme .settings-radio-item input:checked + .settings-radio-label {
-  border-color: #0099CC;
+  border-color: #3b82f6;
   background: rgba(184, 134, 11, 0.08);
-  color: #0099CC;
+  color: #3b82f6;
 }

@@ -49,8 +49,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #00ff88;
-  box-shadow: 0 0 6px #00ff88;
+  background: #27e0a0;
+  box-shadow: 0 0 6px #27e0a0;
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
 
@@ -125,8 +125,8 @@
 }
 
 .voice-peer-row.speaking .voice-avatar {
-  border-color: #00ff88;
-  box-shadow: 0 0 8px #00ff8866;
+  border-color: #27e0a0;
+  box-shadow: 0 0 8px #27e0a066;
 }
 
 .voice-peer-name {
@@ -199,15 +199,15 @@
 }
 
 .voice-btn-join {
-  border-color: #00ff8888;
-  color: #00ff88;
+  border-color: #27e0a088;
+  color: #27e0a0;
   background: #0a2a1a;
 }
 
 .voice-btn-join:hover {
-  background: #00ff881a;
-  border-color: #00ff88;
-  box-shadow: 0 0 8px #00ff8844;
+  background: #27e0a01a;
+  border-color: #27e0a0;
+  box-shadow: 0 0 8px #27e0a044;
 }
 
 .voice-btn-leave {

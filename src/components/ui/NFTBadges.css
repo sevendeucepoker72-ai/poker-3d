@@ -29,7 +29,7 @@
   box-shadow: 0 0 80px rgba(168, 85, 247, 0.15), 0 0 20px rgba(0, 0, 0, 0.6);
 
   scrollbar-width: thin;
-  scrollbar-color: #7c3aed #1e1b4b;
+  scrollbar-color: #3b82f6 #1e1b4b;
 }
 .nft-modal::-webkit-scrollbar {
   width: 6px;
@@ -39,7 +39,7 @@
   border-radius: 3px;
 }
 .nft-modal::-webkit-scrollbar-thumb {
-  background: #7c3aed;
+  background: #3b82f6;
   border-radius: 3px;
 }
 

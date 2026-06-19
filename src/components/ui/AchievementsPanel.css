@@ -170,7 +170,7 @@
 }
 .ach-reward .rw-stars { color: #FFD700; }
 .ach-reward .rw-chips { color: #ffd24a; }
-.ach-reward .rw-xp    { color: #a78bfa; }
+.ach-reward .rw-xp    { color: #78a0ff; }
 
 @media (max-width: 480px) {
   .ach-panel { width: 100%; max-height: 100dvh; border-radius: 0; }

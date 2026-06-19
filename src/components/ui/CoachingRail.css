@@ -95,13 +95,13 @@
 
 .coaching-rail__pill:hover {
   background: rgba(0, 200, 220, 0.15);
-  color: #00c8dc;
+  color: #3b82f6;
   border-color: rgba(0, 200, 220, 0.4);
 }
 
 .coaching-rail__pill--active {
   background: rgba(0, 200, 220, 0.22);
-  color: #00e5f5;
+  color: #ffd24a;
   border-color: rgba(0, 200, 220, 0.6);
 }
 
@@ -141,7 +141,7 @@
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(0, 200, 220, 0.15);
-  border-left: 3px solid #00c8dc;
+  border-left: 3px solid #3b82f6;
   border-radius: 8px;
   padding: 9px 10px 9px 12px;
   box-shadow:
@@ -192,7 +192,7 @@
 .coaching-whisper-card__coach {
   font-size: 11px;
   font-weight: 700;
-  color: #00c8dc;
+  color: #3b82f6;
   letter-spacing: 0.03em;
 }
 

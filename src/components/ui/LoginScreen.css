@@ -94,7 +94,7 @@
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #ffd24a, #0099CC);
+  background: linear-gradient(135deg, #ffd24a, #3b82f6);
   box-shadow: 0 4px 20px rgba(120, 160, 255, 0.3), inset 0 -2px 4px rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
@@ -125,7 +125,7 @@
 .login-title {
   font-size: 1.6rem;
   font-weight: 800;
-  background: linear-gradient(135deg, #ffd24a, #0099CC, #ffd24a);
+  background: linear-gradient(135deg, #ffd24a, #3b82f6, #ffd24a);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -202,7 +202,7 @@
 
 /* Submit button */
 .login-submit-btn {
-  background: linear-gradient(135deg, #ffd24a, #0099CC);
+  background: linear-gradient(135deg, #ffd24a, #3b82f6);
   color: #000000;
   border: none;
   border-radius: 12px;

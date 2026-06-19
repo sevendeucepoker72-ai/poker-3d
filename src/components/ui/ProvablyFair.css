@@ -48,7 +48,7 @@
 }
 .pf-input:focus { border-color: rgba(120, 160, 255,0.4); }
 .pf-verify-btn {
-  margin-top: 10px; background: linear-gradient(135deg, #ffd24a, #0099CC);
+  margin-top: 10px; background: linear-gradient(135deg, #ffd24a, #3b82f6);
   color: #000; border: none; border-radius: 8px; padding: 9px 20px;
   font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s;
 }

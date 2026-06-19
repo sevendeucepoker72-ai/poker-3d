@@ -198,7 +198,7 @@
 .lobby-header h1 {
   font-size: 2.8rem;
   margin: 0 0 20px;
-  background: linear-gradient(135deg, #ffd24a, #0099CC, #ffd24a);
+  background: linear-gradient(135deg, #ffd24a, #3b82f6, #ffd24a);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -701,7 +701,7 @@
 .stat-chip:nth-child(1)::before { background: linear-gradient(90deg, #4ADE80, #22C55E); }
 .stat-chip:nth-child(2)::before { background: linear-gradient(90deg, #60A5FA, #3B82F6); }
 .stat-chip:nth-child(3)::before { background: linear-gradient(90deg, #FB923C, #EF4444); }
-.stat-chip:nth-child(4)::before { background: linear-gradient(90deg, #ffd24a, #0099CC); }
+.stat-chip:nth-child(4)::before { background: linear-gradient(90deg, #ffd24a, #3b82f6); }
 .stat-chip:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
 
 .stat-chip .stat-icon {
@@ -1011,7 +1011,7 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #ffd24a, #0099CC);
+  background: linear-gradient(135deg, #ffd24a, #3b82f6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1110,7 +1110,7 @@
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #ffd24a, #0099CC);
+  background: linear-gradient(135deg, #ffd24a, #3b82f6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1147,7 +1147,7 @@
 
 .lobby-profile-xp-fill {
   height: 100%;
-  background: linear-gradient(90deg, #0099CC, #ffd24a);
+  background: linear-gradient(90deg, #3b82f6, #ffd24a);
   border-radius: 3px;
   transition: width 0.4s ease;
 }
@@ -2057,7 +2057,7 @@
 }
 .upc-xp-fill {
   height: 100%;
-  background: linear-gradient(90deg, #0099CC, #ffd24a);
+  background: linear-gradient(90deg, #3b82f6, #ffd24a);
   border-radius: 2px;
   transition: width 0.5s ease;
 }
@@ -2209,7 +2209,7 @@
 .ftb-avatars { display:flex; flex:1; }
 .ftb-avatar {
   width:26px; height:26px; border-radius:50%;
-  background:linear-gradient(135deg,#ffd24a,#0099CC);
+  background:linear-gradient(135deg,#ffd24a,#3b82f6);
   color:#000; font-weight:700; font-size:0.7rem;
   display:flex; align-items:center; justify-content:center;
   border:2px solid #000; margin-left:-6px;
@@ -2275,7 +2275,7 @@
 .mission-chip-body { flex:1; min-width:0; }
 .mission-chip-name { font-size:0.75rem; font-weight:600; color:#ffffff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .mission-chip-bar-track { height:4px; background:rgba(255,255,255,0.08); border-radius:2px; margin:4px 0 2px; overflow:hidden; }
-.mission-chip-bar-fill { height:100%; background:linear-gradient(90deg,#0099CC,#ffd24a); border-radius:2px; transition:width 0.4s; }
+.mission-chip-bar-fill { height:100%; background:linear-gradient(90deg,#3b82f6,#ffd24a); border-radius:2px; transition:width 0.4s; }
 .mission-chip--done .mission-chip-bar-fill { background:linear-gradient(90deg,#16A34A,#4ADE80); }
 .mission-chip-prog { font-size:0.65rem; color:#666; }
 .mission-chip-xp { font-size:0.78rem; font-weight:700; color:#ffd24a; white-space:nowrap; }
@@ -2324,7 +2324,7 @@
   font-size:0.6rem; font-weight:700; color:#666;
 }
 .thp-seat-slot--taken {
-  background:linear-gradient(135deg,#ffd24a,#0099CC);
+  background:linear-gradient(135deg,#ffd24a,#3b82f6);
   border-color:rgba(120, 160, 255,0.5); color:#000;
 }
 
@@ -2494,7 +2494,7 @@
 .recommend-card-name { font-size:0.9rem; font-weight:700; color:#ffffff; }
 .recommend-card-sub { font-size:0.72rem; color:#aaaaaa; margin-top:2px; }
 .recommend-card-btn {
-  padding:8px 18px; background:linear-gradient(135deg,#ffd24a,#0099CC);
+  padding:8px 18px; background:linear-gradient(135deg,#ffd24a,#3b82f6);
   border:none; border-radius:8px; color:#000; font-weight:700; font-size:0.85rem;
   cursor:pointer; white-space:nowrap; transition:all 0.2s; flex-shrink:0;
 }

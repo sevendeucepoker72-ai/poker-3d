@@ -229,7 +229,7 @@
 
 .staking-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #ffd24a, #0066ff);
+  background: linear-gradient(90deg, #ffd24a, #3b82f6);
   border-radius: 3px;
   transition: width 0.4s ease;
 }
@@ -269,8 +269,8 @@
 .staking-backer-pill {
   font-size: 11px;
   background: #1a2a1a;
-  border: 1px solid #00ff8833;
-  color: #00ff88aa;
+  border: 1px solid #27e0a033;
+  color: #27e0a0aa;
   border-radius: 20px;
   padding: 2px 9px;
 }
@@ -364,7 +364,7 @@
 .staking-btn-create {
   width: 100%;
   padding: 11px;
-  background: linear-gradient(135deg, #ffd24a22, #0066ff22);
+  background: linear-gradient(135deg, #ffd24a22, #3b82f622);
   border-color: #ffd24a88;
   color: #ffd24a;
   font-size: 14px;
@@ -372,7 +372,7 @@
 }
 
 .staking-btn-create:hover:not(:disabled) {
-  background: linear-gradient(135deg, #ffd24a33, #0066ff33);
+  background: linear-gradient(135deg, #ffd24a33, #3b82f633);
   border-color: #ffd24a;
   box-shadow: 0 0 16px #ffd24a33;
 }
@@ -386,9 +386,9 @@
 }
 
 .staking-result-ok {
-  background: #00ff8820;
-  border: 1px solid #00ff8855;
-  color: #00ff88;
+  background: #27e0a020;
+  border: 1px solid #27e0a055;
+  color: #27e0a0;
 }
 
 .staking-result-err {

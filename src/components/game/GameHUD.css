@@ -4313,7 +4313,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #7c3aed;
+  background: #3b82f6;
   cursor: pointer;
   border: 2px solid rgba(255,255,255,0.3);
 }
@@ -4321,7 +4321,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #7c3aed;
+  background: #3b82f6;
   cursor: pointer;
   border: 2px solid rgba(255,255,255,0.3);
 }
@@ -4594,10 +4594,10 @@
 /* ─── Upgrade 4: Last raise replay button ────────────────────────────────────── */
 .preset-btn-last {
   border-color: rgba(167,139,250,0.5);
-  color: #a78bfa;
+  color: #78a0ff;
 }
 .preset-btn-last:hover:not(:disabled) {
-  border-color: #a78bfa;
+  border-color: #78a0ff;
   background: rgba(167,139,250,0.12);
 }
 
@@ -5931,7 +5931,7 @@ html.kb-open .table-pot-odds {
   display: block;
   font-size: 0.55rem;
   font-weight: 600;
-  color: #A78BFA;
+  color: #78a0ff;
   opacity: 0.85;
   margin-top: 1px;
 }
