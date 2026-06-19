@@ -46,16 +46,22 @@ loadStats();
 export function getOpponentStats(playerName) {
   const stats = statsMap.get(playerName);
   if (!stats || stats.handsObserved === 0) {
-    return { vpip: 0, pfr: 0, threeBet: 0, foldToCbet: 0, af: 0, hands: 0 };
+    return { vpip: 0, pfr: 0, threeBet: null, foldToCbet: null, af: 0, hands: 0 };
   }
-  const passive = stats.passiveActions || 0;
+  // Standard Aggression Factor = (bets + raises) / calls (checks excluded).
+  // Older sessionStorage rows have no callActions → fall back to passiveActions.
+  const calls = stats.callActions != null ? stats.callActions : (stats.passiveActions || 0);
   const aggressive = stats.aggressiveActions || 0;
   return {
     vpip: Math.round((stats.vpipCount / stats.handsObserved) * 100),
     pfr: Math.round((stats.pfrCount / stats.handsObserved) * 100),
-    threeBet: Math.round(((stats.threeBetCount || 0) / Math.max(1, stats.handsObserved)) * 100),
-    foldToCbet: Math.round(((stats.foldToCbetCount || 0) / Math.max(1, stats.cbetFaced || 1)) * 100),
-    af: passive > 0 ? Math.round((aggressive / passive) * 10) / 10 : aggressive > 0 ? 999 : 0,
+    // 2026-06-18 — 3-bet% and fold-to-cbet% require per-hand action-sequence
+    // detection that isn't implemented yet (the counters were always 0).
+    // Return null so the HUD shows "--" (no data) instead of a fake 0%.
+    // Real tracking is a Phase-5 item.
+    threeBet: null,
+    foldToCbet: null,
+    af: calls > 0 ? Math.round((aggressive / calls) * 10) / 10 : aggressive > 0 ? 999 : 0,
     hands: stats.handsObserved,
   };
 }
@@ -111,6 +117,7 @@ export function recordHandStats(seats, mySeatIndex, gameState) {
   // Count aggressive/passive actions per player across all streets
   const aggressiveByPlayer = new Map();
   const passiveByPlayer = new Map();
+  const callByPlayer = new Map(); // calls only (AF denominator; excludes checks)
   for (const action of actionHistory) {
     const seatIndex = action.seatIndex ?? action.seat;
     if (seatIndex === undefined || seatIndex === null || seatIndex === mySeatIndex) continue;
@@ -120,7 +127,10 @@ export function recordHandStats(seats, mySeatIndex, gameState) {
     const name = seat.playerName;
     if (type === 'bet' || type === 'raise' || type === 'allin' || type === 'all-in') {
       aggressiveByPlayer.set(name, (aggressiveByPlayer.get(name) || 0) + 1);
-    } else if (type === 'call' || type === 'check') {
+    } else if (type === 'call') {
+      callByPlayer.set(name, (callByPlayer.get(name) || 0) + 1);
+      passiveByPlayer.set(name, (passiveByPlayer.get(name) || 0) + 1);
+    } else if (type === 'check') {
       passiveByPlayer.set(name, (passiveByPlayer.get(name) || 0) + 1);
     }
   }
@@ -133,13 +143,14 @@ export function recordHandStats(seats, mySeatIndex, gameState) {
 
     // Initialize if new player
     if (!statsMap.has(seat.playerName)) {
-      statsMap.set(seat.playerName, { handsObserved: 0, vpipCount: 0, pfrCount: 0, threeBetCount: 0, foldToCbetCount: 0, cbetFaced: 0, aggressiveActions: 0, passiveActions: 0 });
+      statsMap.set(seat.playerName, { handsObserved: 0, vpipCount: 0, pfrCount: 0, threeBetCount: 0, foldToCbetCount: 0, cbetFaced: 0, aggressiveActions: 0, passiveActions: 0, callActions: 0 });
     }
 
     const stats = statsMap.get(seat.playerName);
     stats.handsObserved += 1;
     stats.aggressiveActions += aggressiveByPlayer.get(seat.playerName) || 0;
     stats.passiveActions += passiveByPlayer.get(seat.playerName) || 0;
+    stats.callActions = (stats.callActions || 0) + (callByPlayer.get(seat.playerName) || 0);
 
     if (hasPreflopActions) {
       if (vpipPlayers.has(seat.playerName)) {

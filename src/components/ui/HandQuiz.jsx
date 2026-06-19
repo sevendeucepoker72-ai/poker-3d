@@ -109,12 +109,12 @@ export default function HandQuiz({ onClose }) {
         return next;
       });
       setCorrectCount(prev => prev + 1);
-      setFeedback({ correct: true, message: `Correct! ${strength.name} (${Math.round(strength.strength * 100)}% equity)` });
+      setFeedback({ correct: true, message: `Correct! ${strength.name} (${Math.round(strength.strength * 100)}% strength)` });
     } else {
       setStreak(0);
       setWrongCount(prev => prev + 1);
       const correctLabel = ACTIONS.find(a => a.id === correctAction)?.label || correctAction;
-      setFeedback({ correct: false, message: `Better: ${correctLabel}. ${strength.name} (${Math.round(strength.strength * 100)}% equity)` });
+      setFeedback({ correct: false, message: `Better: ${correctLabel}. ${strength.name} (${Math.round(strength.strength * 100)}% strength)` });
     }
   }, [selectedAction, correctAction, strength]);
 

@@ -181,7 +181,10 @@ function PieChart({ actionCounts }) {
 function getAdvancedStats(stats) {
   const vpip = stats.vpip || 0;
   const pfr = stats.pfr || 0;
-  const af = pfr > 0 ? +(vpip / pfr).toFixed(1) : '-';
+  // 2026-06-18 — AF is (bets+raises)/calls, NOT derivable from vpip/pfr.
+  // Use a real af if the stats object provides one; otherwise show '-' rather
+  // than the previous (incorrect) vpip/pfr ratio.
+  const af = (stats.af != null && !Number.isNaN(Number(stats.af))) ? +Number(stats.af).toFixed(1) : '-';
   return [
     { key: 'vpip', name: 'VPIP', description: 'Voluntarily Put In Pot', value: vpip, unit: '%', goodMin: 22, goodMax: 30 },
     { key: 'pfr', name: 'PFR', description: 'Pre-Flop Raise %', value: pfr, unit: '%', goodMin: 15, goodMax: 22 },
