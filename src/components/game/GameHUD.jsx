@@ -4,7 +4,6 @@ import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SUIT_INDEX_TO_SYMBOL, SUIT_INDEX_TO_COLOR, serverRankDisplay, getCardColor } from '../../utils/cardUtils';
-import TableReactions from './TableReactions';
 import { evaluateHandStrength, getWinningCardIndices } from '../../utils/handStrength';
 import { calculateOuts, analyzeBoardTexture } from '../../utils/outsCalculator';
 import useSoundEffects from '../../hooks/useSoundEffects';
@@ -1740,14 +1739,18 @@ export default function GameHUD() {
     prevPhaseForRebuyRef.current = phase;
   }, [phase, autoRebuy, myChips, gameState]);
 
-  // Record opponent stats when hand completes
-  const prevPhaseForStatsRef = useRef(null);
+  // Record opponent stats from each completed hand's full action log. Phase 5:
+  // driven by the handHistory record (which now carries the street-tagged
+  // actionLog) rather than gameState — keyed by handNumber so it fires exactly
+  // once per hand even if handHistories is capped/trimmed.
+  const lastStatHandRef = useRef(null);
   useEffect(() => {
-    if (phase === 'HandComplete' && prevPhaseForStatsRef.current !== 'HandComplete') {
-      recordHandStats(seats, yourSeat, gameState);
+    const rec = handHistories.length ? handHistories[handHistories.length - 1] : null;
+    if (rec && rec.handNumber !== lastStatHandRef.current) {
+      lastStatHandRef.current = rec.handNumber;
+      recordHandStats(rec, yourSeat);
     }
-    prevPhaseForStatsRef.current = phase;
-  }, [phase, seats, yourSeat, gameState]);
+  }, [handHistories, yourSeat]);
 
   // Build bet history strip for current street (Upgrade 4)
   useEffect(() => {

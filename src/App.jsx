@@ -65,6 +65,7 @@ import { setOnOpenPlayerNotes } from './components/scene/PokerTable2D';
 import KeyboardShortcuts from './components/ui/KeyboardShortcuts';
 import Tutorial from './components/ui/Tutorial';
 import HandReplayViewer from './components/replay/HandReplayViewer';
+import { API_BASE } from './config';
 import './components/ui/Transitions.css';
 
 /** Decode a ?replay=... URL param into a history object (returns null on failure). */
@@ -354,9 +355,6 @@ function App() {
     // matches the rest of the App.jsx lazy-load pattern.
     let cancelled = false;
     let removeOnResume = null;
-
-    const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE_URL)
-      || 'https://poker-prod-api-azeg4kcklq-uc.a.run.app/poker-api';
 
     const refreshUserRolesFromMe = async () => {
       try {

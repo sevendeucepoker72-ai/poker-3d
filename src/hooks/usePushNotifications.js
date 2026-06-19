@@ -7,15 +7,13 @@
 
 import { getAuthToken } from '../services/tokenStorage';
 import { fetchWithTimeout } from '../utils/fetchWithTimeout';
+import { API_BASE as MASTER_API } from '../config';
 
 // Per-call timeout for master-API notification endpoints. 10s is generous
 // for VAPID key fetch / subscribe POST; stalled mobile networks previously
 // hung these indefinitely, blocking the permission UI and queued work.
 const PUSH_FETCH_TIMEOUT_MS = 10000;
 
-const MASTER_API =
-  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_MASTER_API_URL) ||
-  'https://poker-prod-api-azeg4kcklq-uc.a.run.app/poker-api';
 
 /**
  * Build request headers with an optional Bearer token pulled from

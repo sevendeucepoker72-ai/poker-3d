@@ -21,13 +21,14 @@ import React, { useState, useEffect } from 'react';
 // login screen. withBridge appends #bridge_id_token=<our id_token> when present
 // and returns the URL unchanged when the user isn't signed in.
 import { withBridge } from '../services/bridge';
+import { PLAYER_APP } from '../config';
 
 const STORAGE_KEY = 'apk_online_push_banner_dismissed_at';
 // 2026-05-04 audit P2 #27 — aligned to marketing's 30d TTL (was 60d) so
 // banner cadence is consistent across cross-site nudges. Documented here
 // as the canonical value.
 const DISMISS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const PLAYER_APP_LINK = 'https://americanpub.poker/notifications?from=online&utm_source=poker3d';
+const PLAYER_APP_LINK = `${PLAYER_APP}/notifications?from=online&utm_source=poker3d`;
 
 export default function PlayerAppPushBanner() {
   const [visible, setVisible] = useState(false);

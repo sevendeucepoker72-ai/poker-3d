@@ -1,5 +1,6 @@
 import { io } from 'socket.io-client';
 import { getAuthToken } from './tokenStorage';
+import { SERVER_URL } from '../config';
 
 // 2026-06-18 — Phase 3f: REAL multi-tabling. poker-server is one-seat-per-
 // socket (playerSessions keyed by socket.id) and its `spectate` handler kicks
@@ -12,10 +13,6 @@ import { getAuthToken } from './tokenStorage';
 // {seatIndex:-1} (server auto-seats) → stream its own gameState delta. Actions
 // emit on that specific socket; the server dedupes by nonce (tableId:seatIndex).
 // The per-IP cap is 5 connections; 1 primary + up to 3 here stays under it.
-
-const SERVER_URL =
-  import.meta.env.VITE_SERVER_URL ||
-  (import.meta.env.DEV ? 'http://localhost:3001' : null);
 
 export const MAX_SECONDARY_TABLES = 3;
 

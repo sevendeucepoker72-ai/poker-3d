@@ -17,9 +17,7 @@
 // errors that fire after login include a Bearer token, while errors before
 // login still report (anonymously).
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL ||
-  'https://poker-prod-api-azeg4kcklq-uc.a.run.app/poker-api';
+import { API_BASE } from '../config';
 
 const DEDUP_WINDOW_MS = 60_000;
 const DEDUP_MAX_KEYS = 10;

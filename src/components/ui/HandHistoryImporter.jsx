@@ -482,23 +482,21 @@ export default function HandHistoryImporter({ onClose }) {
   const handleImportToTracker = () => {
     let count = 0;
     for (const hand of hands) {
-      const seats = hand.players.map((p, i) => ({
-        name: p.name,
-        chips: p.stack,
-        position: hand.positionMap?.[p.name] || `Seat${i}`,
-        isEmpty: false,
-      }));
-      const mySeatIndex = seats.findIndex(s => s.name === 'Hero');
-      const gameState = {
-        actionHistory: hand.actions.map((a, i) => ({
-          seatIndex: seats.findIndex(s => s.name === a.player),
-          phase: a.street,
-          type: a.action,
-          amount: a.amount,
-          id: i,
+      // Phase 5: recordHandStats now takes a handHistory record
+      // ({ players:[{seatIndex,name}], actionLog:[{seatIndex,action,street}] }).
+      const players = hand.players.map((p, i) => ({ seatIndex: i, name: p.name }));
+      const seatOf = (name) => players.findIndex(p => p.name === name);
+      const mySeatIndex = seatOf('Hero');
+      const record = {
+        handNumber: hand.handNumber ?? count,
+        players,
+        actionLog: hand.actions.map((a) => ({
+          seatIndex: seatOf(a.player),
+          action: a.action,   // classify() accepts bare types ('raise'/'call'/…)
+          street: a.street,
         })),
       };
-      recordHandStats(seats, mySeatIndex, gameState);
+      recordHandStats(record, mySeatIndex);
       count++;
     }
     showToast(`✓ Imported ${count} opponent profiles`);

@@ -212,7 +212,7 @@ export const useGameStore = create((set, get) => ({
       oauthIdToken: null,
       oauthTokenExpiry: null,
       playerName: '',
-      chips: 10000,
+      chips: 50000, // placeholder on logout; real balance comes from server on next login (matches server DEFAULT_CHIPS)
       screen: 'login',
       // Pattern B fields — reset so logout doesn't leak roles/VIP into
       // the next user's session on the same tab.
@@ -232,7 +232,7 @@ export const useGameStore = create((set, get) => ({
   // Player
   playerName: '',
   setPlayerName: (name) => set({ playerName: name }),
-  chips: 10000,
+  chips: 50000, // pre-login placeholder; real balance arrives from server on login (matches server DEFAULT_CHIPS)
   setChips: (chips) => set({ chips }),
 
   // Avatar config — loaded from sessionStorage if available

@@ -21,8 +21,8 @@
 
 import { getAuthToken } from '../services/tokenStorage';
 import { fetchWithTimeout } from './fetchWithTimeout';
+import { API_BASE as MASTER_API } from '../config';
 
-const MASTER_API = 'https://poker-prod-api-azeg4kcklq-uc.a.run.app/poker-api';
 const CACHE_KEY = 'poker-avatar-cache-v2';  // bumped because shape changed
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 // Avatar fetches are best-effort and should never hang the lobby / UI on

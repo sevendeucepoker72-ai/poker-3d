@@ -1,11 +1,6 @@
 import { io } from 'socket.io-client';
 import { getAuthToken } from './tokenStorage';
-
-// In dev mode, fall back to localhost. In production, VITE_SERVER_URL is REQUIRED —
-// silently connecting to localhost on a deployed client would be a hard-to-debug bug.
-const SERVER_URL =
-  import.meta.env.VITE_SERVER_URL ||
-  (import.meta.env.DEV ? 'http://localhost:3001' : null);
+import { SERVER_URL } from '../config';
 
 if (!SERVER_URL) {
   console.error('[socketService] VITE_SERVER_URL is not configured for production build');

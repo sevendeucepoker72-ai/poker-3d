@@ -3,8 +3,7 @@
  * origin='online'.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ||
-                 'https://poker-prod-api-azeg4kcklq-uc.a.run.app/poker-api';
+import { API_BASE } from '../config';
 const ORIGIN = 'online';
 
 export function logAuthEvent(eventType, detail, opts = {}) {

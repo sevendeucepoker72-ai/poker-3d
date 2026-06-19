@@ -69,12 +69,17 @@ function buildSteps(history) {
   return steps;
 }
 
+// 2026-06-19 Phase 5: encode with encodeURIComponent BEFORE btoa to match the
+// `?replay=` consumer in App.jsx (`JSON.parse(decodeURIComponent(atob(param)))`)
+// and HandReplayViewer's producer. Without it, btoa throws on any non-Latin1
+// char (em-dash, accented/emoji player name) and the shared link silently
+// failed to open.
 export function encodeReplay(history) {
-  try { return btoa(JSON.stringify(history)); } catch { return ''; }
+  try { return btoa(encodeURIComponent(JSON.stringify(history))); } catch { return ''; }
 }
 
 export function decodeReplay(encoded) {
-  try { return JSON.parse(atob(encoded)); } catch { return null; }
+  try { return JSON.parse(decodeURIComponent(atob(encoded))); } catch { return null; }
 }
 
 export function getShareURL(history) {

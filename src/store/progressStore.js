@@ -227,7 +227,7 @@ function defaultProgress() {
     xp: 0,
     xpToNextLevel: xpRequiredForLevel(1),
     totalXp: 0,
-    chips: 5000,
+    chips: 50000, // pre-hydrate placeholder (gated by `hydrated`); matches server DEFAULT_CHIPS
     stars: 0,
     handsPlayed: 0,
     totalHandsPlayed: 0,
@@ -240,7 +240,7 @@ function defaultProgress() {
     bestHand: '',
     biggestPot: 0,
     netChips: 0,
-    startingChips: 5000,
+    startingChips: 50000,
     wins: 0,
     losses: 0,
     elo: 500,
