@@ -520,78 +520,69 @@ function SeatPicker({ table, playerName, avatar, onJoin, onClose }) {
 }
 
 // ─── Inline Friends List (simplified, non-overlay) ───
-function InlineFriendsList({ onJoinFriendTable }) {
-  const STORAGE_KEY = 'app_poker_friends';
-  const DEFAULT_FRIENDS = [
-    { id: 1, name: 'AceKiller99', status: 'online', lastSeen: null, tableId: null, tableName: null },
-    { id: 2, name: 'BluffQueen', status: 'in-game', lastSeen: null, tableId: 'tbl-001', tableName: 'Table Vegas' },
-    { id: 3, name: 'RiverRat42', status: 'online', lastSeen: null, tableId: null, tableName: null },
-    { id: 4, name: 'ChipStack_Pro', status: 'offline', lastSeen: '2026-03-27T14:30:00', tableId: null, tableName: null },
-    { id: 5, name: 'PocketRockets', status: 'in-game', lastSeen: null, tableId: 'tbl-002', tableName: "High Roller's Den" },
-    { id: 6, name: 'FoldEmFiona', status: 'offline', lastSeen: '2026-03-26T22:15:00', tableId: null, tableName: null },
-  ];
-
-  const [friends] = useState(() => {
-    try {
-      const stored = sessionStorage.getItem(STORAGE_KEY);
-      if (stored) return JSON.parse(stored);
-    } catch { /* ignore */ }
-    return DEFAULT_FRIENDS;
-  });
-
+function InlineFriendsList() {
+  // 2026-06-18 Phase 3b — real friends from poker-server (was sessionStorage mock).
+  const [friends, setFriends] = useState([]);
   const [inviteSent, setInviteSent] = useState(null);
 
-  const statusColors = { online: '#4ADE80', 'in-game': '#FBBF24', offline: '#666' };
-  const statusLabels = { online: 'Online', 'in-game': 'In Game', offline: 'Offline' };
+  useEffect(() => {
+    const s = getSocket();
+    if (!s) return undefined;
+    const onList = (d) => setFriends((d?.friends || []).filter((f) => f.status === 'accepted'));
+    const onChanged = () => { if (s.connected) s.emit('getFriends'); };
+    s.on('friendsList', onList);
+    s.on('friendsChanged', onChanged);
+    if (s.connected) s.emit('getFriends');
+    const t = setTimeout(() => { if (s.connected) s.emit('getFriends'); }, 600);
+    return () => { clearTimeout(t); s.off('friendsList', onList); s.off('friendsChanged', onChanged); };
+  }, []);
 
-  const onlineFriends = friends.filter((f) => f.status === 'online');
-  const inGameFriends = friends.filter((f) => f.status === 'in-game');
-  const offlineFriends = friends.filter((f) => f.status === 'offline');
-  const sortedFriends = [...onlineFriends, ...inGameFriends, ...offlineFriends];
+  const statusColors = { online: '#27e0a0', 'in-game': '#ffd24a', offline: '#8298c4' };
+  const statusLabels = { online: 'Online', 'in-game': 'In Game', offline: 'Offline' };
+  const order = { online: 0, 'in-game': 1, offline: 2 };
+  const sortedFriends = [...friends].sort((a, b) => (order[a.presence] ?? 3) - (order[b.presence] ?? 3));
+  const onlineCount = friends.filter((f) => f.presence === 'online' || f.presence === 'in-game').length;
 
   const handleInvite = (friend) => {
-    setInviteSent(friend.id);
+    const s = getSocket();
+    if (s?.connected) s.emit('inviteFriendToTable', { userId: friend.userId });
+    setInviteSent(friend.userId);
     setTimeout(() => setInviteSent(null), 2000);
   };
 
   return (
     <div className="inline-friends-list">
       <div className="inline-friends-header">
-        <span className="inline-friends-online-count">
-          {onlineFriends.length + inGameFriends.length} / {friends.length} online
-        </span>
+        <span className="inline-friends-online-count">{onlineCount} / {friends.length} online</span>
       </div>
+      {sortedFriends.length === 0 && (
+        <div style={{ padding: 8, color: '#8298c4', fontSize: '0.8rem', textAlign: 'center' }}>
+          No friends yet — add some in the Friends panel.
+        </div>
+      )}
       {sortedFriends.map((friend) => (
-        <div key={friend.id} className="inline-friend-card">
-          <div className="inline-friend-avatar" style={{ borderColor: statusColors[friend.status] }}>
-            {friend.name.charAt(0).toUpperCase()}
-            <span className="inline-friend-dot" style={{ background: statusColors[friend.status] }} />
+        <div key={friend.userId} className="inline-friend-card">
+          <div className="inline-friend-avatar" style={{ borderColor: statusColors[friend.presence] }}>
+            {friend.username.charAt(0).toUpperCase()}
+            <span className="inline-friend-dot" style={{ background: statusColors[friend.presence] }} />
           </div>
           <div className="inline-friend-info">
-            <div className="inline-friend-name">{friend.name}</div>
-            <div className="inline-friend-status" style={{ color: statusColors[friend.status] }}>
-              {statusLabels[friend.status]}
+            <div className="inline-friend-name">{friend.username}</div>
+            <div className="inline-friend-status" style={{ color: statusColors[friend.presence] }}>
+              {statusLabels[friend.presence]}
             </div>
           </div>
-          {friend.status === 'online' && (
+          {friend.presence === 'online' && (
             <button
               className="inline-friend-invite-btn"
               onClick={() => handleInvite(friend)}
-              disabled={inviteSent === friend.id}
+              disabled={inviteSent === friend.userId}
             >
-              {inviteSent === friend.id ? 'Sent!' : 'Invite'}
+              {inviteSent === friend.userId ? 'Sent!' : 'Invite'}
             </button>
           )}
-          {friend.status === 'in-game' && (
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:2 }}>
-              <span style={{ fontSize: '0.65rem', color: '#FBBF24', maxWidth: 80, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{friend.tableName || 'In Game'}</span>
-              {friend.tableId && onJoinFriendTable && (
-                <button
-                  style={{ fontSize:'0.7rem', padding:'2px 8px', borderRadius:6, border:'1px solid #FBBF24', background:'transparent', color:'#FBBF24', cursor:'pointer' }}
-                  onClick={() => onJoinFriendTable(friend.tableId)}
-                >Join</button>
-              )}
-            </div>
+          {friend.presence === 'in-game' && (
+            <span style={{ fontSize: '0.65rem', color: '#ffd24a' }}>Playing…</span>
           )}
         </div>
       ))}
@@ -602,30 +593,17 @@ function InlineFriendsList({ onJoinFriendTable }) {
 // ─── Inline Leaderboard (simplified, non-overlay) ───
 function InlineLeaderboard() {
   const playerName = useGameStore((s) => s.playerName);
-  const MOCK_NAMES = [
-    'AceKing99', 'PokerShark', 'BluffMaster', 'RiverRat',
-    'ChipLeader', 'NutFlush', 'HighRoller', 'PocketRocket',
-  ];
-
-  const data = MOCK_NAMES.map((name, i) => ({
-    name,
-    chipsWon: Math.round((MOCK_NAMES.length - i) * 6000),
-    rank: i + 1,
-    isCurrentPlayer: false,
-  }));
-  // Insert player, then SORT by chips desc before assigning ranks.
-  // Prior version spliced at index 4 and re-ranked by position, which
-  // meant the player at 22,500 got rank #5 while the real #6 at 24,000
-  // sat just below — leaderboard positions didn't match the chip order
-  // (observed 2026-04-22 audit).
-  data.push({
-    name: playerName || 'You',
-    chipsWon: 22500,
-    rank: 0, // placeholder, assigned after sort
-    isCurrentPlayer: true,
-  });
-  data.sort((a, b) => b.chipsWon - a.chipsWon);
-  data.forEach((d, i) => d.rank = i + 1);
+  const [entries, setEntries] = useState([]);
+  // 2026-06-18 Phase 3b — real leaderboard from poker-server (was MOCK_NAMES).
+  useEffect(() => {
+    const s = getSocket();
+    if (!s) return undefined;
+    const onData = (d) => setEntries(Array.isArray(d?.entries) ? d.entries : []);
+    s.on('leaderboardData', onData);
+    if (s.connected) s.emit('getLeaderboard', { period: 'alltime' });
+    const t = setTimeout(() => { if (s.connected) s.emit('getLeaderboard', { period: 'alltime' }); }, 600);
+    return () => { clearTimeout(t); s.off('leaderboardData', onData); };
+  }, []);
 
   const getRankIcon = (rank) => {
     if (rank === 1) return '\u{1F947}';
@@ -634,9 +612,19 @@ function InlineLeaderboard() {
     return `#${rank}`;
   };
 
+  const data = entries.slice(0, 8).map((e, i) => ({
+    name: e.username,
+    chipsWon: e.chips || 0,
+    rank: e.rank || i + 1,
+    isCurrentPlayer: !!playerName && e.username === playerName,
+  }));
+
   return (
     <div className="inline-leaderboard">
-      {data.slice(0, 8).map((entry) => (
+      {data.length === 0 && (
+        <div className="inline-lb-row" style={{ opacity: 0.6, justifyContent: 'center' }}>Loading leaderboard…</div>
+      )}
+      {data.map((entry) => (
         <div
           key={entry.rank}
           className={`inline-lb-row ${entry.isCurrentPlayer ? 'inline-lb-row-current' : ''} ${entry.rank <= 3 ? 'inline-lb-row-top' : ''}`}
@@ -1622,7 +1610,16 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         )}
 
         {/* Mission Strip */}
-        <MissionStrip missions={progress?.missions} onOpenMissions={() => {}} />
+        <MissionStrip
+          missions={(progress?.dailyMissions || []).map((m) => ({
+            name: m.text,
+            icon: '🎯',
+            target: m.target,
+            xp: m.xp,
+            progress: progress?.[m.field] || 0,
+          }))}
+          onOpenMissions={() => {}}
+        />
 
         {/* Swipeable cards: player / rank / session (upgrades #1 #2 #4 #5 #9) */}
         <SwipeCards cards={[playerCard, rankCard, sessionCard]} />
