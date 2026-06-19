@@ -385,10 +385,13 @@ export const useProgressStore = create((set, get) => ({
       battlePassClaimed: payload?.battlePassClaims || [],
       customization: payload?.customization || prev.customization || {},
       preferences: payload?.preferences || prev.preferences || {},
+      // 2026-06-19: keep-prev guards (matching `stars`) so a PARTIAL durableState
+      // payload that omits these fields can't silently reset a real balance/streak
+      // to 0/null. Only overwrite when the server actually sent the field.
       stars: typeof payload?.stars === 'number' ? payload.stars : prev.stars,
-      scratchCardsAvailable: payload?.scratchCardsAvailable ?? 0,
-      loginStreak: payload?.loginStreak ?? 0,
-      lastLoginClaimDate: payload?.lastLoginClaimDate || null,
+      scratchCardsAvailable: typeof payload?.scratchCardsAvailable === 'number' ? payload.scratchCardsAvailable : (prev.scratchCardsAvailable ?? 0),
+      loginStreak: typeof payload?.loginStreak === 'number' ? payload.loginStreak : (prev.loginStreak ?? 0),
+      lastLoginClaimDate: payload?.lastLoginClaimDate !== undefined ? payload.lastLoginClaimDate : (prev.lastLoginClaimDate ?? null),
     };
     saveProgress(merged);
     set({ progress: merged });

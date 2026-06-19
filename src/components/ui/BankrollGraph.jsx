@@ -1,42 +1,36 @@
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useTableStore } from '../../store/tableStore';
+import { useGameStore } from '../../store/gameStore';
 import './BankrollGraph.css';
 
-const STORAGE_KEY = 'poker_bankroll_history';
-
-function loadHistory() {
-  try {
-    return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]');
-  } catch {
-    return [];
-  }
-}
-
-export function recordBankrollPoint(chips) {
-  try {
-    const history = loadHistory();
-    history.push({ timestamp: Date.now(), chips });
-    // Keep last 500 points max
-    if (history.length > 500) history.splice(0, history.length - 500);
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-  } catch { /* ignore */ }
-}
+// 2026-06-19 fix: this graph used to read a `poker_bankroll_history`
+// sessionStorage key that NOTHING in the app ever wrote — so it was always
+// empty. It now derives the series from the DURABLE per-hand history the server
+// loads at login (tableStore.handHistories, sourced from loadHandHistory), using
+// the hero's end-of-hand table stack per hand. Real data, survives refresh.
 
 export default function BankrollGraph({ onClose }) {
   const [view, setView] = useState('last50');
   const [tooltip, setTooltip] = useState(null);
+  const handHistories = useTableStore((s) => s.handHistories);
+  const heroName = useGameStore((s) => s.playerName);
 
-  const allData = useMemo(() => loadHistory(), []);
+  // Build a cumulative stack series: one point per hand the hero was dealt in.
+  const allData = useMemo(() => {
+    const out = [];
+    for (const rec of handHistories || []) {
+      const me = (rec?.players || []).find((p) => p.name === heroName);
+      if (!me || typeof me.endChips !== 'number') continue;
+      out.push({ chips: me.endChips, label: rec.handNumber != null ? `Hand #${rec.handNumber}` : `Hand ${out.length + 1}` });
+    }
+    return out;
+  }, [handHistories, heroName]);
 
   const data = useMemo(() => {
     if (view === 'last50') return allData.slice(-50);
-    if (view === 'session') {
-      // Last session = data from today
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      return allData.filter((d) => d.timestamp >= todayStart.getTime());
-    }
-    return allData; // all time
+    if (view === 'session') return allData.slice(-15);
+    return allData; // all available
   }, [view, allData]);
 
   if (data.length < 2) {
@@ -72,7 +66,7 @@ export default function BankrollGraph({ onClose }) {
     x: pad.left + (i / (data.length - 1)) * chartW,
     y: pad.top + (1 - (d.chips - min) / range) * chartH,
     chips: d.chips,
-    timestamp: d.timestamp,
+    label: d.label,
   }));
 
   const polyline = points.map((p) => `${p.x},${p.y}`).join(' ');
@@ -84,8 +78,9 @@ export default function BankrollGraph({ onClose }) {
   const currentChips = data[data.length - 1].chips;
   const netChange = currentChips - startingStack;
   const isUp = netChange >= 0;
-  const lineColor = isUp ? '#4ADE80' : '#EF4444';
-  const gradColor = isUp ? '#4ADE80' : '#EF4444';
+  // No-red brand rule: down state uses muted steel-blue, not red.
+  const lineColor = isUp ? '#27e0a0' : '#6b8cc4';
+  const gradColor = lineColor;
 
   // Summary stats
   const highPoint = max;
@@ -102,8 +97,8 @@ export default function BankrollGraph({ onClose }) {
         <div className="bankroll-toggle-bar">
           {[
             { key: 'last50', label: 'Last 50 Hands' },
-            { key: 'session', label: 'This Session' },
-            { key: 'alltime', label: 'All Time' },
+            { key: 'session', label: 'Last 15' },
+            { key: 'alltime', label: 'All Available' },
           ].map((opt) => (
             <button
               key={opt.key}
@@ -190,28 +185,26 @@ export default function BankrollGraph({ onClose }) {
               }}
             >
               <div className="bankroll-tooltip-chips">{tooltip.chips.toLocaleString()} chips</div>
-              <div className="bankroll-tooltip-time">
-                {new Date(tooltip.timestamp).toLocaleString()}
-              </div>
+              <div className="bankroll-tooltip-time">{tooltip.label}</div>
             </div>
           )}
         </div>
 
         <div className="bankroll-summary">
           <div className="bankroll-summary-card">
-            <div className="bankroll-summary-value" style={{ color: isUp ? '#4ADE80' : '#EF4444' }}>
+            <div className="bankroll-summary-value" style={{ color: lineColor }}>
               {netChange >= 0 ? '+' : ''}{netChange.toLocaleString()}
             </div>
             <div className="bankroll-summary-label">Net Change</div>
           </div>
           <div className="bankroll-summary-card">
-            <div className="bankroll-summary-value" style={{ color: '#4ADE80' }}>
+            <div className="bankroll-summary-value" style={{ color: '#27e0a0' }}>
               {highPoint.toLocaleString()}
             </div>
             <div className="bankroll-summary-label">Peak</div>
           </div>
           <div className="bankroll-summary-card">
-            <div className="bankroll-summary-value" style={{ color: '#EF4444' }}>
+            <div className="bankroll-summary-value" style={{ color: '#8298c4' }}>
               {lowPoint.toLocaleString()}
             </div>
             <div className="bankroll-summary-label">Valley</div>
