@@ -1372,7 +1372,11 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     const tbl = seatPickerTable;
     setSeatPickerTable(null);
     beginJoin('Joining table…', () => {
-      joinTable(tbl.tableId, nameInput.trim(), seatIndex, tbl.minBuyIn || 1000, avatar);
+      // 2026-06-19 fix: pass the table's variant as expectedVariant (6th arg) so
+      // the server's variant-mismatch guard fires on the seat-picker path too —
+      // previously omitted here, so a tableId that converted variant server-side
+      // could seat you at the wrong game.
+      joinTable(tbl.tableId, nameInput.trim(), seatIndex, tbl.minBuyIn || 1000, avatar, tbl.variant);
     });
   };
 

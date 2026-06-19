@@ -118,8 +118,12 @@ export default function EquityCalculator({ onClose }) {
 
     if (h1Cards.length < 2 || h2Cards.length < 2) return;
 
-    // If we have enough board cards (3+), evaluate directly
-    if (boardCards.length >= 3) {
+    // 2026-06-19 fix: only short-circuit on a COMPLETE board (5 cards). The old
+    // `>= 3` returned 100/0/50 from the CURRENT made hands on the flop/turn and
+    // never simulated the remaining street(s) — so a flush/straight draw read 0%.
+    // 3- and 4-card boards now fall through to the Monte-Carlo branch (which
+    // already deals `5 - boardCards.length` runout cards).
+    if (boardCards.length >= 5) {
       const eval1 = evaluateHandStrength(h1Cards, boardCards);
       const eval2 = evaluateHandStrength(h2Cards, boardCards);
 

@@ -73,7 +73,7 @@ export default function MissionsPanel() {
             <div className="daily-bonus-text">
               <span className="daily-bonus-title">Daily Login Bonus</span>
               <span className="daily-bonus-streak">
-                Streak: {progress.dailyLoginStreak || 0} day{(progress.dailyLoginStreak || 0) !== 1 ? 's' : ''}
+                Streak: {progress.loginStreak || 0} day{(progress.loginStreak || 0) !== 1 ? 's' : ''}
               </span>
             </div>
             <span className="daily-bonus-claim">CLAIM</span>
