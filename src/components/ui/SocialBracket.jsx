@@ -1,15 +1,36 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { getSocket } from '../../services/socketService';
 import './SocialBracket.css';
 
+// 2026-06-18 — Phase 3d: real, durable, LIVE social brackets backed by
+// poker-server (Postgres + a socket room per bracket). Replaces the local-only
+// mock: eliminations and side bets now persist and sync to everyone viewing
+// the bracket, and the `?bracket=<id>` share link actually loads it.
+//   emit  createSocialBracket { bracketId, name, theme, players }
+//         getSocialBracket    { bracketId }
+//         socialBracketEliminate { bracketId, playerName }
+//         placeSocialSideBet  { bracketId, target, amount }
+//   recv  socialBracketState  { bracketId, name, theme, status, createdBy, players[], sideBets[] }
+//         socialBracketRole   { bracketId, isOrganizer }
+//         socialBracketError  { message }
+
 function generateBracketId() {
-  return Math.random().toString(36).slice(2, 10).toUpperCase();
+  // Random 8-char A-Z0-9 id (matches the server's /^[A-Z0-9]{4,16}$/ gate).
+  let s = '';
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  for (let i = 0; i < 8; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
 }
 
-function SideBetModal({ players, onClose, onPlace }) {
-  const [bettor, setBettor] = useState('You');
+const THEMES = [
+  { id: 'neon', label: '🌟 Neon Vegas', accent: '#ffd24a' },
+  { id: 'classic', label: '♠ Classic', accent: '#F59E0B' },
+  { id: 'western', label: '🤠 Western', accent: '#D97706' },
+];
+
+function SideBetModal({ players, accent, onClose, onPlace }) {
   const [target, setTarget] = useState(players[0] || '');
   const [amount, setAmount] = useState(500);
-
   return (
     <div className="sbet-overlay" onClick={onClose}>
       <div className="sbet-modal" onClick={e => e.stopPropagation()}>
@@ -22,7 +43,7 @@ function SideBetModal({ players, onClose, onPlace }) {
         <input className="sbet-input" type="number" min={100} step={100} value={amount} onChange={e => setAmount(Number(e.target.value))} />
         <div className="sbet-btns">
           <button className="sbet-btn sbet-btn--cancel" onClick={onClose}>Cancel</button>
-          <button className="sbet-btn sbet-btn--confirm" onClick={() => { onPlace({ bettor, target, amount }); onClose(); }}>
+          <button className="sbet-btn sbet-btn--confirm" style={{ background: accent }} onClick={() => { if (target) onPlace({ target, amount }); onClose(); }}>
             Confirm
           </button>
         </div>
@@ -31,83 +52,116 @@ function SideBetModal({ players, onClose, onPlace }) {
   );
 }
 
-const MOCK_PLAYERS = ['AceKiller99', 'BluffQueen', 'RiverRat42', 'ChipStack', 'PocketRockets', 'FoldEmFiona', 'AllInAnna', 'TightTommy'];
+const DEFAULT_ROSTER = 'Player 1\nPlayer 2\nPlayer 3\nPlayer 4\nPlayer 5\nPlayer 6';
 
-export default function SocialBracket({ socket, onClose }) {
-  const [view, setView] = useState('create'); // 'create' | 'bracket'
+export default function SocialBracket({ socket: socketProp, onClose }) {
+  const socket = socketProp || getSocket();
+
+  // Create-form state
   const [bracketName, setBracketName] = useState('Home Game Showdown');
-  const [playerList, setPlayerList] = useState(MOCK_PLAYERS.slice(0, 6).join('\n'));
-  const [bracketId, setBracketId] = useState(null);
-  const [shareLink, setShareLink] = useState('');
+  const [playerList, setPlayerList] = useState(DEFAULT_ROSTER);
+  const [theme, setTheme] = useState('neon');
+
+  // Live server state
+  const [serverState, setServerState] = useState(null); // BracketState | null
+  const [isOrganizer, setIsOrganizer] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState(null);
   const [copied, setCopied] = useState(false);
-  const [players, setPlayers] = useState([]);
-  const [eliminated, setEliminated] = useState([]);
-  const [sideBets, setSideBets] = useState([]);
   const [showSideBet, setShowSideBet] = useState(false);
-  const [theme, setTheme] = useState('neon'); // 'neon' | 'classic' | 'western'
 
-  const THEMES = [
-    { id: 'neon', label: '🌟 Neon Vegas', accent: '#ffd24a' },
-    { id: 'classic', label: '♠ Classic', accent: '#F59E0B' },
-    { id: 'western', label: '🤠 Western', accent: '#D97706' },
-  ];
-  const activeTheme = THEMES.find(t => t.id === theme) || THEMES[0];
+  const activeTheme = THEMES.find(t => t.id === (serverState?.theme || theme)) || THEMES[0];
 
-  function handleCreate() {
-    const parsed = playerList.split('\n').map(s => s.trim()).filter(Boolean);
-    if (parsed.length < 2) return;
-    const id = generateBracketId();
-    setBracketId(id);
-    setPlayers(parsed.map((name, i) => ({ name, chips: 10000, rank: i + 1, out: false })));
-    setEliminated([]);
-    setShareLink(`${window.location.origin}?bracket=${id}`);
-    setView('bracket');
+  // ─── Subscribe to live bracket updates ──────────────────────────────────
+  useEffect(() => {
+    if (!socket) return undefined;
+    const onState = (state) => { setServerState(state); setLoading(false); };
+    const onRole = (d) => { if (d?.isOrganizer != null) setIsOrganizer(!!d.isOrganizer); };
+    const onErr = (d) => { setNotice(d?.message || 'Something went wrong'); setLoading(false); };
+    socket.on('socialBracketState', onState);
+    socket.on('socialBracketRole', onRole);
+    socket.on('socialBracketError', onErr);
 
-    if (socket) {
-      socket.emit('createSocialBracket', { bracketId: id, name: bracketName, players: parsed });
+    // Share-link viewer: ?bracket=ID auto-loads that bracket.
+    const urlId = new URLSearchParams(window.location.search).get('bracket');
+    if (urlId && socket.connected) {
+      setLoading(true);
+      socket.emit('getSocialBracket', { bracketId: urlId.toUpperCase() });
     }
-  }
+    return () => {
+      socket.off('socialBracketState', onState);
+      socket.off('socialBracketRole', onRole);
+      socket.off('socialBracketError', onErr);
+    };
+  }, [socket]);
 
-  function handleEliminate(playerName) {
-    setPlayers(prev => prev.map(p => p.name === playerName ? { ...p, out: true, chips: 0 } : p));
-    setEliminated(prev => [playerName, ...prev]);
-    if (socket) socket.emit('socialBracketEliminate', { bracketId, playerName });
-  }
+  useEffect(() => {
+    if (!notice) return undefined;
+    const t = setTimeout(() => setNotice(null), 2800);
+    return () => clearTimeout(t);
+  }, [notice]);
 
-  function handleCopyLink() {
-    navigator.clipboard.writeText(shareLink).then(() => {
+  const handleCreate = useCallback(() => {
+    const parsed = playerList.split('\n').map(s => s.trim()).filter(Boolean);
+    if (parsed.length < 2 || !socket?.connected) return;
+    const id = generateBracketId();
+    setLoading(true);
+    setIsOrganizer(true);
+    socket.emit('createSocialBracket', { bracketId: id, name: bracketName, theme, players: parsed });
+  }, [playerList, bracketName, theme, socket]);
+
+  const handleEliminate = useCallback((playerName) => {
+    if (!serverState || !socket?.connected) return;
+    socket.emit('socialBracketEliminate', { bracketId: serverState.bracketId, playerName });
+  }, [serverState, socket]);
+
+  const handleSideBet = useCallback(({ target, amount }) => {
+    if (!serverState || !socket?.connected) return;
+    socket.emit('placeSocialSideBet', { bracketId: serverState.bracketId, target, amount });
+  }, [serverState, socket]);
+
+  const shareLink = serverState ? `${window.location.origin}?bracket=${serverState.bracketId}` : '';
+  const handleCopyLink = () => {
+    if (!shareLink) return;
+    navigator.clipboard?.writeText(shareLink).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
-  }
+    }).catch(() => {});
+  };
 
-  function handleSideBet(bet) {
-    setSideBets(prev => [...prev, { ...bet, id: Date.now(), settled: false }]);
-  }
+  const newTournament = () => { setServerState(null); setIsOrganizer(false); };
 
+  // ─── Derived bracket data ───────────────────────────────────────────────
+  const players = serverState?.players || [];
   const activePlayers = players.filter(p => !p.out);
-  const isHeadsUp = activePlayers.length === 2;
-  const isFinalThree = activePlayers.length === 3;
-  const champion = activePlayers.length === 1 ? activePlayers[0] : null;
+  const eliminated = players.filter(p => p.out).sort((a, b) => (b.outOrder || 0) - (a.outOrder || 0));
+  const isComplete = serverState?.status === 'complete';
+  const champion = isComplete && activePlayers.length === 1 ? activePlayers[0] : null;
+  const isHeadsUp = !champion && activePlayers.length === 2;
+  const isFinalThree = !champion && activePlayers.length === 3;
+  const view = serverState ? 'bracket' : 'create';
 
   return (
     <div className="social-bracket-overlay" onClick={onClose}>
-      <div className={`social-bracket-modal sb-theme-${theme}`} onClick={e => e.stopPropagation()}>
+      <div className={`social-bracket-modal sb-theme-${activeTheme.id}`} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="sb-header" style={{ borderBottomColor: activeTheme.accent + '44' }}>
           <span className="sb-logo">🏆</span>
           <span className="sb-title" style={{ color: activeTheme.accent }}>
-            {view === 'bracket' ? bracketName : 'Social Bracket Tournaments'}
+            {view === 'bracket' ? serverState.name : 'Social Bracket Tournaments'}
           </span>
-          {view === 'bracket' && bracketId && (
-            <span className="sb-id-badge">#{bracketId}</span>
+          {view === 'bracket' && (
+            <span className="sb-id-badge">#{serverState.bracketId}</span>
           )}
           <button className="sb-close" onClick={onClose}>×</button>
         </div>
 
+        {notice && <div className="sb-notice">{notice}</div>}
+
         {/* Create form */}
         {view === 'create' && (
           <div className="sb-create-form">
+            {loading && <div className="sb-loading">Loading…</div>}
             <div className="sb-field">
               <label className="sb-label">Tournament Name</label>
               <input
@@ -115,6 +169,7 @@ export default function SocialBracket({ socket, onClose }) {
                 value={bracketName}
                 onChange={e => setBracketName(e.target.value)}
                 placeholder="e.g. Home Game Friday Night"
+                maxLength={80}
               />
             </div>
 
@@ -152,7 +207,7 @@ export default function SocialBracket({ socket, onClose }) {
               className="sb-create-btn"
               style={{ background: activeTheme.accent, color: '#0a0a1a' }}
               onClick={handleCreate}
-              disabled={playerList.split('\n').filter(s => s.trim()).length < 2}
+              disabled={loading || playerList.split('\n').filter(s => s.trim()).length < 2}
             >
               Create Bracket
             </button>
@@ -181,16 +236,16 @@ export default function SocialBracket({ socket, onClose }) {
                 </div>
               </div>
             )}
-            {!champion && isHeadsUp && (
+            {isHeadsUp && (
               <div className="sb-status-badge sb-status-badge--headsup">⚔️ Heads-Up!</div>
             )}
-            {!champion && isFinalThree && (
+            {isFinalThree && (
               <div className="sb-status-badge sb-status-badge--final3">🎯 Final 3</div>
             )}
 
             {/* Active players */}
             <div className="sb-section-label" style={{ color: activeTheme.accent }}>
-              Active — {activePlayers.length} remaining
+              Active — {activePlayers.length} remaining{!isOrganizer && ' · viewing'}
             </div>
             <div className="sb-players-grid">
               {activePlayers.map((p, i) => (
@@ -200,13 +255,15 @@ export default function SocialBracket({ socket, onClose }) {
                     {p.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="sb-player-name">{p.name}</div>
-                  <button
-                    className="sb-elim-btn"
-                    onClick={() => handleEliminate(p.name)}
-                    title="Eliminate"
-                  >
-                    ✕
-                  </button>
+                  {isOrganizer && !champion && (
+                    <button
+                      className="sb-elim-btn"
+                      onClick={() => handleEliminate(p.name)}
+                      title="Eliminate"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -218,9 +275,9 @@ export default function SocialBracket({ socket, onClose }) {
                   Eliminated — {eliminated.length} out
                 </div>
                 <div className="sb-elim-list">
-                  {eliminated.map((name, i) => (
-                    <span key={name} className="sb-elim-pill">
-                      #{activePlayers.length + i + 1} {name}
+                  {eliminated.map((p, i) => (
+                    <span key={p.name} className="sb-elim-pill">
+                      #{activePlayers.length + i + 1} {p.name}
                     </span>
                   ))}
                 </div>
@@ -232,36 +289,41 @@ export default function SocialBracket({ socket, onClose }) {
               <div className="sb-section-label" style={{ color: activeTheme.accent, marginBottom: 0 }}>
                 Side Bets
               </div>
-              <button
-                className="sb-sidebet-add-btn"
-                style={{ borderColor: activeTheme.accent + '66', color: activeTheme.accent }}
-                onClick={() => setShowSideBet(true)}
-              >
-                + Add Bet
-              </button>
+              {!champion && (
+                <button
+                  className="sb-sidebet-add-btn"
+                  style={{ borderColor: activeTheme.accent + '66', color: activeTheme.accent }}
+                  onClick={() => setShowSideBet(true)}
+                >
+                  + Add Bet
+                </button>
+              )}
             </div>
-            {sideBets.length === 0 ? (
+            {(serverState.sideBets || []).length === 0 ? (
               <div className="sb-no-bets">No side bets yet</div>
             ) : (
               <div className="sb-bets-list">
-                {sideBets.map(bet => (
-                  <div key={bet.id} className="sb-bet-row">
-                    <span className="sb-bet-bettor">{bet.bettor}</span>
-                    <span className="sb-bet-arrow">→</span>
-                    <span className="sb-bet-target" style={{ color: activeTheme.accent }}>{bet.target}</span>
-                    <span className="sb-bet-amount">+{bet.amount.toLocaleString()}</span>
-                    {!bet.settled && eliminated.includes(bet.target) && (
-                      <span className="sb-bet-result sb-bet-result--lost">Lost</span>
-                    )}
-                    {!bet.settled && champion?.name === bet.target && (
-                      <span className="sb-bet-result sb-bet-result--won">Won!</span>
-                    )}
-                  </div>
-                ))}
+                {serverState.sideBets.map((bet, idx) => {
+                  const targetOut = players.find(p => p.name === bet.target)?.out;
+                  return (
+                    <div key={idx} className="sb-bet-row">
+                      <span className="sb-bet-bettor">{bet.bettor}</span>
+                      <span className="sb-bet-arrow">→</span>
+                      <span className="sb-bet-target" style={{ color: activeTheme.accent }}>{bet.target}</span>
+                      <span className="sb-bet-amount">+{bet.amount.toLocaleString()}</span>
+                      {champion?.name === bet.target && (
+                        <span className="sb-bet-result sb-bet-result--won">Won!</span>
+                      )}
+                      {!champion && targetOut && (
+                        <span className="sb-bet-result sb-bet-result--lost">Lost</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
-            <button className="sb-new-btn" onClick={() => setView('create')}>
+            <button className="sb-new-btn" onClick={newTournament}>
               ← New Tournament
             </button>
           </div>
@@ -270,6 +332,7 @@ export default function SocialBracket({ socket, onClose }) {
         {showSideBet && (
           <SideBetModal
             players={activePlayers.map(p => p.name)}
+            accent={activeTheme.accent}
             onClose={() => setShowSideBet(false)}
             onPlace={handleSideBet}
           />

@@ -1238,7 +1238,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const [showTournamentDirector, setShowTournamentDirector] = useState(false);
   const [showHandHistoryImporter, setShowHandHistoryImporter] = useState(false);
   const [showMultiTable, setShowMultiTable] = useState(false);
-  const [showSocialBracket, setShowSocialBracket] = useState(false);
+  const [showSocialBracket, setShowSocialBracket] = useState(
+    () => { try { return !!new URLSearchParams(window.location.search).get('bracket'); } catch { return false; } }
+  );
   const [showBankrollAI, setShowBankrollAI] = useState(false);
   const [showPlayerProfile, setShowPlayerProfile] = useState(false);
   const [showNFTBadges, setShowNFTBadges] = useState(false);
@@ -3051,7 +3053,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {showTournamentBracket && <TournamentBracket onClose={() => setShowTournamentBracket(false)} />}
         {showTournamentDirector && <TournamentDirector onClose={() => setShowTournamentDirector(false)} />}
         {showHandHistoryImporter && <HandHistoryImporter onClose={() => setShowHandHistoryImporter(false)} />}
-        {showSocialBracket && <SocialBracket socket={null} onClose={() => setShowSocialBracket(false)} />}
+        {showSocialBracket && <SocialBracket socket={getSocket()} onClose={() => setShowSocialBracket(false)} />}
         {showBankrollAI && <BankrollAI currentChips={chipCount} onClose={() => setShowBankrollAI(false)} />}
         {showNFTBadges && <NFTBadges unlockedAchievementIds={progress?.achievements || []} onClose={() => setShowNFTBadges(false)} />}
       </Suspense>
