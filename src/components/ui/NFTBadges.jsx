@@ -1,17 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getSocket } from '../../services/socketService';
 import './NFTBadges.css';
 
-// ===== Badge definitions =====
-const BADGE_DEFINITIONS = [
-  { id: 'first_win',      name: 'First Blood',      icon: '🎯', rarity: 'common',    description: 'Won first hand' },
-  { id: 'royal_flush',    name: 'Royal Flush',      icon: '👑', rarity: 'legendary', description: 'Achieved a Royal Flush' },
-  { id: 'hands_1000',     name: 'Veteran',          icon: '🎖',  rarity: 'rare',      description: 'Played 1000 hands' },
-  { id: 'streak_10',      name: 'Unstoppable',      icon: '⚡', rarity: 'epic',      description: '10-hand win streak' },
-  { id: 'high_roller',    name: 'High Roller',      icon: '💰', rarity: 'rare',      description: 'Won pot over 50K' },
-  { id: 'tournament_win', name: 'Champion',         icon: '🏆', rarity: 'epic',      description: 'Won a tournament' },
-  { id: 'bluff_caught',   name: 'Caught Bluffing',  icon: '😅', rarity: 'common',    description: 'Bluff was called' },
-  { id: 'hands_100',      name: 'Card Shark',       icon: '🃏', rarity: 'common',    description: 'Played 100 hands' },
-];
+// 2026-06-18 — Phase 3e: REAL achievement badges (no crypto). Replaces the
+// fake "mint an NFT" veneer (fake wallet / tx hash / "Chain: Base" /
+// sessionStorage minting) with the platform's actual durable lifetime
+// achievements, served by poker-server. A badge is EARNED automatically the
+// moment its achievement unlocks — there is nothing to mint.
+//   emit  getAchievements
+//   recv  achievementsList { lifetime:[{id,name,description,reward,unlocked,progressMet}], ... }
 
 const RARITY_COLORS = {
   common:    '#94A3B8',
@@ -20,66 +17,50 @@ const RARITY_COLORS = {
   legendary: '#F59E0B',
 };
 
-const RARITY_REQUIREMENTS = {
-  common:    'Complete common achievements',
-  rare:      'Complete rare achievements',
-  epic:      'Complete epic achievements',
-  legendary: 'Complete legendary achievements',
-};
-
-const LS_KEY = 'poker_nft_badges';
-const FAKE_WALLET = '0x1a2b...3c4d';
-
-// Generate a random 8-char hex tx hash
-function fakeTxHash() {
-  return '0x' + Math.random().toString(16).slice(2, 10).padEnd(8, '0');
+// Rarity is derived from the achievement's star reward — bigger reward,
+// rarer badge. Keeps a single source of truth (the server catalog).
+function rarityFor(reward) {
+  const stars = reward?.stars || 0;
+  if (stars >= 250) return 'legendary';
+  if (stars >= 100) return 'epic';
+  if (stars >= 25) return 'rare';
+  return 'common';
 }
 
-// Load minted badges from sessionStorage
-function loadMintedBadges() {
-  try {
-    const raw = sessionStorage.getItem(LS_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
+// Pick an emoji from the achievement id (the server catalog has no icons).
+function iconFor(id) {
+  if (id.startsWith('royal')) return '👑';
+  if (id.startsWith('straight_flush')) return '🌊';
+  if (id.startsWith('quads')) return '🎴';
+  if (id.startsWith('full_house')) return '🏠';
+  if (id.startsWith('streak')) return '⚡';
+  if (id.startsWith('hands')) return '🎖';
+  if (id.startsWith('wins')) return '🏅';
+  if (id.startsWith('pot')) return '💰';
+  if (id.startsWith('bluff')) return '🃏';
+  if (id.startsWith('allin')) return '🔥';
+  if (id.startsWith('tourney')) return '🏆';
+  if (id.startsWith('lvl')) return '⭐';
+  if (id.startsWith('social')) return '💬';
+  if (id === 'all_variants') return '🎲';
+  if (id === 'first_win') return '🎯';
+  return '🏅';
 }
 
-// Save minted badges to sessionStorage
-function saveMintedBadges(data) {
-  try {
-    sessionStorage.setItem(LS_KEY, JSON.stringify(data));
-  } catch {
-    // ignore storage errors
-  }
-}
-
-// Toast component
-function Toast({ message, visible }) {
-  return (
-    <div className={`nft-toast ${visible ? 'nft-toast-visible' : ''}`}>
-      {message}
-    </div>
-  );
-}
-
-// Badge card
-function BadgeCard({ badge, state, tokenNumber, txHash, onMint, minting }) {
+function BadgeCard({ badge }) {
   const glowColor = RARITY_COLORS[badge.rarity] ?? '#94A3B8';
-
+  const locked = !badge.unlocked;
   return (
     <div
-      className={`nft-badge-card rarity-${badge.rarity} ${state === 'locked' ? 'nft-badge-locked' : ''} ${state === 'minted' ? 'nft-badge-minted' : ''}`}
+      className={`nft-badge-card rarity-${badge.rarity} ${locked ? 'nft-badge-locked' : 'nft-badge-minted'}`}
       style={{ '--glow-color': glowColor }}
     >
-      {/* Locked overlay */}
-      {state === 'locked' && (
+      {locked && (
         <div className="nft-lock-overlay">
           <span className="nft-lock-icon">🔒</span>
-          <span className="nft-lock-text">{RARITY_REQUIREMENTS[badge.rarity]}</span>
+          <span className="nft-lock-text">{badge.description}</span>
         </div>
       )}
-
       <div className="nft-badge-inner">
         <div className="nft-badge-icon">{badge.icon}</div>
         <div className="nft-badge-name">{badge.name}</div>
@@ -87,172 +68,95 @@ function BadgeCard({ badge, state, tokenNumber, txHash, onMint, minting }) {
           {badge.rarity.toUpperCase()}
         </span>
         <div className="nft-badge-description">{badge.description}</div>
-
-        {state === 'minted' && (
+        {badge.unlocked && (
           <div className="nft-token-info">
-            <span className="nft-token-number">Token #{tokenNumber}</span>
-            <span className="nft-tx-hash" title={txHash}>TX: {txHash}</span>
+            <span className="nft-token-number">✓ Earned</span>
+            {badge.reward?.stars ? <span className="nft-tx-hash">+{badge.reward.stars}★</span> : null}
           </div>
-        )}
-
-        {state === 'available' && (
-          <button
-            className="nft-mint-btn"
-            onClick={() => onMint(badge.id)}
-            disabled={minting === badge.id}
-          >
-            {minting === badge.id ? (
-              <span className="nft-spinner" />
-            ) : (
-              '🔨 Mint Free'
-            )}
-          </button>
         )}
       </div>
     </div>
   );
 }
 
-// ===== Main component =====
-export default function NFTBadges({ unlockedAchievementIds = [], onClose }) {
-  const [mintedBadges, setMintedBadges] = useState(() => loadMintedBadges());
-  const [activeTab, setActiveTab] = useState('minted');
-  const [minting, setMinting] = useState(null);   // badge id currently being minted
-  const [toast, setToast] = useState({ message: '', visible: false });
-  const [tokenCounter, setTokenCounter] = useState(0);
-
-  const unlockedSet = new Set(unlockedAchievementIds);
-
-  // Derive per-badge state
-  const categorized = BADGE_DEFINITIONS.map((badge) => {
-    if (mintedBadges[badge.id]) return { ...badge, state: 'minted', ...mintedBadges[badge.id] };
-    if (unlockedSet.has(badge.id)) return { ...badge, state: 'available' };
-    return { ...badge, state: 'locked' };
-  });
-
-  const mintedList    = categorized.filter((b) => b.state === 'minted');
-  const availableList = categorized.filter((b) => b.state === 'available');
-  const lockedList    = categorized.filter((b) => b.state === 'locked');
+export default function NFTBadges({ socket: socketProp, unlockedAchievementIds = [], onClose }) {
+  const socket = socketProp || getSocket();
+  const [lifetime, setLifetime] = useState(null); // server catalog | null (loading)
+  const [activeTab, setActiveTab] = useState('earned');
 
   useEffect(() => {
-    setTokenCounter(mintedList.length);
-  }, [mintedList.length]);
+    if (!socket) return undefined;
+    const onList = (data) => { if (Array.isArray(data?.lifetime)) setLifetime(data.lifetime); };
+    socket.on('achievementsList', onList);
+    if (socket.connected) socket.emit('getAchievements');
+    return () => socket.off('achievementsList', onList);
+  }, [socket]);
 
-  const showToast = useCallback((message) => {
-    setToast({ message, visible: true });
-    setTimeout(() => setToast((t) => ({ ...t, visible: false })), 3000);
-  }, []);
+  // Build the badge list from the server catalog when available, else fall
+  // back to the unlocked-ids hint (so something shows before the socket replies).
+  const badges = useMemo(() => {
+    const src = lifetime || unlockedAchievementIds.map((id) => ({ id, name: id, description: '', reward: {}, unlocked: true }));
+    return src.map((a) => ({
+      ...a,
+      icon: iconFor(a.id),
+      rarity: rarityFor(a.reward),
+      unlocked: a.unlocked ?? unlockedAchievementIds.includes(a.id),
+    }));
+  }, [lifetime, unlockedAchievementIds]);
 
-  function handleMint(badgeId) {
-    setMinting(badgeId);
-    setTimeout(() => {
-      const txHash = fakeTxHash();
-      const newMinted = {
-        ...mintedBadges,
-        [badgeId]: {
-          txHash,
-          tokenNumber: Object.keys(mintedBadges).length + 1,
-          mintedAt: new Date().toISOString(),
-        },
-      };
-      setMintedBadges(newMinted);
-      saveMintedBadges(newMinted);
-      setMinting(null);
-      setActiveTab('minted');
-      showToast(`✓ Minted! TX: ${txHash}`);
-    }, 1500);
-  }
+  const earned = badges.filter((b) => b.unlocked);
+  const locked = badges.filter((b) => !b.unlocked);
+  const list = activeTab === 'earned' ? earned : locked;
 
   function handleOverlayClick(e) {
     if (e.target === e.currentTarget) onClose();
   }
 
-  function renderTabContent() {
-    let list;
-    if (activeTab === 'minted')    list = mintedList;
-    else if (activeTab === 'available') list = availableList;
-    else                           list = lockedList;
-
-    if (list.length === 0) {
-      const emptyMessages = {
-        minted:    'You have not minted any badges yet. Unlock achievements and mint them here!',
-        available: 'No badges available to mint right now. Keep playing to unlock achievements.',
-        locked:    'All achievements are unlocked! Amazing!',
-      };
-      return (
-        <div className="nft-empty-state">
-          {emptyMessages[activeTab]}
-        </div>
-      );
-    }
-
-    return (
-      <div className="nft-badge-grid">
-        {list.map((badge) => (
-          <BadgeCard
-            key={badge.id}
-            badge={badge}
-            state={badge.state}
-            tokenNumber={badge.tokenNumber}
-            txHash={badge.txHash}
-            onMint={handleMint}
-            minting={minting}
-          />
-        ))}
-      </div>
-    );
-  }
-
   return (
     <div className="nft-overlay" onClick={handleOverlayClick}>
-      <div className="nft-modal" role="dialog" aria-modal="true" aria-label="Achievement NFTs">
-
-        {/* Close button */}
+      <div className="nft-modal" role="dialog" aria-modal="true" aria-label="Achievement Badges">
         <button className="nft-close-btn" onClick={onClose} aria-label="Close">×</button>
 
         {/* Header */}
         <div className="nft-header">
           <div className="nft-title-row">
-            <h2 className="nft-title">🏅 Achievement NFTs</h2>
-            <div className="nft-chain-label">Chain: Base (Free)</div>
-          </div>
-          <div className="nft-wallet-row">
-            <span className="nft-wallet-icon">👛</span>
-            <span className="nft-wallet-address">{FAKE_WALLET}</span>
-            <span className="nft-minted-count">{mintedList.length} minted</span>
+            <h2 className="nft-title">🏅 Achievement Badges</h2>
+            <div className="nft-chain-label">{earned.length} / {badges.length} earned</div>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="nft-tabs">
           <button
-            className={`nft-tab ${activeTab === 'minted' ? 'nft-tab-active' : ''}`}
-            onClick={() => setActiveTab('minted')}
+            className={`nft-tab ${activeTab === 'earned' ? 'nft-tab-active' : ''}`}
+            onClick={() => setActiveTab('earned')}
           >
-            Minted ({mintedList.length})
-          </button>
-          <button
-            className={`nft-tab ${activeTab === 'available' ? 'nft-tab-active' : ''}`}
-            onClick={() => setActiveTab('available')}
-          >
-            Available to Mint ({availableList.length})
+            Earned ({earned.length})
           </button>
           <button
             className={`nft-tab ${activeTab === 'locked' ? 'nft-tab-active' : ''}`}
             onClick={() => setActiveTab('locked')}
           >
-            Locked ({lockedList.length})
+            Locked ({locked.length})
           </button>
         </div>
 
         {/* Content */}
         <div className="nft-content">
-          {renderTabContent()}
+          {lifetime === null && badges.length === 0 ? (
+            <div className="nft-empty-state">Loading badges…</div>
+          ) : list.length === 0 ? (
+            <div className="nft-empty-state">
+              {activeTab === 'earned'
+                ? 'No badges earned yet. Keep playing to unlock achievements!'
+                : 'Every badge earned. Legendary!'}
+            </div>
+          ) : (
+            <div className="nft-badge-grid">
+              {list.map((badge) => <BadgeCard key={badge.id} badge={badge} />)}
+            </div>
+          )}
         </div>
-
-        {/* Toast notification */}
-        <Toast message={toast.message} visible={toast.visible} />
-
       </div>
     </div>
   );

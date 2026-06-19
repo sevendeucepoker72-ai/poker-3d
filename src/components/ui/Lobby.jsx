@@ -2096,7 +2096,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           style={toolBtnStyle}
           onClick={() => setShowNFTBadges(true)}
         >
-          🏅 NFT Badges
+          🏅 Achievement Badges
         </button>
       </div>
       <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
@@ -3055,7 +3055,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {showHandHistoryImporter && <HandHistoryImporter onClose={() => setShowHandHistoryImporter(false)} />}
         {showSocialBracket && <SocialBracket socket={getSocket()} onClose={() => setShowSocialBracket(false)} />}
         {showBankrollAI && <BankrollAI currentChips={chipCount} onClose={() => setShowBankrollAI(false)} />}
-        {showNFTBadges && <NFTBadges unlockedAchievementIds={progress?.achievements || []} onClose={() => setShowNFTBadges(false)} />}
+        {showNFTBadges && <NFTBadges socket={getSocket()} unlockedAchievementIds={progress?.achievements || []} onClose={() => setShowNFTBadges(false)} />}
       </Suspense>
       {/* Eagerly-loaded panels that live inside the default Lobby view
           or are opened so frequently that the lazy round-trip wouldn't
