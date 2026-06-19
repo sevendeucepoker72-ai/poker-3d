@@ -616,3 +616,35 @@
     gap: 5px;
   }
 }
+
+/* ===== Phase 3f: real multi-table additions ===== */
+.mtv-leave-btn {
+  margin-left: auto; background: rgba(120,160,255,.12); color: #a8bbe0;
+  border: 1px solid rgba(120,160,255,.25); border-radius: 6px; width: 22px; height: 22px;
+  cursor: pointer; font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+}
+.mtv-leave-btn:hover { background: rgba(209,60,60,.25); color: #fff; border-color: rgba(209,60,60,.4); }
+.mtv-panel-status { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 120px; color: #8298c4; font-size: 13px; text-align: center; padding: 12px; }
+.mtv-avatar-folded { opacity: .35; filter: grayscale(0.6); }
+
+.mtv-add-overlay { position: fixed; inset: 0; background: rgba(5,8,20,.7); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.mtv-add-modal {
+  width: min(440px, 92vw); max-height: 80vh; overflow-y: auto; background: #0c1a44;
+  border: 1px solid rgba(120,160,255,.34); border-radius: 14px; padding: 18px; box-shadow: 0 12px 48px rgba(0,0,0,.5);
+}
+.mtv-add-title { font-family: 'Anton', sans-serif; font-size: 18px; color: #ffd24a; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .5px; }
+.mtv-add-empty { color: #8298c4; font-size: 13px; padding: 18px 4px; text-align: center; }
+.mtv-add-list { display: flex; flex-direction: column; gap: 8px; }
+.mtv-add-row {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  background: rgba(120,160,255,.06); border: 1px solid rgba(120,160,255,.2); border-radius: 9px;
+  padding: 9px 12px; cursor: pointer; color: #eaf1ff;
+}
+.mtv-add-row:hover { background: rgba(255,210,74,.12); border-color: rgba(255,210,74,.4); }
+.mtv-add-row-name { font-weight: 700; font-size: 14px; }
+.mtv-add-row-meta { font-size: 11px; color: #a8bbe0; }
+.mtv-add-close {
+  margin-top: 14px; width: 100%; background: rgba(120,160,255,.12); color: #a8bbe0;
+  border: 1px solid rgba(120,160,255,.25); border-radius: 8px; padding: 9px; cursor: pointer; font-size: 13px;
+}
+.mtv-add-close:hover { background: rgba(120,160,255,.2); }
