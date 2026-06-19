@@ -295,3 +295,23 @@
     align-self: flex-end;
   }
 }
+
+/* 2026-06-18 — Phase 3a real friends: request/pending sections + notice */
+.friends-section-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #ffd24a;
+  font-weight: 700;
+  margin: 10px 4px 4px;
+}
+.friends-notice {
+  margin: 6px 0 2px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(120, 160, 255, 0.12);
+  border: 1px solid rgba(120, 160, 255, 0.28);
+  color: #eaf1ff;
+  font-size: 0.8rem;
+  text-align: center;
+}
