@@ -62,6 +62,22 @@ if (newerSrc) {
   process.exit(1);
 }
 
+// 2026-06-19 — Service-worker cache-token guard. sw.js derives CACHE_NAME from a
+// `__BUILD_TIME__` token that the `build` script's postbuild step replaces with
+// Date.now(). If a dist/ ships with the token UN-substituted, every such deploy
+// collapses to one shared `pub-poker-v3-broken` cache and the SW only
+// console.errors — a silent sitewide cache-staleness landmine. Abort if the raw
+// token survived into the built sw.js (i.e. the postbuild didn't run).
+const SW_PATH = path.join(DIST_DIR, 'sw.js');
+if (fs.existsSync(SW_PATH)) {
+  const swSrc = fs.readFileSync(SW_PATH, 'utf8');
+  if (swSrc.includes('__BUILD_TIME__')) {
+    console.error('[deploy-online] FAIL: dist/sw.js still contains __BUILD_TIME__ (postbuild substitution did not run).');
+    console.error('  Run `npm run build` (not a bare `vite build`) so the SW cache token is stamped — otherwise the cache name collapses to "...-broken".');
+    process.exit(1);
+  }
+}
+
 // 2026-05-06 — Canonical features manifest grep. Aborts the deploy
 // if any tokens listed in canonical-features.txt are missing from
 // the built bundle. Earned on 2026-05-06 after the poker-3d split-
