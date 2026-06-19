@@ -48,6 +48,7 @@ import { logAuthEvent } from './services/authEvents';
 import { startAuthCrossTabListener } from './services/authCrossTab';
 // Heavy screens loaded lazily — only when the user first navigates to them
 const Lobby = lazy(() => import('./components/ui/Lobby'));
+const StreamOverlayView = lazy(() => import('./components/ui/StreamOverlayView'));
 const AvatarCustomizer = lazy(() => import('./components/ui/AvatarCustomizer'));
 const GameScene = lazy(() => import('./components/scene/GameScene'));
 const GameHUD = lazy(() => import('./components/game/GameHUD'));
@@ -80,6 +81,18 @@ function parseReplayParam() {
 /** PWA shortcut action from manifest (e.g. ?action=quickplay) */
 function getPWAAction() {
   return new URLSearchParams(window.location.search).get('action') || null;
+}
+
+/** OBS browser-source overlay: ?overlay=<tableId>&delay=<sec>&theme=<name> */
+function parseOverlayParam() {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const tableId = p.get('overlay');
+    if (!tableId) return null;
+    return { tableId, delaySec: Math.max(0, Number(p.get('delay')) || 0), theme: p.get('theme') || 'sapphire' };
+  } catch (_) {
+    return null;
+  }
 }
 
 /**
@@ -207,6 +220,7 @@ function App() {
   const [isOAuthCallback] = useState(() => checkIsAuthCallback());
   // Shared replay link — show viewer without requiring login
   const [sharedReplay] = useState(() => parseReplayParam());
+  const [overlayConfig] = useState(() => parseOverlayParam());
   // PWA shortcut action — auto-trigger after login
   const [pwaAction] = useState(() => getPWAAction());
   // Deep-link from player app (americanpub.poker). Either a waitlist hand-off
@@ -1322,6 +1336,16 @@ function App() {
   // OAuth2 callback — intercept before any other screen
   if (isOAuthCallback) {
     return <AuthCallback />;
+  }
+
+  // OBS browser-source overlay (?overlay=<tableId>) — a clean, transparent,
+  // login-free broadcast graphic of the live table. Intercept before auth.
+  if (overlayConfig) {
+    return (
+      <Suspense fallback={null}>
+        <StreamOverlayView tableId={overlayConfig.tableId} delaySec={overlayConfig.delaySec} theme={overlayConfig.theme} />
+      </Suspense>
+    );
   }
 
   // Shared replay link — show viewer without any auth requirement

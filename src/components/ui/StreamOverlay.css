@@ -196,3 +196,57 @@
   .stream-chat { display: none; }
   .stream-body { flex-direction: column; }
 }
+
+/* ===== Phase 3g: real OBS browser-source overlay (StreamOverlayView) ===== */
+.sov-root {
+  position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: center;
+  padding: 24px; box-sizing: border-box; background: transparent;
+  font-family: 'Inter', system-ui, sans-serif; color: var(--sov-ink, #eaf1ff);
+  pointer-events: none; z-index: 1;
+}
+.sov-root.sov-preview { position: relative; inset: auto; padding: 0; height: 100%; align-items: center; }
+.sov-waiting { color: var(--sov-ink, #eaf1ff); opacity: .7; font-size: 14px; background: var(--sov-glass); padding: 10px 18px; border-radius: 10px; }
+.sov-card-panel {
+  width: 100%; max-width: 1100px; background: var(--sov-glass, rgba(12,26,68,.82));
+  border: 1px solid var(--sov-line, rgba(120,160,255,.34)); border-radius: 16px;
+  padding: 14px 18px; backdrop-filter: blur(8px); box-shadow: 0 8px 40px rgba(0,0,0,.45);
+}
+.sov-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.sov-table-name { font-family: 'Anton', sans-serif; font-size: 20px; letter-spacing: .5px; color: var(--sov-accent, #ffd24a); text-transform: uppercase; }
+.sov-blinds { font-size: 12px; opacity: .75; }
+.sov-board { display: flex; gap: 8px; justify-content: center; margin: 6px 0; }
+.sov-card {
+  min-width: 40px; height: 56px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 19px; background: #fff; color: #111; box-shadow: 0 2px 8px rgba(0,0,0,.4); padding: 0 6px;
+}
+.sov-card.sov-red { color: #d11; }
+.sov-card.sov-black { color: #111; }
+.sov-card-empty { background: rgba(255,255,255,.06); box-shadow: none; border: 1px dashed var(--sov-line); }
+.sov-pot { text-align: center; font-size: 13px; letter-spacing: 2px; opacity: .9; margin: 4px 0 10px; }
+.sov-pot strong { color: var(--sov-accent, #ffd24a); font-size: 18px; margin-left: 6px; }
+.sov-winner { text-align: center; color: var(--sov-accent, #ffd24a); font-weight: 700; font-size: 15px; margin-bottom: 8px; }
+.sov-seats { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.sov-seat {
+  min-width: 96px; background: rgba(255,255,255,.05); border: 1px solid var(--sov-line, rgba(120,160,255,.34));
+  border-radius: 10px; padding: 6px 9px; text-align: center;
+}
+.sov-seat.sov-active { border-color: var(--sov-accent, #ffd24a); box-shadow: 0 0 0 2px var(--sov-accent, #ffd24a) inset; }
+.sov-seat.sov-folded { opacity: .4; }
+.sov-seat.sov-won { border-color: var(--sov-accent, #ffd24a); background: rgba(255,210,74,.14); }
+.sov-seat-top { display: flex; align-items: center; gap: 5px; justify-content: center; }
+.sov-dealer { background: var(--sov-accent, #ffd24a); color: #0a0a1a; font-weight: 800; font-size: 10px; border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
+.sov-seat-name { font-weight: 700; font-size: 13px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sov-allin { background: #c0392b; color: #fff; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 4px; }
+.sov-seat-stack { color: var(--sov-accent, #ffd24a); font-weight: 700; font-size: 14px; margin-top: 2px; }
+.sov-seat-bet { font-size: 10px; opacity: .7; }
+.sov-seat-cards { display: flex; gap: 3px; justify-content: center; margin-top: 4px; }
+.sov-seat-cards .sov-card { min-width: 22px; height: 30px; font-size: 12px; }
+
+/* Control-panel preview box */
+.stream-preview-box {
+  position: relative; height: 220px; border-radius: 10px; overflow: hidden;
+  border: 1px solid rgba(120,160,255,.25);
+  background:
+    repeating-conic-gradient(#2a2a35 0% 25%, #1f1f29 0% 50%) 50% / 24px 24px; /* checker = transparent */
+}
+.stream-obs-note { font-size: 11px; opacity: .7; line-height: 1.5; margin-top: 6px; }
