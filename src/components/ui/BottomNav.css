@@ -7,7 +7,7 @@
   background: rgba(8, 6, 22, 0.92);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(0, 217, 255, 0.18);
+  border-top: 1px solid rgba(120, 160, 255, 0.18);
   display: flex;
   align-items: center;
   justify-content: space-around;
@@ -38,7 +38,7 @@
 }
 
 .bottom-nav-tab.active {
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .bottom-nav-tab.active::before {
@@ -48,16 +48,16 @@
   left: 20%;
   right: 20%;
   height: 2px;
-  background: linear-gradient(90deg, transparent, #00D9FF, transparent);
+  background: linear-gradient(90deg, transparent, #ffd24a, transparent);
   border-radius: 0 0 3px 3px;
-  box-shadow: 0 0 12px rgba(0, 217, 255, 0.6);
+  box-shadow: 0 0 12px rgba(120, 160, 255, 0.6);
 }
 
 .bottom-nav-tab.active::after {
   content: '';
   position: absolute;
   inset: 6px 12% 6px;
-  background: rgba(0,217,255,0.07);
+  background: rgba(120, 160, 255,0.07);
   border-radius: 8px;
   pointer-events: none;
 }

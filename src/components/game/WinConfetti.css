@@ -55,9 +55,9 @@
   transform: translate(-50%, -50%) scale(0);
   font-size: 2.5rem;
   font-weight: 900;
-  color: #00D9FF;
+  color: #ffd24a;
   text-shadow:
-    0 0 20px rgba(0, 217, 255, 0.6),
+    0 0 20px rgba(120, 160, 255, 0.6),
     0 0 40px rgba(255, 165, 0, 0.4),
     0 2px 4px rgba(0, 0, 0, 0.8);
   letter-spacing: 4px;

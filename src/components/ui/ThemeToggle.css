@@ -9,9 +9,9 @@
   height: 44px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(10, 10, 10, 0.6);
+  background: rgba(12, 26, 68, 0.6);
   backdrop-filter: blur(8px);
-  color: #00D9FF;
+  color: #ffd24a;
   font-size: 1.2rem;
   cursor: pointer;
   display: flex;
@@ -23,8 +23,8 @@
 
 .theme-toggle-btn:hover {
   transform: scale(1.1);
-  box-shadow: 0 4px 16px rgba(0, 217, 255, 0.2);
-  border-color: rgba(0, 217, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(120, 160, 255, 0.2);
+  border-color: rgba(120, 160, 255, 0.3);
 }
 
 .theme-toggle-btn:active {

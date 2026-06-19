@@ -1,7 +1,7 @@
 .customizer {
   display: flex;
   height: 100vh;
-  background: #000000;
+  background: #050c20;
   color: #ffffff;
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
@@ -22,7 +22,7 @@
 .customizer-panel h2 {
   margin: 0 0 20px;
   font-size: 1.4rem;
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .section {
@@ -49,7 +49,7 @@
   padding: 6px 12px;
   border: 1px solid #2A2A4A;
   border-radius: 6px;
-  background: #1A1A2E;
+  background: #0c1a44;
   color: #CCC;
   font-size: 0.8rem;
   cursor: pointer;
@@ -62,9 +62,9 @@
 }
 
 .option-btn.active {
-  border-color: #00D9FF;
+  border-color: #ffd24a;
   background: #2A2A1A;
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .color-row {
@@ -88,8 +88,8 @@
 }
 
 .color-swatch.active {
-  border-color: #00D9FF;
-  box-shadow: 0 0 8px rgba(0, 217, 255, 0.4);
+  border-color: #ffd24a;
+  box-shadow: 0 0 8px rgba(120, 160, 255, 0.4);
   transform: scale(1.15);
 }
 
@@ -121,7 +121,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #00D9FF;
+  background: #ffd24a;
   cursor: pointer;
 }
 
@@ -137,8 +137,8 @@
   padding: 12px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, #00D9FF, #FFA500);
-  color: #1A1A2E;
+  background: linear-gradient(135deg, #ffd24a, #FFA500);
+  color: #0c1a44;
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
@@ -186,7 +186,7 @@
 }
 
 .photo-preview:hover {
-  border-color: #00D9FF;
+  border-color: #ffd24a;
 }
 
 .photo-preview__img {
@@ -209,17 +209,17 @@
 
 .btn-upload {
   padding: 6px 14px;
-  border: 1px solid #00D9FF;
+  border: 1px solid #ffd24a;
   border-radius: 6px;
   background: transparent;
-  color: #00D9FF;
+  color: #ffd24a;
   font-size: 0.8rem;
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .btn-upload:hover {
-  background: rgba(0, 217, 255, 0.12);
+  background: rgba(120, 160, 255, 0.12);
 }
 
 .btn-remove-photo {
@@ -259,7 +259,7 @@
 }
 
 .customizer-panel::-webkit-scrollbar-track {
-  background: #000000;
+  background: #050c20;
 }
 
 .customizer-panel::-webkit-scrollbar-thumb {

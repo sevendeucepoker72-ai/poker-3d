@@ -47,7 +47,7 @@ function FriendlyErrorFallback({ onReload }) {
           boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
         }}
       >
-        <h2 style={{ margin: 0, fontSize: '1.4rem', color: '#22D3EE' }}>
+        <h2 style={{ margin: 0, fontSize: '1.4rem', color: '#3b82f6' }}>
           Something went wrong
         </h2>
         <p style={{ marginTop: 12, lineHeight: 1.5, color: '#CBD5E1' }}>
@@ -60,7 +60,7 @@ function FriendlyErrorFallback({ onReload }) {
           style={{
             marginTop: 20,
             padding: '12px 22px',
-            background: 'linear-gradient(180deg, #22D3EE, #0EA5E9)',
+            background: 'linear-gradient(180deg, #3b82f6, #3b82f6)',
             color: '#0B0F19',
             border: 'none',
             borderRadius: 10,

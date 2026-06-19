@@ -14,7 +14,7 @@ const tabBarStyle = {
   alignItems: 'center',
   gap: '2px',
   padding: '0 8px',
-  background: 'linear-gradient(180deg, #1a1a2e 0%, #0d0d20 100%)',
+  background: 'linear-gradient(180deg, #0c1a44 0%, #0d0d20 100%)',
   borderBottom: '1px solid #333',
   zIndex: 700,
   overflow: 'hidden',
@@ -38,7 +38,7 @@ const tabStyle = {
 
 const tabActiveStyle = {
   ...tabStyle,
-  color: '#00D9FF',
+  color: '#ffd24a',
   background: 'rgba(255,215,0,0.08)',
   borderColor: '#333',
 };
@@ -204,7 +204,7 @@ export default function MultiTableTabs() {
       {showPicker && (
         <div style={pickerOverlayStyle} onClick={() => setShowPicker(false)}>
           <div style={pickerPanelStyle} onClick={(e) => e.stopPropagation()}>
-            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#00D9FF', marginBottom: '12px', textAlign: 'center' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#ffd24a', marginBottom: '12px', textAlign: 'center' }}>
               Join Another Table
             </div>
             {tables && tables.length > 0 ? (
@@ -229,7 +229,7 @@ export default function MultiTableTabs() {
                         transition: 'all 0.15s',
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = '#00D9FF';
+                        e.currentTarget.style.borderColor = '#ffd24a';
                         e.currentTarget.style.background = 'rgba(255,215,0,0.06)';
                       }}
                       onMouseLeave={(e) => {

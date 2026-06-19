@@ -34,7 +34,7 @@ const DEFAULT_AVATAR = {
   hairColor: '#2C1B0E',
   eyeColor: '#4A90D9',
   topStyle: 'tshirt',
-  topColor: '#1A1A2E',
+  topColor: '#0c1a44',
   bottomStyle: 'jeans',
   bottomColor: '#2D3A4A',
   accessory: 'none',

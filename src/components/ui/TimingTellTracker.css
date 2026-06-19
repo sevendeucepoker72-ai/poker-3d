@@ -4,7 +4,7 @@
   right: 12px;
   width: 230px;
   background: rgba(5, 5, 15, 0.96);
-  border: 1px solid rgba(0, 217, 255, 0.18);
+  border: 1px solid rgba(120, 160, 255, 0.18);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
   z-index: 490;
@@ -24,7 +24,7 @@
 .timing-tell-title {
   font-size: 11px;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
   letter-spacing: 0.5px;
 }
 

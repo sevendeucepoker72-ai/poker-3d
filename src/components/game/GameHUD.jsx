@@ -2164,7 +2164,7 @@ export default function GameHUD() {
 
   // Chip denomination breakdown helper
   const chipDenominations = [
-    { value: 1000, color: '#0d0d0d', border: '#00D9FF', label: '1K' },
+    { value: 1000, color: '#081434', border: '#ffd24a', label: '1K' },
     { value: 500, color: '#166534', border: '#4ADE80', label: '500' },
     { value: 100, color: '#991B1B', border: '#FCA5A5', label: '100' },
     { value: 25, color: '#1E40AF', border: '#93C5FD', label: '25' },
@@ -2593,8 +2593,8 @@ export default function GameHUD() {
               onClick={(e) => { e.stopPropagation(); setShowProvablyFair(true); }}
               style={{
                 marginLeft: 10, padding: '2px 10px', borderRadius: 999,
-                background: 'rgba(0,217,255,0.12)', color: '#00D9FF',
-                border: '1px solid rgba(0,217,255,0.35)',
+                background: 'rgba(120, 160, 255,0.12)', color: '#ffd24a',
+                border: '1px solid rgba(120, 160, 255,0.35)',
                 fontSize: '0.75rem', cursor: 'pointer',
               }}
             >
@@ -2675,7 +2675,7 @@ export default function GameHUD() {
               </span>
             )}
             {!isDealersChoice && variantName !== "Texas Hold'em" && (
-              <span style={{ color: '#00D9FF', marginRight: '6px', fontSize: '0.75rem' }}>
+              <span style={{ color: '#ffd24a', marginRight: '6px', fontSize: '0.75rem' }}>
                 {variantName}
               </span>
             )}
@@ -2861,7 +2861,7 @@ export default function GameHUD() {
                     {[
                       { key: 'blue',    label: '🔵 Speed',    preview: 'linear-gradient(135deg, #1a3a6e, #0f2447)' },
                       { key: 'green',   label: '🟢 Classic',  preview: 'linear-gradient(135deg, #2e7d52, #1a5438)' },
-                      { key: 'black',   label: '⬛ Midnight', preview: 'linear-gradient(135deg, #1a1a2e, #0d0d1a)' },
+                      { key: 'black',   label: '⬛ Midnight', preview: 'linear-gradient(135deg, #0c1a44, #0d0d1a)' },
                       { key: 'crimson', label: '🔴 Crimson',  preview: 'linear-gradient(135deg, #7c1d1d, #4a0f0f)' },
                     ].map(({ key, label, preview }) => {
                       const active = (sessionStorage.getItem('app_poker_theme') || 'blue') === key;
@@ -3413,7 +3413,7 @@ export default function GameHUD() {
                 }}>Prev Table</button>
               )}
 
-              <div style={{ color: '#00D9FF', textAlign: 'center' }}>
+              <div style={{ color: '#ffd24a', textAlign: 'center' }}>
                 <div style={{ fontWeight: 700 }}>Spectating</div>
                 {tournamentSpectator?.status && (
                   <div style={{ fontSize: '0.75rem', color: '#888' }}>
@@ -3439,11 +3439,11 @@ export default function GameHUD() {
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8,
                 padding: '6px 14px', borderRadius: 999,
-                background: 'rgba(0,217,255,0.08)', color: '#00D9FF',
-                border: '1px solid rgba(0,217,255,0.25)', fontSize: 13, fontWeight: 600,
+                background: 'rgba(120, 160, 255,0.08)', color: '#ffd24a',
+                border: '1px solid rgba(120, 160, 255,0.25)', fontSize: 13, fontWeight: 600,
               }}>
                 <span style={{
-                  width: 8, height: 8, borderRadius: '50%', background: '#00D9FF',
+                  width: 8, height: 8, borderRadius: '50%', background: '#ffd24a',
                   animation: 'livePulse 1.2s ease-in-out infinite',
                 }} />
                 {phase === 'HandComplete' ? 'Starting next hand…' : 'Waiting for players…'}
@@ -3465,7 +3465,7 @@ export default function GameHUD() {
           ) : hasDrawPhase && isDrawPhase ? (
             /* Draw Phase */
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ color: '#00D9FF', fontSize: '0.85rem' }}>
+              <span style={{ color: '#ffd24a', fontSize: '0.85rem' }}>
                 Select cards to discard ({selectedDiscards.length} selected)
               </span>
               <button
@@ -4033,7 +4033,7 @@ export default function GameHUD() {
       {showRabbitPanel && rabbitCards && rabbitCards.length > 0 && (
         <div className="rabbit-overlay" onClick={() => setShowRabbitPanel(false)}>
           <div className="showdown-panel showdown-panel-small rabbit-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="showdown-title" style={{ color: '#00D9FF' }}>
+            <div className="showdown-title" style={{ color: '#ffd24a' }}>
               {'\uD83D\uDC30'} Rabbit Hunt
             </div>
             <div style={{ textAlign: 'center', color: '#aaaaaa', fontSize: '0.8rem', marginBottom: '10px' }}>
@@ -4095,16 +4095,16 @@ export default function GameHUD() {
       {isSpectating && (
         <div style={{
           position: 'fixed', top: '44px', left: '50%', transform: 'translateX(-50%)',
-          background: 'rgba(0, 217, 255, 0.15)', border: '1px solid #B388FF',
+          background: 'rgba(120, 160, 255, 0.15)', border: '1px solid #B388FF',
           borderRadius: '8px', padding: '8px 24px', zIndex: 600,
           display: 'flex', alignItems: 'center', gap: '12px',
-          color: '#00D9FF', fontSize: '0.9rem', fontWeight: 600,
+          color: '#ffd24a', fontSize: '0.9rem', fontWeight: 600,
         }}>
           Spectating
           <button
             onClick={() => { stopSpectating(); useGameStore.getState().setScreen('lobby'); }}
             style={{
-              background: 'none', border: '1px solid #B388FF', color: '#00D9FF',
+              background: 'none', border: '1px solid #B388FF', color: '#ffd24a',
               padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
             }}
           >
@@ -4192,7 +4192,7 @@ export default function GameHUD() {
       {showRaiseSlider && isMyTurn && (
         <div className="gesture-raise-overlay" onClick={() => setShowRaiseSlider(false)}>
           <div className="gesture-raise-panel" onClick={(e) => e.stopPropagation()}>
-            <div style={{ color: '#00D9FF', fontWeight: 700, marginBottom: '10px', textAlign: 'center' }}>Raise Amount</div>
+            <div style={{ color: '#ffd24a', fontWeight: 700, marginBottom: '10px', textAlign: 'center' }}>Raise Amount</div>
             {/* Quick-pick presets */}
             <div className="raise-quick-presets">
               {[

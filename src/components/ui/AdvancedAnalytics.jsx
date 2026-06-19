@@ -294,8 +294,8 @@ function SessionsTab({ handHistories }) {
           <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="aa-svg-chart">
             <defs>
               <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#00D9FF" stopOpacity="0.35" />
-                <stop offset="100%" stopColor="#00D9FF" stopOpacity="0.02" />
+                <stop offset="0%" stopColor="#ffd24a" stopOpacity="0.35" />
+                <stop offset="100%" stopColor="#ffd24a" stopOpacity="0.02" />
               </linearGradient>
             </defs>
 
@@ -319,11 +319,11 @@ function SessionsTab({ handHistories }) {
             {areaD && <path d={areaD} fill="url(#chartGrad)" />}
 
             {/* Line */}
-            {pathD && <path d={pathD} fill="none" stroke="#00D9FF" strokeWidth="2" strokeLinejoin="round" />}
+            {pathD && <path d={pathD} fill="none" stroke="#ffd24a" strokeWidth="2" strokeLinejoin="round" />}
 
             {/* Dots */}
             {svgPoints.map((p, i) => (
-              <circle key={i} cx={p.x} cy={p.y} r="3" fill="#00D9FF" opacity="0.7" />
+              <circle key={i} cx={p.x} cy={p.y} r="3" fill="#ffd24a" opacity="0.7" />
             ))}
 
             {/* Axes */}

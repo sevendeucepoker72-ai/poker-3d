@@ -10,8 +10,8 @@
 }
 
 .bankroll-panel {
-  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
-  border: 1px solid rgba(0, 217, 255, 0.15);
+  background: linear-gradient(135deg, #081434 0%, #0c1a44 100%);
+  border: 1px solid rgba(120, 160, 255, 0.15);
   border-radius: 16px;
   width: 92%;
   max-width: 600px;
@@ -31,7 +31,7 @@
 .bankroll-title {
   font-size: 1.3rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #00D9FF, #0099CC);
+  background: linear-gradient(135deg, #ffd24a, #0099CC);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -71,9 +71,9 @@
 }
 
 .bankroll-toggle-btn.active {
-  background: rgba(0, 217, 255, 0.1);
-  border-color: rgba(0, 217, 255, 0.3);
-  color: #00D9FF;
+  background: rgba(120, 160, 255, 0.1);
+  border-color: rgba(120, 160, 255, 0.3);
+  color: #ffd24a;
 }
 
 .bankroll-chart-wrap {
@@ -92,8 +92,8 @@
 
 .bankroll-tooltip {
   position: absolute;
-  background: rgba(10, 10, 10, 0.95);
-  border: 1px solid rgba(0, 217, 255, 0.3);
+  background: rgba(12, 26, 68, 0.95);
+  border: 1px solid rgba(120, 160, 255, 0.3);
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 0.75rem;
@@ -105,7 +105,7 @@
 }
 
 .bankroll-tooltip-chips {
-  color: #00D9FF;
+  color: #ffd24a;
   font-weight: 600;
 }
 

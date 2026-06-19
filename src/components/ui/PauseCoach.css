@@ -32,12 +32,12 @@
   width: 100%;
   max-width: 680px;
   background: rgba(5, 8, 18, 0.98);
-  border: 1px solid rgba(0, 217, 255, 0.25);
+  border: 1px solid rgba(120, 160, 255, 0.25);
   border-radius: 16px;
   padding: 24px;
   box-shadow:
     0 24px 80px rgba(0, 0, 0, 0.8),
-    0 0 0 1px rgba(0, 217, 255, 0.06);
+    0 0 0 1px rgba(120, 160, 255, 0.06);
   animation: pc-slide-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
   font-family: 'Inter', 'Segoe UI', sans-serif;
   color: #e2e8f0;
@@ -78,7 +78,7 @@
   font-weight: 800;
   letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: #00d9ff;
+  color: #ffd24a;
 }
 
 .pc-close-btn {
@@ -150,8 +150,8 @@
 }
 
 .pc-card--hero {
-  border-color: rgba(0, 217, 255, 0.4);
-  background: rgba(0, 217, 255, 0.08);
+  border-color: rgba(120, 160, 255, 0.4);
+  background: rgba(120, 160, 255, 0.08);
 }
 
 .pc-no-cards {
@@ -296,7 +296,7 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(0, 217, 255, 0.6);
+  color: rgba(120, 160, 255, 0.6);
   margin-bottom: 8px;
 }
 
@@ -321,7 +321,7 @@
 
 .pc-tree-indent::before {
   content: '→ ';
-  color: rgba(0, 217, 255, 0.4);
+  color: rgba(120, 160, 255, 0.4);
 }
 
 .pc-tree-primary {
@@ -334,7 +334,7 @@
 }
 
 .pc-tree-action {
-  color: #00d9ff;
+  color: #ffd24a;
   font-weight: 700;
 }
 
@@ -400,14 +400,14 @@
 }
 
 .pc-btn--resume {
-  background: rgba(0, 217, 255, 0.12);
-  border: 1px solid rgba(0, 217, 255, 0.45);
-  color: #00d9ff;
+  background: rgba(120, 160, 255, 0.12);
+  border: 1px solid rgba(120, 160, 255, 0.45);
+  color: #ffd24a;
 }
 
 .pc-btn--resume:hover:not(:disabled) {
-  background: rgba(0, 217, 255, 0.2);
-  box-shadow: 0 0 12px rgba(0, 217, 255, 0.2);
+  background: rgba(120, 160, 255, 0.2);
+  box-shadow: 0 0 12px rgba(120, 160, 255, 0.2);
 }
 
 /* ---------- Responsive ---------- */

@@ -25,7 +25,7 @@ const HAND_RANKS = [
 
 const BAR_COLORS = [
   '#64748b', '#3b82f6', '#8b5cf6', '#ec4899',
-  '#f97316', '#22c55e', '#06b6d4', '#eab308',
+  '#f97316', '#22c55e', '#3b82f6', '#eab308',
   '#ef4444', '#FFD700',
 ];
 
@@ -161,7 +161,7 @@ function PieChart({ actionCounts }) {
     <div className="stats-pie-container">
       <svg className="stats-pie-svg" viewBox="0 0 100 100">
         {slices}
-        <circle cx="50" cy="50" r="20" fill="#1a1a2e" />
+        <circle cx="50" cy="50" r="20" fill="#0c1a44" />
       </svg>
       <div className="stats-pie-legend">
         {entries.map(([action, count]) => (

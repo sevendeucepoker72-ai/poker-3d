@@ -13,8 +13,8 @@ import './AvatarCustomizer.css';
 /* Upgrade #6: Preset seat-circle colors */
 const SEAT_COLORS = [
   '#6366f1','#8b5cf6','#ec4899','#f59e0b',
-  '#10b981','#3b82f6','#ef4444','#06b6d4',
-  '#84cc16','#f97316','#e11d48','#0ea5e9',
+  '#10b981','#3b82f6','#ef4444','#3b82f6',
+  '#84cc16','#f97316','#e11d48','#3b82f6',
 ];
 
 export default function AvatarCustomizer() {
@@ -69,7 +69,7 @@ export default function AvatarCustomizer() {
           <AvatarModel config={avatar} position={[0, 0, 0]} />
           <mesh position={[0, -0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
             <circleGeometry args={[1.5, 32]} />
-            <meshStandardMaterial color="#1A1A2E" />
+            <meshStandardMaterial color="#0c1a44" />
           </mesh>
         </Canvas>
       </div>

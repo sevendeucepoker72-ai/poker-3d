@@ -10,7 +10,7 @@
 }
 
 .login-rewards-panel {
-  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
+  background: linear-gradient(135deg, #081434 0%, #0c1a44 100%);
   border: 1px solid #333;
   border-radius: 16px;
   padding: 28px 32px;
@@ -39,7 +39,7 @@
 .login-rewards-title {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .login-rewards-close {
@@ -115,15 +115,15 @@
 }
 
 .reward-day-today {
-  background: linear-gradient(135deg, rgba(0, 217, 255, 0.1), rgba(255, 165, 0, 0.06));
-  border-color: rgba(0, 217, 255, 0.4);
-  box-shadow: 0 0 20px rgba(0, 217, 255, 0.1);
+  background: linear-gradient(135deg, rgba(120, 160, 255, 0.1), rgba(255, 165, 0, 0.06));
+  border-color: rgba(120, 160, 255, 0.4);
+  box-shadow: 0 0 20px rgba(120, 160, 255, 0.1);
   animation: reward-pulse 2s ease-in-out infinite;
 }
 
 @keyframes reward-pulse {
-  0%, 100% { box-shadow: 0 0 12px rgba(0, 217, 255, 0.08); }
-  50% { box-shadow: 0 0 24px rgba(0, 217, 255, 0.18); }
+  0%, 100% { box-shadow: 0 0 12px rgba(120, 160, 255, 0.08); }
+  50% { box-shadow: 0 0 24px rgba(120, 160, 255, 0.18); }
 }
 
 .reward-day-future {
@@ -139,7 +139,7 @@
 }
 
 .reward-day-today .reward-day-number {
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .reward-day-icon {
@@ -150,7 +150,7 @@
 .reward-day-chips {
   font-size: 0.82rem;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .reward-day-stars {
@@ -161,7 +161,7 @@
 
 .reward-day-bonus {
   font-size: 0.65rem;
-  color: #00D9FF;
+  color: #ffd24a;
   font-weight: 700;
   margin-top: 2px;
 }
@@ -172,7 +172,7 @@
   padding: 5px 16px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, #00D9FF, #FFA500);
+  background: linear-gradient(135deg, #ffd24a, #FFA500);
   color: #000000;
   font-size: 0.78rem;
   font-weight: 700;
@@ -182,7 +182,7 @@
 
 .reward-claim-btn:hover {
   transform: scale(1.08);
-  box-shadow: 0 4px 14px rgba(0, 217, 255, 0.3);
+  box-shadow: 0 4px 14px rgba(120, 160, 255, 0.3);
 }
 
 .reward-claim-btn:active {
@@ -215,7 +215,7 @@
   width: 100%;
   padding: 16px;
   background: rgba(8, 8, 8, 0.5);
-  border: 1px solid rgba(0, 217, 255, 0.4);
+  border: 1px solid rgba(120, 160, 255, 0.4);
   border-radius: 12px;
 }
 

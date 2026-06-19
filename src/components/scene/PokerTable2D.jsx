@@ -37,7 +37,7 @@ const TABLE_THEMES = {
     rail: '#0a0f20', railMid: '#1e3060', name: '🔵 Speed',
   },
   black: {
-    felt: 'radial-gradient(ellipse at 50% 35%, #1a1a2e 0%, #0d0d1a 55%, #050510 100%)',
+    felt: 'radial-gradient(ellipse at 50% 35%, #0c1a44 0%, #0d0d1a 55%, #050510 100%)',
     rail: '#1a1505', railMid: '#8B7355', name: '⬛ Midnight',
   },
   crimson: {
@@ -80,7 +80,7 @@ const EMOJI_OPTIONS = [
 /* ── Avatar colours ─────────────────────────────────────────── */
 const AVATAR_COLORS = [
   '#6366f1','#8b5cf6','#ec4899','#f59e0b',
-  '#10b981','#3b82f6','#ef4444','#06b6d4',
+  '#10b981','#3b82f6','#ef4444','#3b82f6',
   '#84cc16','#f97316',
 ];
 function getAvatarColor(name) {
@@ -394,7 +394,7 @@ const SeatPod = memo(function SeatPod({
           <div className="seat-pod__avatar seat-pod__avatar--empty">+</div>
         </div>
         {isPendingMoveTarget ? (
-          <div className="seat-pod__label" style={{ color: '#22D3EE', fontWeight: 700 }}>
+          <div className="seat-pod__label" style={{ color: '#3b82f6', fontWeight: 700 }}>
             Moving here…
           </div>
         ) : hovered && canInteract ? (
@@ -972,7 +972,7 @@ export default function PokerTable2D() {
         >
           <span style={{
             display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
-            background: '#22D3EE', animation: 'movePendPulse 1.2s infinite',
+            background: '#3b82f6', animation: 'movePendPulse 1.2s infinite',
           }} />
           Moving to seat {pendingSeat + 1} after this hand
           <button

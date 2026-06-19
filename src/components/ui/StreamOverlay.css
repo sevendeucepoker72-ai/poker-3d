@@ -172,7 +172,7 @@
 .stream-chat-feed::-webkit-scrollbar { width: 3px; }
 .stream-chat-feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
 .stream-chat-msg { font-size: 10px; line-height: 1.4; }
-.stream-chat-user { color: #00D9FF; font-weight: 700; margin-right: 4px; }
+.stream-chat-user { color: #ffd24a; font-weight: 700; margin-right: 4px; }
 .stream-chat-text { color: #94A3B8; }
 
 .stream-chat-input-row {
@@ -185,12 +185,12 @@
   border-radius: 6px; padding: 6px 8px; color: #e2e8f0; font-size: 11px; outline: none;
   min-width: 0;
 }
-.stream-chat-input:focus { border-color: rgba(0,217,255,0.3); }
+.stream-chat-input:focus { border-color: rgba(120, 160, 255,0.3); }
 .stream-chat-send {
-  background: rgba(0,217,255,0.12); border: 1px solid rgba(0,217,255,0.25);
-  border-radius: 6px; color: #00D9FF; padding: 6px 8px; cursor: pointer; font-size: 11px;
+  background: rgba(120, 160, 255,0.12); border: 1px solid rgba(120, 160, 255,0.25);
+  border-radius: 6px; color: #ffd24a; padding: 6px 8px; cursor: pointer; font-size: 11px;
 }
-.stream-chat-send:hover { background: rgba(0,217,255,0.2); }
+.stream-chat-send:hover { background: rgba(120, 160, 255,0.2); }
 
 @media (max-width: 480px) {
   .stream-chat { display: none; }

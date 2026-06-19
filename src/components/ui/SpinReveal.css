@@ -26,7 +26,7 @@
 .spin-reveal-title {
   font-size: 1.8rem;
   font-weight: 800;
-  background: linear-gradient(135deg, #00D9FF, #FF6B35);
+  background: linear-gradient(135deg, #ffd24a, #FF6B35);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -60,8 +60,8 @@
 
 .spin-landed {
   animation: spin-land 0.5s ease-out;
-  border-color: #00D9FF;
-  box-shadow: 0 0 40px rgba(0, 217, 255, 0.3);
+  border-color: #ffd24a;
+  box-shadow: 0 0 40px rgba(120, 160, 255, 0.3);
 }
 
 @keyframes spin-pulse {

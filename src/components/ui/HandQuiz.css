@@ -16,7 +16,7 @@
 }
 
 .hand-quiz-panel {
-  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
+  background: linear-gradient(135deg, #081434 0%, #0c1a44 100%);
   border: 1px solid #333;
   border-radius: 16px;
   padding: 24px;
@@ -37,7 +37,7 @@
 .hq-title {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .hq-close {
@@ -72,7 +72,7 @@
 
 .hq-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #00D9FF, #00D9FF);
+  background: linear-gradient(90deg, #ffd24a, #ffd24a);
   border-radius: 3px;
   transition: width 0.3s ease;
 }
@@ -171,15 +171,15 @@
 }
 
 .hq-action-btn:hover {
-  border-color: #00D9FF;
-  background: rgba(0, 217, 255, 0.08);
+  border-color: #ffd24a;
+  background: rgba(120, 160, 255, 0.08);
   color: #fff;
 }
 
 .hq-action-btn.hq-selected {
-  border-color: #00D9FF;
-  background: rgba(0, 217, 255, 0.15);
-  color: #00D9FF;
+  border-color: #ffd24a;
+  background: rgba(120, 160, 255, 0.15);
+  color: #ffd24a;
 }
 
 .hq-action-btn.hq-correct {
@@ -222,7 +222,7 @@
   padding: 10px;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(135deg, #00D9FF, #00D9FF);
+  background: linear-gradient(135deg, #ffd24a, #ffd24a);
   color: #fff;
   font-size: 0.9rem;
   font-weight: 600;

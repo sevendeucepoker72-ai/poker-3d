@@ -138,7 +138,7 @@ export default function CareerMode() {
               key={vi}
               className={`career-venue ${unlocked ? 'venue-unlocked' : 'venue-locked'} ${selectedVenue === vi ? 'venue-selected' : ''}`}
               style={{
-                background: unlocked ? venue.bg : 'linear-gradient(135deg, #1a1a1a, #111)',
+                background: unlocked ? venue.bg : 'linear-gradient(135deg, #0c1a44, #111)',
                 borderColor: unlocked ? venue.accent : '#333',
               }}
               onClick={() => unlocked && setSelectedVenue(selectedVenue === vi ? null : vi)}

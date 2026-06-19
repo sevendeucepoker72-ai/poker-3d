@@ -10,7 +10,7 @@
 
 .social-bracket-modal {
   background: rgba(6, 8, 20, 0.98);
-  border: 1px solid rgba(0, 217, 255, 0.2);
+  border: 1px solid rgba(120, 160, 255, 0.2);
   border-radius: 16px;
   width: 92%;
   max-width: 540px;
@@ -81,7 +81,7 @@
   outline: none;
   resize: vertical;
 }
-.sb-input:focus, .sb-textarea:focus { border-color: rgba(0,217,255,0.4); }
+.sb-input:focus, .sb-textarea:focus { border-color: rgba(120, 160, 255,0.4); }
 .sb-player-count { font-size: 10px; color: #475569; text-align: right; }
 
 .sb-theme-row { display: flex; gap: 8px; flex-wrap: wrap; }

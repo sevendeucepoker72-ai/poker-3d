@@ -8,11 +8,11 @@
   left: 12px;
   width: 290px;
   background: rgba(5, 5, 5, 0.95);
-  border: 1px solid rgba(0, 217, 255, 0.2);
+  border: 1px solid rgba(120, 160, 255, 0.2);
   border-radius: 10px;
   box-shadow:
     0 4px 24px rgba(0, 0, 0, 0.7),
-    0 0 8px rgba(0, 217, 255, 0.08);
+    0 0 8px rgba(120, 160, 255, 0.08);
   z-index: 1100;
   font-family: monospace;
   color: rgba(255, 255, 255, 0.85);
@@ -28,14 +28,14 @@
   padding: 5px 8px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 10px 10px 0 0;
-  border-bottom: 1px solid rgba(0, 217, 255, 0.1);
+  border-bottom: 1px solid rgba(120, 160, 255, 0.1);
 }
 
 .rv-title {
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.12em;
-  color: rgba(0, 217, 255, 0.9);
+  color: rgba(120, 160, 255, 0.9);
   text-transform: uppercase;
 }
 
@@ -62,7 +62,7 @@
 }
 
 .rv-btn:hover {
-  background: rgba(0, 217, 255, 0.15);
+  background: rgba(120, 160, 255, 0.15);
   color: #fff;
 }
 
@@ -163,7 +163,7 @@
 .rv-opponent-tint {
   position: absolute;
   inset: 0;
-  background: rgba(0, 217, 255, 0.20);
+  background: rgba(120, 160, 255, 0.20);
   border-radius: 2px;
   pointer-events: none;
 }
@@ -200,8 +200,8 @@
   bottom: calc(100% + 4px);
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(10, 10, 10, 0.96);
-  border: 1px solid rgba(0, 217, 255, 0.35);
+  background: rgba(12, 26, 68, 0.96);
+  border: 1px solid rgba(120, 160, 255, 0.35);
   border-radius: 5px;
   padding: 4px 7px;
   font-size: 9px;

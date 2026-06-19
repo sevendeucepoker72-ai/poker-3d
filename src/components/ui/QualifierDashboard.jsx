@@ -29,7 +29,7 @@ export default function QualifierDashboard({ qualifier, tournamentData, isRegist
   // Hardware back button closes the dashboard
   useBackButtonClose(true, onClose);
 
-  const color = qualifier.color || '#00D9FF';
+  const color = qualifier.color || '#ffd24a';
   const blinds = qualifier.blindStructure || DEFAULT_BLIND_STRUCTURE;
   const tData = tournamentData || {};
   const status = tData.status || 'registering';

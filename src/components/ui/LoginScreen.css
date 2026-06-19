@@ -4,7 +4,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse at 50% 30%, #0a1a20 0%, #050d10 50%, #000000 100%);
+  background: radial-gradient(ellipse at 50% 30%, #0a1a20 0%, #050d10 50%, #050c20 100%);
   overflow: hidden;
   z-index: 9999;
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
@@ -52,12 +52,12 @@
 
 .login-glow-orb:nth-child(1) {
   width: 300px; height: 300px;
-  background: rgba(0, 217, 255, 0.06);
+  background: rgba(120, 160, 255, 0.06);
   top: -50px; left: -50px;
 }
 .login-glow-orb:nth-child(2) {
   width: 200px; height: 200px;
-  background: rgba(0, 217, 255, 0.04);
+  background: rgba(120, 160, 255, 0.04);
   bottom: -30px; right: -30px;
 }
 
@@ -67,12 +67,12 @@
   z-index: 10;
   width: 400px;
   max-width: 90vw;
-  background: linear-gradient(145deg, rgba(10, 10, 10, 0.97), rgba(5, 5, 5, 0.99));
-  border: 1px solid rgba(0, 217, 255, 0.25);
+  background: linear-gradient(145deg, rgba(12, 26, 68, 0.97), rgba(5, 5, 5, 0.99));
+  border: 1px solid rgba(120, 160, 255, 0.25);
   border-radius: 24px;
   padding: 40px 36px;
   box-shadow:
-    0 0 60px rgba(0, 217, 255, 0.08),
+    0 0 60px rgba(120, 160, 255, 0.08),
     0 20px 60px rgba(0, 0, 0, 0.8),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
   animation: cardSlideIn 0.5s ease-out;
@@ -94,8 +94,8 @@
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #00D9FF, #0099CC);
-  box-shadow: 0 4px 20px rgba(0, 217, 255, 0.3), inset 0 -2px 4px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(135deg, #ffd24a, #0099CC);
+  box-shadow: 0 4px 20px rgba(120, 160, 255, 0.3), inset 0 -2px 4px rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -125,7 +125,7 @@
 .login-title {
   font-size: 1.6rem;
   font-weight: 800;
-  background: linear-gradient(135deg, #00D9FF, #0099CC, #00D9FF);
+  background: linear-gradient(135deg, #ffd24a, #0099CC, #ffd24a);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -173,9 +173,9 @@
 }
 
 .login-input:focus {
-  border-color: rgba(0, 217, 255, 0.5);
-  box-shadow: 0 0 16px rgba(0, 217, 255, 0.1);
-  background: rgba(0, 217, 255, 0.04);
+  border-color: rgba(120, 160, 255, 0.5);
+  box-shadow: 0 0 16px rgba(120, 160, 255, 0.1);
+  background: rgba(120, 160, 255, 0.04);
 }
 
 .login-input::placeholder {
@@ -202,7 +202,7 @@
 
 /* Submit button */
 .login-submit-btn {
-  background: linear-gradient(135deg, #00D9FF, #0099CC);
+  background: linear-gradient(135deg, #ffd24a, #0099CC);
   color: #000000;
   border: none;
   border-radius: 12px;
@@ -214,12 +214,12 @@
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-top: 4px;
-  box-shadow: 0 4px 16px rgba(0, 217, 255, 0.25);
+  box-shadow: 0 4px 16px rgba(120, 160, 255, 0.25);
 }
 
 .login-submit-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(0, 217, 255, 0.4);
+  box-shadow: 0 6px 24px rgba(120, 160, 255, 0.4);
 }
 
 .login-submit-btn:active:not(:disabled) {
@@ -240,7 +240,7 @@
 }
 
 .login-toggle-link {
-  color: #00D9FF;
+  color: #ffd24a;
   cursor: pointer;
   font-weight: 600;
   text-decoration: none;
@@ -261,7 +261,7 @@
   position: absolute;
   font-size: 1.2rem;
   opacity: 0.12;
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .login-corner-suit.top-left { top: 16px; left: 16px; }
@@ -312,12 +312,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(0, 217, 255, 0.08);
-  border: 1px solid rgba(0, 217, 255, 0.2);
+  background: rgba(120, 160, 255, 0.08);
+  border: 1px solid rgba(120, 160, 255, 0.2);
   border-radius: 20px;
   padding: 6px 14px;
   font-size: 0.75rem;
-  color: rgba(0, 217, 255, 0.8);
+  color: rgba(120, 160, 255, 0.8);
   letter-spacing: 0.3px;
   white-space: nowrap;
   z-index: 20;
@@ -377,7 +377,7 @@
 }
 
 .login-eye-btn:hover {
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 /* Username availability (upgrade #3) */
@@ -444,7 +444,7 @@
 .login-remember-check {
   width: 15px;
   height: 15px;
-  accent-color: #00D9FF;
+  accent-color: #ffd24a;
   cursor: pointer;
 }
 
@@ -469,9 +469,9 @@
 }
 
 .login-guest-btn:hover:not(:disabled) {
-  border-color: rgba(0, 217, 255, 0.3);
-  color: #00D9FF;
-  background: rgba(0, 217, 255, 0.05);
+  border-color: rgba(120, 160, 255, 0.3);
+  color: #ffd24a;
+  background: rgba(120, 160, 255, 0.05);
 }
 
 .login-guest-btn:disabled {

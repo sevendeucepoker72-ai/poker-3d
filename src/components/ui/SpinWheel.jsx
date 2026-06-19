@@ -11,7 +11,7 @@ const SEGMENTS = [
   { label: '1,000', value: 1000, type: 'chips', color: '#EF4444', icon: '\uD83D\uDCB0' },
   { label: '2,500', value: 2500, type: 'chips', color: '#F97316', icon: '\uD83D\uDCB0' },
   { label: '5,000', value: 5000, type: 'chips', color: '#EC4899', icon: '\uD83D\uDCB0' },
-  { label: '2x XP', value: 2, type: 'xp_multiplier', color: '#06B6D4', icon: '\u2B50' },
+  { label: '2x XP', value: 2, type: 'xp_multiplier', color: '#3b82f6', icon: '\u2B50' },
   { label: 'Mystery', value: 0, type: 'mystery', color: '#A855F7', icon: '\uD83C\uDF81' },
 ];
 

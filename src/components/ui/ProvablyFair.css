@@ -4,8 +4,8 @@
   display: flex; align-items: center; justify-content: center; padding: 16px;
 }
 .pf-modal {
-  background: linear-gradient(145deg, #0d0d0d, #080808);
-  border: 1px solid rgba(0,217,255,0.2); border-radius: 20px;
+  background: linear-gradient(145deg, #081434, #080808);
+  border: 1px solid rgba(120, 160, 255,0.2); border-radius: 20px;
   padding: 28px; width: 100%; max-width: 520px; position: relative;
   max-height: 85vh; overflow-y: auto;
 }
@@ -20,17 +20,17 @@
 .pf-subtitle { color: #888; font-size: 0.82rem; margin: 0; }
 .pf-how {
   display: flex; flex-direction: column; gap: 8px;
-  background: rgba(0,217,255,0.04); border: 1px solid rgba(0,217,255,0.1);
+  background: rgba(120, 160, 255,0.04); border: 1px solid rgba(120, 160, 255,0.1);
   border-radius: 12px; padding: 14px; margin-bottom: 18px;
 }
 .pf-step { display: flex; align-items: flex-start; gap: 10px; font-size: 0.82rem; color: #aaa; }
 .pf-step-num {
-  width: 20px; height: 20px; border-radius: 50%; background: rgba(0,217,255,0.15);
-  color: #00D9FF; font-size: 0.72rem; font-weight: 700;
+  width: 20px; height: 20px; border-radius: 50%; background: rgba(120, 160, 255,0.15);
+  color: #ffd24a; font-size: 0.72rem; font-weight: 700;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .pf-section { margin-bottom: 16px; }
-.pf-section-label { font-size: 0.72rem; color: #00D9FF; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; font-weight: 600; }
+.pf-section-label { font-size: 0.72rem; color: #ffd24a; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; font-weight: 600; }
 .pf-hash, .pf-seed {
   font-family: 'Courier New', monospace; font-size: 0.7rem; color: #ccc;
   background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
@@ -40,15 +40,15 @@
 .pf-result { margin-top: 10px; padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; }
 .pf-result--valid { background: rgba(74,222,128,0.1); border: 1px solid rgba(74,222,128,0.3); color: #4ADE80; }
 .pf-result--invalid { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #EF4444; }
-.pf-result--checking { background: rgba(0,217,255,0.08); border: 1px solid rgba(0,217,255,0.2); color: #00D9FF; }
+.pf-result--checking { background: rgba(120, 160, 255,0.08); border: 1px solid rgba(120, 160, 255,0.2); color: #ffd24a; }
 .pf-input {
   width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
   border-radius: 8px; padding: 9px 12px; color: #fff; font-size: 0.82rem;
   font-family: 'Courier New', monospace; outline: none; box-sizing: border-box;
 }
-.pf-input:focus { border-color: rgba(0,217,255,0.4); }
+.pf-input:focus { border-color: rgba(120, 160, 255,0.4); }
 .pf-verify-btn {
-  margin-top: 10px; background: linear-gradient(135deg, #00D9FF, #0099CC);
+  margin-top: 10px; background: linear-gradient(135deg, #ffd24a, #0099CC);
   color: #000; border: none; border-radius: 8px; padding: 9px 20px;
   font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s;
 }

@@ -167,7 +167,7 @@ export default function QualifierLobby({ onSpectate }) {
         <div style={{ color: '#666', fontSize: '0.85rem', padding: '12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{
             display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
-            background: '#00D9FF33', border: '1px solid #00D9FF',
+            background: '#ffd24a33', border: '1px solid #ffd24a',
             animation: 'pulse 1.2s infinite',
           }} />
           Checking available qualifiers…
@@ -180,7 +180,7 @@ export default function QualifierLobby({ onSpectate }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {qualifiers.map((q) => {
-        const color = q.color || '#00D9FF';
+        const color = q.color || '#ffd24a';
         const tier = q.type?.toLowerCase();
         const qualStat = qualStatus[tier];
         const isQualified = qualStat && qualStat.qualified;

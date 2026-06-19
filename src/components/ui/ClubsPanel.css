@@ -23,12 +23,12 @@
   width: 90vw;
   max-width: 480px;
   max-height: 85vh;
-  background: linear-gradient(180deg, #0d0d0d 0%, #16162a 100%);
+  background: linear-gradient(180deg, #081434 0%, #16162a 100%);
   border: 1px solid #2a2a3e;
   border-radius: 16px;
   padding: 24px;
   overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 30px rgba(0, 217, 255, 0.05);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 30px rgba(120, 160, 255, 0.05);
 }
 
 .clubs-panel::-webkit-scrollbar {
@@ -138,7 +138,7 @@
 .clubs-btn-gold {
   background: linear-gradient(135deg, #f59e0b, #d97706);
   border-color: #f59e0b;
-  color: #0d0d0d;
+  color: #081434;
   font-weight: 600;
 }
 .clubs-btn-gold:hover {
@@ -572,7 +572,7 @@
 }
 
 .clubs-modal {
-  background: #0d0d0d;
+  background: #081434;
   border: 1px solid #2a2a3e;
   border-radius: 14px;
   padding: 24px;

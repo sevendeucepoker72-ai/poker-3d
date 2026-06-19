@@ -5,7 +5,7 @@
   right: 16px;
   width: 320px;
   max-width: 90vw;
-  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
+  background: linear-gradient(135deg, #081434 0%, #0c1a44 100%);
   border: 1px solid #333;
   border-radius: 12px;
   z-index: 550;
@@ -41,7 +41,7 @@
 .pha-header-title {
   font-size: 0.85rem;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .pha-header-toggle {
@@ -57,7 +57,7 @@
 
 .pha-timer-fill {
   height: 100%;
-  background: linear-gradient(90deg, #00D9FF, #00D9FF);
+  background: linear-gradient(90deg, #ffd24a, #ffd24a);
   transition: width 0.1s linear;
 }
 

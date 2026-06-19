@@ -263,11 +263,11 @@ function AccessoryMesh({ type, headPosition }) {
         <group position={[hx, hy + 0.15, hz]}>
           <mesh>
             <cylinderGeometry args={[0.2, 0.2, 0.08, 16]} />
-            <meshStandardMaterial color="#1A1A2E" />
+            <meshStandardMaterial color="#0c1a44" />
           </mesh>
           <mesh position={[0, -0.02, 0.18]}>
             <boxGeometry args={[0.16, 0.02, 0.12]} />
-            <meshStandardMaterial color="#1A1A2E" />
+            <meshStandardMaterial color="#0c1a44" />
           </mesh>
         </group>
       );

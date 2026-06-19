@@ -14,13 +14,13 @@
 .td-modal {
   width: min(840px, 96vw);
   max-height: 92vh;
-  background: #000;
-  border: 1px solid #00D9FF33;
+  background: #050c20;
+  border: 1px solid #ffd24a33;
   border-radius: 12px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 0 60px #00D9FF22, 0 0 140px #00000088;
+  box-shadow: 0 0 60px #ffd24a22, 0 0 140px #00000088;
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────────── */
@@ -30,7 +30,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 22px 14px;
-  border-bottom: 1px solid #00D9FF22;
+  border-bottom: 1px solid #ffd24a22;
   flex-shrink: 0;
 }
 
@@ -42,7 +42,7 @@
 
 .td-icon {
   font-size: 1.4rem;
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .td-title {
@@ -70,8 +70,8 @@
 }
 
 .td-close-btn:hover {
-  border-color: #00D9FF;
-  color: #00D9FF;
+  border-color: #ffd24a;
+  color: #ffd24a;
 }
 
 /* ── Body ───────────────────────────────────────────────────────────────────── */
@@ -84,18 +84,18 @@
   flex-direction: column;
   gap: 24px;
   scrollbar-width: thin;
-  scrollbar-color: #00D9FF33 transparent;
+  scrollbar-color: #ffd24a33 transparent;
 }
 
 .td-body::-webkit-scrollbar { width: 5px; }
 .td-body::-webkit-scrollbar-track { background: transparent; }
-.td-body::-webkit-scrollbar-thumb { background: #00D9FF44; border-radius: 3px; }
+.td-body::-webkit-scrollbar-thumb { background: #ffd24a44; border-radius: 3px; }
 
 /* ── Section ────────────────────────────────────────────────────────────────── */
 
 .td-section {
   background: #040c14;
-  border: 1px solid #00D9FF18;
+  border: 1px solid #ffd24a18;
   border-radius: 10px;
   padding: 18px 18px 16px;
 }
@@ -105,7 +105,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.09em;
-  color: #00D9FF;
+  color: #ffd24a;
   margin: 0 0 14px;
 }
 
@@ -136,7 +136,7 @@
 
 .td-input {
   background: #060e18;
-  border: 1px solid #00D9FF2a;
+  border: 1px solid #ffd24a2a;
   color: #ddeeff;
   border-radius: 6px;
   padding: 7px 10px;
@@ -147,7 +147,7 @@
   box-sizing: border-box;
 }
 
-.td-input:focus { border-color: #00D9FF88; }
+.td-input:focus { border-color: #ffd24a88; }
 
 .td-input-sm {
   font-size: 0.78rem;
@@ -156,7 +156,7 @@
 
 .td-select {
   background: #060e18;
-  border: 1px solid #00D9FF2a;
+  border: 1px solid #ffd24a2a;
   color: #ddeeff;
   border-radius: 6px;
   padding: 7px 10px;
@@ -168,7 +168,7 @@
   transition: border-color 0.15s;
 }
 
-.td-select:focus { border-color: #00D9FF88; }
+.td-select:focus { border-color: #ffd24a88; }
 
 .td-select-sm {
   font-size: 0.78rem;
@@ -192,17 +192,17 @@
   -webkit-appearance: none;
   width: 16px;
   height: 16px;
-  background: #00D9FF;
+  background: #ffd24a;
   border-radius: 50%;
   cursor: pointer;
   border: none;
-  box-shadow: 0 0 6px #00D9FF66;
+  box-shadow: 0 0 6px #ffd24a66;
 }
 
 .td-range::-moz-range-thumb {
   width: 16px;
   height: 16px;
-  background: #00D9FF;
+  background: #ffd24a;
   border-radius: 50%;
   cursor: pointer;
   border: none;
@@ -222,7 +222,7 @@
 }
 
 .td-strong-val {
-  color: #00D9FF;
+  color: #ffd24a;
   font-weight: 700;
 }
 
@@ -233,7 +233,7 @@
 }
 
 .td-prize-preview strong {
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 /* ── Toggle rows ────────────────────────────────────────────────────────────── */
@@ -243,7 +243,7 @@
   justify-content: space-between;
   align-items: flex-start;
   padding: 11px 0;
-  border-bottom: 1px solid #00D9FF0d;
+  border-bottom: 1px solid #ffd24a0d;
 }
 
 .td-toggle-row:last-of-type { border-bottom: none; }
@@ -286,16 +286,16 @@
 
 .td-toggle-on {
   background: #003346;
-  border-color: #00D9FF66;
-  color: #00D9FF;
-  box-shadow: 0 0 8px #00D9FF22;
+  border-color: #ffd24a66;
+  color: #ffd24a;
+  box-shadow: 0 0 8px #ffd24a22;
 }
 
 /* ── Sub-options ────────────────────────────────────────────────────────────── */
 
 .td-sub-options {
   background: #030a12;
-  border-left: 2px solid #00D9FF22;
+  border-left: 2px solid #ffd24a22;
   border-radius: 0 6px 6px 0;
   padding: 12px 14px;
   margin-bottom: 2px;
@@ -312,7 +312,7 @@
 
 .td-hint {
   font-size: 0.67rem;
-  color: #00D9FF66;
+  color: #ffd24a66;
 }
 
 /* ── Late reg ───────────────────────────────────────────────────────────────── */
@@ -327,7 +327,7 @@
 .td-late-reg-val {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
   min-width: 50px;
   text-align: right;
 }
@@ -343,7 +343,7 @@
 
 .td-template-btn {
   background: #060e18;
-  border: 1px solid #00D9FF22;
+  border: 1px solid #ffd24a22;
   color: #4466aa;
   font-size: 0.68rem;
   font-weight: 600;
@@ -355,20 +355,20 @@
 }
 
 .td-template-btn:hover {
-  border-color: #00D9FF55;
-  color: #00D9FF;
+  border-color: #ffd24a55;
+  color: #ffd24a;
 }
 
 .td-template-active {
   background: #003346;
-  border-color: #00D9FF66;
-  color: #00D9FF;
+  border-color: #ffd24a66;
+  color: #ffd24a;
 }
 
 .td-schedule-wrap {
   overflow-x: auto;
   scrollbar-width: thin;
-  scrollbar-color: #00D9FF22 transparent;
+  scrollbar-color: #ffd24a22 transparent;
 }
 
 .td-schedule-header,
@@ -387,17 +387,17 @@
   letter-spacing: 0.06em;
   color: #334455;
   padding-bottom: 6px;
-  border-bottom: 1px solid #00D9FF11;
+  border-bottom: 1px solid #ffd24a11;
   margin-bottom: 4px;
 }
 
 .td-schedule-row {
-  border-bottom: 1px solid #00D9FF08;
+  border-bottom: 1px solid #ffd24a08;
 }
 
 .td-lvl-num {
   font-size: 0.7rem;
-  color: #00D9FF88;
+  color: #ffd24a88;
   font-weight: 700;
   text-align: center;
 }
@@ -433,8 +433,8 @@
 
 .td-btn-secondary {
   background: none;
-  border: 1px solid #00D9FF33;
-  color: #00D9FF88;
+  border: 1px solid #ffd24a33;
+  color: #ffd24a88;
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -445,9 +445,9 @@
 }
 
 .td-btn-secondary:hover {
-  background: #00D9FF11;
-  border-color: #00D9FF;
-  color: #00D9FF;
+  background: #ffd24a11;
+  border-color: #ffd24a;
+  color: #ffd24a;
 }
 
 .td-schedule-preview {
@@ -456,13 +456,13 @@
 }
 
 .td-schedule-preview strong {
-  color: #00D9FF99;
+  color: #ffd24a99;
 }
 
 /* ── ICM Calculator ─────────────────────────────────────────────────────────── */
 
 .td-icm-wrap {
-  border: 1px solid #00D9FF18;
+  border: 1px solid #ffd24a18;
   border-radius: 10px;
   overflow: hidden;
 }
@@ -475,7 +475,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px;
-  color: #00D9FF;
+  color: #ffd24a;
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.07em;
@@ -488,12 +488,12 @@
 
 .td-icm-chevron {
   font-size: 0.65rem;
-  color: #00D9FF88;
+  color: #ffd24a88;
 }
 
 .td-icm-body {
   background: #030a12;
-  border-top: 1px solid #00D9FF18;
+  border-top: 1px solid #ffd24a18;
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
@@ -522,7 +522,7 @@
 
 .td-icm-total {
   font-size: 0.72rem;
-  color: #00D9FF99;
+  color: #ffd24a99;
   padding-bottom: 6px;
   font-weight: 700;
 }
@@ -539,7 +539,7 @@
 
 .td-icm-results {
   background: #060e18;
-  border: 1px solid #00D9FF18;
+  border: 1px solid #ffd24a18;
   border-radius: 8px;
   overflow: hidden;
 }
@@ -554,7 +554,7 @@
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: #334455;
-  border-bottom: 1px solid #00D9FF11;
+  border-bottom: 1px solid #ffd24a11;
 }
 
 .td-icm-result-row {
@@ -563,7 +563,7 @@
   gap: 8px;
   padding: 7px 12px;
   font-size: 0.75rem;
-  border-bottom: 1px solid #00D9FF08;
+  border-bottom: 1px solid #ffd24a08;
   color: #889aaa;
   transition: background 0.1s;
 }
@@ -573,7 +573,7 @@
 
 .td-icm-seat { color: #4488aa; font-weight: 700; }
 .td-icm-equity { color: #00FF88; font-weight: 600; }
-.td-icm-pct { color: #00D9FF99; }
+.td-icm-pct { color: #ffd24a99; }
 
 /* ── Footer ─────────────────────────────────────────────────────────────────── */
 
@@ -605,8 +605,8 @@
 
 .td-btn-create {
   background: linear-gradient(135deg, #003d55, #005f7a);
-  border: 1px solid #00D9FF55;
-  color: #00D9FF;
+  border: 1px solid #ffd24a55;
+  color: #ffd24a;
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -619,8 +619,8 @@
 
 .td-btn-create:hover {
   background: linear-gradient(135deg, #004f6a, #007a9e);
-  box-shadow: 0 0 20px #00D9FF44;
-  border-color: #00D9FF;
+  box-shadow: 0 0 20px #ffd24a44;
+  border-color: #ffd24a;
 }
 
 /* ── Responsive ─────────────────────────────────────────────────────────────── */

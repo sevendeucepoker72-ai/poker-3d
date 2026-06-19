@@ -38,12 +38,12 @@
 .hotkey-title {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 1.5px;
   margin-bottom: 18px;
-  text-shadow: 0 0 12px rgba(0, 217, 255, 0.2);
+  text-shadow: 0 0 12px rgba(120, 160, 255, 0.2);
 }
 
 .hotkey-list {
@@ -69,9 +69,9 @@
 }
 
 .hotkey-row.hotkey-listening {
-  border-color: #00D9FF;
-  background: rgba(0, 217, 255, 0.06);
-  box-shadow: 0 0 12px rgba(0, 217, 255, 0.1);
+  border-color: #ffd24a;
+  background: rgba(120, 160, 255, 0.06);
+  box-shadow: 0 0 12px rgba(120, 160, 255, 0.1);
 }
 
 .hotkey-action-name {
@@ -84,8 +84,8 @@
   padding: 4px 14px;
   border: 1px solid rgba(74, 74, 106, 0.6);
   border-radius: 6px;
-  background: rgba(10, 10, 10, 0.8);
-  color: #00D9FF;
+  background: rgba(12, 26, 68, 0.8);
+  color: #ffd24a;
   font-size: 0.8rem;
   font-weight: 700;
   font-family: monospace;
@@ -97,20 +97,20 @@
 }
 
 .hotkey-key-btn:hover {
-  border-color: #00D9FF;
+  border-color: #ffd24a;
   background: rgba(40, 40, 70, 0.8);
   transform: scale(1.05);
 }
 
 .hotkey-key-btn.hotkey-key-listening {
-  border-color: #00D9FF;
-  color: #00D9FF;
+  border-color: #ffd24a;
+  color: #ffd24a;
   animation: hotkey-pulse 1s ease-in-out infinite;
 }
 
 @keyframes hotkey-pulse {
-  0%, 100% { box-shadow: 0 0 4px rgba(0, 217, 255, 0.3); }
-  50% { box-shadow: 0 0 16px rgba(0, 217, 255, 0.6); }
+  0%, 100% { box-shadow: 0 0 4px rgba(120, 160, 255, 0.3); }
+  50% { box-shadow: 0 0 16px rgba(120, 160, 255, 0.6); }
 }
 
 .hotkey-hint {
@@ -187,9 +187,9 @@
 }
 
 .hotkey-gear-btn:hover {
-  border-color: #00D9FF;
-  color: #00D9FF;
+  border-color: #ffd24a;
+  color: #ffd24a;
   background: rgba(40, 40, 70, 0.8);
   transform: scale(1.1) rotate(30deg);
-  box-shadow: 0 0 12px rgba(0, 217, 255, 0.2);
+  box-shadow: 0 0 12px rgba(120, 160, 255, 0.2);
 }

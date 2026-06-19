@@ -9,9 +9,9 @@
   transition: all 0.2s;
 }
 .emote-trigger-btn:hover {
-  background: rgba(0, 217, 255, 0.15);
-  border-color: #00D9FF;
-  color: #00D9FF;
+  background: rgba(120, 160, 255, 0.15);
+  border-color: #ffd24a;
+  color: #ffd24a;
 }
 .emote-trigger-btn:disabled {
   opacity: 0.3;
@@ -48,7 +48,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 10, 10, 0.95);
+  background: rgba(12, 26, 68, 0.95);
   border: 2px solid #333;
   border-radius: 50%;
   cursor: pointer;
@@ -59,8 +59,8 @@
 
 .emote-item:hover {
   transform: scale(1.25);
-  border-color: #00D9FF;
-  background: rgba(0, 217, 255, 0.15);
+  border-color: #ffd24a;
+  background: rgba(120, 160, 255, 0.15);
   z-index: 2;
 }
 
@@ -136,6 +136,6 @@
 
 .emote-cooldown-fill {
   height: 100%;
-  background: #00D9FF;
+  background: #ffd24a;
   transition: width 0.1s linear;
 }

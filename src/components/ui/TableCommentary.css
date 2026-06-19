@@ -5,7 +5,7 @@
   width: 260px;
   max-height: 280px;
   background: rgba(5, 5, 15, 0.94);
-  border: 1px solid rgba(0, 217, 255, 0.15);
+  border: 1px solid rgba(120, 160, 255, 0.15);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
   z-index: 480;
@@ -112,6 +112,6 @@
   color: #E2E8F0;
 }
 .commentary-entry--system .commentary-text {
-  color: #00D9FF;
+  color: #ffd24a;
   font-size: 9.5px;
 }

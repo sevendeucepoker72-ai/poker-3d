@@ -237,7 +237,7 @@ function MissionStrip({ missions, onOpenMissions }) {
 }
 
 // ─── Sparkline SVG ───
-function Sparkline({ data, width = 120, height = 36, color = '#00D9FF' }) {
+function Sparkline({ data, width = 120, height = 36, color = '#ffd24a' }) {
   if (!data || data.length < 2) return null;
   const min = Math.min(...data), max = Math.max(...data);
   const range = max - min || 1;
@@ -265,7 +265,7 @@ function Sparkline({ data, width = 120, height = 36, color = '#00D9FF' }) {
 }
 
 // ─── Progress Ring (SVG arc around avatar) ───
-function ProgressRing({ pct, size = 56, stroke = 3, color = '#00D9FF', children }) {
+function ProgressRing({ pct, size = 56, stroke = 3, color = '#ffd24a', children }) {
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
   const dash = (pct / 100) * circ;
@@ -1754,7 +1754,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <div style={{ display: 'flex', gap: '10px', marginTop: '12px', marginBottom: '8px' }}>
         <button
           className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #0EA5E9, #38BDF8)', color: '#0a0a1a' }}
+          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #3b82f6, #38BDF8)', color: '#0a0a1a' }}
           onClick={() => setShowTournamentBracket(true)}
         >
           🏆 Live Bracket
@@ -2032,7 +2032,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       {/* Tools section */}
       <SectionHeader>Tools</SectionHeader>
       {(() => {
-        const toolBtnStyle = { flex: 1, padding: '12px 16px', fontSize: '0.85rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(0,217,255,0.15)', color: '#ccc', borderRadius: 10, cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s' };
+        const toolBtnStyle = { flex: 1, padding: '12px 16px', fontSize: '0.85rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(120, 160, 255,0.15)', color: '#ccc', borderRadius: 10, cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s' };
         return <>
       <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
         <button
@@ -2224,7 +2224,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <span style={{ color: '#FFD700', fontWeight: 800, fontSize: '1.02rem', letterSpacing: '0.3px' }}>
           ⭐ {(progress?.stars ?? 0).toLocaleString()} Stars
         </span>
-        <span style={{ color: '#00D9FF', fontWeight: 700, fontSize: '0.95rem' }}>
+        <span style={{ color: '#ffd24a', fontWeight: 700, fontSize: '0.95rem' }}>
           🪙 {(progress?.chips ?? chipCount ?? 0).toLocaleString()} Chips
         </span>
       </div>
@@ -2284,7 +2284,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           { id: 'midnight_purple',  name: 'Midnight Purple',  felt: '#4a1d6e', rail: '#C0C0C0', price: 300 },
           { id: 'ocean_breeze',     name: 'Ocean Breeze',     felt: '#1a7a7a', rail: '#F5F5F5', price: 400 },
           { id: 'casino_royale',    name: 'Casino Royale',    felt: '#1a5c2a', rail: '#B8860B', price: 500 },
-          { id: 'neon_vegas',       name: 'Neon Vegas',       felt: '#0a0a0a', rail: '#1a1a2e', price: 600 },
+          { id: 'neon_vegas',       name: 'Neon Vegas',       felt: '#050c20', rail: '#0c1a44', price: 600 },
           { id: 'carbon_black',     name: 'Carbon Black',     felt: '#18181b', rail: '#3f3f46', price: 700 },
           { id: 'royal_gold',       name: 'Royal Gold',       felt: '#0a1a3a', rail: '#DAA520', price: 800 },
           { id: 'cherry_wood',      name: 'Cherry Wood',      felt: '#3d1a1a', rail: '#7c2d12', price: 900 },
@@ -2303,7 +2303,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
                 <span style={{ fontSize: '1.2rem' }}>♠</span>
               </div>
               <span className="lobby-card-back-name">{theme.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
                 {equipped ? 'Equipped' : owned ? 'Equip' : `${theme.price} ⭐`}
               </span>
             </div>
@@ -2339,7 +2339,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
                 <span style={{ fontSize: '1.5rem' }}>{'\u{1F0CF}'}</span>
               </div>
               <span className="lobby-card-back-name">{card.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : owned ? '#00D9FF' : '#00D9FF' }}>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : owned ? '#ffd24a' : '#ffd24a' }}>
                 {equipped ? 'Equipped' : owned ? 'Equip' : `${card.price} ⭐`}
               </span>
             </div>
@@ -2352,7 +2352,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <div className="lobby-vip-packages">
         {[
           { id: 'refill',  name: 'Refill Stack',  desc: '10,000 chips',     price: 50,    color: '#3B82F6' },
-          { id: 'small',   name: 'Small Stack',   desc: '25,000 chips',     price: 100,   color: '#06B6D4' },
+          { id: 'small',   name: 'Small Stack',   desc: '25,000 chips',     price: 100,   color: '#3b82f6' },
           { id: 'medium',  name: 'Medium Stack',  desc: '100,000 chips',    price: 300,   color: '#10B981' },
           { id: 'big',     name: 'Big Stack',     desc: '250,000 chips',    price: 600,   color: '#84CC16' },
           { id: 'pro',     name: 'Pro Stack',     desc: '750,000 chips',    price: 1500,  color: '#8B5CF6' },
@@ -2464,7 +2464,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
                 <span style={{ fontSize: '1.6rem', color: f.color }}>{f.icon}</span>
               </div>
               <span className="lobby-card-back-name">{f.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
                 {equipped ? 'Equipped' : owned ? 'Equip' : `${f.price} ⭐`}
               </span>
             </div>
@@ -2498,7 +2498,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
                 <span style={{ fontSize: '1.8rem' }}>{w.icon}</span>
               </div>
               <span className="lobby-card-back-name">{w.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
                 {equipped ? 'Equipped' : owned ? 'Equip' : `${w.price} ⭐`}
               </span>
             </div>
@@ -2552,7 +2552,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
                 <span style={{ fontSize: '1.8rem' }}>{s.icon}</span>
               </div>
               <span className="lobby-card-back-name">{s.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
                 {equipped ? 'Active' : owned ? 'Equip' : `${s.price} ⭐`}
               </span>
             </div>
@@ -2570,7 +2570,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           { id: 'river_rat',          name: 'River Rat',          desc: 'Miracle on the river specialist',    price: 600,  color: '#84CC16' },
           { id: 'chip_leader',        name: 'Chip Leader',        desc: 'Stack the whole table',              price: 700,  color: '#22C55E' },
           { id: 'degenerate',         name: 'Degenerate',         desc: 'No fold button here',                price: 700,  color: '#A78BFA' },
-          { id: 'the_shark',          name: 'The Shark',          desc: 'Dangerous waters',                   price: 800,  color: '#06B6D4' },
+          { id: 'the_shark',          name: 'The Shark',          desc: 'Dangerous waters',                   price: 800,  color: '#3b82f6' },
           { id: 'bad_beat_survivor',  name: 'Bad Beat Survivor',  desc: 'Ran bad, kept playing',              price: 800,  color: '#F97316' },
           { id: 'final_table',        name: 'Final Table',        desc: 'Tournament endgame',                 price: 1000, color: '#3B82F6' },
           { id: 'bluff_master',       name: 'Bluff Master',       desc: 'Show cards, they fold',              price: 1200, color: '#EC4899' },
@@ -2621,7 +2621,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
                 <span style={{ fontSize: '1.8rem' }}>{s.emoji}</span>
               </div>
               <span className="lobby-card-back-name">{s.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
                 {equipped ? 'Equipped' : owned ? 'Equip' : `${s.price} ⭐`}
               </span>
             </div>
@@ -2650,10 +2650,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
               style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
             >
               <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #fff, #e5e7eb)' }}>
-                <span style={{ fontSize: '1.8rem', color: '#0a0a0a' }}>{c.emoji}</span>
+                <span style={{ fontSize: '1.8rem', color: '#050c20' }}>{c.emoji}</span>
               </div>
               <span className="lobby-card-back-name">{c.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
                 {equipped ? 'Equipped' : owned ? 'Equip' : `${c.price} ⭐`}
               </span>
             </div>
@@ -2685,7 +2685,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
                 <span style={{ fontSize: '1.8rem' }}>{v.icon}</span>
               </div>
               <span className="lobby-card-back-name">{v.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
                 {equipped ? 'Active' : owned ? 'Equip' : `${v.price} ⭐`}
               </span>
             </div>
@@ -2716,7 +2716,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
             >
               <div className="lobby-card-back-preview" style={{ background: b.bg }} />
               <span className="lobby-card-back-name">{b.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#00D9FF' }}>
+              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
                 {equipped ? 'Applied' : owned ? 'Apply' : `${b.price} ⭐`}
               </span>
             </div>
@@ -2750,7 +2750,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <SectionHeader>VIP Passes</SectionHeader>
       <div className="lobby-vip-packages">
         {[
-          { id: 'daily',    name: 'Daily VIP',    desc: '24 hours of premium perks',     price: 300,   color: '#06B6D4' },
+          { id: 'daily',    name: 'Daily VIP',    desc: '24 hours of premium perks',     price: 300,   color: '#3b82f6' },
           { id: 'weekly',   name: 'Weekly VIP',   desc: '7 days of premium perks',       price: 1500,  color: '#3B82F6' },
           { id: 'monthly',  name: 'Monthly VIP',  desc: '30 days of premium perks',      price: 5000,  color: '#8B5CF6' },
           { id: 'lifetime', name: 'Lifetime VIP', desc: 'All premium perks, forever',    price: 50000, color: '#FFD700' },
@@ -2772,7 +2772,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <div className="lobby-vip-packages">
         {[
           { id: 'starter',       name: '🎁 Starter Bundle',    desc: '3 items — Silver Foil back, Nice Hand emote, Bronze frame',                price: 800,   color: '#84CC16' },
-          { id: 'collector',     name: '📦 Collector Bundle',  desc: '5 items — Gold back, Casino Royale, Silver frame, Crown emote, Chip Rain', price: 2500,  color: '#06B6D4' },
+          { id: 'collector',     name: '📦 Collector Bundle',  desc: '5 items — Gold back, Casino Royale, Silver frame, Crown emote, Chip Rain', price: 2500,  color: '#3b82f6' },
           { id: 'tournament',    name: '🏆 Tournament Bundle', desc: '6 items — Tournament Champ title + premium cosmetics',                     price: 4000,  color: '#F59E0B' },
           { id: 'whale_bundle',  name: '🐋 Whale Bundle',      desc: '8 items — Royal title, Cosmic Nebula, Diamond frame + more',               price: 10000, color: '#A78BFA' },
           { id: 'mythic_bundle', name: '✨ Mythic Bundle',     desc: '9 items — Everything mythic-tier: God Mode title, Supernova, Mythic frame', price: 25000, color: '#FF1744' },
@@ -2789,7 +2789,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         ))}
       </div>
 
-      <div style={{ marginBottom: '24px', padding: '12px', textAlign: 'center', color: '#8888AA', fontSize: '0.8rem', background: 'rgba(0,217,255,0.05)', borderRadius: '8px', border: '1px solid rgba(0,217,255,0.15)' }}>
+      <div style={{ marginBottom: '24px', padding: '12px', textAlign: 'center', color: '#8888AA', fontSize: '0.8rem', background: 'rgba(120, 160, 255,0.05)', borderRadius: '8px', border: '1px solid rgba(120, 160, 255,0.15)' }}>
         💡 Earn ⭐ stars by playing hands, winning pots, daily spins, leveling up, and completing missions/achievements.
       </div>
 
@@ -2831,15 +2831,15 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           <div style={{
             background: 'linear-gradient(135deg,#0d0d2a,#1a1a4e)',
             padding: '26px 32px', borderRadius: 16, textAlign: 'center',
-            border: '1px solid rgba(0,217,255,0.3)', color: '#e0e0e0',
+            border: '1px solid rgba(120, 160, 255,0.3)', color: '#e0e0e0',
             minWidth: 260, boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
           }}>
             <div style={{
               width: 40, height: 40, margin: '0 auto 16px',
-              border: '3px solid rgba(0,217,255,0.25)', borderTopColor: '#00D9FF',
+              border: '3px solid rgba(120, 160, 255,0.25)', borderTopColor: '#ffd24a',
               borderRadius: '50%', animation: 'lobbyJoinSpin 0.9s linear infinite',
             }} />
-            <div style={{ fontWeight: 700, fontSize: 16, color: '#00D9FF' }}>{joining.label}</div>
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#ffd24a' }}>{joining.label}</div>
             <div style={{ opacity: 0.6, fontSize: 12, marginTop: 6 }}>Seating you at the table…</div>
             <style>{`@keyframes lobbyJoinSpin { to { transform: rotate(360deg); } }`}</style>
           </div>

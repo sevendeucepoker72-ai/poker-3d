@@ -8,7 +8,7 @@
   height: 44px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(10, 10, 10, 0.6);
+  background: rgba(12, 26, 68, 0.6);
   backdrop-filter: blur(8px);
   color: #ffffff;
   font-size: 1.2rem;
@@ -23,8 +23,8 @@
 
 .notification-bell-btn:hover {
   transform: scale(1.1);
-  border-color: rgba(0, 217, 255, 0.3);
-  box-shadow: 0 4px 16px rgba(0, 217, 255, 0.15);
+  border-color: rgba(120, 160, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(120, 160, 255, 0.15);
 }
 
 .notification-bell-btn:active {
@@ -79,8 +79,8 @@
   right: 20px;
   width: 360px;
   max-height: 480px;
-  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
-  border: 1px solid rgba(0, 217, 255, 0.6);
+  background: linear-gradient(135deg, #081434 0%, #0c1a44 100%);
+  border: 1px solid rgba(120, 160, 255, 0.6);
   border-radius: 14px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
   overflow: hidden;
@@ -106,7 +106,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 14px 16px;
-  border-bottom: 1px solid rgba(0, 217, 255, 0.4);
+  border-bottom: 1px solid rgba(120, 160, 255, 0.4);
 }
 
 .notification-panel-title {

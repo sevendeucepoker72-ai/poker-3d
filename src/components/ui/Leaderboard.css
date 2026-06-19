@@ -10,7 +10,7 @@
 }
 
 .leaderboard-panel {
-  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
+  background: linear-gradient(135deg, #081434 0%, #0c1a44 100%);
   border: 1px solid #333;
   border-radius: 16px;
   padding: 28px 32px;
@@ -39,7 +39,7 @@
 .leaderboard-title {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -96,9 +96,9 @@
 }
 
 .leaderboard-tab.active {
-  background: linear-gradient(135deg, rgba(0, 217, 255, 0.15), rgba(255, 165, 0, 0.1));
-  color: #00D9FF;
-  box-shadow: 0 2px 8px rgba(0, 217, 255, 0.1);
+  background: linear-gradient(135deg, rgba(120, 160, 255, 0.15), rgba(255, 165, 0, 0.1));
+  color: #ffd24a;
+  box-shadow: 0 2px 8px rgba(120, 160, 255, 0.1);
 }
 
 /* Table */
@@ -174,8 +174,8 @@
 
 /* Top 3 row styles */
 .leaderboard-row-gold {
-  background: linear-gradient(90deg, rgba(0, 217, 255, 0.08), rgba(0, 217, 255, 0.02)) !important;
-  border-left: 3px solid #00D9FF;
+  background: linear-gradient(90deg, rgba(120, 160, 255, 0.08), rgba(120, 160, 255, 0.02)) !important;
+  border-left: 3px solid #ffd24a;
 }
 
 .leaderboard-row-silver {
@@ -222,13 +222,13 @@
 
 .chips-won {
   text-align: right;
-  color: #00D9FF;
+  color: #ffd24a;
   font-weight: 600;
 }
 
 .hands-played {
   text-align: right;
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .win-rate {
@@ -278,7 +278,7 @@
   padding: 16px;
   background: rgba(0, 0, 0, 0.25);
   border-radius: 12px;
-  border: 1px solid rgba(0, 217, 255, 0.12);
+  border: 1px solid rgba(120, 160, 255, 0.12);
 }
 
 .season-header-row {
@@ -291,7 +291,7 @@
 .season-name {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .season-days-left {
@@ -311,10 +311,10 @@
 
 .season-progress-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #00D9FF, #FFA500);
+  background: linear-gradient(90deg, #ffd24a, #FFA500);
   border-radius: 4px;
   transition: width 0.5s ease;
-  box-shadow: 0 0 8px rgba(0, 217, 255, 0.3);
+  box-shadow: 0 0 8px rgba(120, 160, 255, 0.3);
 }
 
 .season-progress-label {
@@ -325,8 +325,8 @@
 }
 
 .season-rewards-box {
-  background: rgba(0, 217, 255, 0.04);
-  border: 1px solid rgba(0, 217, 255, 0.1);
+  background: rgba(120, 160, 255, 0.04);
+  border: 1px solid rgba(120, 160, 255, 0.1);
   border-radius: 10px;
   padding: 12px 14px;
 }
@@ -334,7 +334,7 @@
 .season-rewards-title {
   font-size: 0.8rem;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 10px;

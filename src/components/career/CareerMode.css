@@ -1,6 +1,6 @@
 .career-mode {
   min-height: 100vh;
-  background: linear-gradient(180deg, #000000 0%, #12122A 100%);
+  background: linear-gradient(180deg, #050c20 0%, #12122A 100%);
   color: #ffffff;
   font-family: 'Segoe UI', system-ui, sans-serif;
   padding: 30px;
@@ -19,7 +19,7 @@
   padding: 6px 14px;
   border: 1px solid #4A4A6A;
   border-radius: 6px;
-  background: rgba(10, 10, 10, 0.8);
+  background: rgba(12, 26, 68, 0.8);
   color: #999;
   font-size: 0.8rem;
   cursor: pointer;
@@ -34,7 +34,7 @@
 .career-title {
   font-size: 1.8rem;
   margin: 0;
-  background: linear-gradient(135deg, #00D9FF, #6ABAFF);
+  background: linear-gradient(135deg, #ffd24a, #6ABAFF);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -42,10 +42,10 @@
 
 .career-level {
   padding: 6px 16px;
-  background: rgba(0, 217, 255, 0.15);
-  border: 1px solid rgba(0, 217, 255, 0.3);
+  background: rgba(120, 160, 255, 0.15);
+  border: 1px solid rgba(120, 160, 255, 0.3);
   border-radius: 20px;
-  color: #00D9FF;
+  color: #ffd24a;
   font-size: 0.85rem;
   font-weight: 600;
 }
@@ -70,10 +70,10 @@
     180deg,
     #4ADE80 0%,
     #6ABAFF 20%,
-    #00D9FF 40%,
-    #00D9FF 60%,
+    #ffd24a 40%,
+    #ffd24a 60%,
     #EF4444 80%,
-    #00D9FF 100%
+    #ffd24a 100%
   );
   opacity: 0.2;
   z-index: 0;
@@ -232,7 +232,7 @@
 }
 
 .star-filled {
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .star-empty {

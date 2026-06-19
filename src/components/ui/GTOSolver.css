@@ -9,9 +9,9 @@
   left: 12px;
   width: 220px;
   background: rgba(5, 5, 15, 0.96);
-  border: 1px solid rgba(0, 255, 255, 0.45);
+  border: 1px solid rgba(120, 160, 255, 0.45);
   border-radius: 8px;
-  box-shadow: 0 0 18px rgba(0, 255, 255, 0.12), 0 4px 24px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 0 18px rgba(120, 160, 255, 0.12), 0 4px 24px rgba(0, 0, 0, 0.7);
   z-index: 1400;
   font-family: 'Inter', 'Segoe UI', sans-serif;
   user-select: none;
@@ -25,16 +25,16 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 8px;
-  background: rgba(0, 255, 255, 0.06);
-  border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+  background: rgba(120, 160, 255, 0.06);
+  border-bottom: 1px solid rgba(120, 160, 255, 0.2);
 }
 
 .gto-title {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
-  color: #00ffff;
-  text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+  color: #ffd24a;
+  text-shadow: 0 0 8px rgba(120, 160, 255, 0.5);
 }
 
 .gto-header-actions {
@@ -50,13 +50,13 @@
   padding: 0 3px;
   line-height: 1;
   font-size: 12px;
-  color: rgba(0, 255, 255, 0.6);
+  color: rgba(120, 160, 255, 0.6);
   transition: color 0.15s;
 }
 
 .gto-btn-minimize:hover,
 .gto-btn-close:hover {
-  color: #00ffff;
+  color: #ffd24a;
 }
 
 .gto-btn-close {
@@ -73,7 +73,7 @@
 .gto-spot-label {
   font-family: 'Courier New', Courier, monospace;
   font-size: 9px;
-  color: #00ffff;
+  color: #ffd24a;
   margin-bottom: 10px;
   word-break: break-all;
   line-height: 1.4;
@@ -130,7 +130,7 @@
 
 .gto-divider {
   height: 1px;
-  background: rgba(0, 255, 255, 0.15);
+  background: rgba(120, 160, 255, 0.15);
   margin: 9px 0;
 }
 
@@ -170,13 +170,13 @@
 }
 
 .gto-dot--filled {
-  background: #00ffff;
-  box-shadow: 0 0 5px rgba(0, 255, 255, 0.7);
+  background: #ffd24a;
+  box-shadow: 0 0 5px rgba(120, 160, 255, 0.7);
 }
 
 .gto-dot--empty {
   background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(0, 255, 255, 0.25);
+  border: 1px solid rgba(120, 160, 255, 0.25);
 }
 
 .gto-confidence-label {

@@ -23,7 +23,7 @@
   max-width: 1100px;
   height: 90vh;
   background: rgba(8, 12, 22, 0.98);
-  border: 1px solid rgba(0, 217, 255, 0.2);
+  border: 1px solid rgba(120, 160, 255, 0.2);
   border-radius: 12px;
   overflow: hidden;
   font-family: 'Courier New', Courier, monospace;
@@ -36,8 +36,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px;
-  border-bottom: 1px solid rgba(0, 217, 255, 0.15);
-  background: rgba(0, 217, 255, 0.04);
+  border-bottom: 1px solid rgba(120, 160, 255, 0.15);
+  background: rgba(120, 160, 255, 0.04);
   flex-shrink: 0;
 }
 
@@ -45,14 +45,14 @@
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: rgba(0, 217, 255, 0.9);
+  color: rgba(120, 160, 255, 0.9);
   text-transform: uppercase;
 }
 
 .hhi-header__close {
   background: none;
   border: none;
-  color: rgba(0, 217, 255, 0.6);
+  color: rgba(120, 160, 255, 0.6);
   font-size: 1.1rem;
   cursor: pointer;
   padding: 4px 8px;
@@ -62,7 +62,7 @@
 
 .hhi-header__close:hover {
   color: #fff;
-  background: rgba(0, 217, 255, 0.12);
+  background: rgba(120, 160, 255, 0.12);
 }
 
 /* ── Drop zone ───────────────────────────────────────────────── */
@@ -73,7 +73,7 @@
   align-items: center;
   justify-content: center;
   margin: 24px;
-  border: 2px dashed rgba(0, 217, 255, 0.4);
+  border: 2px dashed rgba(120, 160, 255, 0.4);
   border-radius: 10px;
   cursor: pointer;
   gap: 16px;
@@ -82,20 +82,20 @@
 
 .hhi-dropzone:hover,
 .hhi-dropzone--active {
-  border-color: rgba(0, 217, 255, 0.85);
-  background: rgba(0, 217, 255, 0.04);
-  box-shadow: 0 0 24px rgba(0, 217, 255, 0.12), inset 0 0 40px rgba(0, 217, 255, 0.04);
+  border-color: rgba(120, 160, 255, 0.85);
+  background: rgba(120, 160, 255, 0.04);
+  box-shadow: 0 0 24px rgba(120, 160, 255, 0.12), inset 0 0 40px rgba(120, 160, 255, 0.04);
 }
 
 .hhi-dropzone__icon {
   font-size: 48px;
   line-height: 1;
-  filter: drop-shadow(0 0 8px rgba(0, 217, 255, 0.5));
+  filter: drop-shadow(0 0 8px rgba(120, 160, 255, 0.5));
 }
 
 .hhi-dropzone__text {
   font-size: 0.95rem;
-  color: rgba(0, 217, 255, 0.7);
+  color: rgba(120, 160, 255, 0.7);
   margin: 0;
   text-align: center;
 }
@@ -116,7 +116,7 @@
 .hhi-sidebar {
   width: 240px;
   flex-shrink: 0;
-  border-right: 1px solid rgba(0, 217, 255, 0.12);
+  border-right: 1px solid rgba(120, 160, 255, 0.12);
   padding: 16px 14px;
   overflow-y: auto;
   display: flex;
@@ -133,7 +133,7 @@
 
 .hhi-sidebar__label {
   font-size: 0.72rem;
-  color: rgba(0, 217, 255, 0.5);
+  color: rgba(120, 160, 255, 0.5);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -148,9 +148,9 @@
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: rgba(0, 217, 255, 0.4);
+  color: rgba(120, 160, 255, 0.4);
   margin-top: 6px;
-  border-top: 1px solid rgba(0, 217, 255, 0.1);
+  border-top: 1px solid rgba(120, 160, 255, 0.1);
   padding-top: 8px;
 }
 
@@ -166,7 +166,7 @@
 }
 
 .hhi-pos-table__pos {
-  color: rgba(0, 217, 255, 0.6);
+  color: rgba(120, 160, 255, 0.6);
   width: 40px;
 }
 
@@ -193,14 +193,14 @@
 /* Filter bar */
 .hhi-filter-bar {
   padding: 10px 16px;
-  border-bottom: 1px solid rgba(0, 217, 255, 0.1);
+  border-bottom: 1px solid rgba(120, 160, 255, 0.1);
   flex-shrink: 0;
 }
 
 .hhi-filter-bar__input {
   width: 100%;
-  background: rgba(0, 217, 255, 0.04);
-  border: 1px solid rgba(0, 217, 255, 0.2);
+  background: rgba(120, 160, 255, 0.04);
+  border: 1px solid rgba(120, 160, 255, 0.2);
   border-radius: 6px;
   padding: 7px 12px;
   color: #c9d6e3;
@@ -212,11 +212,11 @@
 }
 
 .hhi-filter-bar__input::placeholder {
-  color: rgba(0, 217, 255, 0.3);
+  color: rgba(120, 160, 255, 0.3);
 }
 
 .hhi-filter-bar__input:focus {
-  border-color: rgba(0, 217, 255, 0.5);
+  border-color: rgba(120, 160, 255, 0.5);
 }
 
 /* Hand table */
@@ -233,8 +233,8 @@
 }
 
 .hhi-table thead tr {
-  background: rgba(0, 217, 255, 0.06);
-  border-bottom: 1px solid rgba(0, 217, 255, 0.15);
+  background: rgba(120, 160, 255, 0.06);
+  border-bottom: 1px solid rgba(120, 160, 255, 0.15);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -246,14 +246,14 @@
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: rgba(0, 217, 255, 0.6);
+  color: rgba(120, 160, 255, 0.6);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .hhi-table td {
   padding: 7px 12px;
-  border-bottom: 1px solid rgba(0, 217, 255, 0.06);
+  border-bottom: 1px solid rgba(120, 160, 255, 0.06);
   white-space: nowrap;
 }
 
@@ -263,16 +263,16 @@
 }
 
 .hhi-table__row:hover {
-  background: rgba(0, 217, 255, 0.05);
+  background: rgba(120, 160, 255, 0.05);
 }
 
 .hhi-table__row--selected {
-  background: rgba(0, 217, 255, 0.1) !important;
-  border-left: 2px solid rgba(0, 217, 255, 0.7);
+  background: rgba(120, 160, 255, 0.1) !important;
+  border-left: 2px solid rgba(120, 160, 255, 0.7);
 }
 
 .hhi-table__hand-id {
-  color: rgba(0, 217, 255, 0.6);
+  color: rgba(120, 160, 255, 0.6);
   font-size: 0.75rem;
 }
 
@@ -289,20 +289,20 @@
   justify-content: center;
   gap: 16px;
   padding: 10px 16px;
-  border-top: 1px solid rgba(0, 217, 255, 0.1);
+  border-top: 1px solid rgba(120, 160, 255, 0.1);
   flex-shrink: 0;
 }
 
 .hhi-pagination__info {
   font-size: 0.78rem;
-  color: rgba(0, 217, 255, 0.5);
+  color: rgba(120, 160, 255, 0.5);
 }
 
 /* ── Right drawer ────────────────────────────────────────────── */
 .hhi-drawer {
   width: 280px;
   flex-shrink: 0;
-  border-left: 1px solid rgba(0, 217, 255, 0.12);
+  border-left: 1px solid rgba(120, 160, 255, 0.12);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -320,20 +320,20 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  border-bottom: 1px solid rgba(0, 217, 255, 0.12);
+  border-bottom: 1px solid rgba(120, 160, 255, 0.12);
   flex-shrink: 0;
 }
 
 .hhi-drawer__title {
   font-size: 0.8rem;
   font-weight: 700;
-  color: rgba(0, 217, 255, 0.85);
+  color: rgba(120, 160, 255, 0.85);
 }
 
 .hhi-drawer__close {
   background: none;
   border: none;
-  color: rgba(0, 217, 255, 0.5);
+  color: rgba(120, 160, 255, 0.5);
   cursor: pointer;
   font-size: 0.85rem;
   padding: 2px 6px;
@@ -342,7 +342,7 @@
 
 .hhi-drawer__close:hover {
   color: #fff;
-  background: rgba(0, 217, 255, 0.1);
+  background: rgba(120, 160, 255, 0.1);
 }
 
 .hhi-drawer__hero-cards {
@@ -350,7 +350,7 @@
   gap: 8px;
   justify-content: center;
   padding: 14px;
-  border-bottom: 1px solid rgba(0, 217, 255, 0.08);
+  border-bottom: 1px solid rgba(120, 160, 255, 0.08);
 }
 
 .hhi-drawer__streets {
@@ -371,7 +371,7 @@
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: rgba(0, 217, 255, 0.5);
+  color: rgba(120, 160, 255, 0.5);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -392,7 +392,7 @@
 }
 
 .hhi-drawer__action-player {
-  color: rgba(0, 217, 255, 0.8);
+  color: rgba(120, 160, 255, 0.8);
   font-weight: 600;
   min-width: 60px;
   overflow: hidden;
@@ -413,14 +413,14 @@
   font-size: 0.88rem;
   font-weight: 700;
   text-align: center;
-  border-top: 1px solid rgba(0, 217, 255, 0.1);
+  border-top: 1px solid rgba(120, 160, 255, 0.1);
   flex-shrink: 0;
 }
 
 /* Pot progression */
 .pot-progression {
   padding: 10px 14px;
-  border-top: 1px solid rgba(0, 217, 255, 0.08);
+  border-top: 1px solid rgba(120, 160, 255, 0.08);
   flex-shrink: 0;
 }
 
@@ -428,14 +428,14 @@
   font-size: 0.66rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: rgba(0, 217, 255, 0.4);
+  color: rgba(120, 160, 255, 0.4);
   margin-bottom: 5px;
 }
 
 .pot-progression__track {
   position: relative;
   height: 6px;
-  background: rgba(0, 217, 255, 0.08);
+  background: rgba(120, 160, 255, 0.08);
   border-radius: 3px;
   overflow: hidden;
   display: flex;
@@ -446,14 +446,14 @@
   transition: width 0.4s ease;
 }
 
-.pot-progression__segment--preflop { background: rgba(0, 217, 255, 0.6); }
+.pot-progression__segment--preflop { background: rgba(120, 160, 255, 0.6); }
 .pot-progression__segment--flop    { background: rgba(0, 150, 255, 0.7); }
 .pot-progression__segment--turn    { background: rgba(0, 100, 220, 0.7); }
 .pot-progression__segment--river   { background: rgba(100, 60, 200, 0.7); }
 
 .pot-progression__final {
   font-size: 0.7rem;
-  color: rgba(0, 217, 255, 0.4);
+  color: rgba(120, 160, 255, 0.4);
   margin-top: 4px;
   text-align: right;
 }
@@ -464,8 +464,8 @@
   align-items: center;
   gap: 12px;
   padding: 10px 20px;
-  border-top: 1px solid rgba(0, 217, 255, 0.15);
-  background: rgba(0, 217, 255, 0.03);
+  border-top: 1px solid rgba(120, 160, 255, 0.15);
+  background: rgba(120, 160, 255, 0.03);
   flex-shrink: 0;
 }
 
@@ -473,9 +473,9 @@
 .hhi-btn {
   padding: 7px 16px;
   border-radius: 6px;
-  border: 1px solid rgba(0, 217, 255, 0.3);
-  background: rgba(0, 217, 255, 0.07);
-  color: rgba(0, 217, 255, 0.85);
+  border: 1px solid rgba(120, 160, 255, 0.3);
+  background: rgba(120, 160, 255, 0.07);
+  color: rgba(120, 160, 255, 0.85);
   font-family: inherit;
   font-size: 0.78rem;
   cursor: pointer;
@@ -484,8 +484,8 @@
 }
 
 .hhi-btn:hover:not(:disabled) {
-  background: rgba(0, 217, 255, 0.14);
-  border-color: rgba(0, 217, 255, 0.6);
+  background: rgba(120, 160, 255, 0.14);
+  border-color: rgba(120, 160, 255, 0.6);
   color: #fff;
 }
 
@@ -495,19 +495,19 @@
 }
 
 .hhi-btn--primary {
-  border-color: rgba(0, 217, 255, 0.6);
-  background: rgba(0, 217, 255, 0.14);
-  color: rgba(0, 217, 255, 0.95);
+  border-color: rgba(120, 160, 255, 0.6);
+  background: rgba(120, 160, 255, 0.14);
+  color: rgba(120, 160, 255, 0.95);
   font-weight: 700;
 }
 
 .hhi-btn--primary:hover:not(:disabled) {
-  background: rgba(0, 217, 255, 0.24);
-  box-shadow: 0 0 12px rgba(0, 217, 255, 0.2);
+  background: rgba(120, 160, 255, 0.24);
+  box-shadow: 0 0 12px rgba(120, 160, 255, 0.2);
 }
 
 .hhi-btn--secondary {
-  border-color: rgba(0, 217, 255, 0.2);
+  border-color: rgba(120, 160, 255, 0.2);
   background: transparent;
 }
 
@@ -515,7 +515,7 @@
 .card-glyph {
   display: inline-block;
   background: rgba(18, 22, 36, 0.9);
-  border: 1px solid rgba(0, 217, 255, 0.25);
+  border: 1px solid rgba(120, 160, 255, 0.25);
   border-radius: 3px;
   padding: 1px 5px;
   font-size: 0.78rem;
@@ -533,7 +533,7 @@
   font-size: 1.35rem;
   padding: 4px 10px;
   border-radius: 5px;
-  border-color: rgba(0, 217, 255, 0.35);
+  border-color: rgba(120, 160, 255, 0.35);
 }
 
 /* ── Color helpers ───────────────────────────────────────────── */
@@ -546,7 +546,7 @@
 }
 
 .hhi-muted {
-  color: rgba(0, 217, 255, 0.25);
+  color: rgba(120, 160, 255, 0.25);
 }
 
 /* ── Toast ───────────────────────────────────────────────────── */
@@ -555,9 +555,9 @@
   bottom: 60px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 217, 255, 0.12);
-  border: 1px solid rgba(0, 217, 255, 0.35);
-  color: rgba(0, 217, 255, 0.95);
+  background: rgba(120, 160, 255, 0.12);
+  border: 1px solid rgba(120, 160, 255, 0.35);
+  color: rgba(120, 160, 255, 0.95);
   padding: 9px 22px;
   border-radius: 8px;
   font-size: 0.82rem;
@@ -589,12 +589,12 @@
 .hhi-sidebar::-webkit-scrollbar-thumb,
 .hhi-table-wrap::-webkit-scrollbar-thumb,
 .hhi-drawer::-webkit-scrollbar-thumb {
-  background: rgba(0, 217, 255, 0.2);
+  background: rgba(120, 160, 255, 0.2);
   border-radius: 3px;
 }
 
 .hhi-sidebar::-webkit-scrollbar-thumb:hover,
 .hhi-table-wrap::-webkit-scrollbar-thumb:hover,
 .hhi-drawer::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 217, 255, 0.4);
+  background: rgba(120, 160, 255, 0.4);
 }

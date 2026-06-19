@@ -218,7 +218,7 @@ function DailyNetChart({ hands }) {
         const fill = val >= 0 ? '#00d97e' : '#ff4d6d';
         return <rect key={i} x={x} y={y} width={barW} height={Math.max(1, barH)} fill={fill} rx="1" />;
       })}
-      <line x1="0" y1={midY} x2={W} y2={midY} stroke="rgba(0,217,255,0.2)" strokeWidth="1" />
+      <line x1="0" y1={midY} x2={W} y2={midY} stroke="rgba(120, 160, 255,0.2)" strokeWidth="1" />
     </svg>
   );
 }

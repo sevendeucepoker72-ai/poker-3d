@@ -79,7 +79,7 @@ export default function TimingTellTracker({ gameState: gameStateRaw, visible, on
           tellColor = '#F97316';
         } else if (deviation > 0.60) {
           tell = 'tanked';
-          tellColor = '#00D9FF'; // long tank = often weak/bluff
+          tellColor = '#ffd24a'; // long tank = often weak/bluff
         } else if (deviation > 0.30) {
           tell = 'slow';
           tellColor = '#93C5FD';
@@ -113,7 +113,7 @@ export default function TimingTellTracker({ gameState: gameStateRaw, visible, on
         <>
           <div className="timing-tell-legend">
             <span style={{ color: '#EF4444' }}>● snap</span> = likely strong &nbsp;
-            <span style={{ color: '#00D9FF' }}>● tank</span> = likely weak
+            <span style={{ color: '#ffd24a' }}>● tank</span> = likely weak
           </div>
           <table className="timing-tell-table">
             <thead>
@@ -131,7 +131,7 @@ export default function TimingTellTracker({ gameState: gameStateRaw, visible, on
                   <td className="timing-num">{row.avg}s</td>
                   <td className="timing-num" style={{
                     color: row.tell === 'snap' || row.tell === 'fast' ? '#EF4444'
-                      : row.tell === 'tanked' || row.tell === 'slow' ? '#00D9FF'
+                      : row.tell === 'tanked' || row.tell === 'slow' ? '#ffd24a'
                       : '#94A3B8'
                   }}>{row.last}s</td>
                   <td>

@@ -527,7 +527,7 @@ input, textarea {
 .gesture-raise-panel .raise-slider {
   height: 36px !important;
   width: 100% !important;
-  accent-color: #00D9FF !important;
+  accent-color: #ffd24a !important;
 }
 .gesture-raise-panel .action-btn {
   width: 100% !important;
@@ -546,14 +546,14 @@ input, textarea {
   flex: 1 !important;
   min-height: 38px !important;
   border-radius: 10px !important;
-  border: 1px solid rgba(0,217,255,0.35) !important;
-  background: rgba(0,217,255,0.08) !important;
-  color: #00D9FF !important;
+  border: 1px solid rgba(120, 160, 255,0.35) !important;
+  background: rgba(120, 160, 255,0.08) !important;
+  color: #ffd24a !important;
   font-size: 0.8rem !important;
   font-weight: 700 !important;
   cursor: pointer !important;
 }
-.raise-quick-btn:active { background: rgba(0,217,255,0.25) !important; }
+.raise-quick-btn:active { background: rgba(120, 160, 255,0.25) !important; }
 
 /* Slider row with nudge buttons */
 .raise-slider-row {
@@ -590,7 +590,7 @@ input, textarea {
 }
 .raise-pot-pct {
   font-size: 0.75rem !important;
-  color: #00D9FF !important;
+  color: #ffd24a !important;
   font-weight: 500 !important;
 }
 
@@ -598,7 +598,7 @@ input, textarea {
 .raise-slider {
   height: 36px !important;
   cursor: pointer !important;
-  accent-color: #00D9FF !important;
+  accent-color: #ffd24a !important;
 }
 .raise-input {
   font-size: 16px !important; /* no iOS zoom */
@@ -631,7 +631,7 @@ input, textarea {
 }
 .action-timer-strip-fill {
   height: 100% !important;
-  background: linear-gradient(90deg, #4ade80, #00D9FF) !important;
+  background: linear-gradient(90deg, #4ade80, #ffd24a) !important;
   border-radius: 0 2px 2px 0 !important;
   transition: width 1s linear, background 0.3s ease !important;
 }
@@ -682,7 +682,7 @@ input, textarea {
   padding: 1px 5px 1px 1px !important;
   gap: 2px !important;
   border-radius: 5px !important;
-  border: 1px solid rgba(0,217,255,0.35) !important;
+  border: 1px solid rgba(120, 160, 255,0.35) !important;
   max-width: calc(100vw - 32px) !important;
 }
 .hud-np-avatar {

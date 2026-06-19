@@ -2,32 +2,47 @@
 
 :root {
   --font-scale: 1;
-  --bg-primary: #000000;
-  --bg-secondary: #0d0d0d;
-  --bg-card: rgba(10, 10, 10, 0.85);
-  --bg-card-hover: rgba(18, 18, 18, 0.9);
-  --bg-input: rgba(10, 10, 10, 0.8);
-  --bg-overlay: rgba(0, 0, 0, 0.92);
-  --bg-panel: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
+  /* 2026-06-18 — full marketing (sapphire + gold, NO red) brand system. */
+  --bg-primary: #050c20;
+  --bg-secondary: #081434;
+  --bg-card: rgba(12, 26, 68, 0.5);
+  --bg-card-hover: rgba(18, 36, 86, 0.62);
+  --bg-input: rgba(8, 20, 52, 0.7);
+  --bg-overlay: rgba(5, 12, 32, 0.92);
+  --bg-panel: linear-gradient(135deg, #081434 0%, #0c1a44 100%);
 
-  --text-primary: #ffffff;
-  --text-secondary: #aaaaaa;
-  --text-muted: #666666;
+  --text-primary: #eaf1ff;
+  --text-secondary: #a8bbe0;
+  --text-muted: #8298c4;
 
-  --accent-gold: #00D9FF;
-  --accent-neon: #00D9FF;
-  --accent-green: #4ADE80;
-  --accent-purple: #00D9FF;
+  --accent-gold: #ffd24a;
+  --accent-neon: #ffd24a;
+  --accent-green: #27e0a0;
+  --accent-purple: #ffd24a;
   --accent-red: #EF4444;
 
-  --border-primary: rgba(0, 217, 255, 0.12);
-  --border-secondary: rgba(0, 217, 255, 0.22);
+  --border-primary: rgba(120, 160, 255, 0.16);
+  --border-secondary: rgba(120, 160, 255, 0.28);
 
-  --card-bg: rgba(10, 10, 10, 0.85);
-  --card-border: rgba(0, 217, 255, 0.15);
+  --card-bg: rgba(12, 26, 68, 0.5);
+  --card-border: rgba(120, 160, 255, 0.22);
 
-  --scrollbar-thumb: #333;
-  --shadow-color: rgba(0, 217, 255, 0.08);
+  --scrollbar-thumb: #1d3a6e;
+  --shadow-color: rgba(120, 160, 255, 0.12);
+
+  /* marketing --apk-* aliases + brand fonts */
+  --apk-gold: #ffd24a; --apk-gold-2: #f59e0b; --apk-gold-lite: #fff0b8;
+  --apk-blue: #3b82f6; --apk-blue-d: #1d4ed8; --apk-blue-2: #2f6ae6; --apk-blue-lite: #9ec5ff;
+  --apk-green: #27e0a0;
+  --apk-bg-0: #0c1a44; --apk-bg-1: #081434; --apk-bg-2: #050c20;
+  --apk-ink: #eaf1ff; --apk-mut: #a8bbe0; --apk-mut-2: #8298c4;
+  --apk-line: rgba(120, 160, 255, 0.22); --apk-glass: rgba(12, 26, 68, 0.5);
+  --apk-grad-primary: linear-gradient(135deg, #1d4ed8, #2f6ae6);
+  --apk-grad-gold: linear-gradient(135deg, #fff0b8, #ffd24a 45%, #f59e0b);
+  --apk-glow-blue: 0 0 36px rgba(59, 130, 246, 0.55);
+  --apk-glow-gold: 0 6px 22px rgba(255, 210, 74, 0.4);
+  --font-display: 'Anton', 'Inter', sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 /* ===== Light Theme Overrides ===== */

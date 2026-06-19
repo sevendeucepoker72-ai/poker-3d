@@ -24,11 +24,11 @@ export const HAIR_STYLES = [
 
 export const HAIR_COLORS = [
   '#2C1B0E', '#5A3825', '#8B6914', '#C4A35A', '#D4A574',
-  '#1A1A1A', '#808080', '#C0C0C0', '#8B0000', '#FF4500',
+  '#0c1a44', '#808080', '#C0C0C0', '#8B0000', '#FF4500',
 ];
 
 export const EYE_COLORS = [
-  '#4A90D9', '#2E5A1E', '#8B6914', '#3B2F2F', '#1A1A1A', '#6B8E23',
+  '#4A90D9', '#2E5A1E', '#8B6914', '#3B2F2F', '#0c1a44', '#6B8E23',
 ];
 
 export const TOP_STYLES = [
@@ -41,7 +41,7 @@ export const TOP_STYLES = [
 ];
 
 export const TOP_COLORS = [
-  '#1A1A2E', '#E63946', '#457B9D', '#2A9D8F', '#E9C46A',
+  '#0c1a44', '#E63946', '#457B9D', '#2A9D8F', '#E9C46A',
   '#FFFFFF', '#264653', '#F4A261', '#6B4226', '#8338EC',
 ];
 
@@ -53,7 +53,7 @@ export const BOTTOM_STYLES = [
 ];
 
 export const BOTTOM_COLORS = [
-  '#2D3A4A', '#1A1A1A', '#4A3728', '#1B3A2D', '#3D3D3D',
+  '#2D3A4A', '#0c1a44', '#4A3728', '#1B3A2D', '#3D3D3D',
 ];
 
 export const ACCESSORIES = [
@@ -88,7 +88,7 @@ export const DEFAULT_AVATAR = {
   hairColor: '#2C1B0E',
   eyeColor: '#4A90D9',
   topStyle: 'tshirt',
-  topColor: '#1A1A2E',
+  topColor: '#0c1a44',
   bottomStyle: 'jeans',
   bottomColor: '#2D3A4A',
   accessory: 'none',

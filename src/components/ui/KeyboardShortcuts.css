@@ -18,12 +18,12 @@
 
 .kb-panel {
   background: linear-gradient(135deg, #0e0e24, #1a102e);
-  border: 2px solid rgba(0, 217, 255, 0.4);
+  border: 2px solid rgba(120, 160, 255, 0.4);
   border-radius: 16px;
   padding: 28px 36px;
   min-width: 400px;
   max-width: 520px;
-  box-shadow: 0 0 60px rgba(0, 217, 255, 0.1), 0 8px 40px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 60px rgba(120, 160, 255, 0.1), 0 8px 40px rgba(0, 0, 0, 0.6);
   animation: kb-scale-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -42,7 +42,7 @@
 .kb-title {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
   text-transform: uppercase;
   letter-spacing: 2px;
 }
@@ -59,8 +59,8 @@
 }
 
 .kb-close:hover {
-  border-color: #00D9FF;
-  color: #00D9FF;
+  border-color: #ffd24a;
+  color: #ffd24a;
 }
 
 .kb-grid {
@@ -101,7 +101,7 @@
 .kb-divider {
   grid-column: 1 / -1;
   height: 1px;
-  background: linear-gradient(90deg, rgba(0, 217, 255, 0.15), transparent);
+  background: linear-gradient(90deg, rgba(120, 160, 255, 0.15), transparent);
   margin: 6px 0;
 }
 

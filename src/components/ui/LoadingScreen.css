@@ -2,7 +2,7 @@
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: #000000;
+  background: #050c20;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -50,7 +50,7 @@
   font-size: 2.8rem;
   font-weight: 900;
   margin: 0 0 6px;
-  background: linear-gradient(135deg, #00D9FF 0%, #66eaff 40%, #00D9FF 60%, #0099CC 100%);
+  background: linear-gradient(135deg, #ffd24a 0%, #66eaff 40%, #ffd24a 60%, #0099CC 100%);
   background-size: 300% 100%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -70,8 +70,8 @@
 
 /* Glow pulse via filter (works alongside background-clip) */
 @keyframes title-glow-pulse {
-  0%, 100% { filter: drop-shadow(0 0 8px rgba(0, 217, 255, 0.3)); }
-  50%       { filter: drop-shadow(0 0 20px rgba(0, 217, 255, 0.7)); }
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(120, 160, 255, 0.3)); }
+  50%       { filter: drop-shadow(0 0 20px rgba(120, 160, 255, 0.7)); }
 }
 
 /* ── Tagline ── */
@@ -100,16 +100,16 @@
   border-radius: 50%;
   background: conic-gradient(
     #EF4444 0deg 45deg,
-    #111111 45deg 90deg,
+    #0c1a44 45deg 90deg,
     #EF4444 90deg 135deg,
-    #111111 135deg 180deg,
+    #0c1a44 135deg 180deg,
     #EF4444 180deg 225deg,
-    #111111 225deg 270deg,
+    #0c1a44 225deg 270deg,
     #EF4444 270deg 315deg,
-    #111111 315deg 360deg
+    #0c1a44 315deg 360deg
   );
-  border: 4px solid #00D9FF;
-  box-shadow: 0 0 24px rgba(0, 217, 255, 0.4), inset 0 0 12px rgba(0, 0, 0, 0.5);
+  border: 4px solid #ffd24a;
+  box-shadow: 0 0 24px rgba(120, 160, 255, 0.4), inset 0 0 12px rgba(0, 0, 0, 0.5);
   animation: chip-spin 1.5s linear infinite;
   position: relative;
   flex-shrink: 0;
@@ -122,7 +122,7 @@
   transform: translate(-50%, -50%);
   width: 26px; height: 26px;
   border-radius: 50%;
-  background: radial-gradient(circle, #00D9FF 0%, #005566 100%);
+  background: radial-gradient(circle, #ffd24a 0%, #005566 100%);
   border: 2px solid rgba(255, 255, 255, 0.15);
 }
 
@@ -166,8 +166,8 @@
   position: absolute;
   width: 44px;
   height: 62px;
-  background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
-  border: 1px solid rgba(0, 217, 255, 0.25);
+  background: linear-gradient(145deg, #0c1a44, #081434);
+  border: 1px solid rgba(120, 160, 255, 0.25);
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -215,16 +215,16 @@
 
 .loading-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #00D9FF, #66eaff);
+  background: linear-gradient(90deg, #ffd24a, #66eaff);
   border-radius: 2px;
-  box-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+  box-shadow: 0 0 10px rgba(120, 160, 255, 0.5);
   transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ── Tip carousel ── */
 .loading-tip {
   font-size: 0.78rem;
-  color: rgba(0, 217, 255, 0.55);
+  color: rgba(120, 160, 255, 0.55);
   max-width: 300px;
   text-align: center;
   letter-spacing: 0.3px;

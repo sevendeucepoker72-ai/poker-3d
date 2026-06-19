@@ -26,7 +26,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #000000;
+  background: #050c20;
   flex-shrink: 0;
   transition: box-shadow 0.3s;
 }
@@ -68,7 +68,7 @@
 .xp-bar-track {
   width: 100%;
   height: 8px;
-  background: #1A1A2E;
+  background: #0c1a44;
   border-radius: 4px;
   overflow: hidden;
 }
@@ -217,7 +217,7 @@
   background: linear-gradient(
     45deg,
     transparent 30%,
-    rgba(0, 217, 255, 0.06) 50%,
+    rgba(120, 160, 255, 0.06) 50%,
     transparent 70%
   );
   animation: shimmer 2.5s infinite linear;
@@ -248,7 +248,7 @@
 .daily-bonus-title {
   font-weight: 700;
   font-size: 0.95rem;
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .daily-bonus-streak {
@@ -258,7 +258,7 @@
 
 .daily-bonus-claim {
   padding: 6px 16px;
-  background: linear-gradient(135deg, #00D9FF, #FFA500);
+  background: linear-gradient(135deg, #ffd24a, #FFA500);
   border-radius: 6px;
   color: #000000;
   font-weight: 700;
@@ -281,7 +281,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  background: #1A1A2E;
+  background: #0c1a44;
   border: 1px solid #2A2A4A;
   border-radius: 10px;
   transition: border-color 0.15s;
@@ -323,7 +323,7 @@
 .mission-progress-track {
   flex: 1;
   height: 6px;
-  background: #000000;
+  background: #050c20;
   border-radius: 3px;
   overflow: hidden;
 }
@@ -375,7 +375,7 @@
 
 .mission-claim-btn {
   padding: 4px 14px;
-  background: linear-gradient(135deg, #00D9FF, #FFA500);
+  background: linear-gradient(135deg, #ffd24a, #FFA500);
   border: none;
   border-radius: 5px;
   color: #000000;
@@ -389,12 +389,12 @@
 
 .mission-claim-btn:hover {
   transform: scale(1.05);
-  box-shadow: 0 0 12px rgba(0, 217, 255, 0.4);
+  box-shadow: 0 0 12px rgba(120, 160, 255, 0.4);
 }
 
 @keyframes glowPulse {
-  0%, 100% { box-shadow: 0 0 4px rgba(0, 217, 255, 0.3); }
-  50% { box-shadow: 0 0 12px rgba(0, 217, 255, 0.5); }
+  0%, 100% { box-shadow: 0 0 4px rgba(120, 160, 255, 0.3); }
+  50% { box-shadow: 0 0 12px rgba(120, 160, 255, 0.5); }
 }
 
 .mission-claimed-label {
@@ -409,7 +409,7 @@
   color: #aaaaaa;
   margin-bottom: 16px;
   padding: 8px;
-  background: #000000;
+  background: #050c20;
   border-radius: 6px;
 }
 
@@ -439,7 +439,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #1A1A2E;
+  background: #0c1a44;
   border: 1px solid #D69E2E;
   border-radius: 8px;
   font-size: 1.1rem;
@@ -467,7 +467,7 @@
   flex-direction: column;
   align-items: center;
   padding: 10px 8px;
-  background: #1A1A2E;
+  background: #0c1a44;
   border-radius: 8px;
   border: 1px solid #2A2A4A;
 }
@@ -676,7 +676,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #00D9FF;
+  background: #ffd24a;
   animation: particleBurst 1s var(--delay, 0s) ease-out forwards;
 }
 
@@ -725,7 +725,7 @@
 .levelup-level {
   font-size: 4.5rem;
   font-weight: 900;
-  background: linear-gradient(135deg, #00D9FF, #FFA500, #00D9FF);
+  background: linear-gradient(135deg, #ffd24a, #FFA500, #ffd24a);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -792,7 +792,7 @@
   border: 1px solid #D69E2E;
   border-radius: 8px;
   background: transparent;
-  color: #00D9FF;
+  color: #ffd24a;
   font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.15s;
@@ -811,15 +811,15 @@
   background: linear-gradient(
     45deg,
     transparent 30%,
-    rgba(0, 217, 255, 0.08) 50%,
+    rgba(120, 160, 255, 0.08) 50%,
     transparent 70%
   );
   animation: shimmer 2.5s infinite linear;
 }
 
 .lobby-daily-bonus-btn:hover {
-  background: rgba(0, 217, 255, 0.1);
-  box-shadow: 0 0 12px rgba(0, 217, 255, 0.2);
+  background: rgba(120, 160, 255, 0.1);
+  box-shadow: 0 0 12px rgba(120, 160, 255, 0.2);
 }
 
 /* ========== Responsive ========== */

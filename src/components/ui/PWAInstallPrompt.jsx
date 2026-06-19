@@ -136,8 +136,8 @@ export default function PWAInstallPrompt() {
             style={{
               width: '100%',
               maxWidth: '360px',
-              background: 'linear-gradient(180deg, #1a1a2e 0%, #12121e 100%)',
-              border: '1px solid rgba(0, 217, 255, 0.35)',
+              background: 'linear-gradient(180deg, #0c1a44 0%, #12121e 100%)',
+              border: '1px solid rgba(120, 160, 255, 0.35)',
               borderRadius: '16px',
               padding: '24px 20px calc(20px + env(safe-area-inset-bottom, 0px))',
               color: '#e2e2f0',
@@ -171,7 +171,7 @@ export default function PWAInstallPrompt() {
                 height="56"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="#00D9FF"
+                stroke="#ffd24a"
                 strokeWidth="1.6"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -194,9 +194,9 @@ export default function PWAInstallPrompt() {
                 fontSize: '0.95rem',
               }}
             >
-              <li>Tap the <strong style={{ color: '#00D9FF' }}>Share</strong> button</li>
-              <li>Scroll to <strong style={{ color: '#00D9FF' }}>Add to Home Screen</strong></li>
-              <li>Tap <strong style={{ color: '#00D9FF' }}>Add</strong></li>
+              <li>Tap the <strong style={{ color: '#ffd24a' }}>Share</strong> button</li>
+              <li>Scroll to <strong style={{ color: '#ffd24a' }}>Add to Home Screen</strong></li>
+              <li>Tap <strong style={{ color: '#ffd24a' }}>Add</strong></li>
             </ol>
 
             <button
@@ -206,8 +206,8 @@ export default function PWAInstallPrompt() {
                 width: '100%',
                 minHeight: '48px',
                 borderRadius: '12px',
-                border: '1px solid rgba(0, 217, 255, 0.4)',
-                background: 'linear-gradient(180deg, rgba(0, 217, 255, 0.18), rgba(0, 119, 160, 0.18))',
+                border: '1px solid rgba(120, 160, 255, 0.4)',
+                background: 'linear-gradient(180deg, rgba(120, 160, 255, 0.18), rgba(0, 119, 160, 0.18))',
                 color: '#ffffff',
                 fontSize: '1rem',
                 fontWeight: 700,

@@ -6,7 +6,7 @@
 }
 
 .reactions-toggle-btn {
-  background: rgba(10, 10, 10, 0.8);
+  background: rgba(12, 26, 68, 0.8);
   border: 1px solid rgba(74, 74, 106, 0.6);
   border-radius: 8px;
   color: #ffffff;
@@ -19,9 +19,9 @@
 }
 
 .reactions-toggle-btn:hover {
-  border-color: #00D9FF;
-  color: #00D9FF;
-  background: rgba(0, 217, 255, 0.1);
+  border-color: #ffd24a;
+  color: #ffd24a;
+  background: rgba(120, 160, 255, 0.1);
 }
 
 .reactions-toggle-btn:disabled {
@@ -34,7 +34,7 @@
   flex-wrap: wrap;
   gap: 3px;
   padding: 4px;
-  background: rgba(10, 10, 10, 0.85);
+  background: rgba(12, 26, 68, 0.85);
   border: 1px solid rgba(74, 74, 106, 0.5);
   border-radius: 10px;
   backdrop-filter: blur(8px);
@@ -54,7 +54,7 @@
 }
 
 .reaction-btn {
-  background: rgba(0, 217, 255, 0.5);
+  background: rgba(120, 160, 255, 0.5);
   border: 1px solid rgba(74, 74, 106, 0.3);
   border-radius: 6px;
   padding: 4px 6px;
@@ -69,8 +69,8 @@
 }
 
 .reaction-btn:hover {
-  background: rgba(0, 217, 255, 0.15);
-  border-color: rgba(0, 217, 255, 0.4);
+  background: rgba(120, 160, 255, 0.15);
+  border-color: rgba(120, 160, 255, 0.4);
   transform: scale(1.08);
 }
 

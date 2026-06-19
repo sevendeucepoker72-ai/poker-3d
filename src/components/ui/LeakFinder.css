@@ -10,8 +10,8 @@
 }
 
 .leak-finder-panel {
-  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
-  border: 1px solid rgba(0, 217, 255, 0.15);
+  background: linear-gradient(135deg, #081434 0%, #0c1a44 100%);
+  border: 1px solid rgba(120, 160, 255, 0.15);
   border-radius: 16px;
   width: 90%;
   max-width: 520px;
@@ -31,7 +31,7 @@
 .leak-finder-title {
   font-size: 1.3rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #00D9FF, #0099CC);
+  background: linear-gradient(135deg, #ffd24a, #0099CC);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

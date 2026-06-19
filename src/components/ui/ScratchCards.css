@@ -10,8 +10,8 @@
 }
 
 .scratch-panel {
-  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
-  border: 1px solid rgba(0, 217, 255, 0.15);
+  background: linear-gradient(135deg, #081434 0%, #0c1a44 100%);
+  border: 1px solid rgba(120, 160, 255, 0.15);
   border-radius: 16px;
   width: 90%;
   max-width: 420px;
@@ -29,7 +29,7 @@
 .scratch-title {
   font-size: 1.3rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #00D9FF, #0099CC);
+  background: linear-gradient(135deg, #ffd24a, #0099CC);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -58,7 +58,7 @@
 }
 
 .scratch-cards-count span {
-  color: #00D9FF;
+  color: #ffd24a;
   font-weight: 700;
 }
 
@@ -85,20 +85,20 @@
 
 .scratch-cell.hidden {
   background: linear-gradient(135deg, #4A4A6A, #3A3A5A);
-  border: 2px solid rgba(0, 217, 255, 0.15);
+  border: 2px solid rgba(120, 160, 255, 0.15);
   box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.3);
 }
 
 .scratch-cell.hidden::after {
   content: '?';
   font-size: 1.6rem;
-  color: rgba(0, 217, 255, 0.3);
+  color: rgba(120, 160, 255, 0.3);
   font-weight: 800;
 }
 
 .scratch-cell.hidden:hover {
   transform: scale(1.05);
-  border-color: rgba(0, 217, 255, 0.4);
+  border-color: rgba(120, 160, 255, 0.4);
 }
 
 .scratch-cell.revealed {
@@ -108,8 +108,8 @@
 }
 
 .scratch-cell.revealed.matched {
-  border-color: #00D9FF;
-  box-shadow: 0 0 15px rgba(0, 217, 255, 0.2);
+  border-color: #ffd24a;
+  box-shadow: 0 0 15px rgba(120, 160, 255, 0.2);
 }
 
 @keyframes scratchReveal {
@@ -125,8 +125,8 @@
 }
 
 .scratch-result.win {
-  background: rgba(0, 217, 255, 0.1);
-  border: 1px solid rgba(0, 217, 255, 0.3);
+  background: rgba(120, 160, 255, 0.1);
+  border: 1px solid rgba(120, 160, 255, 0.3);
 }
 
 .scratch-result.lose {
@@ -140,7 +140,7 @@
 }
 
 .scratch-result.win .scratch-result-text {
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .scratch-result.lose .scratch-result-text {
@@ -153,8 +153,8 @@
   padding: 12px;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(135deg, #00D9FF, #0099CC);
-  color: #0d0d0d;
+  background: linear-gradient(135deg, #ffd24a, #0099CC);
+  color: #081434;
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;

@@ -47,7 +47,7 @@ export default function SocialBracket({ socket, onClose }) {
   const [theme, setTheme] = useState('neon'); // 'neon' | 'classic' | 'western'
 
   const THEMES = [
-    { id: 'neon', label: '🌟 Neon Vegas', accent: '#00D9FF' },
+    { id: 'neon', label: '🌟 Neon Vegas', accent: '#ffd24a' },
     { id: 'classic', label: '♠ Classic', accent: '#F59E0B' },
     { id: 'western', label: '🤠 Western', accent: '#D97706' },
   ];

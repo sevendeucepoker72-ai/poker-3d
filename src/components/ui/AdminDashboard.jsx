@@ -10,7 +10,7 @@ import './AdminDashboard.css';
 
 const BLANK_QUALIFIER = {
   name: '', type: 'Weekly', icon: '🗓️',
-  startingStack: 50000, maxPlayers: 999, scheduledAt: '', color: '#00D9FF',
+  startingStack: 50000, maxPlayers: 999, scheduledAt: '', color: '#ffd24a',
   blindStructure: DEFAULT_BLIND_STRUCTURE, promotionId: null, recurrence: null,
 };
 
@@ -252,15 +252,15 @@ export default function AdminDashboard({ onClose }) {
   };
   const lbl = { color: '#8888AA', fontSize: '0.72rem', marginBottom: 3, display: 'block' };
   const colH = { color: '#555', fontSize: '0.65rem', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.04em' };
-  const secTitle = { color: '#00D9FF', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10, marginTop: 16, display: 'block' };
+  const secTitle = { color: '#ffd24a', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10, marginTop: 16, display: 'block' };
   const btn = (bg, color, border) => ({ padding: '6px 14px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600, background: bg, color, border: `1px solid ${border}`, cursor: 'pointer' });
 
   // ── Tab button style ──
   const tabBtn = (active) => ({
     padding: '6px 14px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
-    background: active ? 'rgba(0,217,255,0.15)' : 'rgba(255,255,255,0.05)',
-    color: active ? '#00D9FF' : '#666',
-    border: active ? '1px solid rgba(0,217,255,0.35)' : '1px solid rgba(255,255,255,0.08)',
+    background: active ? 'rgba(120, 160, 255,0.15)' : 'rgba(255,255,255,0.05)',
+    color: active ? '#ffd24a' : '#666',
+    border: active ? '1px solid rgba(120, 160, 255,0.35)' : '1px solid rgba(255,255,255,0.08)',
   });
 
   // ════════════════════════════════════════════════════════
@@ -292,7 +292,7 @@ export default function AdminDashboard({ onClose }) {
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
         <input style={inp} placeholder="Send a message to all connected players..." value={broadcastMsg} onChange={(e) => setBroadcastMsg(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleBroadcast()} />
-        <button onClick={handleBroadcast} style={{ ...btn(broadcastSent ? 'rgba(74,222,128,0.2)' : 'linear-gradient(135deg,#00D9FF,#0099BB)', broadcastSent ? '#4ADE80' : '#0a0a1a', 'transparent'), whiteSpace: 'nowrap' }}>
+        <button onClick={handleBroadcast} style={{ ...btn(broadcastSent ? 'rgba(74,222,128,0.2)' : 'linear-gradient(135deg,#ffd24a,#0099BB)', broadcastSent ? '#4ADE80' : '#0a0a1a', 'transparent'), whiteSpace: 'nowrap' }}>
           {broadcastSent ? '✓ Sent' : 'Send'}
         </button>
       </div>
@@ -322,7 +322,7 @@ export default function AdminDashboard({ onClose }) {
         <span style={{ color: '#aaa', fontSize: '0.82rem' }}>{qualifiers.length} qualifier{qualifiers.length !== 1 ? 's' : ''}</span>
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={() => qualifierActions.syncRecurring()} style={btn('rgba(255,255,255,0.06)', '#aaa', 'rgba(255,255,255,0.12)')}>↻ Sync</button>
-          <button onClick={openNewQ} style={btn('linear-gradient(135deg,#00D9FF,#0099BB)', '#0a0a1a', 'transparent')}>+ Add Qualifier</button>
+          <button onClick={openNewQ} style={btn('linear-gradient(135deg,#ffd24a,#0099BB)', '#0a0a1a', 'transparent')}>+ Add Qualifier</button>
         </div>
       </div>
 
@@ -336,7 +336,7 @@ export default function AdminDashboard({ onClose }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#fff', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   {q.name}
-                  <span style={{ fontSize: '0.6rem', padding: '1px 6px', borderRadius: 10, background: `${q.color || '#00D9FF'}22`, color: q.color || '#00D9FF', border: `1px solid ${q.color || '#00D9FF'}44` }}>{q.type}</span>
+                  <span style={{ fontSize: '0.6rem', padding: '1px 6px', borderRadius: 10, background: `${q.color || '#ffd24a'}22`, color: q.color || '#ffd24a', border: `1px solid ${q.color || '#ffd24a'}44` }}>{q.type}</span>
                   {q.recurrence?.enabled && <span style={{ fontSize: '0.6rem', color: '#4ADE80', background: 'rgba(74,222,128,0.1)', padding: '1px 6px', borderRadius: 10, border: '1px solid rgba(74,222,128,0.3)' }}>↻ TEMPLATE</span>}
                   {q.templateId && <span style={{ fontSize: '0.6rem', color: '#FBBF24', background: 'rgba(251,191,36,0.1)', padding: '1px 6px', borderRadius: 10, border: '1px solid rgba(251,191,36,0.3)' }}>↻ AUTO</span>}
                   {!q.active && <span style={{ fontSize: '0.6rem', color: '#F87171', background: 'rgba(248,113,113,0.1)', padding: '1px 6px', borderRadius: 10, border: '1px solid rgba(248,113,113,0.3)' }}>HIDDEN</span>}
@@ -387,8 +387,8 @@ export default function AdminDashboard({ onClose }) {
 
       {/* Edit / New form */}
       {qEditing && (
-        <div style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(0,217,255,0.2)', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#00D9FF', marginBottom: 14 }}>
+        <div style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(120, 160, 255,0.2)', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#ffd24a', marginBottom: 14 }}>
             {qEditing === 'new' ? 'New Qualifier' : 'Edit Qualifier'}
           </div>
 
@@ -423,9 +423,9 @@ export default function AdminDashboard({ onClose }) {
             <div>
               <label style={lbl}>Accent Color</label>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input type="color" value={qForm.color || '#00D9FF'} onChange={(e) => setQForm((f) => ({ ...f, color: e.target.value }))}
+                <input type="color" value={qForm.color || '#ffd24a'} onChange={(e) => setQForm((f) => ({ ...f, color: e.target.value }))}
                   style={{ width: 36, height: 36, borderRadius: 6, border: 'none', cursor: 'pointer', background: 'transparent' }} />
-                <input style={{ ...inp, flex: 1 }} value={qForm.color || ''} onChange={(e) => setQForm((f) => ({ ...f, color: e.target.value }))} placeholder="#00D9FF" />
+                <input style={{ ...inp, flex: 1 }} value={qForm.color || ''} onChange={(e) => setQForm((f) => ({ ...f, color: e.target.value }))} placeholder="#ffd24a" />
               </div>
             </div>
             <div>
@@ -449,7 +449,7 @@ export default function AdminDashboard({ onClose }) {
                   <option value="regular">Regular (20 min)</option>
                   <option value="deepStack">Deep Stack (25 min)</option>
                 </select>
-                <button onClick={addBlindRow} style={btn('rgba(0,217,255,0.12)', '#00D9FF', 'rgba(0,217,255,0.25)')}>+ Level</button>
+                <button onClick={addBlindRow} style={btn('rgba(120, 160, 255,0.12)', '#ffd24a', 'rgba(120, 160, 255,0.25)')}>+ Level</button>
                 <button onClick={addBreakRow} style={btn('rgba(251,191,36,0.12)', '#FBBF24', 'rgba(251,191,36,0.25)')}>+ Break</button>
               </div>
             </div>
@@ -521,7 +521,7 @@ export default function AdminDashboard({ onClose }) {
               </div>
 
               {qForm.recurrence?.enabled && (
-                <div style={{ background: 'rgba(0,217,255,0.05)', border: '1px solid rgba(0,217,255,0.15)', borderRadius: 8, padding: '12px 14px' }}>
+                <div style={{ background: 'rgba(120, 160, 255,0.05)', border: '1px solid rgba(120, 160, 255,0.15)', borderRadius: 8, padding: '12px 14px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px 14px', marginBottom: 8 }}>
                     <div>
                       <label style={lbl}>Pattern</label>
@@ -578,7 +578,7 @@ export default function AdminDashboard({ onClose }) {
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button onClick={closeQ} style={btn('rgba(255,255,255,0.06)', '#aaa', 'rgba(255,255,255,0.1)')}>Cancel</button>
-            <button onClick={saveQ} style={btn('linear-gradient(135deg,#00D9FF,#0099BB)', '#0a0a1a', 'transparent')}>Save</button>
+            <button onClick={saveQ} style={btn('linear-gradient(135deg,#ffd24a,#0099BB)', '#0a0a1a', 'transparent')}>Save</button>
           </div>
         </div>
       )}
@@ -784,7 +784,7 @@ export default function AdminDashboard({ onClose }) {
 
         {/* Code Generation */}
         <span style={secTitle}>Generate Entry Codes</span>
-        <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,217,255,0.15)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
+        <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(120, 160, 255,0.15)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, alignItems: 'flex-end', marginBottom: 10 }}>
             <div>
               <label style={lbl}>Promotion (optional)</label>
@@ -799,9 +799,9 @@ export default function AdminDashboard({ onClose }) {
                 {['Weekly', 'Monthly'].map((t) => (
                   <button key={t} type="button" onClick={() => setGenQualType(t)} style={{
                     flex: 1, padding: '8px 6px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
-                    background: genQualType === t ? 'rgba(0,217,255,0.18)' : 'rgba(255,255,255,0.05)',
-                    color: genQualType === t ? '#00D9FF' : '#666',
-                    border: genQualType === t ? '1px solid rgba(0,217,255,0.4)' : '1px solid rgba(255,255,255,0.1)',
+                    background: genQualType === t ? 'rgba(120, 160, 255,0.18)' : 'rgba(255,255,255,0.05)',
+                    color: genQualType === t ? '#ffd24a' : '#666',
+                    border: genQualType === t ? '1px solid rgba(120, 160, 255,0.4)' : '1px solid rgba(255,255,255,0.1)',
                   }}>{t}</button>
                 ))}
               </div>
@@ -812,9 +812,9 @@ export default function AdminDashboard({ onClose }) {
                 {[500, 1000, 5000, 10000].map((n) => (
                   <button key={n} type="button" onClick={() => setGenCount(n)} style={{
                     padding: '6px 8px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
-                    background: genCount === n ? 'rgba(0,217,255,0.18)' : 'rgba(255,255,255,0.05)',
-                    color: genCount === n ? '#00D9FF' : '#666',
-                    border: genCount === n ? '1px solid rgba(0,217,255,0.4)' : '1px solid rgba(255,255,255,0.1)',
+                    background: genCount === n ? 'rgba(120, 160, 255,0.18)' : 'rgba(255,255,255,0.05)',
+                    color: genCount === n ? '#ffd24a' : '#666',
+                    border: genCount === n ? '1px solid rgba(120, 160, 255,0.4)' : '1px solid rgba(255,255,255,0.1)',
                   }}>{n >= 1000 ? `${n/1000}k` : n}</button>
                 ))}
               </div>
@@ -826,7 +826,7 @@ export default function AdminDashboard({ onClose }) {
               {genPromoId ? (() => { const p = promos.find((x) => x.id === genPromoId); return p ? <span> · <span style={{ color: p.color || '#F59E0B' }}>🎟 {p.name}</span>{p.endDate ? ` · expires ${p.endDate}` : ''}</span> : null; })() : <span> · no expiry</span>}
               {' '}· single-use
             </div>
-            <button onClick={handleGenCodes} style={{ ...btn('linear-gradient(135deg,#00D9FF,#0099BB)', '#0a0a1a', 'transparent'), whiteSpace: 'nowrap' }}>
+            <button onClick={handleGenCodes} style={{ ...btn('linear-gradient(135deg,#ffd24a,#0099BB)', '#0a0a1a', 'transparent'), whiteSpace: 'nowrap' }}>
               Generate {genCount.toLocaleString()} Codes
             </button>
           </div>
@@ -915,7 +915,7 @@ export default function AdminDashboard({ onClose }) {
 
   const renderTournamentSim = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <h3 style={{ color: '#00D9FF', margin: 0 }}>Multi-Table Tournament Simulation</h3>
+      <h3 style={{ color: '#ffd24a', margin: 0 }}>Multi-Table Tournament Simulation</h3>
       <p style={{ color: '#888', fontSize: '0.85rem', margin: 0 }}>
         Launch a simulated tournament with AI bots. You'll be seated at one table and play against
         AI opponents. Tables combine automatically as players are eliminated.
@@ -938,7 +938,7 @@ export default function AdminDashboard({ onClose }) {
 
       <button onClick={startSim} style={{
         padding: '12px 24px', borderRadius: 8, fontWeight: 700, fontSize: '1rem',
-        background: 'linear-gradient(135deg, #00D9FF, #00D9FFbb)', color: '#0a0a1a',
+        background: 'linear-gradient(135deg, #ffd24a, #ffd24abb)', color: '#0a0a1a',
         border: 'none', cursor: 'pointer', width: 'fit-content',
       }}>
         Launch {simPlayerCount}-Player Tournament

@@ -12,11 +12,11 @@
 /* Panel shell */
 .gto-panel {
   background: rgba(5, 5, 10, 0.92);
-  border: 1px solid #00D9FF44;
+  border: 1px solid #ffd24a44;
   border-radius: 10px;
   box-shadow:
-    0 0 0 1px #00D9FF22,
-    0 4px 24px rgba(0, 217, 255, 0.12),
+    0 0 0 1px #ffd24a22,
+    0 4px 24px rgba(120, 160, 255, 0.12),
     0 8px 32px rgba(0, 0, 0, 0.7);
   min-width: 200px;
   max-width: 240px;
@@ -39,7 +39,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 10px 8px 12px;
-  border-bottom: 1px solid #00D9FF22;
+  border-bottom: 1px solid #ffd24a22;
 }
 
 .gto-training-label {
@@ -47,15 +47,15 @@
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #00D9FF;
+  color: #ffd24a;
   opacity: 0.75;
 }
 
 .gto-toggle-btn {
   background: transparent;
-  border: 1px solid #00D9FF55;
+  border: 1px solid #ffd24a55;
   border-radius: 5px;
-  color: #00D9FF;
+  color: #ffd24a;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -67,9 +67,9 @@
 
 .gto-toggle-btn:hover,
 .gto-toggle-btn--active {
-  background: rgba(0, 217, 255, 0.1);
-  border-color: #00D9FF;
-  box-shadow: 0 0 6px rgba(0, 217, 255, 0.3);
+  background: rgba(120, 160, 255, 0.1);
+  border-color: #ffd24a;
+  box-shadow: 0 0 6px rgba(120, 160, 255, 0.3);
 }
 
 /* Body */
@@ -85,7 +85,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #00D9FF;
+  color: #ffd24a;
   font-size: 0.78rem;
   font-style: italic;
   opacity: 0.8;
@@ -97,7 +97,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #00D9FF;
+  background: #ffd24a;
   animation: gto-pulse 1s ease-in-out infinite;
   flex-shrink: 0;
 }
@@ -146,7 +146,7 @@
 .gto-green  { color: #22C55E; text-shadow: 0 0 8px rgba(34, 197, 94, 0.4); }
 .gto-yellow { color: #F59E0B; text-shadow: 0 0 8px rgba(245, 158, 11, 0.4); }
 .gto-red    { color: #EF4444; text-shadow: 0 0 8px rgba(239, 68, 68, 0.35); }
-.gto-cyan   { color: #00D9FF; }
+.gto-cyan   { color: #ffd24a; }
 
 /* Action badge */
 .gto-action-row {
@@ -184,7 +184,7 @@
 .gto-outs-section {
   margin-top: 6px;
   padding-top: 8px;
-  border-top: 1px solid #00D9FF1a;
+  border-top: 1px solid #ffd24a1a;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -194,7 +194,7 @@
   font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: #00D9FF;
+  color: #ffd24a;
   opacity: 0.65;
   margin-bottom: 2px;
 }
@@ -210,9 +210,9 @@
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  background: rgba(0, 217, 255, 0.1);
-  border: 1px solid #00D9FF33;
-  color: #00D9FF;
+  background: rgba(120, 160, 255, 0.1);
+  border: 1px solid #ffd24a33;
+  color: #ffd24a;
   border-radius: 3px;
   padding: 1px 6px;
 }
@@ -224,7 +224,7 @@
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #00D9FF;
+  color: #ffd24a;
   opacity: 0.45;
   text-align: right;
 }

@@ -66,13 +66,13 @@ function StakeChart({ bankroll, tolerance }) {
           <g key={t.label}>
             <line
               x1={PAD_L} y1={y} x2={clamp(x, PAD_L, PAD_L + plotW)} y2={y}
-              stroke="rgba(0,255,255,0.35)"
+              stroke="rgba(120, 160, 255,0.35)"
               strokeWidth="1"
               strokeDasharray="4 3"
             />
             {/* Label on left */}
             <text x={PAD_L - 4} y={y + 4} textAnchor="end"
-              fill="rgba(0,255,255,0.7)" fontSize="9" fontFamily="monospace">
+              fill="rgba(120, 160, 255,0.7)" fontSize="9" fontFamily="monospace">
               {t.label}
             </text>
             {/* Chip value at right end of line */}

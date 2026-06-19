@@ -32,7 +32,7 @@ const DEFAULT_QUALIFIERS = [
     registered: 0,
     registrants: [],
     scheduledAt: '2026-04-26T12:00:00.000Z',
-    color: '#00D9FF',
+    color: '#ffd24a',
     active: true,
     promotionId: null,
     recurrence: null,

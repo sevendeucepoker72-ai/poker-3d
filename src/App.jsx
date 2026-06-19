@@ -162,8 +162,8 @@ function ChooseUsernameScreen() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#0a1628', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui' }}>
-      <div style={{ width: 360, padding: 32, background: '#111827', borderRadius: 16, border: '1px solid rgba(0,217,255,0.2)' }}>
-        <h2 style={{ color: '#00D9FF', margin: '0 0 8px', textAlign: 'center' }}>Choose Your Name</h2>
+      <div style={{ width: 360, padding: 32, background: '#111827', borderRadius: 16, border: '1px solid rgba(120, 160, 255,0.2)' }}>
+        <h2 style={{ color: '#ffd24a', margin: '0 0 8px', textAlign: 'center' }}>Choose Your Name</h2>
         <p style={{ color: '#888', fontSize: '0.85rem', textAlign: 'center', margin: '0 0 24px' }}>
           This is how other players will see you at the table.
         </p>
@@ -174,14 +174,14 @@ function ChooseUsernameScreen() {
           aria-label="Enter display name"
           style={{
             width: '100%', padding: '14px 16px', borderRadius: 10, fontSize: '1rem',
-            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(0,217,255,0.3)',
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(120, 160, 255,0.3)',
             color: '#fff', outline: 'none', boxSizing: 'border-box',
           }}
         />
         {error && <div style={{ color: '#F87171', fontSize: '0.8rem', marginTop: 8 }}>{error}</div>}
         <button onClick={handleSubmit} disabled={loading} style={{
           width: '100%', padding: '14px', marginTop: 16, borderRadius: 10,
-          background: 'linear-gradient(135deg, #00D9FF, #00D9FFbb)',
+          background: 'linear-gradient(135deg, #ffd24a, #ffd24abb)',
           color: '#0a0a1a', border: 'none', cursor: 'pointer',
           fontWeight: 700, fontSize: '1rem', opacity: loading ? 0.6 : 1,
         }}>
@@ -194,7 +194,7 @@ function ChooseUsernameScreen() {
 
 // Thin fallback shown while a lazy chunk loads
 function ChunkLoader() {
-  return <div style={{ position:'fixed', inset:0, background:'#000000', display:'flex', alignItems:'center', justifyContent:'center', color:'#aaaaaa', fontFamily:'system-ui', fontSize:'0.9rem' }}>Loading…</div>;
+  return <div style={{ position:'fixed', inset:0, background:'#050c20', display:'flex', alignItems:'center', justifyContent:'center', color:'#aaaaaa', fontFamily:'system-ui', fontSize:'0.9rem' }}>Loading…</div>;
 }
 
 function App() {
@@ -1493,22 +1493,22 @@ function App() {
             justifyContent: 'center',
           }}>
             <div style={{
-              background: 'linear-gradient(135deg, #0d0d0d, #111111)',
-              border: '2px solid #00D9FF',
+              background: 'linear-gradient(135deg, #081434, #0c1a44)',
+              border: '2px solid #ffd24a',
               borderRadius: '20px',
               padding: '40px 50px',
               textAlign: 'center',
               color: '#ffffff',
               animation: 'spin-overlay-in 0.3s ease-out',
             }}>
-              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#00D9FF', marginBottom: '12px' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ffd24a', marginBottom: '12px' }}>
                 Game Over
               </div>
               <div style={{ fontSize: '1.1rem', marginBottom: '8px' }}>
                 {quickGameResult.message}
               </div>
               {quickGameResult.multiplier && (
-                <div style={{ fontSize: '0.9rem', color: '#00D9FF' }}>
+                <div style={{ fontSize: '0.9rem', color: '#ffd24a' }}>
                   Multiplier: {quickGameResult.multiplier}x
                 </div>
               )}
@@ -1517,10 +1517,10 @@ function App() {
                 style={{
                   marginTop: '20px',
                   padding: '8px 24px',
-                  border: '1px solid #00D9FF',
+                  border: '1px solid #ffd24a',
                   borderRadius: '8px',
                   background: 'transparent',
-                  color: '#00D9FF',
+                  color: '#ffd24a',
                   fontSize: '0.9rem',
                   cursor: 'pointer',
                 }}

@@ -9,7 +9,7 @@
     #   https://poker-server-production-60c0.up.railway.app        — Railway socket backend (HTTPS upgrade)
     #   wss://poker-server-production-60c0.up.railway.app          — Socket.IO websocket transport
     #   https://poker-prod-api-azeg4kcklq-uc.a.run.app             — master poker-api (avatars, qualifiers)
-    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://auth.americanpubpoker.online https://poker-server-production-60c0.up.railway.app wss://poker-server-production-60c0.up.railway.app https://poker-prod-api-azeg4kcklq-uc.a.run.app; img-src 'self' data: https:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https://auth.americanpubpoker.online https://poker-server-production-60c0.up.railway.app wss://poker-server-production-60c0.up.railway.app https://poker-prod-api-azeg4kcklq-uc.a.run.app; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
 
     # Clickjacking — redundant with frame-ancestors 'none' but retained for older browsers.
     Header always set X-Frame-Options "DENY"

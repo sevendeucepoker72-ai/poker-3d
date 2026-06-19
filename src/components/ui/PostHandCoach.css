@@ -15,11 +15,11 @@
 .phc-panel {
   pointer-events: all;
   background: rgba(5, 5, 12, 0.97);
-  border: 1px solid #00D9FF44;
+  border: 1px solid #ffd24a44;
   border-radius: 14px 14px 12px 12px;
   box-shadow:
-    0 0 0 1px #00D9FF18,
-    0 -4px 40px rgba(0, 217, 255, 0.1),
+    0 0 0 1px #ffd24a18,
+    0 -4px 40px rgba(120, 160, 255, 0.1),
     0 8px 48px rgba(0, 0, 0, 0.8);
   width: min(480px, calc(100vw - 32px));
   max-height: 85vh;
@@ -47,7 +47,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px 12px;
-  border-bottom: 1px solid #00D9FF1a;
+  border-bottom: 1px solid #ffd24a1a;
   flex-shrink: 0;
 }
 
@@ -66,7 +66,7 @@
   font-size: 1rem;
   font-weight: 800;
   letter-spacing: 0.06em;
-  color: #00D9FF;
+  color: #ffd24a;
   text-transform: uppercase;
 }
 
@@ -93,11 +93,11 @@
   overflow-y: auto;
   padding: 16px;
   scrollbar-width: thin;
-  scrollbar-color: #00D9FF33 transparent;
+  scrollbar-color: #ffd24a33 transparent;
 }
 
 .phc-body::-webkit-scrollbar { width: 4px; }
-.phc-body::-webkit-scrollbar-thumb { background: #00D9FF33; border-radius: 2px; }
+.phc-body::-webkit-scrollbar-thumb { background: #ffd24a33; border-radius: 2px; }
 
 /* Loading state */
 .phc-loading {
@@ -111,8 +111,8 @@
 .phc-spinner {
   width: 36px;
   height: 36px;
-  border: 3px solid #00D9FF22;
-  border-top-color: #00D9FF;
+  border: 3px solid #ffd24a22;
+  border-top-color: #ffd24a;
   border-radius: 50%;
   animation: phc-spin 0.8s linear infinite;
 }
@@ -188,7 +188,7 @@
   line-height: 1.55;
   margin: 0 0 16px;
   padding-bottom: 14px;
-  border-bottom: 1px solid #00D9FF15;
+  border-bottom: 1px solid #ffd24a15;
 }
 
 /* Decisions section */
@@ -197,7 +197,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: #00D9FF;
+  color: #ffd24a;
   opacity: 0.6;
   margin-bottom: 8px;
 }
@@ -270,9 +270,9 @@
 /* Key lesson callout */
 .phc-key-lesson {
   margin-top: 16px;
-  background: linear-gradient(135deg, rgba(0, 217, 255, 0.06), rgba(0, 217, 255, 0.02));
-  border: 1px solid #00D9FF33;
-  border-left: 3px solid #00D9FF;
+  background: linear-gradient(135deg, rgba(120, 160, 255, 0.06), rgba(120, 160, 255, 0.02));
+  border: 1px solid #ffd24a33;
+  border-left: 3px solid #ffd24a;
   border-radius: 8px;
   padding: 12px 14px;
 }
@@ -282,7 +282,7 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: #00D9FF;
+  color: #ffd24a;
   margin-bottom: 6px;
   display: flex;
   align-items: center;
@@ -303,7 +303,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  border-top: 1px solid #00D9FF1a;
+  border-top: 1px solid #ffd24a1a;
   background: rgba(0, 0, 0, 0.3);
 }
 
@@ -314,10 +314,10 @@
 }
 
 .phc-dismiss-btn {
-  background: rgba(0, 217, 255, 0.08);
-  border: 1px solid #00D9FF44;
+  background: rgba(120, 160, 255, 0.08);
+  border: 1px solid #ffd24a44;
   border-radius: 6px;
-  color: #00D9FF;
+  color: #ffd24a;
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -327,7 +327,7 @@
 }
 
 .phc-dismiss-btn:hover {
-  background: rgba(0, 217, 255, 0.16);
-  border-color: #00D9FF;
-  box-shadow: 0 0 8px rgba(0, 217, 255, 0.25);
+  background: rgba(120, 160, 255, 0.16);
+  border-color: #ffd24a;
+  box-shadow: 0 0 8px rgba(120, 160, 255, 0.25);
 }

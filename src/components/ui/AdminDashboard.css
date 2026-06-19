@@ -10,8 +10,8 @@
 }
 
 .admin-panel {
-  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
-  border: 1px solid rgba(0, 217, 255, 0.15);
+  background: linear-gradient(135deg, #081434 0%, #0c1a44 100%);
+  border: 1px solid rgba(120, 160, 255, 0.15);
   border-radius: 16px;
   width: 94%;
   max-width: 680px;
@@ -76,7 +76,7 @@
 .admin-stat-value {
   font-size: 1.5rem;
   font-weight: 800;
-  color: #00D9FF;
+  color: #ffd24a;
   margin-bottom: 4px;
 }
 
@@ -90,10 +90,10 @@
 .admin-section-title {
   font-size: 1rem;
   font-weight: 600;
-  color: #00D9FF;
+  color: #ffd24a;
   margin-bottom: 12px;
   padding-bottom: 6px;
-  border-bottom: 1px solid rgba(0, 217, 255, 0.1);
+  border-bottom: 1px solid rgba(120, 160, 255, 0.1);
 }
 
 .admin-server-stats {
@@ -134,7 +134,7 @@
 }
 
 .admin-user-search:focus {
-  border-color: rgba(0, 217, 255, 0.3);
+  border-color: rgba(120, 160, 255, 0.3);
 }
 
 .admin-user-search::placeholder {
@@ -172,12 +172,12 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: rgba(0, 217, 255, 0.15);
+  background: rgba(120, 160, 255, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
   font-size: 0.85rem;
 }
 

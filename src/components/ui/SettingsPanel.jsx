@@ -55,7 +55,7 @@ const CARD_BACKS = [
   { key: 'classic-red', label: 'Classic Red', color: '#b91c1c' },
   { key: 'blue-diamond', label: 'Blue Diamond', color: '#1d4ed8' },
   { key: 'green-felt', label: 'Green Felt', color: '#15803d' },
-  { key: 'black-gold', label: 'Black Gold', color: '#1a1a1a' },
+  { key: 'black-gold', label: 'Black Gold', color: '#0c1a44' },
 ];
 
 const FELT_COLORS = [

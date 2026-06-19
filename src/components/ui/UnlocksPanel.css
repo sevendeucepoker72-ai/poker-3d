@@ -10,7 +10,7 @@
 }
 
 .unlocks-panel {
-  background: linear-gradient(135deg, #0d0d0d 0%, #111111 100%);
+  background: linear-gradient(135deg, #081434 0%, #0c1a44 100%);
   border: 1px solid #333;
   border-radius: 16px;
   padding: 28px 32px;
@@ -40,7 +40,7 @@
 .unlocks-title {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #00D9FF;
+  color: #ffd24a;
 }
 
 .unlocks-level-badge {
@@ -130,7 +130,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: rgba(0, 217, 255, 0.08);
+  background: rgba(120, 160, 255, 0.08);
   flex-shrink: 0;
 }
 
