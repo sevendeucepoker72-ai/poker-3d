@@ -295,6 +295,9 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
   // Blind schedule
   const [schedule, setSchedule] = useState(() => generateSchedule(15));
 
+  // Feedback when there's no launch backend wired (planning/export mode).
+  const [notice, setNotice] = useState(null);
+
   // Close on Escape
   useEffect(() => {
     const fn = e => { if (e.key === 'Escape') onClose?.(); };
@@ -325,8 +328,25 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
       lateReg,
       startingChips,
     };
-    onCreateTournament?.(config);
-    onClose?.();
+    // 2026-06-19 fix: previously this always called `onCreateTournament?.(config)`
+    // then closed — but the Lobby mounts this without that prop, so clicking
+    // "Create" silently discarded the entire wizard. There is no server endpoint
+    // to launch an ad-hoc custom tournament, so when no launch handler is wired
+    // this acts as a planning/export tool: copy the structure to the clipboard
+    // (genuinely useful for a TD running a home game) and confirm, instead of
+    // vanishing. If a launch handler is ever provided, it's used.
+    if (onCreateTournament) {
+      onCreateTournament(config);
+      onClose?.();
+      return;
+    }
+    try {
+      navigator.clipboard?.writeText(JSON.stringify(config, null, 2));
+      setNotice('✓ Tournament structure copied to clipboard');
+    } catch {
+      setNotice('Tournament structure ready (clipboard unavailable)');
+    }
+    setTimeout(() => setNotice(null), 4000);
   }, [
     name, buyIn, maxPlayers, isPKO, bountyAmount,
     rebuysAllowed, maxRebuys, rebuyCost, rebuyUpTo,
@@ -518,11 +538,12 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
           {/* ── ICM Calculator ── */}
           <ICMCalculator />
 
-          {/* ── Create button ── */}
+          {/* ── Create / export button ── */}
+          {notice && <div className="td-notice" style={{ textAlign: 'center', color: '#27e0a0', margin: '8px 0', fontWeight: 600 }}>{notice}</div>}
           <div className="td-footer">
             <button className="td-btn-cancel" onClick={onClose}>Cancel</button>
             <button className="td-btn-create" onClick={handleCreate}>
-              Create Tournament
+              {onCreateTournament ? 'Create Tournament' : 'Export Structure'}
             </button>
           </div>
 
