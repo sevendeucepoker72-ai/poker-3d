@@ -206,8 +206,11 @@ export default function PauseCoach({
       }
     }
 
-    // Run simulation in the equity web worker to avoid blocking the UI
-    calculateEquity([cards], communityCards, deckRemaining, 1000)
+    // Run simulation in the equity web worker to avoid blocking the UI.
+    // 2026-06-19: pass the Omaha flag so the worker uses the 2-of-4 + 3-board
+    // rule (cards = the hero's 4 Omaha hole cards) instead of any-5-of-9.
+    const isOmaha = /omaha/i.test(gameState?.variant || gameState?.variantName || '');
+    calculateEquity([cards], communityCards, deckRemaining, 1000, isOmaha)
       .then((result) => {
         if (cancelled) return;
         setEquity(result.playerEquities[0] ?? 50);

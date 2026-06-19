@@ -40,11 +40,14 @@ export function useEquityWorker() {
   }
 
   const calculateEquity = useCallback(
-    (playerHands, communityCards, deckRemaining, iterations = 1000) => {
+    // 2026-06-19: optional `omaha` flag (default false). When true the worker
+    // uses the exactly-2-hole + exactly-3-board rule; callers must pass the
+    // hero's 4 Omaha hole cards. Omitting it = the unchanged Hold'em path.
+    (playerHands, communityCards, deckRemaining, iterations = 1000, omaha = false) => {
       return new Promise((resolve, reject) => {
         const id = Math.random().toString(36).slice(2);
         pendingRef.current.set(id, { resolve, reject });
-        getWorker().postMessage({ id, playerHands, communityCards, deckRemaining, iterations });
+        getWorker().postMessage({ id, playerHands, communityCards, deckRemaining, iterations, omaha });
       });
     },
     []

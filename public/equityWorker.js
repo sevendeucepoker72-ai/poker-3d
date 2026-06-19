@@ -71,9 +71,19 @@ function combinations(arr, k) {
   return result;
 }
 
-function bestHand(holeCards, community) {
-  const all = [...holeCards, ...community];
-  const combos = combinations(all, 5);
+function bestHand(holeCards, community, omaha) {
+  // 2026-06-19: Omaha-aware. Omaha REQUIRES exactly 2 hole + exactly 3 board;
+  // the old any-5-of-all logic produced invalid (too strong) equity for Omaha.
+  // Gated behind the `omaha` flag so the Hold'em path is byte-for-byte unchanged.
+  let combos;
+  if (omaha && holeCards.length >= 2 && community.length >= 3) {
+    combos = [];
+    const holeCombos = combinations(holeCards, 2);
+    const boardCombos = combinations(community, 3);
+    for (const h of holeCombos) for (const b of boardCombos) combos.push([...h, ...b]);
+  } else {
+    combos = combinations([...holeCards, ...community], 5);
+  }
   let best = null;
   for (const combo of combos) {
     const ev = evalHand5(combo);
@@ -86,14 +96,14 @@ function bestHand(holeCards, community) {
 
 // ─── Monte Carlo simulation ───────────────────────────────────────────────────
 
-function simulateEquityLocal(playerHands, communityCards, deckRemaining, iterations) {
+function simulateEquityLocal(playerHands, communityCards, deckRemaining, iterations, omaha) {
   iterations = iterations || 1000;
   const numPlayers = playerHands.length;
   const wins = new Array(numPlayers).fill(0);
   const cardsNeeded = 5 - communityCards.length;
 
   if (cardsNeeded <= 0) {
-    const evals = playerHands.map(h => bestHand(h, communityCards));
+    const evals = playerHands.map(h => bestHand(h, communityCards, omaha));
     let bestVal = null;
     let bestIndices = [];
     for (let i = 0; i < numPlayers; i++) {
@@ -123,7 +133,7 @@ function simulateEquityLocal(playerHands, communityCards, deckRemaining, iterati
     const runout = deck.slice(0, cardsNeeded);
     const fullBoard = [...communityCards, ...runout];
 
-    const evals = playerHands.map(h => bestHand(h, fullBoard));
+    const evals = playerHands.map(h => bestHand(h, fullBoard, omaha));
     let bestVal = null;
     let bestIndices = [];
     for (let i = 0; i < numPlayers; i++) {
@@ -146,9 +156,9 @@ function simulateEquityLocal(playerHands, communityCards, deckRemaining, iterati
 // ─── Message handler ──────────────────────────────────────────────────────────
 
 self.onmessage = function (e) {
-  const { id, playerHands, communityCards, deckRemaining, iterations } = e.data;
+  const { id, playerHands, communityCards, deckRemaining, iterations, omaha } = e.data;
   try {
-    const result = simulateEquityLocal(playerHands, communityCards, deckRemaining, iterations);
+    const result = simulateEquityLocal(playerHands, communityCards, deckRemaining, iterations, omaha);
     self.postMessage({ id, result });
   } catch (err) {
     self.postMessage({ id, error: err.message });

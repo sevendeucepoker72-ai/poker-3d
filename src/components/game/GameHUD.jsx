@@ -4450,6 +4450,7 @@ export default function GameHUD() {
           callAmount={gameState?.callAmount || gameState?.toCall}
           numOpponents={(gameState?.seats || []).filter(s => s?.playerName && !s?.folded).length - 1}
           phase={phase}
+          omaha={/omaha/i.test(gameVariant)}
           visible={gtoVisible && isMyTurn}
         />
 

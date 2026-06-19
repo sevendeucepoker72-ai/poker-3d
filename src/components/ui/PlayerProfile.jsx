@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useProgressStore } from '../../store/progressStore';
+import { RANK_TIERS } from './RankBadge';
 import './PlayerProfile.css';
 
 // Generate a deterministic color from a username string
@@ -52,42 +53,19 @@ function SessionChart({ sessions }) {
   );
 }
 
-// Rank definitions
-const RANKS = [
-  { name: 'Bronze I',   threshold: 0    },
-  { name: 'Bronze II',  threshold: 100  },
-  { name: 'Bronze III', threshold: 200  },
-  { name: 'Silver I',   threshold: 400  },
-  { name: 'Silver II',  threshold: 600  },
-  { name: 'Silver III', threshold: 900  },
-  { name: 'Gold I',     threshold: 1200 },
-  { name: 'Gold II',    threshold: 1500 },
-  { name: 'Gold III',   threshold: 1800 },
-  { name: 'Platinum I', threshold: 2200 },
-  { name: 'Diamond',    threshold: 2800 },
-  { name: 'Master',     threshold: 3500 },
-];
-
-const RANK_ICONS = {
-  Bronze: '🥉', Silver: '🥈', Gold: '🥇', Platinum: '💎', Diamond: '💠', Master: '👑',
-};
-
+// 2026-06-19 fix: rank ladder unified onto RankBadge's RANK_TIERS (the single
+// source used by nameplates/leaderboard). Previously PlayerProfile had its OWN
+// 12-tier ladder with different thresholds, so the same ELO showed a different
+// rank here than on the badge elsewhere. RANK_TIERS is descending by `min` and
+// carries a per-tier `icon`.
 function getRankFromElo(elo = 0) {
-  let current = RANKS[0];
-  let next = RANKS[1];
-  for (let i = RANKS.length - 1; i >= 0; i--) {
-    if (elo >= RANKS[i].threshold) {
-      current = RANKS[i];
-      next = RANKS[i + 1] || null;
-      break;
-    }
-  }
-  const tierName = current.name.split(' ')[0];
-  const icon = RANK_ICONS[tierName] || '🎖';
+  const current = RANK_TIERS.find((t) => elo >= t.min) || RANK_TIERS[RANK_TIERS.length - 1];
+  const idx = RANK_TIERS.indexOf(current);
+  const next = idx > 0 ? RANK_TIERS[idx - 1] : null; // descending → lower index = higher tier
   const progress = next
-    ? Math.round(((elo - current.threshold) / (next.threshold - current.threshold)) * 100)
+    ? Math.round(((elo - current.min) / (next.min - current.min)) * 100)
     : 100;
-  return { current, next, icon, progress };
+  return { current, next, icon: current.icon, progress };
 }
 
 // Achievement definitions (subset shown in profile wall)

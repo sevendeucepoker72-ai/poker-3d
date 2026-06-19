@@ -35,6 +35,7 @@ export default function GTOOverlay({
   callAmount,
   numOpponents,
   phase,
+  omaha = false,
   visible,
 }) {
   const { calculateEquity } = useEquityWorker();
@@ -99,7 +100,7 @@ export default function GTOOverlay({
       const deckAfterDeal = d.slice(ptr);
 
       try {
-        const result = await calculateEquity(playerHands, communityCards, deckAfterDeal, iters);
+        const result = await calculateEquity(playerHands, communityCards, deckAfterDeal, iters, omaha);
 
         if (token.cancelled) return;
 
@@ -119,7 +120,7 @@ export default function GTOOverlay({
     return () => {
       token.cancelled = true;
     };
-  }, [holeCards, communityCards, numOpponents]);
+  }, [holeCards, communityCards, numOpponents, omaha]);
 
   if (!visible) return null;
 
