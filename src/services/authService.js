@@ -1,5 +1,7 @@
 // OAuth2 Authorization Code + PKCE flow for American Pub Poker SSO
 
+import { logAuthEvent } from './authEvents';
+
 const AUTH_SERVER = import.meta.env.VITE_AUTH_SERVER_URL || 'https://auth.americanpubpoker.online';
 const CLIENT_ID = 'poker-3d';
 const REDIRECT_URI = `${window.location.origin}/auth/callback`;
@@ -479,6 +481,8 @@ export async function refreshAccessToken(refreshToken) {
       // fetch rejected (network down, DNS, CORS, or AbortController timeout).
       // Classify as transient — the refresh_token is probably still valid,
       // so the caller should retry rather than force-logout.
+      // Observability only — best-effort, never blocks the throw.
+      try { logAuthEvent('refresh_failed', { reason: 'network', path: '/token' }); } catch {}
       throw new RefreshTokenTransientError(
         `Refresh network error: ${err?.message || err}`,
         { cause: err },
@@ -512,6 +516,8 @@ export async function refreshAccessToken(refreshToken) {
           JSON.stringify({ token: lockToken, completedAt: Date.now() })
         );
       } catch {}
+      // Observability only — best-effort, after tokens are persisted.
+      try { logAuthEvent('refresh_success', { path: '/token' }); } catch {}
       return data;
     }
 
@@ -529,6 +535,8 @@ export async function refreshAccessToken(refreshToken) {
     // work again. 400/401 without an explicit error are treated the same
     // because that's what the auth server returns for revoked sessions.
     if (oauthError === 'invalid_grant' || response.status === 400 || response.status === 401) {
+      // Observability only — best-effort, never blocks the throw.
+      try { logAuthEvent('refresh_failed', { status: response.status, path: '/token' }); } catch {}
       throw new RefreshTokenRevokedError(
         `Refresh token revoked (${response.status}${oauthError ? `: ${oauthError}` : ''})`,
         { status: response.status, oauthError, body: errBody },
@@ -536,6 +544,8 @@ export async function refreshAccessToken(refreshToken) {
     }
 
     // 5xx / 429 / anything else — transient. Caller should retry.
+    // Observability only — best-effort, never blocks the throw.
+    try { logAuthEvent('refresh_failed', { status: response.status, path: '/token' }); } catch {}
     throw new RefreshTokenTransientError(
       `Refresh failed (${response.status}${oauthError ? `: ${oauthError}` : ''})`,
       { status: response.status, oauthError, body: errBody },
@@ -636,6 +646,9 @@ export function startLogout(idToken, refreshToken) {
   if (idToken) {
     params.set('id_token_hint', idToken);
   }
+  // Observability only — best-effort, fired before the session/end redirect
+  // navigates away (keepalive POST survives the navigation). Never blocks.
+  try { logAuthEvent('logout', { path: '/session/end' }); } catch {}
   window.location.href = `${AUTH_SERVER}/session/end?${params}`;
 }
 
