@@ -723,6 +723,14 @@ function App() {
       // The server disconnects this socket right after; just surface why.
       useProgressStore.getState().addNotification({ type: 'mission', message: data?.reason || 'You were removed by an administrator.' });
     });
+    // Batch 5c: staking payout — a player you backed cashed in a tournament.
+    socket.on('stakingPayout', (data) => {
+      useProgressStore.getState().addNotification({
+        type: 'mission',
+        message: `Staking payout${data?.sellerName ? ` from ${data.sellerName}` : ''}!`,
+        reward: { chips: data?.amount || 0, xp: 0, stars: 0 },
+      });
+    });
 
     // Hand history from server — kept in memory only (server is source of
     // truth; it broadcasts durableState on reconnect so we rehydrate). No

@@ -3053,7 +3053,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {showExportData && <ExportData onClose={() => setShowExportData(false)} />}
         {showHandQuiz && <HandQuiz onClose={() => setShowHandQuiz(false)} />}
         {showAdvancedAnalytics && <AdvancedAnalytics progress={progress} handHistories={handHistories || []} onClose={() => setShowAdvancedAnalytics(false)} />}
-        {showStakingMarketplace && <StakingMarketplace onClose={() => setShowStakingMarketplace(false)} />}
+        {showStakingMarketplace && <StakingMarketplace playerName={playerName} chips={progress?.chips ?? chipCount ?? 0} onClose={() => setShowStakingMarketplace(false)} />}
         {showTournamentBracket && <TournamentBracket onClose={() => setShowTournamentBracket(false)} />}
         {showTournamentDirector && <TournamentDirector onClose={() => setShowTournamentDirector(false)} />}
         {showHandHistoryImporter && <HandHistoryImporter onClose={() => setShowHandHistoryImporter(false)} />}
