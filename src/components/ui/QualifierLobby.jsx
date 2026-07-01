@@ -225,13 +225,13 @@ export default function QualifierLobby({ onSpectate }) {
                   )}
                 </div>
                 <div style={{ color: '#aaa', fontSize: '0.78rem', marginTop: 2 }}>
-                  {new Date(q.scheduledAt).toUTCString().replace(' GMT', ' UTC')}
+                  {new Date(tData?.scheduledAt || q.scheduledAt).toUTCString().replace(' GMT', ' UTC')}
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 {!isRunning && !isFinished && (
                   <>
-                    <div style={{ color, fontWeight: 700, fontSize: '0.85rem' }}>{formatCountdown(q.scheduledAt)}</div>
+                    <div style={{ color, fontWeight: 700, fontSize: '0.85rem' }}>{formatCountdown(tData?.scheduledAt || q.scheduledAt)}</div>
                     <div style={{ color: '#666', fontSize: '0.7rem' }}>until start</div>
                   </>
                 )}
