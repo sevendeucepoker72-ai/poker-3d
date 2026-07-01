@@ -708,6 +708,22 @@ function App() {
       // Progress update will come via playerProgress event
     });
 
+    // Batch 5 (2026-07-01): admin broadcast / maintenance / kick / table-close.
+    // These make the AdminDashboard actions visible to players.
+    socket.on('serverAnnouncement', (data) => {
+      if (data?.message) useProgressStore.getState().addNotification({ type: 'mission', message: String(data.message).slice(0, 280) });
+    });
+    socket.on('maintenanceMode', (data) => {
+      if (data?.enabled) useProgressStore.getState().addNotification({ type: 'mission', message: 'Server maintenance in progress — play may be briefly interrupted.' });
+    });
+    socket.on('tableClosedByAdmin', () => {
+      useProgressStore.getState().addNotification({ type: 'mission', message: 'This table was closed by an administrator.' });
+    });
+    socket.on('kickedByAdmin', (data) => {
+      // The server disconnects this socket right after; just surface why.
+      useProgressStore.getState().addNotification({ type: 'mission', message: data?.reason || 'You were removed by an administrator.' });
+    });
+
     // Hand history from server — kept in memory only (server is source of
     // truth; it broadcasts durableState on reconnect so we rehydrate). No
     // sessionStorage mirror per the "no sessionStorage" policy.

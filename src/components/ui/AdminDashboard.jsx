@@ -196,6 +196,7 @@ export default function AdminDashboard({ onClose }) {
   const [broadcastSent, setBroadcastSent] = useState(false);
   const broadcastCooldownRef = useRef(0);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [actionMsg, setActionMsg] = useState(null); // { ok, text } admin-action feedback
 
   useEffect(() => {
     const socket = getSocket();
@@ -207,7 +208,30 @@ export default function AdminDashboard({ onClose }) {
     };
     socket.on('adminStats', handleStats);
     socket.emit('getAdminStats');
-    return () => { socket.off('adminStats', handleStats); };
+
+    // Batch 5 (2026-07-01): the admin actions now have real server handlers.
+    // Reconcile the (optimistic) UI with server truth on each result, and
+    // surface real failures instead of always showing success.
+    const RESULT_EVENTS = [
+      'adminAdjustChipsResult', 'adminKickResult', 'adminIPBanResult',
+      'adminToggleAdminResult', 'adminBroadcastResult', 'adminMaintenanceResult',
+      'adminForceCloseTableResult',
+    ];
+    const onResult = (res) => {
+      if (res && res.success === false) {
+        setActionMsg({ ok: false, text: res.error || 'Action failed' });
+      } else {
+        setActionMsg({ ok: true, text: 'Done' });
+      }
+      // Pull authoritative state back so any optimistic update is corrected.
+      socket.emit('getAdminStats');
+      setTimeout(() => setActionMsg(null), 3000);
+    };
+    RESULT_EVENTS.forEach((e) => socket.on(e, onResult));
+    return () => {
+      socket.off('adminStats', handleStats);
+      RESULT_EVENTS.forEach((e) => socket.off(e, onResult));
+    };
   }, []);
 
   const handleBan = (id) => { getSocket()?.emit('banUser', { userId: id }); setUsers((p) => p.map((u) => u.id === id ? { ...u, banned: true } : u)); };
@@ -977,6 +1001,15 @@ export default function AdminDashboard({ onClose }) {
         <div className="admin-title">Admin Dashboard</div>
         <button className="admin-close" onClick={onClose}>Close</button>
       </div>
+
+      {actionMsg && (
+        <div style={{
+          margin: '0 0 12px', padding: '8px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600,
+          background: actionMsg.ok ? 'rgba(80,200,120,0.15)' : 'rgba(220,80,80,0.15)',
+          border: `1px solid ${actionMsg.ok ? 'rgba(80,200,120,0.4)' : 'rgba(220,80,80,0.4)'}`,
+          color: actionMsg.ok ? '#7CE0A0' : '#F08A8A',
+        }}>{actionMsg.text}</div>
+      )}
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px', color: '#8888AA' }}>Loading...</div>
