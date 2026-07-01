@@ -78,6 +78,50 @@ export function setAuthToken(token, remember) {
   if (remember !== undefined) setKeepSignedIn(keep);
 }
 
+// ── OAuth token persistence (poker_oauth_access / _refresh / _id_token /
+// poker_token_expiry) ──────────────────────────────────────────────────────
+// These must obey the SAME "Keep me signed in" flag as the primary auth token.
+// F1 (2026-07-01 audit): the token-refresh scheduler wrote them unconditionally
+// to localStorage, so a session-only login (keep-signed-in OFF) had its refresh
+// token persisted to localStorage on the first proactive refresh → it survived
+// tab close → the next user on a shared/kiosk/venue terminal auto-logged-in as
+// the previous user. Route to sessionStorage when session-only, and sweep the
+// other store so no persistent copy ever lingers.
+const OAUTH_KEYS = [
+  'poker_oauth_access',
+  'poker_oauth_refresh',
+  'poker_oauth_id_token',
+  'poker_token_expiry',
+];
+
+/** Write one OAuth token to the store the keep-signed-in flag dictates,
+ *  sweeping the other store to prevent a persistent leak. */
+export function setOAuthItem(key, value) {
+  const win = typeof window !== 'undefined' ? window : null;
+  if (!win || value == null) return;
+  const keep = isKeepSignedIn();
+  safeSet(keep ? win.localStorage : win.sessionStorage, key, String(value));
+  safeRemove(keep ? win.sessionStorage : win.localStorage, key);
+}
+
+/** Read an OAuth token from whichever store currently holds it. */
+export function getOAuthItem(key) {
+  const win = typeof window !== 'undefined' ? window : null;
+  if (!win) return null;
+  return safeGet(win.localStorage, key) || safeGet(win.sessionStorage, key) || null;
+}
+
+/** Clear every OAuth token from BOTH stores — used on logout (also fixes F2:
+ *  poker_oauth_access previously survived logout). */
+export function clearOAuthTokens() {
+  const win = typeof window !== 'undefined' ? window : null;
+  if (!win) return;
+  for (const k of OAUTH_KEYS) {
+    safeRemove(win.localStorage, k);
+    safeRemove(win.sessionStorage, k);
+  }
+}
+
 /** Clear the auth token from both stores — used on explicit logout. */
 export function clearAuthToken() {
   safeRemove(typeof window !== 'undefined' ? window.localStorage   : null, TOKEN_KEY);

@@ -865,7 +865,9 @@ function App() {
       // Clear BOTH stores for each key so localStorage-backed "Keep me
       // signed in" sessions are also purged on auto-login failure.
       clearAuthToken();
-      for (const k of ['poker_keep_signed_in','poker_oauth_refresh','poker_oauth_id_token','poker_token_expiry']) {
+      // F2 (2026-07-01 audit): include poker_oauth_access — it was omitted, so
+      // a live access token survived logout in localStorage.
+      for (const k of ['poker_keep_signed_in','poker_oauth_access','poker_oauth_refresh','poker_oauth_id_token','poker_token_expiry']) {
         try { localStorage.removeItem(k); } catch {}
         try { sessionStorage.removeItem(k); } catch {}
       }

@@ -50,6 +50,7 @@ sessionLifecycle.start()
 // sits on a stale token. Cooperates with sessionLifecycle (which calls
 // refreshNow on tab resume).
 import * as authScheduler from './services/authScheduler.js'
+import { setAuthToken, setOAuthItem } from './services/tokenStorage.js'
 authScheduler.start()
 
 // 2026-05-05 Phase 3 — cross-tab logout sync. When ANY same-origin .online
@@ -178,11 +179,14 @@ async function bootstrapBridgeOrMount() {
       if (response.ok) {
         const tokens = await response.json()
         try {
-          // poker-3d's localStorage convention (matches what AuthCallback writes)
-          if (tokens.access_token) localStorage.setItem('poker_auth_token', tokens.access_token)
-          if (tokens.id_token) localStorage.setItem('poker_oauth_id_token', tokens.id_token)
-          if (tokens.refresh_token) localStorage.setItem('poker_oauth_refresh', tokens.refresh_token)
+          // F1: persist via the keep-signed-in-aware helpers so a bridge-SSO
+          // arrival for a user who turned "keep me signed in" OFF doesn't leave
+          // tokens in localStorage on a shared device.
+          if (tokens.access_token) setAuthToken(tokens.access_token)
+          if (tokens.id_token) setOAuthItem('poker_oauth_id_token', tokens.id_token)
+          if (tokens.refresh_token) setOAuthItem('poker_oauth_refresh', tokens.refresh_token)
           if (tokens.expires_in) {
+            // expiry stays in localStorage (short-lived cross-tab coordination).
             localStorage.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000))
           }
           // Seed gameStore zustand state so the LoginScreen doesn't render.
@@ -219,7 +223,9 @@ async function bootstrapBridgeOrMount() {
   try {
     const hasLocalToken = !!localStorage.getItem('poker_auth_token')
       || !!localStorage.getItem('poker_oauth_id_token')
-      || !!sessionStorage.getItem('poker_auth_token');
+      || !!sessionStorage.getItem('poker_auth_token')
+      // keep-signed-in-OFF sessions store the id_token in sessionStorage (F1).
+      || !!sessionStorage.getItem('poker_oauth_id_token');
     const triedSilent = sessionStorage.getItem('oauth_silent_attempted') === '1';
     const path = window.location.pathname || '/';
     const isAuthCallback = path.startsWith('/auth/callback');

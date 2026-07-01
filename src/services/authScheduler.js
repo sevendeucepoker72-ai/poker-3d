@@ -16,6 +16,7 @@
 
 import { refreshAccessToken, RefreshTokenRevokedError } from './authService';
 import { useGameStore } from '../store/gameStore';
+import { setOAuthItem, getOAuthItem } from './tokenStorage';
 
 const REFRESH_LEAD_MS = 5 * 60 * 1000;
 const MIN_DELAY_MS = 1000;
@@ -33,7 +34,7 @@ function _readExpiresAt() {
     if (typeof fromStore === 'number' && fromStore > 0) return fromStore;
   } catch {}
   try {
-    const raw = localStorage.getItem('poker_token_expiry');
+    const raw = getOAuthItem('poker_token_expiry');
     if (raw) return parseInt(raw, 10) || 0;
   } catch {}
   return 0;
@@ -44,7 +45,7 @@ function _readRefreshToken() {
     if (fromStore) return fromStore;
   } catch {}
   try {
-    return localStorage.getItem('poker_oauth_refresh') || null;
+    return getOAuthItem('poker_oauth_refresh') || null;
   } catch { return null; }
 }
 
@@ -75,12 +76,14 @@ async function _doRefresh() {
         oauthTokenExpiry: expiresAt,
         authToken: tokens.access_token,
       });
+      // F1: refresh + id_token honor keep-signed-in (setOAuthItem); expiry is a
+      // short-lived cross-tab-coordination value and stays in localStorage.
       try { localStorage.setItem('poker_token_expiry', String(expiresAt)); } catch {}
       try {
-        if (tokens.refresh_token) localStorage.setItem('poker_oauth_refresh', tokens.refresh_token);
+        if (tokens.refresh_token) setOAuthItem('poker_oauth_refresh', tokens.refresh_token);
       } catch {}
       try {
-        if (tokens.id_token) localStorage.setItem('poker_oauth_id_token', tokens.id_token);
+        if (tokens.id_token) setOAuthItem('poker_oauth_id_token', tokens.id_token);
       } catch {}
     } catch {}
     _scheduleNext();

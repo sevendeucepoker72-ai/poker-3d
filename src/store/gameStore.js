@@ -176,7 +176,7 @@ export const useGameStore = create((set, get) => ({
     // Auth tokens — explicit logout wipes BOTH stores (localStorage +
     // sessionStorage) so "Keep me signed in" state from a prior tab
     // can't resurrect the session on the next page load.
-    for (const k of ['poker_auth_token','poker_keep_signed_in','poker_oauth_refresh','poker_oauth_id_token','poker_token_expiry']) {
+    for (const k of ['poker_auth_token','poker_keep_signed_in','poker_oauth_access','poker_oauth_refresh','poker_oauth_id_token','poker_token_expiry']) {
       try { localStorage.removeItem(k); } catch {}
       try { sessionStorage.removeItem(k); } catch {}
     }

@@ -1,6 +1,7 @@
 // OAuth2 Authorization Code + PKCE flow for American Pub Poker SSO
 
 import { logAuthEvent } from './authEvents';
+import { setOAuthItem, getOAuthItem } from './tokenStorage';
 
 const AUTH_SERVER = import.meta.env.VITE_AUTH_SERVER_URL || 'https://auth.americanpubpoker.online';
 const CLIENT_ID = 'poker-3d';
@@ -428,8 +429,8 @@ export async function refreshAccessToken(refreshToken) {
     const completed = await waitForRefreshCompletion();
     if (completed) {
       try {
-        const fresh = localStorage.getItem('poker_oauth_access');
-        const expRaw = localStorage.getItem('poker_token_expiry');
+        const fresh = getOAuthItem('poker_oauth_access');
+        const expRaw = getOAuthItem('poker_token_expiry');
         if (fresh) {
           const expiresIn = expRaw
             ? Math.max(0, Math.floor((parseInt(expRaw, 10) - Date.now()) / 1000))
@@ -494,9 +495,16 @@ export async function refreshAccessToken(refreshToken) {
       // Persist the new tokens to localStorage so any tab that was waiting
       // on our cross-tab lock (waitForRefreshCompletion) can read them.
       try {
+        // F1 (2026-07-01 audit): the PERSISTENT credential/identity tokens
+        // (refresh + id_token) honor the keep-signed-in flag via setOAuthItem —
+        // a session-only login must NOT leave its refresh token (the auto-login
+        // credential) in localStorage for the next user on a shared device. The
+        // two SHORT-LIVED cross-tab-coordination values (access token + expiry)
+        // stay in localStorage always: the cross-tab refresh waiter in another
+        // tab reads them, and sessionStorage is per-tab so session-scoping them
+        // would force-log-out a second tab on a rotated refresh token. They're
+        // ~1h-lived and cleared on logout.
         if (data.access_token) {
-          // Mirror to a stable key the waiter polls. Keep also writing
-          // poker_token_expiry so the existing scheduler keeps working.
           localStorage.setItem('poker_oauth_access', data.access_token);
         }
         if (data.expires_in) {
@@ -504,10 +512,10 @@ export async function refreshAccessToken(refreshToken) {
           localStorage.setItem('poker_token_expiry', String(expiresAt));
         }
         if (data.refresh_token) {
-          localStorage.setItem('poker_oauth_refresh', data.refresh_token);
+          setOAuthItem('poker_oauth_refresh', data.refresh_token);
         }
         if (data.id_token) {
-          localStorage.setItem('poker_oauth_id_token', data.id_token);
+          setOAuthItem('poker_oauth_id_token', data.id_token);
         }
         // Order matters: drop the lock AFTER tokens land, then stamp completion.
         localStorage.removeItem(REFRESH_LOCK_KEY);
