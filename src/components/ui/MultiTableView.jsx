@@ -59,6 +59,23 @@ function PlayerStrip({ players = [], currentTurn }) {
   );
 }
 
+// #10 (2026-07-01 audit): the MultiTableView Raise button emitted a raise with
+// NO amount, which the server rejects ("Invalid raise amount") — so raising was
+// impossible from the entire multi-table UI. Compute a valid "raise TO" total
+// (a min-raise, capped at the hero's all-in) from the table's game state so the
+// Raise button actually works. Multi-tablers use the primary GameHUD's full
+// slider for sized raises; here a one-tap min-raise is the sensible default.
+function computeMinRaiseTo(gs) {
+  if (!gs) return 0;
+  const mySeatIdx = gs.mySeatIndex ?? gs.yourSeat ?? -1;
+  const hero = (gs.seats || []).find((s) => s.seatIndex === mySeatIdx);
+  const myChips = hero?.chipCount ?? hero?.chips ?? 0;
+  const myBet = hero?.currentBet ?? 0;
+  const maxTo = myChips + myBet; // true all-in "raise to" (see GameHUD #11)
+  const minTo = gs.minRaise ?? ((gs.currentBetToMatch ?? 0) + (gs.bigBlind || 20));
+  return Math.max(1, Math.min(minTo, maxTo));
+}
+
 // ─── Mini table panel ─────────────────────────────────────────────────────────
 function MiniTablePanel({ tableData, isActive, onAction, onLeave }) {
   if (!tableData) {
@@ -286,16 +303,20 @@ export default function MultiTableView({ onClose }) {
 
   const makeActionHandler = useCallback((idx) => {
     if (idx === 0) {
-      return { fold: () => sendAction('fold'), call: () => sendAction('call'), raise: () => sendAction('raise') };
+      return {
+        fold: () => sendAction('fold'),
+        call: () => sendAction('call'),
+        raise: () => sendAction('raise', computeMinRaiseTo(gameState)), // #10: send a valid amount
+      };
     }
     const slot = secondary[idx - 1];
     if (!slot) return {};
     return {
       fold: () => sendMultiTableAction(slot.id, 'fold'),
       call: () => sendMultiTableAction(slot.id, 'call'),
-      raise: () => sendMultiTableAction(slot.id, 'raise'),
+      raise: () => sendMultiTableAction(slot.id, 'raise', computeMinRaiseTo(slot.gameState)), // #10
     };
-  }, [sendAction, secondary]);
+  }, [sendAction, secondary, gameState]);
 
   // Keyboard shortcuts (act on the active slot)
   useEffect(() => {

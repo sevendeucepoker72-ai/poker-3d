@@ -711,7 +711,12 @@ export default function GameHUD() {
   // value (e.g. no previous bet this street) instead of silently falling back
   // to currentBetToMatch + BB, which would over-require a raise.
   const minRaiseTotal = gameState?.minRaise ?? (currentBetToMatch + (gameState?.bigBlind || 20));
-  const maxRaise = myChips;
+  // #11 (2026-07-01 audit): the raise arg is a "raise TO" total, and the server
+  // only converts to all-in when (total − myCurrentBet) >= chipCount. myChips
+  // (chipCount) already excludes chips committed this street, so a max of
+  // myChips could never reach a true all-in when myCurrentBet > 0 (it left
+  // myCurrentBet behind). The real max raise-to total is chipCount + currentBet.
+  const maxRaise = myChips + myCurrentBet;
 
   // Variant info
   const variantName = gameState?.variantName || "Texas Hold'em";
