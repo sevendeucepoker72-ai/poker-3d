@@ -3068,7 +3068,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       {showSpinWheel && <SpinWheel onClose={() => setShowSpinWheel(false)} />}
       {showScratchCards && <ScratchCards onClose={() => setShowScratchCards(false)} />}
       {showMultiTable && <MultiTableView onClose={() => setShowMultiTable(false)} />}
-      {showPlayerProfile && <PlayerProfile username={nameInput || 'Player'} socket={null} onClose={() => setShowPlayerProfile(false)} onViewReplay={() => {}} />}
+      {showPlayerProfile && <PlayerProfile username={nameInput || 'Player'} socket={getSocket()} onClose={() => setShowPlayerProfile(false)} onViewReplay={() => {}} />}
     </div>
   );
 }

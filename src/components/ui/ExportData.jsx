@@ -1,4 +1,6 @@
 import { createPortal } from 'react-dom';
+import { useTableStore } from '../../store/tableStore';
+import { useProgressStore } from '../../store/progressStore';
 
 function downloadCSV(filename, csvContent) {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -14,28 +16,14 @@ function downloadCSV(filename, csvContent) {
 }
 
 function exportHandHistory() {
-  const historyRaw = sessionStorage.getItem('poker_hand_history');
+  // Batch 5d: read the REAL hand history from the table store (hydrated from the
+  // server's durableState), not the never-written sessionStorage key that made
+  // this export always empty.
   let history = [];
-  try {
-    history = JSON.parse(historyRaw || '[]');
-  } catch { /* ignore */ }
+  try { history = useTableStore.getState().handHistories || []; } catch { /* ignore */ }
 
-  if (history.length === 0) {
-    // Try alternative key formats
-    const keys = Object.keys(sessionStorage).filter((k) => k.includes('hand') || k.includes('history'));
-    for (const key of keys) {
-      try {
-        const data = JSON.parse(sessionStorage.getItem(key) || '[]');
-        if (Array.isArray(data) && data.length > 0) {
-          history = data;
-          break;
-        }
-      } catch { /* ignore */ }
-    }
-  }
-
-  if (history.length === 0) {
-    alert('No hand history data found.');
+  if (!Array.isArray(history) || history.length === 0) {
+    alert('No hand history yet — play some hands first.');
     return;
   }
 
@@ -59,31 +47,43 @@ function exportHandHistory() {
 }
 
 function exportSessionStats() {
-  // Gather from sessionStorage
-  const bankrollHistory = JSON.parse(sessionStorage.getItem('poker_bankroll_history') || '[]');
-  const playerStats = JSON.parse(sessionStorage.getItem('poker_player_stats') || '{}');
+  // Batch 5d: build from the REAL progress store (server-authoritative), not the
+  // never-written sessionStorage keys.
+  let p = {};
+  try { p = useProgressStore.getState().progress || {}; } catch { /* ignore */ }
+  const totalHands = p.totalHandsPlayed ?? p.totalHands ?? 0;
+  const handsWon = p.handsWon ?? p.wins ?? 0;
+  const playerStats = {
+    Level: p.level ?? 1,
+    Chips: p.chips ?? 0,
+    Stars: p.stars ?? 0,
+    XP: p.xp ?? 0,
+    'Total Hands': totalHands,
+    'Hands Won': handsWon,
+    'Win Rate %': totalHands > 0 ? ((handsWon / totalHands) * 100).toFixed(1) : '0.0',
+    'Biggest Pot': p.biggestPot ?? 0,
+    'Best Streak': p.bestStreak ?? 0,
+    ELO: p.elo ?? 500,
+    'Daily Login Streak': p.dailyLoginStreak ?? p.loginStreak ?? 0,
+  };
+  // Bankroll history from the progress chipHistory (server-hydrated) if present.
+  const bankrollHistory = Array.isArray(p.chipHistory) ? p.chipHistory : [];
 
   const lines = [];
-
-  // Session summary
   lines.push(['Session Stats Export']);
   lines.push(['Generated', new Date().toLocaleString()]);
   lines.push([]);
-
-  // Player stats
   lines.push(['Stat', 'Value']);
   for (const [key, value] of Object.entries(playerStats)) {
     lines.push([key, String(value)]);
   }
   lines.push([]);
-
-  // Bankroll history
   lines.push(['Bankroll History']);
   lines.push(['Timestamp', 'Chips']);
   for (const point of bankrollHistory) {
     lines.push([
-      new Date(point.timestamp).toLocaleString(),
-      String(point.chips),
+      point.timestamp ? new Date(point.timestamp).toLocaleString() : (point.t ? new Date(point.t).toLocaleString() : ''),
+      String(point.chips ?? point.c ?? point.balance ?? ''),
     ]);
   }
 
