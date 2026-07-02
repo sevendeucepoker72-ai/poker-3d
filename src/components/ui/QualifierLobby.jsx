@@ -28,6 +28,35 @@ export default function QualifierLobby({ onSpectate }) {
   const [tournamentData, setTournamentData] = useState({}); // qualifierId -> {registeredCount, players, status, tournamentId}
   const [myRegistrations, setMyRegistrations] = useState(new Set());
   const [openDashboard, setOpenDashboard] = useState(null); // qualifier id or null
+  const [redeemCode, setRedeemCode] = useState('');        // Batch 5b: entry-code redemption
+  const [redeemMsg, setRedeemMsg] = useState(null);        // { ok, text }
+  const [redeeming, setRedeeming] = useState(false);
+
+  // Batch 5b: listen for the entry-code redemption result.
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const onResult = (res) => {
+      setRedeeming(false);
+      if (res?.success) {
+        setRedeemMsg({ ok: true, text: `Code redeemed — ${res.tier || 'weekly'} qualifier credit added!` });
+        setRedeemCode('');
+        socket.emit('getQualifications'); // refresh qualification status
+      } else {
+        setRedeemMsg({ ok: false, text: res?.error || 'Could not redeem code' });
+      }
+      setTimeout(() => setRedeemMsg(null), 4000);
+    };
+    socket.on('redeemEntryCodeResult', onResult);
+    return () => socket.off('redeemEntryCodeResult', onResult);
+  }, []);
+
+  const handleRedeem = () => {
+    const code = redeemCode.trim().toUpperCase();
+    if (!code || redeeming) return;
+    setRedeeming(true);
+    getSocket()?.emit('redeemEntryCode', { code });
+  };
 
   // Fetch qualification status + tournament registrations
   useEffect(() => {
@@ -179,6 +208,38 @@ export default function QualifierLobby({ onSpectate }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Batch 5b: redeem a promo entry code for a qualifier credit. */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(10,10,20,0.9), rgba(30,20,60,0.6))',
+        border: '1px solid rgba(255,210,74,0.25)', borderRadius: 12, padding: '12px 14px',
+      }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            value={redeemCode}
+            onChange={(e) => setRedeemCode(e.target.value.toUpperCase())}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleRedeem(); }}
+            placeholder="Enter entry code"
+            maxLength={8}
+            style={{
+              flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 8, fontSize: '0.85rem',
+              letterSpacing: '0.12em', textTransform: 'uppercase', background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.14)', color: '#fff', outline: 'none',
+            }}
+          />
+          <button onClick={handleRedeem} disabled={redeeming || !redeemCode.trim()} style={{
+            padding: '8px 16px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 700, whiteSpace: 'nowrap',
+            border: 'none', cursor: redeeming || !redeemCode.trim() ? 'default' : 'pointer',
+            background: redeeming || !redeemCode.trim() ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg,#ffd24a,#0099BB)',
+            color: redeeming || !redeemCode.trim() ? '#888' : '#0a0a1a',
+          }}>{redeeming ? 'Redeeming…' : 'Redeem'}</button>
+        </div>
+        {redeemMsg && (
+          <div style={{ marginTop: 8, fontSize: '0.78rem', fontWeight: 600, color: redeemMsg.ok ? '#7CE0A0' : '#F08A8A' }}>
+            {redeemMsg.text}
+          </div>
+        )}
+      </div>
+
       {qualifiers.map((q) => {
         const color = q.color || '#ffd24a';
         const tier = q.type?.toLowerCase();

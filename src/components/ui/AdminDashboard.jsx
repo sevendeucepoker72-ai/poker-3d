@@ -150,10 +150,16 @@ export default function AdminDashboard({ onClose }) {
   const handleGenCodes = () => {
     const promo = promos.find((p) => p.id === genPromoId);
     const expiresAt = promo?.endDate ? new Date(promo.endDate + 'T23:59:59Z').toISOString() : null;
-    codeActions.generate({
-      count:         genCount,
-      qualifierType: genQualType,
-      promotionId:   genPromoId || null,
+    // Batch 5b: generate REAL server-persisted, redeemable codes. The server
+    // returns the actual code strings via adminCodesGenerated (below). We do
+    // NOT mirror into codeStore anymore — those were locally-random strings that
+    // did not match the redeemable server codes, so admins distributed dead
+    // codes. qualifierType maps to the server's 'weekly'|'monthly' (or null).
+    getSocket()?.emit('adminGenerateCodes', {
+      count: genCount,
+      qualifierType: (genQualType || '').toLowerCase() === 'monthly' ? 'monthly'
+        : (genQualType || '').toLowerCase() === 'weekly' ? 'weekly' : null,
+      promotionName: promo?.name || null,
       expiresAt,
     });
   };
@@ -197,6 +203,7 @@ export default function AdminDashboard({ onClose }) {
   const broadcastCooldownRef = useRef(0);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [actionMsg, setActionMsg] = useState(null); // { ok, text } admin-action feedback
+  const [serverCodes, setServerCodes] = useState([]); // Batch 5b: real server-backed entry codes
 
   useEffect(() => {
     const socket = getSocket();
@@ -228,9 +235,35 @@ export default function AdminDashboard({ onClose }) {
       setTimeout(() => setActionMsg(null), 3000);
     };
     RESULT_EVENTS.forEach((e) => socket.on(e, onResult));
+
+    // Batch 5b: real entry codes. Normalize server field names to the client
+    // shape the codes UI already uses.
+    const normalizeCode = (c) => ({
+      code: c.code, qualifierType: c.qualifier_type, promotionId: c.promotion_name,
+      usedBy: c.redeemed_by, usedAt: c.redeemed_at, expiresAt: c.expires_at,
+    });
+    const onCodesList = (data) => setServerCodes((data?.codes || []).map(normalizeCode));
+    const onCodesGenerated = (data) => {
+      if (data?.success) {
+        setActionMsg({ ok: true, text: `Generated ${data.codes?.length || 0} code(s)` });
+        socket.emit('adminGetCodes'); // refresh the list with the real codes
+      } else {
+        setActionMsg({ ok: false, text: data?.error || 'Code generation failed' });
+      }
+      setTimeout(() => setActionMsg(null), 3000);
+    };
+    const onCodeRevoked = () => socket.emit('adminGetCodes');
+    socket.on('adminCodesList', onCodesList);
+    socket.on('adminCodesGenerated', onCodesGenerated);
+    socket.on('adminCodeRevoked', onCodeRevoked);
+    socket.emit('adminGetCodes');
+
     return () => {
       socket.off('adminStats', handleStats);
       RESULT_EVENTS.forEach((e) => socket.off(e, onResult));
+      socket.off('adminCodesList', onCodesList);
+      socket.off('adminCodesGenerated', onCodesGenerated);
+      socket.off('adminCodeRevoked', onCodeRevoked);
     };
   }, []);
 
@@ -730,6 +763,8 @@ export default function AdminDashboard({ onClose }) {
   // TAB: CODES & PROMOS
   // ════════════════════════════════════════════════════════
   const renderCodes = () => {
+    // Batch 5b: use the REAL server-backed codes for the whole codes view.
+    const allCodes = serverCodes;
     const displayCodes = codeFilter === 'all'
       ? allCodes
       : codeFilter === 'unused'
@@ -908,7 +943,7 @@ export default function AdminDashboard({ onClose }) {
                         style={{ background: 'none', border: 'none', color: copiedCode === c.code ? '#4ADE80' : '#666', cursor: 'pointer', fontSize: '0.65rem', padding: 0 }}>
                         {copiedCode === c.code ? '✓' : '📋'}
                       </button>
-                      <button onClick={() => codeActions.revoke(c.code)}
+                      <button onClick={() => getSocket()?.emit('adminRevokeCode', { code: c.code })}
                         style={{ background: 'none', border: 'none', color: '#F87171', cursor: 'pointer', fontSize: '0.7rem', padding: 0 }}>×</button>
                     </>
                   )}
@@ -989,7 +1024,7 @@ export default function AdminDashboard({ onClose }) {
   const tabs = [
     { key: 'overview',   label: 'Overview' },
     { key: 'qualifiers', label: `Qualifiers (${qualifiers.length})` },
-    { key: 'codes',      label: `Codes & Promos (${allCodes.length})` },
+    { key: 'codes',      label: `Codes & Promos (${serverCodes.length})` },
     { key: 'tables',     label: `Tables (${activeTables.length})` },
     { key: 'users',      label: `Users (${users.length})` },
     { key: 'tournament', label: 'Tournament Sim' },
