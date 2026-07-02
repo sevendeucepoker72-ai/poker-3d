@@ -1179,7 +1179,11 @@ function App() {
     const stopCrossTab = startAuthCrossTabListener(() => {
       try {
         const s = useGameStore.getState();
-        if (typeof s.logout === 'function' && s.isLoggedIn) s.logout();
+        // 2026-07-02 Finding #4 — peer-tab logout: clear LOCAL state only. The
+        // tab that initiated the logout already redirected to /session/end and
+        // performed the global logout, so this peer must NOT redirect too
+        // (skipRedirect), else every open tab bounces through /session/end.
+        if (typeof s.logout === 'function' && s.isLoggedIn) s.logout({ skipRedirect: true });
       } catch (err) {
         console.error('[App] cross-tab logout handler threw:', err);
       }
@@ -1217,7 +1221,11 @@ function App() {
       try {
         console.warn('[App] OAuth refresh failed, logging out:', reason);
         const s = useGameStore.getState();
-        if (typeof s.logout === 'function') s.logout();
+        // 2026-07-02 Finding #4 — foreground refresh-revoked teardown: clear
+        // LOCAL state only, matching the background scheduler path. Don't
+        // redirect to /session/end on a token expiry (the UI surfaces re-login);
+        // skipRedirect avoids an abrupt full-page bounce on a background failure.
+        if (typeof s.logout === 'function') s.logout({ skipRedirect: true });
       } catch (err) {
         console.error('[App] forceLogout threw:', err);
       }

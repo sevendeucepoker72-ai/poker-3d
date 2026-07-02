@@ -100,10 +100,11 @@ async function _doRefresh() {
       try {
         const store = useGameStore.getState();
         if (typeof store.logout === 'function') {
-          // Use logout but skip the redirect side-effect by clearing
-          // oauthIdToken first.
-          useGameStore.setState({ oauthIdToken: null });
-          store.logout();
+          // 2026-07-02 Finding #4 — use the explicit { skipRedirect: true }
+          // option instead of the old fragile null-the-idToken side-channel
+          // (which broke once logout() started redirecting even with a null
+          // idToken to fix global logout for legacy/ticket sessions).
+          store.logout({ skipRedirect: true });
         }
       } catch {}
       return;

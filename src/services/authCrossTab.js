@@ -18,6 +18,14 @@
  */
 
 const TOKEN_KEYS = ['poker_auth_token', 'poker_oauth_refresh'];
+// 2026-07-02 OAuth audit (Finding #6) — explicit cross-tab logout marker. The
+// TOKEN_KEYS storage-event path only fires for LOCALSTORAGE clears; a
+// keep-signed-in-OFF (session-only) logout removes sessionStorage keys, which
+// emit NO cross-tab `storage` event. On browsers without BroadcastChannel
+// (Safari <15.4) the peer tab would then keep a stale authed UI until its own
+// next 401. gameStore.logout() now ALWAYS writes a fresh timestamp to this
+// localStorage key (no token material), guaranteeing a storage event fires.
+const LOGOUT_MARKER_KEY = 'poker_logout_broadcast';
 
 /**
  * Subscribe to cross-tab auth-token clears.
@@ -35,10 +43,26 @@ export function startAuthCrossTabListener(onRemoteLogout) {
   }
 
   const handler = (event) => {
+    if (!event) return;
+
+    // 2026-07-02 Finding #6 — explicit logout marker. Any new timestamp means
+    // "the other tab logged out"; this fires even for session-only logins whose
+    // token keys live in sessionStorage (which emit no cross-tab storage event).
+    if (event.key === LOGOUT_MARKER_KEY) {
+      if (event.newValue) {
+        try {
+          onRemoteLogout();
+        } catch (err) {
+          console.error('[authCrossTab] onRemoteLogout threw:', err);
+        }
+      }
+      return;
+    }
+
     // Ignore events from other storage areas or keys we don't care about.
     // `event.storageArea` is localStorage for localStorage writes; some
     // browsers omit it, so don't bail purely on that check.
-    if (!event || !TOKEN_KEYS.includes(event.key)) return;
+    if (!TOKEN_KEYS.includes(event.key)) return;
 
     // A remote logout nulls the key (removeItem → newValue === null) or
     // overwrites it with an empty string. Either pattern means "the other

@@ -160,7 +160,14 @@ export const useGameStore = create((set, get) => ({
     } catch {}
   },
 
-  logout: () => {
+  logout: (opts) => {
+    // 2026-07-02 OAuth audit (Finding #4) — `opts.skipRedirect` is passed by the
+    // silent teardown paths (background scheduler refresh-revoke, cross-tab peer
+    // logout, foreground refresh-fail) that must clear LOCAL state WITHOUT
+    // redirecting to /session/end. User-initiated Sign Out passes nothing → it
+    // always redirects → GLOBAL logout. A React onClick passes a click Event
+    // object here (it has no `.skipRedirect`), so the button still redirects.
+    const skipRedirect = !!(opts && opts.skipRedirect === true);
     const idToken = get().oauthIdToken;
     const previousUserId = get().userId;
     // 2026-05-05 Phase 3 — broadcast logout to other same-origin tabs
@@ -180,6 +187,11 @@ export const useGameStore = create((set, get) => ({
       try { localStorage.removeItem(k); } catch {}
       try { sessionStorage.removeItem(k); } catch {}
     }
+    // 2026-07-02 OAuth audit (Finding #6) — always emit a cross-tab logout
+    // marker via localStorage, even for session-only logins (whose token keys
+    // live in sessionStorage and fire no cross-tab `storage` event). Peer tabs
+    // on browsers without BroadcastChannel rely on this. No token material.
+    try { localStorage.setItem('poker_logout_broadcast', String(Date.now())); } catch {}
     // Identity / player profile — previously leaked across account switches
     // (next user would temporarily see the previous user's username, avatar,
     // and cached stats until the server response overwrote them).
@@ -221,9 +233,17 @@ export const useGameStore = create((set, get) => ({
       vipLevel: null,
       vipExpiration: null,
     });
-    // SSO logout: redirect to auth server to clear session cookie
-    if (idToken) {
-      import('../services/authService').then(({ startLogout }) => startLogout(idToken));
+    // SSO logout: redirect to /session/end to clear the SSO cookie AND perform
+    // GLOBAL logout (destroy all grants + stamp force_logout_at). 2026-07-02
+    // Finding #4 — this now fires even when oauthIdToken is null (legacy JWT,
+    // deep-link ticket / waitlist login, or an oauthLogin response lacking
+    // id_token): /session/end resolves the account from the SSO cookie, so
+    // global logout works with id_token_hint only as an optimization
+    // (authService.js:654 guards it). PRE-FIX the `if (idToken)` gate left the
+    // user's other devices/sites logged in for those sessions. Suppressed only
+    // for the silent teardown paths via skipRedirect.
+    if (!skipRedirect) {
+      import('../services/authService').then(({ startLogout }) => startLogout(idToken || undefined));
     }
   },
 
