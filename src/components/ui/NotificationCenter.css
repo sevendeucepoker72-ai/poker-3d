@@ -62,7 +62,7 @@
   top: 0;
   left: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh; /* 2026-07-05 mobile audit: dvh so the notification layer matches the visible viewport on mobile */
   z-index: 1000;
   pointer-events: none;
 }

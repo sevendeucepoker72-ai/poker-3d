@@ -1047,6 +1047,72 @@ input, textarea {
 }
 
 /* ================================================================
+   2026-07-05 mobile audit (phase 3) — floating in-game HUD panels.
+   VoiceChat / PredictionMarket / GTO solver + overlay are fixed to the screen
+   bottom corners at bottom:12-24px, which on a phone sits ON TOP of the action
+   bar (.hud-bottom, ~90px tall at bottom:0), covering fold/call/raise. Lift each
+   above the action bar (hole cards float at bottom:100px, so ~116px clears the bar
+   and sits beside — not over — the centered cards), add safe-area, and narrow them
+   for phone widths. Media-gated so desktop corner positions are unchanged.
+   ================================================================ */
+@media (max-width: 768px) {
+  .voice-chat-panel {
+    bottom: calc(116px + env(safe-area-inset-bottom, 0px)) !important;
+    right: 8px !important;
+    width: min(168px, 44vw) !important;
+  }
+  .pm-collapsed,
+  .pm-panel {
+    bottom: calc(116px + env(safe-area-inset-bottom, 0px)) !important;
+    right: 8px !important;
+    width: min(200px, 52vw) !important;
+    max-width: min(200px, 52vw) !important;
+  }
+  .gto-panel {
+    bottom: calc(116px + env(safe-area-inset-bottom, 0px)) !important;
+    top: auto !important;
+    left: 8px !important;
+    width: min(178px, 46vw) !important;
+  }
+  .gto-overlay-root {
+    bottom: calc(116px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 8px !important;
+    max-width: min(210px, 52vw) !important;
+  }
+}
+
+/* ================================================================
+   2026-07-05 mobile audit (phase 3) — tap targets under the 44px minimum.
+   These components set explicit small button/swatch sizes (32px etc.) that the
+   global mobile.css `button { min-height:44px }` rule couldn't override; bump the
+   confirmed offenders. Media-gated to phones. (MultiTableView's Fold/Call/Raise at
+   32px was the worst — mis-taps while multi-tabling under a clock.)
+   ================================================================ */
+@media (max-width: 768px) {
+  .mtv-btn { min-height: 44px !important; height: 44px !important; font-size: 13px !important; }
+  .option-btn { min-height: 44px !important; }
+  .color-swatch { width: 40px !important; height: 40px !important; }
+  .admin-close, .admin-ban-btn { min-height: 44px !important; }
+  .aa-close-btn, .bai-close, .pc-close-btn { min-width: 44px !important; min-height: 44px !important; }
+  .pm-btn { min-height: 44px !important; }
+}
+
+/* ================================================================
+   2026-07-05 mobile audit (phase 3) — horizontal-overflow fixes.
+   ================================================================ */
+@media (max-width: 768px) {
+  /* AdvancedAnalytics tab row: let the tabs scroll instead of clipping. */
+  .aa-tabs { overflow-x: auto !important; scrollbar-width: none !important; }
+  .aa-tabs::-webkit-scrollbar { display: none !important; }
+  /* HandHistoryImporter: stack the desktop 3-column body (sidebar | table | drawer)
+     into a single column, and let the wide hand table scroll horizontally. */
+  .hhi-body { flex-direction: column !important; overflow-y: auto !important; }
+  .hhi-sidebar { width: 100% !important; border-right: none !important; }
+  .hhi-drawer { width: 100% !important; }
+  .hhi-table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+}
+
+/* ================================================================
    2026-07-05 mobile audit — modals with NO full-screen / bottom-sheet coverage.
    On a phone they kept a desktop-centered box (often wider than the screen and/or
    taller than the viewport with content cut off and no scroll). Give them the

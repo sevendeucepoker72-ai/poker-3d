@@ -2148,7 +2148,7 @@ export default function ClubsPanel({ onClose }) {
             <div style={{ marginBottom: '12px' }}>
               <label style={{ display: 'block', color: '#9ca3af', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Levels</label>
               {blindStructureLevels.map((lvl, i) => (
-                <div key={i} style={{ display: 'flex', gap: '4px', alignItems: 'center', marginBottom: '4px' }}>
+                <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center', marginBottom: '4px' }}>
                   <span style={{ color: '#6b6b8a', fontSize: '0.7rem', minWidth: '18px' }}>{i + 1}.</span>
                   <input type="number" inputMode="numeric" className="clubs-input" style={{ width: '60px', padding: '4px 6px', fontSize: '0.75rem' }} value={lvl.smallBlind} onChange={(e) => handleUpdateBlindLevel(i, 'smallBlind', e.target.value)} placeholder="SB" min={1} />
                   <input type="number" inputMode="numeric" className="clubs-input" style={{ width: '60px', padding: '4px 6px', fontSize: '0.75rem' }} value={lvl.bigBlind} onChange={(e) => handleUpdateBlindLevel(i, 'bigBlind', e.target.value)} placeholder="BB" min={2} />

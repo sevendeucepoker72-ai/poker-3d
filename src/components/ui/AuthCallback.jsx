@@ -268,7 +268,7 @@ export default function AuthCallback() {
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'center',
-      height: '100vh',
+      height: '100dvh', /* 2026-07-05 mobile audit: dvh so the callback screen isn't clipped by mobile browser chrome */
       background: 'linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 50%, #0d0d2b 100%)',
       color: '#e0e0e0',
       fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',

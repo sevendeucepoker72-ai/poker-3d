@@ -176,7 +176,7 @@ function ChooseUsernameScreen() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#0a1628', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui' }}>
-      <div style={{ width: 360, padding: 32, background: '#111827', borderRadius: 16, border: '1px solid rgba(120, 160, 255,0.2)' }}>
+      <div style={{ width: 'min(360px, calc(100vw - 32px))', padding: 32, background: '#111827', borderRadius: 16, border: '1px solid rgba(120, 160, 255,0.2)' }}>
         <h2 style={{ color: '#ffd24a', margin: '0 0 8px', textAlign: 'center' }}>Choose Your Name</h2>
         <p style={{ color: '#888', fontSize: '0.85rem', textAlign: 'center', margin: '0 0 24px' }}>
           This is how other players will see you at the table.
