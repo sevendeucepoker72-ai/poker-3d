@@ -79,7 +79,13 @@ export const useTableStore = create((set, get) => ({
   // pending-action slot is single — if the user taps twice during a
   // disconnect the latest intent wins, same as if they had been connected.
   sendAction: (type, amount) => {
-    const result = emitPlayerAction(type, amount);
+    // Echo the decision-point version we're acting on (2026-07-05). The store's
+    // gameState is the merged authoritative snapshot from the server (delta
+    // merges preserve stateVersion across idle ticks), so this is exactly the
+    // version the user is looking at. The server rejects the action if the table
+    // has since advanced past it and re-pushes fresh state. undefined pre-rollout.
+    const stateVersion = get().gameState?.stateVersion;
+    const result = emitPlayerAction(type, amount, stateVersion);
     if (!result.sent && !result.queued) {
       console.warn('[sendAction] Action dropped');
     } else if (result.queued) {

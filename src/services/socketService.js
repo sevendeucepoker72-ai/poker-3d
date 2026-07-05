@@ -22,7 +22,7 @@ let socket = null;
 // successful-but-unack'd action is a no-op. Stale actions expire after
 // QUEUE_TTL_MS so a 30s disconnect doesn't replay a fold from two hands ago.
 const QUEUE_TTL_MS = 10_000;
-let _pendingAction = null; // { type, amount, nonce, queuedAt }
+let _pendingAction = null; // { type, amount, nonce, stateVersion, queuedAt }
 
 function makeNonce() {
   // Prefer crypto.randomUUID — globally unique, CSPRNG-backed. The server
@@ -48,7 +48,11 @@ function flushPendingAction() {
   }
   const p = _pendingAction;
   _pendingAction = null;
-  socket.emit('action', { type: p.type, amount: p.amount, nonce: p.nonce });
+  // Echo the stateVersion captured at click time (2026-07-05). If the table
+  // moved on during the disconnect, the server rejects this as stale and pushes
+  // fresh state — exactly the behaviour we want for a queued action that may no
+  // longer be valid. If nothing changed, the version still matches and it lands.
+  socket.emit('action', { type: p.type, amount: p.amount, nonce: p.nonce, stateVersion: p.stateVersion });
 }
 
 /**
@@ -56,11 +60,17 @@ function flushPendingAction() {
  * If the socket is connected, emit immediately. If not, stash as the single
  * pending action (overwriting any prior queued one — only the user's latest
  * intent is valid) and flush on the next 'connect' event.
+ *
+ * `stateVersion` (2026-07-05) is the server's monotonic decision-point version
+ * the user acted on, echoed back so the server can reject a stale click (the
+ * table advanced underneath us — timeout-fold, new hand). It's read from the
+ * store's current gameState by the caller; undefined is fine (server treats a
+ * missing version as "don't check", so older builds keep working).
  */
-export const emitPlayerAction = (type, amount) => {
-  const payload = { type, amount, nonce: makeNonce(), queuedAt: Date.now() };
+export const emitPlayerAction = (type, amount, stateVersion) => {
+  const payload = { type, amount, nonce: makeNonce(), stateVersion, queuedAt: Date.now() };
   if (socket?.connected) {
-    socket.emit('action', { type, amount, nonce: payload.nonce });
+    socket.emit('action', { type, amount, nonce: payload.nonce, stateVersion });
     return { sent: true, nonce: payload.nonce };
   }
   _pendingAction = payload;

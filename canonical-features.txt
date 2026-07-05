@@ -130,3 +130,14 @@ poker-avatar-cache-v2
 # socket event so a Lobby refactor can't silently drop the refill path.
 Get 5,000 free chips
 claimRefill
+
+# ─── 2026-07-05 — stale-action guard (decision-point version echo) ──
+# The client echoes the server's monotonic stateVersion in every action
+# (socketService.emitPlayerAction / tableStore.sendAction) so the server
+# can reject a click made against a decision point that already moved on
+# (async timeout-fold / new hand). GameHUD suppresses the toast for the
+# STALE_STATE code since the server re-pushes fresh state in the same
+# breath. A build that drops this plumbing loses the client half of the
+# anti-stall guard silently — lock both string literals.
+stateVersion
+STALE_STATE

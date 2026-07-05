@@ -1960,6 +1960,13 @@ export default function GameHUD() {
     // reason (previously action errors only hit console.error in App.jsx).
     const actionErrorHandler = (data) => {
       hasSentActionRef.current = false;
+      // 2026-07-05 stale-action guard: the server rejects a click made against a
+      // decision point that already moved on (STALE_STATE) and pushes fresh
+      // state in the same breath, so the UI re-syncs on its own. Clear the ref so
+      // the player can act on the new state, but suppress the toast — nothing
+      // went wrong from their side, the table just advanced. Real errors (not
+      // your turn, invalid amount, insufficient chips) still surface.
+      if (data?.code === 'STALE_STATE') return;
       if (data?.message) {
         try { addToast(data.message, 'warn', 3000); } catch {}
       }
