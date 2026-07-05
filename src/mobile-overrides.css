@@ -1095,6 +1095,17 @@ input, textarea {
   .admin-close, .admin-ban-btn { min-height: 44px !important; }
   .aa-close-btn, .bai-close, .pc-close-btn { min-width: 44px !important; min-height: 44px !important; }
   .pm-btn { min-height: 44px !important; }
+  /* phase 4 additions */
+  .clubs-close-btn { min-width: 44px !important; min-height: 44px !important; display: flex !important; align-items: center !important; justify-content: center !important; }
+  .club-badge-option { min-height: 40px !important; }
+  .settings-felt-swatch { width: 44px !important; height: 44px !important; }
+  .td-close-btn, .td-remove-btn { min-width: 44px !important; min-height: 44px !important; }
+  .sp-pill { min-height: 40px !important; }
+  .replay-btn { min-height: 44px !important; }
+  /* Replay timeline dots (8px) — keep them small visually but give each a ~32px
+     invisible tap area via ::before so they're actually tappable on a phone. */
+  .replay-timeline-dot { width: 14px !important; height: 14px !important; position: relative; }
+  .replay-timeline-dot::before { content: ''; position: absolute; inset: -9px; }
 }
 
 /* ================================================================
@@ -1110,6 +1121,37 @@ input, textarea {
   .hhi-sidebar { width: 100% !important; border-right: none !important; }
   .hhi-drawer { width: 100% !important; }
   .hhi-table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+  /* phase 4 additions */
+  .tournament-card { flex-wrap: wrap !important; }       /* card content row can wrap instead of overflowing */
+  .spin-wheel-panel { padding-left: 14px !important; padding-right: 14px !important; } /* so the 280px wheel fits a 320px phone */
+  /* MultiTableView: the desktop 2-pane (180px sidebar | grid) starved the mini-table
+     grid on a phone. Stack the sidebar on top as a capped, scrollable strip. */
+  .mtv-main { flex-direction: column !important; }
+  .mtv-sidebar {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-height: 30vh !important;
+    overflow-y: auto !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+  }
+}
+
+/* ================================================================
+   2026-07-05 mobile audit (phase 4) — in-game toast + first-visit gesture hint.
+   Toasts had white-space:nowrap + no max-width (long messages ran off both screen
+   edges); the touch-controls hint panel had no height cap (overflowed short landscape).
+   ================================================================ */
+@media (max-width: 768px) {
+  .toast-item {
+    max-width: calc(100vw - 24px) !important;
+    white-space: normal !important;
+    text-align: center !important;
+  }
+  .gesture-hint-panel {
+    max-height: 85dvh !important;
+    overflow-y: auto !important;
+  }
 }
 
 /* ================================================================

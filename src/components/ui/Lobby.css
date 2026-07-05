@@ -2525,7 +2525,9 @@
 /* ═══════════════════════════════ */
 .achievement-toast {
   position: fixed;
-  bottom: 80px;
+  /* 2026-07-05 mobile audit: +safe-area so the toast clears the bottom nav +
+     iOS home indicator (desktop unaffected — inset is 0). */
+  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
