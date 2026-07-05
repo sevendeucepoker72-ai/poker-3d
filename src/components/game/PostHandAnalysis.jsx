@@ -83,6 +83,10 @@ export default function PostHandAnalysis({ gameState, yourSeat, handHistory, onD
   const myPlayer = yourSeat >= 0 && seats[yourSeat] ? seats[yourSeat] : null;
   const pot = gameState?.pot || 0;
   const currentBetToMatch = gameState?.currentBetToMatch || 0;
+  // 2026-07-05 audit P2 fix: thread the variant so Omaha's must-use-exactly-2 rule
+  // is applied (matches GameHUD). Without it these evals fell back to Hold'em any-5,
+  // showing illegal hands / wrong strengths for Omaha in the post-hand breakdown.
+  const gameVariant = gameState?.variant || gameState?.variantName || 'texas-holdem';
   const myCurrentBet = myPlayer?.currentBet || 0;
   const callAmount = Math.max(0, currentBetToMatch - myCurrentBet);
   const potOdds = callAmount > 0 ? pot / callAmount : 0;
@@ -131,19 +135,19 @@ export default function PostHandAnalysis({ gameState, yourSeat, handHistory, onD
     });
 
     if (communityCards.length >= 3) {
-      const flopEval = evaluateHandStrength(yourCards, communityCards.slice(0, 3));
+      const flopEval = evaluateHandStrength(yourCards, communityCards.slice(0, 3), { variant: gameVariant });
       const flopOptimal = getOptimalAction(flopEval.strength, potOdds, callAmount);
       const flopActual = classifyAction(actionsPerStreet.Flop?.[actionsPerStreet.Flop.length - 1]);
       result.push({ street: 'Flop', hand: flopEval.name, strength: flopEval.strength, optimal: flopOptimal, actual: flopActual, quality: actionQuality(flopActual, flopOptimal) });
     }
     if (communityCards.length >= 4) {
-      const turnEval = evaluateHandStrength(yourCards, communityCards.slice(0, 4));
+      const turnEval = evaluateHandStrength(yourCards, communityCards.slice(0, 4), { variant: gameVariant });
       const turnOptimal = getOptimalAction(turnEval.strength, potOdds, callAmount);
       const turnActual = classifyAction(actionsPerStreet.Turn?.[actionsPerStreet.Turn.length - 1]);
       result.push({ street: 'Turn', hand: turnEval.name, strength: turnEval.strength, optimal: turnOptimal, actual: turnActual, quality: actionQuality(turnActual, turnOptimal) });
     }
     if (communityCards.length >= 5) {
-      const riverEval = evaluateHandStrength(yourCards, communityCards);
+      const riverEval = evaluateHandStrength(yourCards, communityCards, { variant: gameVariant });
       const riverOptimal = getOptimalAction(riverEval.strength, potOdds, callAmount);
       const riverActual = classifyAction(actionsPerStreet.River?.[actionsPerStreet.River.length - 1]);
       result.push({ street: 'River', hand: riverEval.name, strength: riverEval.strength, optimal: riverOptimal, actual: riverActual, quality: actionQuality(riverActual, riverOptimal) });

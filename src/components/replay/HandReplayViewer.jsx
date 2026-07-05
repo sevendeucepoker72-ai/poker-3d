@@ -473,7 +473,9 @@ export default function HandReplayViewer({ history, onClose }) {
                 )}
                 {/* Hand equity at current street */}
                 {p.revealed && p.holeCards && step.communityCards.length >= 3 && !p.folded && (() => {
-                  const hs = evaluateHandStrength(p.holeCards, step.communityCards);
+                  // 2026-07-05 audit P2 fix: pass the replayed hand's variant so an
+                  // Omaha replay uses the must-use-exactly-2 rule, not Hold'em any-5.
+                  const hs = evaluateHandStrength(p.holeCards, step.communityCards, { variant: history.variant });
                   if (!hs) return null;
                   const pct = Math.round(hs.strength * 100);
                   const color = pct >= 60 ? '#4ADE80' : pct >= 30 ? '#FBBF24' : '#EF4444';

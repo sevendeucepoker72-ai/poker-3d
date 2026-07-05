@@ -560,11 +560,15 @@ export const useProgressStore = create((set, get) => ({
     // Starting hand type stats (e.g. 'AKs', 'QQ')
     if (holeCards && holeCards.length >= 2) {
       const RANK_LABELS = {2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',10:'T',11:'J',12:'Q',13:'K',14:'A'};
-      const r1 = RANK_LABELS[holeCards[0]?.rank] || '?';
-      const r2 = RANK_LABELS[holeCards[1]?.rank] || '?';
+      // 2026-07-05 audit P3 fix: order by NUMERIC rank, not by the label string.
+      // The old `r1 > r2` compared labels lexically by char code ('A'=65 < 'K'=75 <
+      // 'T'=84...), so AK was keyed 'KAo', KQ 'QKo', etc. — splitting/mislabeling the
+      // starting-hand analytics vs. the canonical high-card-first key the UI expects.
+      const n1 = holeCards[0]?.rank || 0;
+      const n2 = holeCards[1]?.rank || 0;
+      const hi = RANK_LABELS[Math.max(n1, n2)] || '?';
+      const lo = RANK_LABELS[Math.min(n1, n2)] || '?';
       const suited = holeCards[0]?.suit === holeCards[1]?.suit;
-      const hi = r1 > r2 ? r1 : r2;
-      const lo = r1 > r2 ? r2 : r1;
       const handKey = hi === lo ? `${hi}${lo}` : `${hi}${lo}${suited ? 's' : 'o'}`;
       const hts = { ...(prev.handTypeStats || {}) };
       if (!hts[handKey]) hts[handKey] = { played: 0, won: 0 };

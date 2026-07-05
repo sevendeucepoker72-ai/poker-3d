@@ -5,14 +5,19 @@ import { getSocket } from '../../services/socketService';
 import { useProgressStore } from '../../store/progressStore';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 
+// 2026-07-05 audit P3 fix: mirror the server's authoritative reward table EXACTLY
+// (poker-server/src/index.ts claimDailyLogin: CHIPS_BY_DAY=[_,1000,2000,3000,5000,
+// 7500,10000,20000], STARS_BY_DAY=[_,0,0,0,5,10,20,50], indexed by day). The old
+// values (500/750/1000/1500/2000/3000/5000) were purely cosmetic and understated
+// what the server actually grants, so the promised amount never matched the payout.
 const DAILY_REWARDS = [
-  { day: 1, chips: 500, stars: 0, label: '500 chips' },
-  { day: 2, chips: 750, stars: 0, label: '750 chips' },
-  { day: 3, chips: 1000, stars: 0, label: '1,000 chips' },
-  { day: 4, chips: 1500, stars: 5, label: '1,500 chips + 5 stars' },
-  { day: 5, chips: 2000, stars: 10, label: '2,000 chips + 10 stars' },
-  { day: 6, chips: 3000, stars: 20, label: '3,000 chips + 20 stars' },
-  { day: 7, chips: 5000, stars: 50, label: '5,000 chips + 50 stars + Mystery Box' },
+  { day: 1, chips: 1000, stars: 0, label: '1,000 chips' },
+  { day: 2, chips: 2000, stars: 0, label: '2,000 chips' },
+  { day: 3, chips: 3000, stars: 0, label: '3,000 chips' },
+  { day: 4, chips: 5000, stars: 5, label: '5,000 chips + 5 stars' },
+  { day: 5, chips: 7500, stars: 10, label: '7,500 chips + 10 stars' },
+  { day: 6, chips: 10000, stars: 20, label: '10,000 chips + 20 stars' },
+  { day: 7, chips: 20000, stars: 50, label: '20,000 chips + 50 stars' },
 ];
 
 const LS_KEY = 'app_poker_login_rewards';

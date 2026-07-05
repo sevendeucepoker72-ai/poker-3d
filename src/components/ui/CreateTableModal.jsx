@@ -220,18 +220,25 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
               style={{ width: '100%', marginBottom: '12px', accentColor: '#B388FF' }} />
 
             {/* Options */}
+            {/* 2026-07-05 audit P3 fix: Straddle is not implemented server-side (the
+                create handler drops the flag with only a server-side warning), so it
+                is disabled + marked "soon" rather than silently toggling a no-op that
+                a host would believe is active. Re-enable when the server supports it. */}
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
               {[
-                { label: 'Straddle', val: straddle, set: setStraddle },
+                { label: 'Straddle', val: straddle, set: setStraddle, disabled: true },
                 { label: 'Bomb Pot', val: bombPot, set: setBombPot },
-              ].map(({ label, val, set }) => (
-                <button key={label} onClick={() => set(!val)} style={{
-                  padding: '6px 12px', borderRadius: '6px', border: '1px solid',
-                  borderColor: val ? '#4ADE80' : 'rgba(255,255,255,0.1)',
-                  background: val ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.04)',
-                  color: val ? '#4ADE80' : '#8888AA',
-                  fontSize: '0.78rem', cursor: 'pointer',
-                }}>{val ? '✓ ' : ''}{label}</button>
+              ].map(({ label, val, set, disabled }) => (
+                <button key={label} disabled={disabled} onClick={() => { if (!disabled) set(!val); }}
+                  title={disabled ? 'Straddle isn’t available yet' : undefined}
+                  style={{
+                    padding: '6px 12px', borderRadius: '6px', border: '1px solid',
+                    borderColor: val ? '#4ADE80' : 'rgba(255,255,255,0.1)',
+                    background: val ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.04)',
+                    color: val ? '#4ADE80' : '#8888AA',
+                    fontSize: '0.78rem', cursor: disabled ? 'not-allowed' : 'pointer',
+                    opacity: disabled ? 0.5 : 1,
+                  }}>{val ? '✓ ' : ''}{label}{disabled ? ' (soon)' : ''}</button>
               ))}
             </div>
 
