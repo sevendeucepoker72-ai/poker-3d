@@ -167,6 +167,12 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
         border: '1px solid rgba(179,136,255,0.3)',
         borderRadius: '16px',
         width: 'min(480px, 100%)',
+        // 2026-07-05 mobile audit fix: the card had no height cap, so on short
+        // screens (landscape phones / short portrait) its content clipped off the
+        // top and bottom with no way to scroll. Cap to the dynamic viewport height
+        // and scroll internally.
+        maxHeight: '90dvh',
+        overflowY: 'auto',
         padding: '24px',
         boxShadow: '0 24px 64px rgba(0,0,0,0.7)',
       }} onClick={(e) => e.stopPropagation()}>

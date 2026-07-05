@@ -184,7 +184,7 @@ input, textarea {
    ================================================================ */
 .lobby-modal,
 .create-table-modal,
-.player-profile-modal,
+.player-profile-card, /* 2026-07-05 audit: was .player-profile-modal (dead selector — PlayerProfile renders .player-profile-card) */
 .settings-modal,
 .buy-in-modal,
 .leave-modal,
@@ -946,8 +946,13 @@ input, textarea {
 .coaching-rail,
 .gto-solver-panel,
 .leaderboard-panel,
-.battle-pass-panel,
+.bp-panel,                /* 2026-07-05 audit: was .battle-pass-panel (dead selector) */
 .hand-history-panel,
+.hhi-panel,               /* 2026-07-05 audit: HandHistoryImporter (complex 3-col — full-screen) */
+.stats-panel,             /* 2026-07-05 audit: StatsPanel dashboard */
+.td-modal,                /* 2026-07-05 audit: TournamentDirector */
+.leak-finder-panel,       /* 2026-07-05 audit: LeakFinder */
+.staking-modal,           /* 2026-07-05 audit: StakingMarketplace */
 .clubs-panel,
 .friend-system-panel {
   position: fixed !important;
@@ -1014,8 +1019,9 @@ input, textarea {
 
 /* ================================================================
    HAND REPLAY VIEWER — full screen
+   2026-07-05 audit: was .hand-replay-viewer (dead) — component root is .replay-overlay
    ================================================================ */
-.hand-replay-viewer {
+.replay-overlay {
   position: fixed !important;
   inset: 0 !important;
   width: 100% !important;
@@ -1027,8 +1033,9 @@ input, textarea {
 
 /* ================================================================
    EQUITY CALCULATOR — bottom sheet
+   2026-07-05 audit: was .equity-calculator (dead) — component root is .equity-calc-panel
    ================================================================ */
-.equity-calculator {
+.equity-calc-panel {
   position: fixed !important;
   left: 0 !important; right: 0 !important; bottom: 0 !important; top: auto !important;
   width: 100% !important;
@@ -1037,6 +1044,36 @@ input, textarea {
   overflow-y: auto !important;
   padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
   animation: mobile-sheet-up 0.25s ease-out !important;
+}
+
+/* ================================================================
+   2026-07-05 mobile audit — modals with NO full-screen / bottom-sheet coverage.
+   On a phone they kept a desktop-centered box (often wider than the screen and/or
+   taller than the viewport with content cut off and no scroll). Give them the
+   bottom-sheet treatment: full width, capped to the DYNAMIC viewport height with
+   internal scroll + safe-area bottom padding. Targets verified against each
+   component's actual root class.
+   ================================================================ */
+.login-rewards-panel,
+.scratch-panel,
+.spin-wheel-panel,
+.pf-modal,
+.sbet-modal,
+.missions-panel,
+.phc-panel,
+.clubs-modal {
+  position: fixed !important;
+  left: 0 !important; right: 0 !important; bottom: 0 !important; top: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: 92dvh !important;
+  height: auto !important;
+  border-radius: 20px 20px 0 0 !important;
+  margin: 0 !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+  animation: mobile-sheet-up 0.3s cubic-bezier(0.32, 0.72, 0, 1) !important;
 }
 
 /* ================================================================
