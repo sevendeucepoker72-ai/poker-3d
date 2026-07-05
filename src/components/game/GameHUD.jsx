@@ -3409,7 +3409,9 @@ export default function GameHUD() {
               {/* Eliminated banner */}
               {eliminatedPosition && (
                 <div style={{
-                  position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)',
+                  // 2026-07-05 mobile audit fix: +safe-area, and lowered to clear the
+                  // spectator banner above it (both show at once after a tournament bust).
+                  position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 92px)', left: '50%', transform: 'translateX(-50%)',
                   background: 'rgba(0,0,0,0.85)', border: '1px solid #fcd34d',
                   borderRadius: 12, padding: '12px 24px', zIndex: 100, textAlign: 'center',
                 }}>
@@ -4109,7 +4111,10 @@ export default function GameHUD() {
       {/* Spectator banner */}
       {isSpectating && (
         <div style={{
-          position: 'fixed', top: '44px', left: '50%', transform: 'translateX(-50%)',
+          // 2026-07-05 mobile audit fix: was top:44px (hardcoded), which slid under
+          // the notch / the top HUD bar on notched iPhones in PWA standalone. Offset
+          // by the safe-area top inset so it clears both.
+          position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 48px)', left: '50%', transform: 'translateX(-50%)',
           background: 'rgba(120, 160, 255, 0.15)', border: '1px solid #B388FF',
           borderRadius: '8px', padding: '8px 24px', zIndex: 600,
           display: 'flex', alignItems: 'center', gap: '12px',

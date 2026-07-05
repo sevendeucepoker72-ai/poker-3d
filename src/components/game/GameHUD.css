@@ -1,7 +1,12 @@
 .hud {
   position: absolute;
   inset: 0;
-  padding-top: 36px;
+  /* 2026-07-05 mobile audit fix: the flat 36px status-bar reserve ignored the
+     notch. On a notched iPhone in PWA standalone the safe-area top inset is
+     ~47px+, so the top bar (Back to Lobby / Pot / chips) slid under the notch.
+     max() keeps 36px on non-notched devices (inset=0 => desktop unchanged) and
+     clears the notch + a little breathing room when there is one. */
+  padding-top: max(36px, calc(env(safe-area-inset-top, 0px) + 8px));
   pointer-events: none;
   font-family: 'Segoe UI', system-ui, sans-serif;
   z-index: 20;
@@ -3637,7 +3642,8 @@
 /* Mobile — shrink + tighter placement so it doesn't eat the community-card row. */
 @media (max-width: 720px) {
   .hand-strength-portal {
-    top: 44px;
+    /* 2026-07-05 mobile audit fix: +safe-area so the pill clears the notch. */
+    top: calc(env(safe-area-inset-top, 0px) + 44px);
     min-width: 180px;
     max-width: calc(100vw - 16px);
     padding: 4px 10px;
@@ -3649,7 +3655,7 @@
 }
 @media (max-width: 480px) {
   .hand-strength-portal {
-    top: 38px;
+    top: calc(env(safe-area-inset-top, 0px) + 38px);
     min-width: 160px;
     padding: 3px 8px;
   }

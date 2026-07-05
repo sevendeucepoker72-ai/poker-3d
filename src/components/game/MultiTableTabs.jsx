@@ -6,7 +6,13 @@ const MAX_TABLES = 4;
 
 const tabBarStyle = {
   position: 'fixed',
-  top: 0,
+  // 2026-07-05 mobile audit fix: was top:0 (slid under the notch) with
+  // overflow:hidden (clipped the +/table-count controls off-screen when tabs were
+  // wide). Offset by the safe-area top inset and let the tab row scroll
+  // horizontally instead of clipping. (The .multi-table-tabs override in
+  // mobile-overrides.css never applied — this component is inline-styled with no
+  // className — so the fix lives here on the authoritative style.)
+  top: 'env(safe-area-inset-top, 0px)',
   left: 0,
   right: 0,
   height: '36px',
@@ -17,7 +23,9 @@ const tabBarStyle = {
   background: 'linear-gradient(180deg, #0c1a44 0%, #0d0d20 100%)',
   borderBottom: '1px solid #333',
   zIndex: 700,
-  overflow: 'hidden',
+  overflowX: 'auto',
+  overflowY: 'hidden',
+  WebkitOverflowScrolling: 'touch',
 };
 
 const tabStyle = {

@@ -1504,7 +1504,11 @@ function App() {
 
   if (displayedScreen === 'table') {
     return (
-      <div className={`screen-transition ${transitionClass}`} style={{ position: 'relative', width: '100vw', height: '100vh' }}>
+      // 2026-07-05 mobile audit fix: 100dvh (not 100vh) so the game screen — and
+      // critically the bottom action bar — is laid out against the VISIBLE viewport
+      // on mobile browsers, instead of the URL-bar-inflated 100vh that pushed the
+      // fold/call/raise bar below the fold.
+      <div className={`screen-transition ${transitionClass}`} style={{ position: 'relative', width: '100vw', height: '100dvh' }}>
         <MultiTableTabs />
         {/* 2026-05-04 unified-push phase 3 — bottom-right banner inviting
             online-poker players to set up tournament alerts in the league

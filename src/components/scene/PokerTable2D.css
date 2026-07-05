@@ -659,6 +659,24 @@
 @media (max-width: 480px)  { .table2d-scene { --sp: 0.62; } }
 @media (max-height: 500px) and (orientation: landscape) { .table2d-scene { --sp: 0.58; } }
 
+/* 2026-07-05 mobile audit P1 fix — portrait phones. The desktop felt is
+   aspect-ratio 2.35/1 (cinematic ultrawide) sized against 100vw/100vh, which on
+   a portrait phone collapsed to a short ~90px-tall horizontal SLIVER: side seats
+   sat near the screen edges while the top/bottom seats bunched into a thin
+   vertical band, wasting most of the screen and cramping cards/pot.
+   Seat positions are MEASURED live from the felt rect (ResizeObserver -> xR/yR),
+   so reshaping the felt automatically re-spreads the pods around it. Give portrait
+   a gentle near-square oval and size it against the DYNAMIC viewport height so the
+   felt is much TALLER; width stays bounded (~150px side reserve) so the left/right
+   pods never clip. .table2d-scene is overflow:hidden, so any residual overshoot is
+   clipped rather than scrolling the page. */
+@media (max-width: 600px) and (orientation: portrait) {
+  .table2d-felt {
+    aspect-ratio: 1.1 / 1;
+    width: min(calc(100vw - 150px), calc((100dvh - 300px) * 1.1), 340px);
+  }
+}
+
 /* Avatar + wrap — scale with --sp */
 .seat-pod__avatar-wrap {
   width:  calc(50px * var(--sp));
