@@ -1,5 +1,6 @@
 // Simple custom store for qualifiers — avoids Zustand/React19 useSyncExternalStore issues
 import { useState, useEffect } from 'react';
+import { getSocket } from '../services/socketService';
 
 const STORAGE_KEY = 'poker-qualifiers';
 
@@ -126,6 +127,37 @@ function saveToStorage(qualifiers) {
   try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(qualifiers)); } catch (_) {}
 }
 
+// Admin-authored qualifier configs are now SERVER-persisted (shared across all
+// browsers/admins), not sessionStorage-only. persistToServer caches locally for
+// instant paint AND pushes the full list to the server (admin-gated there).
+function persistToServer() {
+  saveToStorage(_qualifiers);
+  const socket = getSocket();
+  if (socket) socket.emit('saveQualifierConfigs', { qualifiers: _qualifiers });
+}
+
+// Register the server sync once + fetch the shared list. On receiving a
+// non-empty list, adopt it (then re-run the auto-advance + recurrence logic).
+let _serverSynced = false;
+function ensureServerSync() {
+  const socket = getSocket();
+  if (!socket) return;
+  if (!_serverSynced) {
+    _serverSynced = true;
+    socket.on('qualifierConfigs', (list) => {
+      if (Array.isArray(list) && list.length > 0) {
+        _qualifiers = list;
+        const adv = advancePastDueDefaults(_qualifiers);
+        _qualifiers = adv.qualifiers;
+        saveToStorage(_qualifiers);
+        notify();
+        syncRecurring();
+      }
+    });
+  }
+  socket.emit('getQualifierConfigs');
+}
+
 // ── Auto-advance past-due default qualifiers ────────────────────────────────
 // If the weekly/monthly qualifier's scheduledAt is in the past (because the
 // event didn't run or wasn't rescheduled), advance it to the next occurrence.
@@ -233,7 +265,7 @@ export const qualifierActions = {
   add: (q) => {
     const newQ = { ...q, id: `qualifier-${Date.now()}`, registered: 0, registrants: [], active: true, templateId: null };
     _qualifiers = [..._qualifiers, newQ];
-    saveToStorage(_qualifiers);
+    persistToServer();
     notify();
     // If it has recurrence, immediately generate instances
     if (newQ.recurrence?.enabled) syncRecurring();
@@ -241,7 +273,7 @@ export const qualifierActions = {
 
   update: (id, changes) => {
     _qualifiers = _qualifiers.map((q) => q.id === id ? { ...q, ...changes } : q);
-    saveToStorage(_qualifiers);
+    persistToServer();
     notify();
     // Re-sync if recurrence changed
     if (changes.recurrence !== undefined) syncRecurring();
@@ -250,13 +282,13 @@ export const qualifierActions = {
   delete: (id) => {
     // Also delete any instances of this template
     _qualifiers = _qualifiers.filter((q) => q.id !== id && q.templateId !== id);
-    saveToStorage(_qualifiers);
+    persistToServer();
     notify();
   },
 
   toggleActive: (id) => {
     _qualifiers = _qualifiers.map((q) => q.id === id ? { ...q, active: !q.active } : q);
-    saveToStorage(_qualifiers);
+    persistToServer();
     notify();
   },
 
@@ -291,6 +323,7 @@ export function useQualifiers() {
   useEffect(() => {
     setQualifiers(_qualifiers);
     _subscribers.add(setQualifiers);
+    ensureServerSync(); // fetch the shared server-persisted list
     return () => { _subscribers.delete(setQualifiers); };
   }, []);
 
