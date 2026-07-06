@@ -689,10 +689,16 @@ export default function GameHUD() {
     if (!sittingOutUntilNextHand.current) return;
     if (!phase || phase === 'WaitingForPlayers' || phase === 'HandComplete' || phase === 'Showdown') return;
     const t = setTimeout(() => {
+      // Re-check at fire time: hole cards may have landed in a later delta,
+      // which clears sittingOutUntilNextHand (the effect ~40 lines below), i.e.
+      // we WERE dealt in — never fold a live hand. serverCards.length is in the
+      // deps too, so arriving cards also re-run this effect and its cleanup
+      // cancels this pending timer before it can fire.
+      if (!sittingOutUntilNextHand.current) return;
       sendAction('fold');
     }, 1000);
     return () => clearTimeout(t);
-  }, [serverThinksItsMyTurn, phase, sendAction]);
+  }, [serverThinksItsMyTurn, phase, sendAction, serverCards.length]);
   // 2026-05-26 — fall back to `chips` field. The seat object's
   // canonical field is `chipCount`, but some broadcast paths (notably
   // the post-handComplete settle pass + the levelUp/awardChips payloads)
@@ -1633,34 +1639,30 @@ export default function GameHUD() {
     }
   }, [phase]);
 
-  // Auto-fold: simple countdown — when timer hits 0, fold immediately.
-  // timerStartedRef guards against a React race where timeLeft is still 0 from the
-  // previous turn when isMyTurn first becomes true (setTimeLeft(30) is async).
   const autoFoldedRef = useRef(false);
   const timerStartedRef = useRef(false); // true only after the first interval tick
+  // 2026-07-06 — DO NOT auto-fold/check off the local countdown. The turn-timer
+  // expiry is handled AUTHORITATIVELY BY THE SERVER (poker-server index.ts turn
+  // timer folds if facing a bet, else checks, at TURN_TIMEOUT_MS). The client
+  // countdown above is DISPLAY-ONLY.
+  //
+  // Emitting a fold/check off the local clock stole live hands from players
+  // ("it folds when I didn't push anything"): `Date.now() - serverTurnStartedAt`
+  // (~line 1565) has NO clock-skew correction, so a device whose clock runs a bit
+  // fast hits 0 early and folded a playable hand; and a stale `timeLeft === 0`
+  // carried into a fresh turn (setTimeLeft is async) fired an instant fold via
+  // the timerStartedRef race. Both are gone now — the server is the sole timeout
+  // authority and can't hang (it always acts at 30s), so the client never needs
+  // to. When our countdown shows 0 we simply leave the buttons live until the
+  // server resolves the turn. This effect now only resets the per-turn action
+  // guards when the turn ends.
   useEffect(() => {
-    // Extra belt-and-suspenders: atomically claim the fold slot by flipping
-    // BOTH refs before even computing the action. This blocks any parallel
-    // manual-fold click handler from re-firing between tick and emit on a
-    // laggy network (refs are synchronous, so the second caller finds the
-    // flag already set and bails out).
-    if (isMyTurn && timeLeft <= 0 && timerStartedRef.current && !autoFoldedRef.current && !hasSentActionRef.current) {
-      autoFoldedRef.current = true;
-      hasSentActionRef.current = true;
-      console.log('[Timer] Timer expired — auto-folding');
-      playSound('fold');
-      if (callAmount === 0) {
-        sendAction('check');
-      } else {
-        sendAction('fold');
-      }
-    }
     if (!isMyTurn) {
       autoFoldedRef.current = false;
       hasSentActionRef.current = false;
       timerStartedRef.current = false;
     }
-  }, [timeLeft, isMyTurn, callAmount, sendAction, playSound]);
+  }, [isMyTurn]);
 
   // All-In confirm modal watchdog — clear on turn end or after 10s idle.
   useEffect(() => {
