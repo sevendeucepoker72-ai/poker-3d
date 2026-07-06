@@ -732,6 +732,41 @@ function App() {
       });
     });
 
+    // 2026-07-05 completeness fix — surface server events that were EMITTED but
+    // had no client listener, so they fired into the void: tournament bounty,
+    // table rebalance/break, friend + table invites, and shop purchase feedback.
+    socket.on('bountyAwarded', (data) => {
+      useProgressStore.getState().addNotification({
+        type: 'mission',
+        message: `Bounty collected${data?.eliminated ? ` — knocked out ${data.eliminated}` : ''}!`,
+        reward: { chips: data?.amount || 0, xp: 0, stars: 0 },
+      });
+    });
+    socket.on('friendRequestReceived', (data) => {
+      useProgressStore.getState().addNotification({ type: 'mission', message: `${data?.from || 'Someone'} sent you a friend request.` });
+    });
+    socket.on('tableInvite', (data) => {
+      useProgressStore.getState().addNotification({ type: 'mission', message: `${data?.from || 'A friend'} invited you to their table.` });
+    });
+    socket.on('tableBroken', () => {
+      useProgressStore.getState().addNotification({ type: 'mission', message: 'Your tournament table is combining with another.' });
+    });
+    socket.on('playerMoved', (data) => {
+      const toTable = data?.toTable || data?.tableId;
+      if (toTable) { try { useTableStore.getState().switchActiveTable(toTable); } catch { /* new table state arrives via broadcast */ } }
+      useProgressStore.getState().addNotification({
+        type: 'mission',
+        message: `You've been moved to a new table${data?.toSeat != null ? `, seat ${Number(data.toSeat) + 1}` : ''}.`,
+      });
+    });
+    socket.on('purchaseResult', (data) => {
+      if (data?.success) {
+        useProgressStore.getState().addNotification({ type: 'mission', message: data?.mysteryReward ? `Mystery box: ${data.mysteryReward}!` : 'Purchase complete.' });
+      } else if (data?.error) {
+        useProgressStore.getState().addNotification({ type: 'mission', message: `Purchase failed: ${data.error}` });
+      }
+    });
+
     // Hand history from server — kept in memory only (server is source of
     // truth; it broadcasts durableState on reconnect so we rehydrate). No
     // sessionStorage mirror per the "no sessionStorage" policy.

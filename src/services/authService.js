@@ -1,7 +1,7 @@
 // OAuth2 Authorization Code + PKCE flow for American Pub Poker SSO
 
 import { logAuthEvent } from './authEvents';
-import { setOAuthItem, getOAuthItem } from './tokenStorage';
+import { setOAuthItem, getOAuthItem, setAuthToken } from './tokenStorage';
 
 const AUTH_SERVER = import.meta.env.VITE_AUTH_SERVER_URL || 'https://auth.americanpubpoker.online';
 const CLIENT_ID = 'poker-3d';
@@ -435,6 +435,9 @@ export async function refreshAccessToken(refreshToken) {
           const expiresIn = expRaw
             ? Math.max(0, Math.floor((parseInt(expRaw, 10) - Date.now()) / 1000))
             : null;
+          // 2026-07-05 completeness fix: another tab refreshed — sync this tab's
+          // primary bearer (poker_auth_token) too, else getAuthToken() stays stale here.
+          setAuthToken(fresh);
           return { access_token: fresh, expires_in: expiresIn };
         }
       } catch {}
@@ -506,6 +509,12 @@ export async function refreshAccessToken(refreshToken) {
         // ~1h-lived and cleared on logout.
         if (data.access_token) {
           localStorage.setItem('poker_oauth_access', data.access_token);
+          // 2026-07-05 completeness fix: keep the PRIMARY bearer (poker_auth_token —
+          // what getAuthToken() and therefore socketService/api/push/avatar/multi-table
+          // all read) in sync with the refreshed access token. Without this, every
+          // bearer consumer kept sending the STALE pre-refresh token after a refresh
+          // (socket reconnect, multi-table oauthLogin, avatar/push/error uploads).
+          setAuthToken(data.access_token);
         }
         if (data.expires_in) {
           const expiresAt = Date.now() + Number(data.expires_in) * 1000;

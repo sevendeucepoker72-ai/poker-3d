@@ -2633,11 +2633,7 @@ export default function GameHUD() {
         {trainingEnabled && (
           <button
             className="hud-training-badge"
-            onClick={() => {
-              const socket = getSocket();
-              setTrainingEnabled(false);
-              if (socket?.connected) socket.emit('setTrainingMode', { enabled: false });
-            }}
+            onClick={toggleTraining}
             title="Training mode is ON. Click to turn off."
             aria-label="Training mode active, click to disable"
           >
