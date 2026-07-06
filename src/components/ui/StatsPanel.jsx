@@ -185,13 +185,16 @@ function getAdvancedStats(stats) {
   // Use a real af if the stats object provides one; otherwise show '-' rather
   // than the previous (incorrect) vpip/pfr ratio.
   const af = (stats.af != null && !Number.isNaN(Number(stats.af))) ? +Number(stats.af).toFixed(1) : '-';
+  // WTSD / W$SD are real server-tracked stats now; null until there's a sample.
+  const wtsd = (stats.wtsd != null && !Number.isNaN(Number(stats.wtsd))) ? +Number(stats.wtsd).toFixed(1) : '-';
+  const wsd = (stats.wsd != null && !Number.isNaN(Number(stats.wsd))) ? +Number(stats.wsd).toFixed(1) : '-';
   return [
     { key: 'vpip', name: 'VPIP', description: 'Voluntarily Put In Pot', value: vpip, unit: '%', goodMin: 22, goodMax: 30 },
     { key: 'pfr', name: 'PFR', description: 'Pre-Flop Raise %', value: pfr, unit: '%', goodMin: 15, goodMax: 22 },
     { key: 'af', name: 'AF', description: 'Aggression Factor', value: af, unit: '', goodMin: 2, goodMax: 3 },
     { key: '3bet', name: '3-Bet %', description: 'Pre-Flop Re-Raise %', value: '-', unit: '%', goodMin: 6, goodMax: 10 },
-    { key: 'wtsd', name: 'WTSD', description: 'Went to Showdown %', value: '-', unit: '%', goodMin: 28, goodMax: 35 },
-    { key: 'wsd', name: 'W$SD', description: 'Won $ at Showdown %', value: '-', unit: '%', goodMin: 50, goodMax: 55 },
+    { key: 'wtsd', name: 'WTSD', description: 'Went to Showdown %', value: wtsd, unit: '%', goodMin: 28, goodMax: 35 },
+    { key: 'wsd', name: 'W$SD', description: 'Won $ at Showdown %', value: wsd, unit: '%', goodMin: 50, goodMax: 55 },
   ];
 }
 
