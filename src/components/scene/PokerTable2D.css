@@ -75,22 +75,16 @@
   z-index: 1;
   background: #0a1a34; /* fallback beneath the surface */
 
-  /* THE RAIL — a substantial polished-gold bezel built from concentric
-     box-shadow bands (dark outer edge → gold body → bright highlight → gold →
-     dark inner lip) so it reads as a rounded 3D tube. box-shadow auto-hugs the
-     felt at ANY size (no inset math, no felt space eaten) + a warm gold glow
-     and a deep drop that lifts the whole table off the room. */
+  /* THE RAIL — obsidian carbon edge bands (gold hairline + machined-steel bevel
+     riding the felt edge, cool outer glow, deep drop). The carbon BODY ring is
+     drawn by .table2d-felt::before (see GameHUD.css, the winning !important
+     layer). Kept in sync here; GameHUD's !important is what actually renders. */
   box-shadow:
-    0 0 0 1px #241a08,
-    0 0 0 4px #7a5a1e,
-    0 0 0 8px #e7bf5c,
-    0 0 0 10px #fff3cf,
-    0 0 0 13px #d1a13a,
-    0 0 0 16px #5a4114,
-    0 0 0 17px #0d0904,
-    0 0 60px 10px rgba(215, 167, 66, 0.18),
-    0 0 90px 26px rgba(22, 66, 119, 0.26),
-    0 26px 78px 6px rgba(0,0,0,0.78);
+    0 0 0 1.5px rgba(214,176,92,0.95),
+    0 0 0 3px rgba(132,152,184,0.55),
+    0 0 0 4.5px rgba(0,0,0,0.85),
+    0 0 46px 6px rgba(45,100,205,0.30),
+    0 26px 74px 6px rgba(0,0,0,0.76);
 }
 
 /* THE FELT SURFACE — fills the oval (the rail is the box-shadow bezel outside).
@@ -103,12 +97,17 @@
   overflow: hidden;
   z-index: 0;
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='5'%3E%3Cpath d='M0 0L5 5M5 0L0 5' stroke='%23a9c8f5' stroke-width='0.4' stroke-opacity='0.4'/%3E%3C/svg%3E"),
+    /* fine fabric grain (fractal-noise turbulence) — reads as real speed cloth */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    /* overhead spotlight pool up-centre */
+    radial-gradient(ellipse 60% 70% at 50% 38%, rgba(130,185,255,0.16), transparent 56%),
     var(--felt-bg, radial-gradient(ellipse at 50% 30%, #235a95 0%, #164277 40%, #0d2c53 68%, #08203e 100%));
-  background-size: 5px 5px, cover;
+  background-size: 200px 200px, cover, cover;
+  background-blend-mode: soft-light, screen, normal;
   box-shadow:
-    inset 0 0 96px 34px rgba(3, 12, 28, 0.72),
-    inset 0 3px 44px rgba(130, 190, 255, 0.12);
+    inset 0 0 78px 40px rgba(2, 8, 22, 0.82),
+    inset 0 12px 44px rgba(140, 195, 255, 0.13),
+    inset 0 -28px 60px rgba(0, 0, 0, 0.45);
   display: flex;
   flex-direction: column;
   align-items: center;
