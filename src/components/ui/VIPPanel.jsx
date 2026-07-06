@@ -46,7 +46,9 @@ function getCurrentTier(xp) {
 
 export default function VIPPanel({ onClose }) {
   const progress = useProgressStore((s) => s.progress);
-  const currentXP = progress?.xp || 500;
+  // Tier is by CUMULATIVE season XP (what the server applies the XP-rate perk
+  // on), not the per-level `xp` that resets on every level-up.
+  const currentXP = progress?.totalXp ?? progress?.xp ?? 0;
   const tierIndex = getCurrentTier(currentXP);
   const currentTier = VIP_TIERS[tierIndex];
   const nextTier = tierIndex < VIP_TIERS.length - 1 ? VIP_TIERS[tierIndex + 1] : null;

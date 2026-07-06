@@ -1182,30 +1182,36 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   }, [chipCount]);
 
   // #1 — activity ticker events
-  const ACTIVITY_EVENTS = [
-    '🏆 AceKing99 won 14,200 chips at Table Vegas',
-    '🃏 BluffMaster hit a straight flush!',
-    '⚡ HighRoller went all-in and doubled up',
-    '🎯 PocketRocket won 3 hands in a row',
-    '💰 New table: NL 50/100 — 3 seats open',
-    '🔥 RiverRat is on a 7-hand win streak',
-    '🎲 Spin & Go jackpot: 25x multiplier hit!',
-    '♠ ChipLeader eliminated 4 players in tournament',
-    '🚀 NutFlush took down the main pot with a bluff',
-    '🎁 Daily bonus claimed by 42 players today',
+  // Honest generic filler shown ONLY when there's no real recent activity yet —
+  // no fabricated player names/amounts (that was the old fake ticker).
+  const ACTIVITY_FALLBACK = [
+    '♠ Welcome to American Pub Poker',
+    '🃏 Join a table to start playing',
+    '🏆 Climb the leaderboard for championship seats',
+    '🎁 Claim your daily bonus every 24 hours',
   ];
+  // Real recent activity streamed from the server (big wins, tournament wins).
+  const [liveActivity, setLiveActivity] = useState([]);
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const onFeed = (feed) => { if (Array.isArray(feed)) setLiveActivity(feed); };
+    socket.on('activityFeed', onFeed);
+    return () => socket.off('activityFeed', onFeed);
+  }, []);
+  const activityEvents = liveActivity.length > 0 ? liveActivity : ACTIVITY_FALLBACK;
   const [activityIdx, setActivityIdx] = useState(0);
   const [activityFading, setActivityFading] = useState(false);
   useEffect(() => {
     const timer = setInterval(() => {
       setActivityFading(true);
       setTimeout(() => {
-        setActivityIdx(i => (i + 1) % ACTIVITY_EVENTS.length);
+        setActivityIdx(i => (i + 1) % activityEvents.length);
         setActivityFading(false);
       }, 400);
     }, 4000);
     return () => clearInterval(timer);
-  }, []);
+  }, [activityEvents.length]);
 
   const [showStats, setShowStats] = useState(false);
   const [showShop, setShowShop] = useState(false);
@@ -2998,7 +3004,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <div className="activity-ticker">
         <span className="activity-ticker-live">● LIVE</span>
         <span className={`activity-ticker-text ${activityFading ? 'activity-ticker-text--fade' : ''}`}>
-          {ACTIVITY_EVENTS[activityIdx]}
+          {activityEvents[activityIdx % activityEvents.length]}
         </span>
       </div>
 
