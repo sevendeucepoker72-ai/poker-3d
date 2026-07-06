@@ -767,6 +767,18 @@ function App() {
       }
     });
 
+    // Club challenge accepted — the server spawned a heads-up table (stakes =
+    // buy-in) and sent this to BOTH participants. Auto-join it here (global, so a
+    // participant with the Clubs panel closed still joins). Read live store state.
+    socket.on('clubChallengeAccepted', (payload) => {
+      if (!payload?.tableId) return;
+      const gs = useGameStore.getState();
+      try {
+        useTableStore.getState().joinTable(payload.tableId, gs.playerName, -1, payload.stakes, gs.avatar);
+      } catch { /* ignore */ }
+      useProgressStore.getState().addNotification({ type: 'mission', message: 'Club challenge starting — joining your heads-up table!' });
+    });
+
     // All-in insurance (cashout) feedback. Server computes + settles; these are
     // just player-facing confirmations of the guaranteed lock-in and the result.
     socket.on('insuranceAccepted', (data) => {
@@ -930,6 +942,7 @@ function App() {
       socket.off('quickGameStarted');
       socket.off('careerGameStarted');
       socket.off('careerGameComplete');
+      socket.off('clubChallengeAccepted');
       socket.off('insuranceAccepted');
       socket.off('insuranceSettled');
       socket.off('bountyAwarded');

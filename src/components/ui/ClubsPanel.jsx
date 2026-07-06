@@ -420,6 +420,14 @@ export default function ClubsPanel({ onClose }) {
       }
     };
     const onClubChallengeAccepted = () => {
+      // Auto-join is handled GLOBALLY in App.jsx (so a participant whose Clubs
+      // panel is closed still joins). Here we only refresh the challenge list.
+      if (selectedClub) {
+        const s = getSocket();
+        if (s) s.emit('getClubChallenges', { clubId: selectedClub.id });
+      }
+    };
+    const onClubChallengeResolved = () => {
       if (selectedClub) {
         const s = getSocket();
         if (s) s.emit('getClubChallenges', { clubId: selectedClub.id });
@@ -578,6 +586,7 @@ export default function ClubsPanel({ onClose }) {
     socket.on('clubChallenges', onClubChallenges);
     socket.on('clubChallengeCreated', onClubChallengeCreated);
     socket.on('clubChallengeAccepted', onClubChallengeAccepted);
+    socket.on('clubChallengeResolved', onClubChallengeResolved);
     socket.on('clubChallengeDeclined', onClubChallengeDeclined);
     socket.on('scheduledClubTables', onScheduledClubTables);
     socket.on('clubTableScheduled', onClubTableScheduled);
@@ -637,6 +646,7 @@ export default function ClubsPanel({ onClose }) {
       socket.off('clubChallenges', onClubChallenges);
       socket.off('clubChallengeCreated', onClubChallengeCreated);
       socket.off('clubChallengeAccepted', onClubChallengeAccepted);
+      socket.off('clubChallengeResolved', onClubChallengeResolved);
       socket.off('clubChallengeDeclined', onClubChallengeDeclined);
       socket.off('scheduledClubTables', onScheduledClubTables);
       socket.off('clubTableScheduled', onClubTableScheduled);
@@ -1998,6 +2008,22 @@ export default function ClubsPanel({ onClose }) {
               </div>
             </div>
           ))}
+          {/* Live + finished challenges (was filtered out entirely, so accepted
+              matches vanished from the UI). */}
+          {clubChallenges.filter((c) => c.status === 'playing' || c.status === 'completed').map((ch) => {
+            const winnerName = ch.winnerId === ch.challengerId ? ch.challengerName
+              : ch.winnerId === ch.challengedId ? ch.challengedName : null;
+            return (
+              <div key={ch.id} className="club-member-row" style={{ marginBottom: '4px', opacity: 0.85 }}>
+                <div className="club-member-info">
+                  <span className="club-member-name">{ch.challengerName} vs {ch.challengedName}</span>
+                  <span style={{ color: '#9ca3af', fontSize: '0.7rem', marginLeft: '6px' }}>
+                    {ch.status === 'playing' ? 'In progress' : (winnerName ? `${winnerName} won` : 'Finished')} &middot; {ch.stakes}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Challenge Modal */}
