@@ -247,7 +247,7 @@ export default function GameHUD() {
   const autoActionRef = useRef(null);
 
   // Pre-action buttons (Upgrade 1)
-  const [preAction, setPreAction] = useState(null); // null | 'checkFold' | 'callAny' | 'checkOnly'
+  const [preAction, setPreAction] = useState(null); // null | 'fold' | 'checkFold' | 'callAny' | 'checkOnly'
 
   // Last raise replay (Upgrade 4)
   const lastRaiseRef = useRef(null);
@@ -1021,7 +1021,11 @@ export default function GameHUD() {
         const action = preAction;
         setPreAction(null);
         hasSentActionRef.current = true;
-        if (action === 'checkFold') {
+        if (action === 'fold') {
+          // Pure auto-fold: fold the moment it's our turn, whatever the action
+          // (even if a free check were available — the player armed "Fold").
+          playSound('fold'); sendAction('fold');
+        } else if (action === 'checkFold') {
           if (callAmount === 0) {
             playSound('check'); sendAction('check');
           } else {
@@ -2836,6 +2840,7 @@ export default function GameHUD() {
                   <span className="options-label">⚡ Queue Action</span>
                   <div className="options-queue-chips">
                     {[
+                      { key: 'fold',      icon: '🚫', label: 'Fold' },
                       { key: 'checkFold', icon: '🔄', label: 'Check/Fold' },
                       { key: 'callAny',   icon: '✋', label: 'Call Any' },
                       { key: 'checkOnly', icon: '✓', label: 'Check' },
@@ -3509,6 +3514,15 @@ export default function GameHUD() {
                 && phase !== 'Showdown' && phase !== 'HandComplete'
                 && !gameState?.handResult && (
                 <div className="pre-action-btns">
+                  <button
+                    className={`pre-action-btn${preAction === 'fold' ? ' active' : ''}`}
+                    aria-label={preAction === 'fold' ? 'Cancel pre-action: auto fold' : 'Queue pre-action: auto fold on my turn'}
+                    aria-pressed={preAction === 'fold'}
+                    onClick={() => setPreAction(preAction === 'fold' ? null : 'fold')}
+                  >
+                    <span className="pre-action-icon">🚫</span>
+                    <span className="pre-action-label">Fold</span>
+                  </button>
                   <button
                     className={`pre-action-btn${preAction === 'checkFold' ? ' active' : ''}`}
                     aria-label={preAction === 'checkFold' ? 'Cancel pre-action: check or fold' : 'Queue pre-action: check or fold on my turn'}

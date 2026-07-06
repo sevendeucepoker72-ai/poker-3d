@@ -4530,6 +4530,8 @@
   transform: translateX(-50%);
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;                    /* 4 pills (Fold/Check-Fold/Call Any/Check) */
+  max-width: calc(100vw - 12px);      /* never overflow a narrow phone */
   gap: 6px;
   justify-content: center;
   align-items: center;
