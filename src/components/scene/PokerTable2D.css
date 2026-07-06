@@ -31,83 +31,162 @@
   pointer-events: none;
 }
 
-/* ── Table oval (felt) ────────────────────────────────────── */
+/* ── Atmosphere — overhead light shaft + drifting motes ───── */
+.table2d-rays {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 42% 130% at 50% -22%, rgba(150, 195, 255, 0.12) 0%, transparent 58%);
+  animation: table-breathe 9s ease-in-out infinite;
+}
+@keyframes table-breathe { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .table2d-rays { animation: none; } }
+
+.table2d-motes { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.table2d-mote {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(246, 220, 138, 0.9), transparent 70%);
+  filter: blur(1px);
+  opacity: 0.4;
+}
+.table2d-mote--1 { width: 5px; height: 5px; left: 34%; top: 30%; animation: mote-drift-a 14s ease-in-out infinite; }
+.table2d-mote--2 { width: 4px; height: 4px; left: 63%; top: 27%; animation: mote-drift-b 18s ease-in-out infinite; }
+.table2d-mote--3 { width: 6px; height: 6px; left: 52%; top: 58%; animation: mote-drift-a 22s ease-in-out infinite reverse; }
+.table2d-mote--4 { width: 3px; height: 3px; left: 44%; top: 23%; animation: mote-drift-b 16s ease-in-out infinite reverse; }
+@keyframes mote-drift-a { 0%, 100% { transform: translate(0,0); opacity: 0.2; } 50% { transform: translate(16px,-20px); opacity: 0.6; } }
+@keyframes mote-drift-b { 0%, 100% { transform: translate(0,0); opacity: 0.25; } 50% { transform: translate(-20px,14px); opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .table2d-mote { animation: none !important; } }
+
+/* ── Table oval: RAIL (brushed gold) + inset felt SURFACE ─── */
+/* @property animates the conic START ANGLE so the polished-gold highlights
+   travel AROUND THE OVAL (a plain rotate() traces a circle and slides off an
+   oval rail). Old Safari without @property just shows the static conic. */
+@property --rail-ang { syntax: '<angle>'; initial-value: 90deg; inherits: false; }
+
 .table2d-felt {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
   /* Reserve ~88px on each side / ~120px top+bottom for pods so the seat
-   * ellipse never extends past the viewport edge on any device. */
+   * ellipse never extends past the viewport edge on any device. UNCHANGED so
+   * feltRef's rect (which drives seat positioning) is identical. */
   width: min(calc(100vw - 160px), calc((100vh - 240px) * 2.35), 920px);
   aspect-ratio: 2.35 / 1;
   min-width: 160px;
   border-radius: 50%;
   z-index: 1;
 
-  /* Layered sapphire felt: a spotlit centre falling to a dark rim, with an
-     inset vignette + top sheen for real depth. */
-  background:
-    radial-gradient(ellipse at 50% 30%, #235a95 0%, #164277 40%, #0d2c53 68%, #08203e 100%);
+  /* THE RAIL — polished brushed gold. */
+  --rail-ang: 90deg;
+  background: conic-gradient(from var(--rail-ang),
+    #6f5019 0deg, #f4d789 38deg, #b8862f 82deg, #fff0c4 128deg,
+    #8a6524 186deg, #f4d789 236deg, #a87d2c 300deg, #6f5019 360deg);
   box-shadow:
-    /* soft room glow around the oval */
-    0 0 70px 18px rgba(22, 66, 119, 0.35),
-    /* felt depth — dark rim + a cool inner sheen from the top light */
-    inset 0 0 90px 34px rgba(3, 12, 28, 0.72),
-    inset 0 3px 46px rgba(130, 190, 255, 0.12),
-    /* RAIL: obsidian base → brushed-gold trim ring → outer leather */
-    0 0 0 11px #0a0e17,
-    0 0 0 15px #6b4e1c,
-    0 0 0 18px #d7a742,
-    0 0 0 19px #f6dc8a,
-    0 0 0 24px #120d07,
-    /* deep drop shadow onto the room */
-    0 26px 80px 8px rgba(0,0,0,0.78);
+    0 0 70px 16px rgba(22, 66, 119, 0.30),
+    inset 0 0 0 2px rgba(0,0,0,0.35),
+    inset 0 2px 3px rgba(255,255,255,0.42),
+    inset 0 -3px 6px rgba(0,0,0,0.5),
+    0 26px 82px 8px rgba(0,0,0,0.78);
+  animation: rail-turn 10s linear infinite;
+}
+@keyframes rail-turn { to { --rail-ang: 450deg; } }
+/* Animating a conic angle REPAINTS the large rail each frame — great on desktop,
+   but risky on the phones this mostly plays on. Keep the moving light to
+   pointer/large screens; touch + small screens get the (still rich) static gold. */
+@media (hover: none), (max-width: 860px) { .table2d-felt { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .table2d-felt { animation: none; } }
 
+/* dark inner lip where the rail meets the felt */
+.table2d-felt::after {
+  content: '';
+  position: absolute;
+  inset: 13px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.55), inset 0 0 12px rgba(0,0,0,0.6);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* THE FELT SURFACE — inset inside the rail; theme colour (var) + woven texture
+   + inner vignette. Overflow-clipped so the texture hugs the oval. */
+.table2d-felt__surface {
+  position: absolute;
+  inset: 15px;
+  border-radius: 50%;
+  overflow: hidden;
+  z-index: 0;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Cpath d='M0 0L6 6M6 0L0 6' stroke='%23bcd6ff' stroke-width='0.5' stroke-opacity='0.55'/%3E%3C/svg%3E"),
+    var(--felt-bg, radial-gradient(ellipse at 50% 30%, #235a95 0%, #164277 40%, #0d2c53 68%, #08203e 100%));
+  background-size: 6px 6px, cover;
+  box-shadow:
+    inset 0 0 92px 32px rgba(3, 12, 28, 0.68),
+    inset 0 3px 44px rgba(130, 190, 255, 0.12);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 6px;
 }
-
-/* inner felt edge highlight (thin gold-tinted rim just inside the rail) */
-.table2d-felt::before {
+/* thin gold-tinted rim just inside the surface edge */
+.table2d-felt__surface::before {
   content: '';
   position: absolute;
-  inset: 5px;
+  inset: 3px;
   border-radius: 50%;
   border: 1px solid rgba(246, 220, 138, 0.14);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
   pointer-events: none;
 }
-
-/* betting-line arc — a faint gold ellipse on the felt, a real card-room detail */
-.table2d-felt::after {
+/* faint gold betting-line arc — a card-room detail */
+.table2d-felt__surface::after {
   content: '';
   position: absolute;
-  inset: 15%;
+  inset: 14%;
   border-radius: 50%;
   border: 1px solid rgba(246, 220, 138, 0.08);
-  box-shadow: inset 0 0 50px rgba(130, 190, 255, 0.05);
   pointer-events: none;
 }
 
-/* ── Table logo ────────────────────────────────────────────── */
+/* drifting spotlight caustic on the felt */
+.table2d-felt__spot {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(ellipse 46% 56% at 50% 33%, rgba(155, 205, 255, 0.14) 0%, transparent 60%);
+  animation: felt-spot-drift 12s ease-in-out infinite;
+}
+@keyframes felt-spot-drift { 0%,100% { transform: translate(-1.5%, 0); } 50% { transform: translate(1.5%, 1%); } }
+@media (prefers-reduced-motion: reduce) { .table2d-felt__spot { animation: none; } }
+
+/* ── Table logo — embossed gold medallion ─────────────────── */
 .table2d-felt__logo {
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.34em;
-  /* Embossed gold watermark — engraved into the felt. */
-  color: rgba(246, 220, 138, 0.15);
-  text-shadow: 0 1px 0 rgba(0,0,0,0.45), 0 -1px 0 rgba(246,220,138,0.05);
-  text-transform: uppercase;
-  user-select: none;
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 0;
+  user-select: none;
+  /* scale with the felt so it never overflows the (now clipped) surface */
+  max-width: 42%;
+  max-height: 60%;
+}
+/* soft engraved halo behind the logo */
+.table2d-felt__logo::before {
+  content: '';
+  position: absolute;
+  inset: -22%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 42%, rgba(246,220,138,0.07) 0%, rgba(246,220,138,0.02) 56%, transparent 72%);
+  box-shadow: inset 0 2px 6px rgba(246,220,138,0.10), inset 0 -2px 8px rgba(0,0,0,0.4);
+  z-index: -1;
+  pointer-events: none;
 }
 
 /* ── Pot display ───────────────────────────────────────────── */
@@ -1197,9 +1276,9 @@
 .table2d-logo-img {
   display: block;
   max-width: 100%;
-  max-height: 280px;
+  max-height: 100%;
   object-fit: contain;
-  opacity: 0.45;
+  opacity: 0.5;
   pointer-events: none;
 }
 .table2d-logo-fallback {

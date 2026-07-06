@@ -27,21 +27,24 @@ let _onOpenPlayerNotes = null;
 export function setOnOpenPlayerNotes(fn) { _onOpenPlayerNotes = fn; }
 
 /* ── Table themes ──────────────────────────────────────────── */
+// felt gradients are spotlit (bright hotspot high, deep falloff to the rim) so
+// the brushed-gold rail + inset vignette read with real depth. rail/railMid are
+// legacy (the rail is now a universal gold conic in CSS) but kept for safety.
 const TABLE_THEMES = {
   green: {
-    felt: 'radial-gradient(ellipse at 50% 35%, #2e7d52 0%, #1a5438 55%, #0f3824 100%)',
+    felt: 'radial-gradient(ellipse at 50% 30%, #3a9a68 0%, #1f6544 42%, #124430 68%, #0a3020 100%)',
     rail: '#2a1f0f', railMid: '#4a3418', name: '🟢 Classic',
   },
   blue: {
-    felt: 'radial-gradient(ellipse at 50% 35%, #1a3a6e 0%, #0f2447 55%, #071529 100%)',
+    felt: 'radial-gradient(ellipse at 50% 30%, #235a95 0%, #164277 40%, #0d2c53 68%, #08203e 100%)',
     rail: '#0a0f20', railMid: '#1e3060', name: '🔵 Speed',
   },
   black: {
-    felt: 'radial-gradient(ellipse at 50% 35%, #0c1a44 0%, #0d0d1a 55%, #050510 100%)',
+    felt: 'radial-gradient(ellipse at 50% 30%, #1a2f66 0%, #101a3e 45%, #0a0d20 70%, #04040c 100%)',
     rail: '#1a1505', railMid: '#8B7355', name: '⬛ Midnight',
   },
   crimson: {
-    felt: 'radial-gradient(ellipse at 50% 35%, #7c1d1d 0%, #4a0f0f 55%, #2d0808 100%)',
+    felt: 'radial-gradient(ellipse at 50% 30%, #9c2a2a 0%, #661818 42%, #3f0e0e 70%, #260707 100%)',
     rail: '#1a0505', railMid: '#6b2020', name: '🔴 Crimson',
   },
 };
@@ -902,23 +905,30 @@ export default function PokerTable2D() {
     <div className="table2d-scene" ref={sceneRef}>
       {/* Dark background */}
       <div className="table2d-bg" />
+      {/* Atmosphere: overhead light shaft + drifting motes (decorative) */}
+      <div className="table2d-rays" />
+      <div className="table2d-motes">
+        <span className="table2d-mote table2d-mote--1" />
+        <span className="table2d-mote table2d-mote--2" />
+        <span className="table2d-mote table2d-mote--3" />
+        <span className="table2d-mote table2d-mote--4" />
+      </div>
 
       {/* ── Felt oval ─────────────────────────────────────── */}
+      {/* .table2d-felt is now the RAIL (brushed-gold conic, animated angle);
+         the felt SURFACE is inset inside it. Kept exactly the same outer size
+         so feltRef's rect — which drives seat positioning — is unchanged.
+         theme.felt is passed as a CSS var so the surface can layer texture
+         over the (still theme-selectable) felt colour. */}
       <div
         className="table2d-felt"
         ref={feltRef}
-        style={{
-          background: theme.felt,
-          boxShadow: [
-            '0 0 60px 10px rgba(0,0,0,0.8)',
-            `0 0 0 14px ${theme.rail}`,
-            `0 0 0 18px ${theme.railMid}`,
-            `0 0 0 22px ${theme.rail}`,
-            '0 12px 80px 20px rgba(0,0,0,0.9)',
-          ].join(', '),
-        }}
+        style={{ '--felt-bg': theme.felt }}
       >
-        {/* Logo watermark — top of felt */}
+       <div className="table2d-felt__surface">
+        {/* drifting spotlight caustic on the felt */}
+        <div className="table2d-felt__spot" />
+        {/* Logo watermark — embossed gold medallion */}
         <div className="table2d-felt__logo">
           <img
             src={`${import.meta.env.BASE_URL}logo.png`}
@@ -952,6 +962,7 @@ export default function PokerTable2D() {
             {phaseBanner}
           </div>
         )}
+       </div>{/* /.table2d-felt__surface */}
       </div>
 
       {/* ── Theme cycle button ─────────────────────────────── */}
