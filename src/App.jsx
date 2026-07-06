@@ -767,6 +767,24 @@ function App() {
       }
     });
 
+    // All-in insurance (cashout) feedback. Server computes + settles; these are
+    // just player-facing confirmations of the guaranteed lock-in and the result.
+    socket.on('insuranceAccepted', (data) => {
+      useProgressStore.getState().addNotification({
+        type: 'mission',
+        message: `Insurance locked in — ${(data?.cashout || 0).toLocaleString()} chips guaranteed (${data?.equityPct || 0}% equity).`,
+      });
+    });
+    socket.on('insuranceSettled', (data) => {
+      const d = Number(data?.delta) || 0;
+      useProgressStore.getState().addNotification({
+        type: 'mission',
+        message: d > 0
+          ? `Insurance paid out — protected ${d.toLocaleString()} chips after the bad beat.`
+          : `Insurance settled — you kept your locked-in ${(data?.cashout || 0).toLocaleString()} chips.`,
+      });
+    });
+
     // Career Mode completion — the server now detects a stage win/loss (nothing
     // used to), so persist career progress to localStorage (survives sessions;
     // was sessionStorage-read-only, never written). CareerMode reads this back.
@@ -912,6 +930,8 @@ function App() {
       socket.off('quickGameStarted');
       socket.off('careerGameStarted');
       socket.off('careerGameComplete');
+      socket.off('insuranceAccepted');
+      socket.off('insuranceSettled');
       socket.off('bountyAwarded');
       socket.off('friendRequestReceived');
       socket.off('tableInvite');
