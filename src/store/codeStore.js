@@ -1,5 +1,6 @@
 // Global entry code + promotions store
 import { useState, useEffect } from 'react';
+import { getSocket } from '../services/socketService';
 
 const CODES_KEY  = 'poker-entry-codes';
 const PROMOS_KEY = 'poker-promotions';
@@ -92,29 +93,43 @@ export const codeActions = {
 
   getCodes: () => _codes,
 
-  // ── Promotions ───────────────────────────────────────────────────────────
+  // ── Promotions (SERVER-persisted; was sessionStorage only) ─────────────────
+  // Mutations emit admin socket events; the server persists + broadcasts the
+  // updated list back via 'adminPromotions', which refreshes _promos.
   addPromo: (promo) => {
-    const p = { ...promo, id: `promo-${Date.now()}` };
-    _promos = [..._promos, p];
-    save(PROMOS_KEY, _promos);
-    notifyPromos();
-    return p;
+    const socket = getSocket();
+    if (socket) socket.emit('savePromotion', { name: promo.name, description: promo.description || '', startDate: promo.startDate || '', endDate: promo.endDate || '' });
   },
 
   updatePromo: (id, changes) => {
-    _promos = _promos.map((p) => p.id === id ? { ...p, ...changes } : p);
-    save(PROMOS_KEY, _promos);
-    notifyPromos();
+    const socket = getSocket();
+    if (socket) socket.emit('savePromotion', { id, name: changes.name, description: changes.description || '', startDate: changes.startDate || '', endDate: changes.endDate || '' });
   },
 
   deletePromo: (id) => {
-    _promos = _promos.filter((p) => p.id !== id);
-    save(PROMOS_KEY, _promos);
-    notifyPromos();
+    const socket = getSocket();
+    if (socket) socket.emit('deletePromotion', { id });
   },
 
   getPromos: () => _promos,
 };
+
+// Register the server-promotions listener once + fetch the current list. Called
+// from usePromos() so the admin panel is populated from the server on mount.
+let _promoSynced = false;
+function ensurePromoSync() {
+  const socket = getSocket();
+  if (!socket) return;
+  if (!_promoSynced) {
+    _promoSynced = true;
+    socket.on('adminPromotions', (list) => {
+      _promos = Array.isArray(list) ? list : [];
+      save(PROMOS_KEY, _promos); // cache for instant paint next mount
+      notifyPromos();
+    });
+  }
+  socket.emit('getPromotions');
+}
 
 export function useCodes() {
   const [codes, set] = useState(_codes);
@@ -124,6 +139,6 @@ export function useCodes() {
 
 export function usePromos() {
   const [promos, set] = useState(_promos);
-  useEffect(() => { set(_promos); _promoSubs.add(set); return () => { _promoSubs.delete(set); }; }, []);
+  useEffect(() => { set(_promos); _promoSubs.add(set); ensurePromoSync(); return () => { _promoSubs.delete(set); }; }, []);
   return promos;
 }
