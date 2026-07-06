@@ -767,6 +767,34 @@ function App() {
       }
     });
 
+    // Career Mode completion — the server now detects a stage win/loss (nothing
+    // used to), so persist career progress to localStorage (survives sessions;
+    // was sessionStorage-read-only, never written). CareerMode reads this back.
+    socket.on('careerGameComplete', (data) => {
+      try {
+        const KEY = 'pokerCareerProgress';
+        const cur = JSON.parse(localStorage.getItem(KEY) || '{}');
+        const vk = `venue_${data?.venue}`;
+        const entry = cur[vk] || { stagesCompleted: 0, stars: [0, 0, 0] };
+        if (data?.won && data?.stage != null) {
+          entry.stagesCompleted = Math.max(entry.stagesCompleted || 0, data.stage + 1);
+          if (!Array.isArray(entry.stars)) entry.stars = [0, 0, 0];
+          entry.stars[data.stage] = Math.max(entry.stars[data.stage] || 0, data.stars || 0);
+        }
+        cur[vk] = entry;
+        localStorage.setItem(KEY, JSON.stringify(cur));
+      } catch { /* ignore */ }
+      // Show the same result overlay quick games use, and return to the lobby —
+      // the career table is torn down server-side shortly after.
+      setQuickGameResult({
+        type: 'career',
+        message: data?.won ? '⭐ Career stage cleared!' : 'Career stage failed — try again.',
+      });
+      const t = setTimeout(() => { quickGameTimeouts.delete(t); setQuickGameResult(null); }, 5000);
+      quickGameTimeouts.add(t);
+      useGameStore.getState().setScreen?.('lobby');
+    });
+
     // Hand history from server — kept in memory only (server is source of
     // truth; it broadcasts durableState on reconnect so we rehydrate). No
     // sessionStorage mirror per the "no sessionStorage" policy.
@@ -883,6 +911,13 @@ function App() {
       socket.off('quickGameOver');
       socket.off('quickGameStarted');
       socket.off('careerGameStarted');
+      socket.off('careerGameComplete');
+      socket.off('bountyAwarded');
+      socket.off('friendRequestReceived');
+      socket.off('tableInvite');
+      socket.off('tableBroken');
+      socket.off('playerMoved');
+      socket.off('purchaseResult');
       socket.off('playerProgress');
       socket.off('achievementUnlocked');
       socket.off('levelUp');

@@ -91,10 +91,13 @@ export default function CareerMode() {
 
   const playerLevel = progress?.level || 1;
 
-  // Career progress tracking (stored locally for now)
+  // Career progress — persisted to localStorage (survives sessions). The server
+  // now emits careerGameComplete on a stage win/loss; App.jsx writes the result
+  // here. Read once on mount; returning to this screen re-mounts and re-reads.
   const [careerProgress] = useState(() => {
     try {
-      const saved = sessionStorage.getItem('pokerCareerProgress');
+      const saved = localStorage.getItem('pokerCareerProgress')
+        || sessionStorage.getItem('pokerCareerProgress'); // migrate old per-tab data
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
