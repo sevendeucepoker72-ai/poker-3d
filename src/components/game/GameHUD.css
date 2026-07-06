@@ -7120,43 +7120,20 @@ html.kb-open .table-pot-odds {
    responsive breakpoints (only shadows/gradients/animations added).
    ════════════════════════════════════════════════════════════════════ */
 
-/* felt — THE OBSIDIAN CARBON rail. Winning layer: GameHUD.css loads after
-   PokerTable2D.css and carries !important. The rail is two parts:
-   (a) these box-shadow bands — a gold hairline + machined-steel bevel riding
-       the felt edge, plus the cool outer glow + deep drop;
-   (b) the .table2d-felt::before below — the carbon-fibre body ring, a
-       negative-inset pseudo so it extends OUTSIDE the felt WITHOUT changing the
-       element's box (feltRef / seat positions stay byte-identical).
-   Keep PokerTable2D.css:63 box-shadow in sync. The felt colour is drawn by
-   .table2d-felt__surface on top, so the background below is a hidden fallback. */
+/* felt — the RAIL is now .table2d-rail-img (a pre-lit obsidian-carbon PNG baked
+   from an SVG specular-lighting filter, so the live table pays zero filter cost —
+   no GPU flicker, mobile-safe). This winning !important rule now only carries the
+   cool outer glow + deep drop behind the rail image; the old CSS carbon ::before
+   is removed. .table2d-felt__surface still draws the cloth on top of the hidden
+   background fallback below. */
 .table2d-felt{
   background:
     radial-gradient(58% 44% at 50% 26%, rgba(150,200,255,.26), transparent 60%),
     radial-gradient(at 50% 38%, rgb(28,65,120), rgb(15,36,71) 54%, rgb(6,18,39)),
     repeating-linear-gradient(48deg, rgba(0,0,0,.045) 0 2px, transparent 2px 5px) !important;
   box-shadow:
-    0 0 0 1.5px rgba(214,176,92,.95),      /* gold hairline at the felt edge */
-    0 0 0 3px  rgba(132,152,184,.55),       /* machined-steel bevel */
-    0 0 0 4.5px rgba(0,0,0,.85),            /* crisp shadow into the carbon */
     0 0 46px 6px rgba(45,100,205,.30),      /* cool high-tech outer glow */
     0 26px 74px 6px rgba(0,0,0,.76) !important;   /* deep drop */
-}
-/* THE RAIL BODY — obsidian carbon-fibre ring with a machined crown highlight.
-   inset:-30px extends it outside the felt; z-index:-1 keeps it behind the felt
-   surface (which covers the centre), so only the ~30px rail band is visible.
-   Pure background + box-shadow — no animation, mobile-safe. */
-.table2d-felt::before{
-  content:""; position:absolute; inset:-30px; border-radius:50%;
-  z-index:-1; pointer-events:none;
-  background:
-    repeating-linear-gradient(45deg, rgba(180,205,255,.05) 0 2px, rgba(0,0,0,.16) 2px 4px),
-    repeating-linear-gradient(-45deg, rgba(180,205,255,.05) 0 2px, rgba(0,0,0,.16) 2px 4px),
-    linear-gradient(to bottom, #222836 0%, #12161f 28%, #080a12 62%, #030407 100%);
-  background-size:7px 7px, 7px 7px, cover;
-  box-shadow:
-    inset 0 6px 12px -2px rgba(200,222,255,.55),   /* machined crown highlight */
-    inset 0 -18px 30px -6px rgba(0,0,0,.95),         /* base shadow (lit from above) */
-    inset 0 0 0 1px rgba(0,0,0,.85);                 /* crisp outer edge */
 }
 
 /* felt rim-glow BREATHING — re-added 2026-06-11, GPU-safe: pulses a pseudo's

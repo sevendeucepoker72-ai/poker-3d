@@ -75,16 +75,27 @@
   z-index: 1;
   background: #0a1a34; /* fallback beneath the surface */
 
-  /* THE RAIL — obsidian carbon edge bands (gold hairline + machined-steel bevel
-     riding the felt edge, cool outer glow, deep drop). The carbon BODY ring is
-     drawn by .table2d-felt::before (see GameHUD.css, the winning !important
-     layer). Kept in sync here; GameHUD's !important is what actually renders. */
+  /* THE RAIL is now .table2d-rail-img — a pre-lit obsidian-carbon PNG (baked from
+     an SVG specular-lighting filter at build time, so the live table pays no
+     filter cost). This element only carries the cool outer glow + deep drop that
+     sit BEHIND the rail image. */
   box-shadow:
-    0 0 0 1.5px rgba(214,176,92,0.95),
-    0 0 0 3px rgba(132,152,184,0.55),
-    0 0 0 4.5px rgba(0,0,0,0.85),
     0 0 46px 6px rgba(45,100,205,0.30),
     0 26px 74px 6px rgba(0,0,0,0.76);
+}
+
+/* THE RAIL IMAGE — sits above the felt cloth, below the HUD. Transparent centre
+   shows the cloth; background-size:100% 100% stretches the raster to the felt at
+   any responsive size/aspect (cheap; no filter, no re-raster on game updates). */
+.table2d-rail-img {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-position: center;
+  pointer-events: none;
+  z-index: 2;
 }
 
 /* THE FELT SURFACE — fills the oval (the rail is the box-shadow bezel outside).
