@@ -146,6 +146,27 @@
 @keyframes felt-spot-drift { 0%,100% { transform: translate(-1.5%, 0); } 50% { transform: translate(1.5%, 1%); } }
 @media (prefers-reduced-motion: reduce) { .table2d-felt__spot { animation: none; } }
 
+/* ── Pot-sweep victory glow — felt erupts warm gold on a win ── */
+.table2d-felt__win-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 0;               /* above the base surface, below logo/pot (later siblings) */
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(ellipse 62% 66% at 50% 46%,
+    rgba(255, 224, 150, 0.46) 0%,
+    rgba(255, 200, 92, 0.24) 24%,
+    rgba(231, 175, 66, 0.10) 46%,
+    transparent 68%);
+  mix-blend-mode: screen;  /* lightens the felt itself; clipped to the oval by overflow:hidden */
+  animation: felt-win-glow 1.7s ease-in-out infinite;
+}
+@keyframes felt-win-glow {
+  0%, 100% { opacity: 0.6;  transform: scale(0.985); }
+  50%      { opacity: 1;    transform: scale(1.02);  }
+}
+@media (prefers-reduced-motion: reduce) { .table2d-felt__win-glow { animation: none; opacity: 0.72; } }
+
 /* ── Table logo — embossed gold medallion ─────────────────── */
 .table2d-felt__logo {
   position: absolute;
@@ -686,17 +707,31 @@
 
 /* ── Winner highlight ─────────────────────────────────────── */
 .seat-pod--winner .seat-pod__avatar {
-  border-color: #ffd24a;
-  box-shadow:
-    0 0 0 3px rgba(120, 160, 255,0.35),
-    0 0 24px 8px rgba(120, 160, 255,0.5),
-    0 2px 12px rgba(0,0,0,0.5);
-  animation: seat-winner-pulse 1.1s ease-in-out infinite;
+  border-color: #ffe6a3;
+  animation: seat-winner-pulse 1.3s ease-out infinite;
 }
 
+/* Steady polished-gold rim + warm glow, plus a champion burst ring that
+   expands outward and fades — a spotlight-on-the-winner effect that now
+   matches the gold rail. Pure box-shadow, so no pseudo-element conflict
+   with the all-in (::before) / disabled (::after) avatar-wrap slots. */
 @keyframes seat-winner-pulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(120, 160, 255,0.25), 0 0 18px 5px rgba(120, 160, 255,0.35), 0 2px 12px rgba(0,0,0,0.5); }
-  50%       { box-shadow: 0 0 0 4px rgba(120, 160, 255,0.55), 0 0 32px 12px rgba(120, 160, 255,0.65), 0 2px 12px rgba(0,0,0,0.5); }
+  0% {
+    box-shadow:
+      0 0 0 2px #a67c28,
+      0 0 0 4px #ffe08a,
+      0 0 22px 6px rgba(255, 210, 110, 0.55),
+      0 0 0 4px rgba(255, 224, 130, 0.9),
+      0 2px 12px rgba(0,0,0,0.5);
+  }
+  100% {
+    box-shadow:
+      0 0 0 2px #a67c28,
+      0 0 0 4px #ffe08a,
+      0 0 22px 6px rgba(255, 210, 110, 0.55),
+      0 0 0 20px rgba(255, 224, 130, 0),
+      0 2px 12px rgba(0,0,0,0.5);
+  }
 }
 
 /* Avatar photo fills the circle */
@@ -743,27 +778,32 @@
 }
 
 .seat-pod__winner-text {
-  font-size: 0.65rem;
+  font-size: 0.66rem;
   font-weight: 900;
-  color: #ffd24a;
-  letter-spacing: 0.1em;
-  text-shadow: 0 0 12px rgba(120, 160, 255,0.8);
+  color: #fff2c8;
+  letter-spacing: 0.14em;
+  text-shadow:
+    0 0 10px rgba(255, 205, 90, 0.9),
+    0 0 22px rgba(255, 175, 50, 0.6),
+    0 1px 2px rgba(60, 34, 0, 0.9);
   display: block;
 }
 
 .seat-pod__winner-hand {
   font-size: 0.58rem;
-  color: #fbbf24;
+  color: #ffe6a3;
   font-weight: 700;
   display: block;
   white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.7);
 }
 
 .seat-pod__winner-amount {
   font-size: 0.6rem;
-  color: #4ade80;
-  font-weight: 700;
+  color: #6ee79a;
+  font-weight: 800;
   display: block;
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.5), 0 1px 2px rgba(0,0,0,0.7);
 }
 
 /* ── Responsive seat pod sizing via CSS custom property ─────── */

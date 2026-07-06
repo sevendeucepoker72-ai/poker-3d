@@ -928,6 +928,13 @@ export default function PokerTable2D() {
        <div className="table2d-felt__surface">
         {/* drifting spotlight caustic on the felt */}
         <div className="table2d-felt__spot" />
+        {/* Pot-sweep victory glow — felt erupts warm gold as the pot is won.
+            Absolutely positioned + pointer-events:none, so it never touches
+            feltRef's rect or the seat layout. Gated to the showdown window. */}
+        {(phase === 'Showdown' || phase === 'HandComplete') &&
+          (handResult?.winners?.length ?? 0) > 0 && (
+            <div className="table2d-felt__win-glow" aria-hidden="true" />
+        )}
         {/* Logo watermark — embossed gold medallion */}
         <div className="table2d-felt__logo">
           <img

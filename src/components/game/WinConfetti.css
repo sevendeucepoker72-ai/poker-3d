@@ -55,11 +55,11 @@
   transform: translate(-50%, -50%) scale(0);
   font-size: 2.5rem;
   font-weight: 900;
-  color: #ffd24a;
+  color: #fff2c8;
   text-shadow:
-    0 0 20px rgba(120, 160, 255, 0.6),
-    0 0 40px rgba(255, 165, 0, 0.4),
-    0 2px 4px rgba(0, 0, 0, 0.8);
+    0 0 18px rgba(255, 205, 90, 0.9),
+    0 0 44px rgba(255, 150, 40, 0.55),
+    0 2px 4px rgba(0, 0, 0, 0.85);
   letter-spacing: 4px;
   text-transform: uppercase;
   pointer-events: none;

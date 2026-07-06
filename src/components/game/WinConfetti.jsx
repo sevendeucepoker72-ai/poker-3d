@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import useReducedMotion from '../../hooks/useReducedMotion';
 import './WinConfetti.css';
 
+// Premium gold-coin shower to match the polished-gold table: golds, creams
+// and amber, with a couple of sapphire-brand + white sparkle accents.
 const CONFETTI_COLORS = [
-  '#FFD700', '#FF6B6B', '#4ADE80', '#60A5FA', '#F59E0B',
-  '#A855F7', '#EC4899', '#FF8C00', '#00CED1', '#FFFFFF',
+  '#FFD700', '#FFE9A8', '#E7BF5C', '#FFF3CF', '#F59E0B',
+  '#D1A13A', '#FFC64B', '#FFFFFF', '#7FB0FF', '#B8860B',
 ];
 
 function generatePieces(count) {
