@@ -36,7 +36,7 @@ const TABLE_THEMES = {
     rail: '#2a1f0f', railMid: '#4a3418', name: '🟢 Classic',
   },
   blue: {
-    felt: 'radial-gradient(ellipse 58% 68% at 50% 37%, #4f9ae4 0%, #357ac6 20%, #1f588f 42%, #123f6f 62%, #0a2a4f 80%, #051730 94%, #020c1c 100%)',
+    felt: 'radial-gradient(ellipse at 50% 30%, #235a95 0%, #164277 40%, #0d2c53 68%, #08203e 100%)',
     rail: '#0a0f20', railMid: '#1e3060', name: '🔵 Speed',
   },
   black: {
@@ -1019,16 +1019,6 @@ export default function PokerTable2D() {
           </div>
         )}
        </div>{/* /.table2d-felt__surface */}
-       {/* Rail — a pre-lit obsidian-carbon PNG baked from an SVG lighting filter
-           at build time, so the live table pays ZERO filter cost (no GPU flicker,
-           mobile-safe). Its transparent centre lets the felt cloth show through;
-           background-size:100% 100% stretches the raster cheaply to any felt
-           aspect. Sits above the cloth, below the HUD; pointer-events:none. */}
-       <div
-         className="table2d-rail-img"
-         style={{ backgroundImage: `url(${import.meta.env.BASE_URL}table-rail.png)` }}
-         aria-hidden="true"
-       />
       </div>
 
       {/* ── Theme cycle button ─────────────────────────────── */}

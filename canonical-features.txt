@@ -150,11 +150,3 @@ tournamentStandings
 # built CSS selector and the className string, so a refactor that drops
 # the flyer fails the deploy guardrail.
 chip-fly
-
-# ─── 2026-07-06 — obsidian-carbon table rail (baked PNG) ─────────────
-# The premium table rail is a pre-lit obsidian-carbon PNG (baked from an
-# SVG specular-lighting filter via poker-3d/scripts/, so the live table
-# pays no filter cost — mobile-safe). Lock the layer class so a refactor
-# that drops the rail image fails the deploy guardrail. The PNG itself
-# ships at dist/table-rail.png (from public/).
-table2d-rail-img
