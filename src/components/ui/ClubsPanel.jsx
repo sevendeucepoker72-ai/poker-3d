@@ -233,6 +233,8 @@ export default function ClubsPanel({ onClose }) {
   const [unionInfo, setUnionInfo] = useState(null);
   const [unionName, setUnionName] = useState('');
   const [unionDesc, setUnionDesc] = useState('');
+  const [pendingUnionInvites, setPendingUnionInvites] = useState([]);
+  const [unionInviteQuery, setUnionInviteQuery] = useState('');
 
   // Member Profile (Feature 12)
   const [memberProfile, setMemberProfile] = useState(null);
@@ -487,11 +489,20 @@ export default function ClubsPanel({ onClose }) {
     // Feature 11: Unions
     const onUnionCreated = (data) => {
       setLoading(false);
-      if (data.success && data.union) setUnionInfo(data.union);
+      if (data.success && data.union) {
+        setUnionInfo(data.union);
+        // createUnion's payload has no clubs[]; refetch the full alliance so the
+        // "Allied Clubs" list isn't empty until the next manual refresh. Use the
+        // union's own leaderClubId (the creating club) to avoid a stale closure.
+        const s = getSocket();
+        if (s && data.union.leaderClubId) s.emit('getUnionInfo', { clubId: data.union.leaderClubId });
+      }
     };
     const onUnionInfoReceived = (data) => {
       if (data.success) setUnionInfo(data.union || null);
     };
+    const onPendingUnionInvites = (list) => setPendingUnionInvites(Array.isArray(list) ? list : []);
+    const onUnionInviteSent = () => { setUnionInviteQuery(''); setSearchResults([]); };
 
     // Feature 12: Member Profile
     const onMemberProfileReceived = (data) => {
@@ -581,6 +592,8 @@ export default function ClubsPanel({ onClose }) {
     socket.on('invitationDeclined', onInvitationDeclined);
     socket.on('unionCreated', onUnionCreated);
     socket.on('unionInfo', onUnionInfoReceived);
+    socket.on('pendingUnionInvites', onPendingUnionInvites);
+    socket.on('unionInviteSent', onUnionInviteSent);
     socket.on('memberProfile', onMemberProfileReceived);
     socket.on('clubBadgeUpdated', onClubBadgeUpdated);
     socket.on('referralCode', onReferralCode);
@@ -638,6 +651,8 @@ export default function ClubsPanel({ onClose }) {
       socket.off('invitationDeclined', onInvitationDeclined);
       socket.off('unionCreated', onUnionCreated);
       socket.off('unionInfo', onUnionInfoReceived);
+      socket.off('pendingUnionInvites', onPendingUnionInvites);
+      socket.off('unionInviteSent', onUnionInviteSent);
       socket.off('memberProfile', onMemberProfileReceived);
       socket.off('clubBadgeUpdated', onClubBadgeUpdated);
       socket.off('referralCode', onReferralCode);
@@ -706,6 +721,7 @@ export default function ClubsPanel({ onClose }) {
       socket.emit('getScheduledClubTables', { clubId: club.id });
       socket.emit('getBlindStructures', { clubId: club.id });
       socket.emit('getUnionInfo', { clubId: club.id });
+      socket.emit('getPendingUnionInvites', { clubId: club.id });
       socket.emit('getClubLevel', { clubId: club.id });
       socket.emit('generateReferralCode', { clubId: club.id });
       socket.emit('getReferralStats', { clubId: club.id });
@@ -987,6 +1003,25 @@ export default function ClubsPanel({ onClose }) {
     if (!socket || !selectedClub || !unionName.trim()) return;
     setLoading(true);
     socket.emit('createUnion', { clubId: selectedClub.id, name: unionName.trim(), description: unionDesc.trim() });
+  };
+
+  const handleUnionInviteSearch = () => {
+    const socket = getSocket();
+    if (!socket || !unionInviteQuery.trim()) return;
+    socket.emit('searchClubs', { query: unionInviteQuery.trim() });
+  };
+
+  const handleInviteToUnion = (targetClubId) => {
+    const socket = getSocket();
+    if (!socket || !unionInfo || !selectedClub || !targetClubId) return;
+    socket.emit('inviteToUnion', { unionId: unionInfo.id, inviterClubId: selectedClub.id, targetClubId });
+  };
+
+  const handleAcceptUnionInvite = (unionId) => {
+    const socket = getSocket();
+    if (!socket || !selectedClub) return;
+    socket.emit('joinUnion', { unionId, clubId: selectedClub.id });
+    setPendingUnionInvites((prev) => prev.filter((inv) => inv.unionId !== unionId));
   };
 
   // ─── Member Profile Actions (Feature 12) ───
@@ -2094,9 +2129,42 @@ export default function ClubsPanel({ onClose }) {
                 </div>
               ))}
             </div>
+            {/* Only the union LEADER club can invite others. */}
+            {unionInfo.leaderClubId === selectedClub?.id && (
+              <div style={{ marginTop: '10px' }}>
+                <div className="clubs-form-group" style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    type="text"
+                    className="clubs-input"
+                    placeholder="Search a club to invite..."
+                    value={unionInviteQuery}
+                    onChange={(e) => setUnionInviteQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleUnionInviteSearch(); }}
+                  />
+                  <button className="clubs-btn clubs-btn-primary clubs-btn-sm" onClick={handleUnionInviteSearch}>Find</button>
+                </div>
+                {searchResults.filter((r) => r.id !== selectedClub?.id).map((r) => (
+                  <div key={r.id} className="club-union-member">
+                    <span>{r.badge || '♠'} {r.name}</span>
+                    <button className="clubs-btn clubs-btn-green clubs-btn-sm" onClick={() => handleInviteToUnion(r.id)}>Invite</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div>
+            {pendingUnionInvites.length > 0 && (
+              <div style={{ marginBottom: '12px' }}>
+                <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>Pending Union Invitations:</span>
+                {pendingUnionInvites.map((inv) => (
+                  <div key={inv.unionId} className="club-union-member">
+                    <span>{inv.name} <span style={{ color: '#6b6b8a', fontSize: '0.7rem' }}>from {inv.leaderClubName}</span></span>
+                    <button className="clubs-btn clubs-btn-green clubs-btn-sm" onClick={() => handleAcceptUnionInvite(inv.unionId)}>Accept</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="clubs-form-group">
               <input
                 type="text"
