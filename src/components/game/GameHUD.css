@@ -7120,17 +7120,23 @@ html.kb-open .table-pot-odds {
    responsive breakpoints (only shadows/gradients/animations added).
    ════════════════════════════════════════════════════════════════════ */
 
-/* felt — overhead light pool + faint weave + animated blue rim-glow */
+/* felt — THE polished-GOLD tube rail. This is the winning layer: GameHUD.css
+   loads after PokerTable2D.css and this rule carries !important, so the gold
+   bezel defined here is what actually renders on the live table. (The matching
+   PokerTable2D.css .table2d-felt box-shadow is the same bezel; keep them in
+   sync.) The felt colour itself is drawn by .table2d-felt__surface on top of
+   this element, so the background below is hidden — kept only as a fallback. */
 .table2d-felt{
   background:
     radial-gradient(58% 44% at 50% 26%, rgba(150,200,255,.26), transparent 60%),
     radial-gradient(at 50% 38%, rgb(28,65,120), rgb(15,36,71) 54%, rgb(6,18,39)),
     repeating-linear-gradient(48deg, rgba(0,0,0,.045) 0 2px, transparent 2px 5px) !important;
   box-shadow:
-    0 0 0 14px #0a0f20, 0 0 0 18px #2e54a0, 0 0 0 22px #0a0f20,
-    0 28px 110px 26px rgba(0,0,0,.85),
-    inset 0 0 110px rgba(0,0,0,.5), inset 0 8px 30px rgba(150,190,255,.08),
-    0 0 70px 12px rgba(45,95,205,.30) !important;
+    0 0 0 1px #241a08, 0 0 0 4px #7a5a1e, 0 0 0 8px #e7bf5c,
+    0 0 0 10px #fff3cf, 0 0 0 13px #d1a13a, 0 0 0 16px #5a4114, 0 0 0 17px #0d0904,
+    0 0 60px 10px rgba(215,167,66,.20),
+    0 0 90px 26px rgba(22,66,119,.26),
+    0 26px 78px 6px rgba(0,0,0,.78) !important;
   /* 2026-06-11: REMOVED `animation: appRimGlow`. It animated a
      `filter: drop-shadow` on the felt — continuously re-rasterizing a filter
      layer that the seat pods/cards composite against. On many GPUs that
@@ -7143,7 +7149,7 @@ html.kb-open .table-pot-odds {
    felt's own transform/centering, so nothing can be knocked out of place). */
 .table2d-felt::after{
   content:""; position:absolute; inset:0; border-radius:inherit;
-  box-shadow:0 0 95px 18px rgba(60,120,235,.5);
+  box-shadow:0 0 95px 18px rgba(215,167,66,.42);
   opacity:.4; z-index:-1; pointer-events:none;
   animation: appFeltGlow 5s ease-in-out infinite;
 }
