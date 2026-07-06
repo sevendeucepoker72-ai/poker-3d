@@ -113,7 +113,14 @@ export default function TournamentLobby() {
                   </div>
                   <div className="tournament-detail">
                     <span className="tournament-detail-label">Prize:</span>
-                    <span className="tournament-detail-value">{t.prizePool.toLocaleString()}</span>
+                    {/* Show the REAL payable pool: freerolls are house-funded to
+                        the advertised amount; buy-in events show the live funded
+                        pool (grows as players register). Falls back to the
+                        advertised prizePool if an older server omits fundedPool. */}
+                    <span className="tournament-detail-value">
+                      {(t.fundedPool ?? t.prizePool ?? 0).toLocaleString()}
+                      {t.isFreeroll ? ' (freeroll)' : ''}
+                    </span>
                   </div>
                   <div className="tournament-detail">
                     <span className="tournament-detail-label">Players:</span>
