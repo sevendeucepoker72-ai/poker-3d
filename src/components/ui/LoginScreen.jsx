@@ -31,6 +31,12 @@ export default function LoginScreen() {
   const [rememberMe, setRememberMe] = useState(() => isKeepSignedIn());
 
   const login = useGameStore((s) => s.login);
+  // 2026-07-06 P2 auth fix — set by the 'poker:session-expired' teardown
+  // (main.jsx listener) when the refresh token is revoked (logged out
+  // elsewhere / admin revoke). Rendered as a visible notice below so the
+  // user isn't silently yanked to this screen with no explanation. Cleared
+  // by gameStore.login/oauthLogin on the next successful sign-in.
+  const sessionExpiredNotice = useGameStore((s) => s.sessionExpiredNotice);
   const tables = useTableStore((s) => s.tables);
   const totalOnline = tables.reduce((sum, t) => sum + (t.playerCount || 0), 0);
 
@@ -134,6 +140,16 @@ export default function LoginScreen() {
 
           {/* SSO Login */}
           <div className="login-form">
+            {/* Session-expired notice — informational (blue+gold), not an
+                error: the user's refresh token was revoked (signed out on
+                another device / admin action) and we brought them here
+                deliberately. Reuses the .login-error layout with the same
+                gold override pattern as the in-app-browser banner below. */}
+            {sessionExpiredNotice && !error && (
+              <div className="login-error" style={{ background: 'rgba(72,110,255,0.12)', borderColor: 'rgba(255,210,74,0.45)', color: '#ffd24a' }}>
+                {sessionExpiredNotice}
+              </div>
+            )}
             {error && <div className="login-error">{error}</div>}
 
             {/* 2026-05-07 device-audit P0 — in-app webview banner. */}

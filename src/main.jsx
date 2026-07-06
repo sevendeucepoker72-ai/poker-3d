@@ -85,6 +85,35 @@ onAuthEvent((evt) => {
   }
 })
 
+// 2026-07-06 P2 auth fix — the ONE listener for 'poker:session-expired'
+// (dispatched by authScheduler.js when a proactive refresh fails with
+// RefreshTokenRevokedError, i.e. the session is genuinely dead: logged out
+// elsewhere, admin-revoked, or rotation race lost). Before this listener
+// existed the event was dispatched into the void and each dispatcher did its
+// own inline logout — a silent yank to the login screen with a still-live
+// authenticated socket. Now every revoked-session teardown routes through
+// gameStore.logout({ skipRedirect: true }) (which also cycles the socket so
+// the server runs its reserved-seat flow and the next user on this tab can't
+// inherit the session) and surfaces a visible notice on the login screen
+// (gameStore.sessionExpiredNotice → LoginScreen). Registered at module level
+// so it exists before first render and never unmounts.
+window.addEventListener('poker:session-expired', (e) => {
+  try {
+    const s = useGameStore.getState()
+    if (s.isLoggedIn && typeof s.logout === 'function') {
+      s.logout({ skipRedirect: true })
+    }
+    // Set AFTER logout — logout()'s set() doesn't touch this field, and the
+    // next successful login/oauthLogin clears it.
+    useGameStore.setState({
+      sessionExpiredNotice: 'Your session ended — please sign in again.',
+    })
+    console.warn('[session-expired] teardown complete:', e?.detail?.reason || 'unknown')
+  } catch (err) {
+    console.error('[session-expired] teardown failed:', err)
+  }
+})
+
 // Register the service worker early so push-enrollment UI doesn't race on
 // `navigator.serviceWorker.ready`.
 //
@@ -231,12 +260,26 @@ async function bootstrapBridgeOrMount() {
     const isAuthCallback = path.startsWith('/auth/callback');
 
     if (!hasLocalToken && !triedSilent && !isAuthCallback) {
+      const { startSilentLogin, bounceToCanonicalOriginIfUnregistered } =
+        await import('./services/authService.js');
+      // 2026-07-06 P2 auth fix (.club canonical bounce) — this bundle is also
+      // served on https://sevendeucepoker.club, which is NOT a registered
+      // OAuth origin. Starting the silent prompt=none flow from there sends
+      // an unregistered redirect_uri and oidc-provider hard-400s on the auth
+      // origin — a dead-end. Bounce to the canonical .online origin
+      // (preserving path+search) instead of starting OAuth here. Checked
+      // BEFORE stamping oauth_silent_attempted so the canonical origin gets
+      // its own clean silent-SSO attempt after the bounce. Full rationale +
+      // the un-bounce checklist live next to REGISTERED_OAUTH_ORIGINS in
+      // services/authService.js.
+      if (bounceToCanonicalOriginIfUnregistered()) {
+        return; // navigating to the canonical origin — do not mount
+      }
       sessionStorage.setItem('oauth_silent_attempted', '1');
       try {
         sessionStorage.setItem('oauth_silent_return_to',
           window.location.pathname + window.location.search + window.location.hash);
       } catch {}
-      const { startSilentLogin } = await import('./services/authService.js');
       try {
         await startSilentLogin({ returnTo: path });
         return; // navigation fires inside; we don't reach here

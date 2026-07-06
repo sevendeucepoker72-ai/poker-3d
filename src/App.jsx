@@ -43,7 +43,11 @@ import AuthCallback from './components/ui/AuthCallback';
 // Cross-site SSO now relies on top-level redirect from LoginScreen, which
 // works because top-level navigation to auth-server makes its cookies
 // first-party for the duration of the redirect.
-import { isAuthCallback as checkIsAuthCallback, refreshAccessToken, RefreshTokenRevokedError } from './services/authService';
+// 2026-07-06 P2 auth fix — RefreshTokenRevokedError no longer imported here:
+// the steady-state refresh timer (the only consumer) moved to
+// services/authScheduler.js; refreshAccessToken is still used by the BOOT
+// auto-login path below.
+import { isAuthCallback as checkIsAuthCallback, refreshAccessToken } from './services/authService';
 import { logAuthEvent } from './services/authEvents';
 import { startAuthCrossTabListener } from './services/authCrossTab';
 // Heavy screens loaded lazily — only when the user first navigates to them
@@ -1270,19 +1274,32 @@ function App() {
     return () => socket.off('reconnectedToTable', handleReconnected);
   }, []);
 
-  // OAuth2 token refresh timer — refresh 5 minutes before expiry
+  // Cross-tab logout propagation — if another tab clears the auth token
+  // or refresh token (or writes the explicit logout marker), drop the
+  // session here too. Lifecycle stays tied to having an active OAuth
+  // session (keyed on oauthTokenExpiry), matching the old combined effect.
+  //
+  // 2026-07-06 P2 auth fix — the steady-state OAuth refresh timer that used
+  // to live in this effect is GONE. It duplicated services/authScheduler.js
+  // (both proactively refreshed 5 min before expiry) with a DIVERGENT
+  // failure policy: this one force-logged-out after a single 30s retry, so
+  // a ~60s network blip at the refresh boundary logged a seated player out
+  // mid-hand despite a perfectly valid session — and which scheduler fired
+  // first was a race. authScheduler.js (started at module load in main.jsx)
+  // is now the ONLY proactive refresher: transient failures retry forever
+  // and never log out; a genuinely revoked refresh token dispatches
+  // 'poker:session-expired' (handled in main.jsx → single gameStore.logout
+  // teardown incl. socket disconnect + login-screen notice).
+  // NOTE: the BOOT-time refresh + socket oauthLogin path (auto-login effect
+  // above, refreshAccessToken → oauthLogin emit) is intentionally unchanged
+  // — only the steady-state re-scheduler + its force-logout were removed.
+  // Everything the removed timer wrote (poker_auth_token via setAuthToken,
+  // poker_oauth_refresh, poker_token_expiry, store authToken via setAuth)
+  // is also written by authScheduler + authService.refreshAccessToken.
   useEffect(() => {
     const expiry = useGameStore.getState().oauthTokenExpiry;
     if (!expiry) return;
 
-    const refreshAt = expiry - 5 * 60 * 1000;
-    const delay = refreshAt - Date.now();
-
-    // Cross-tab logout propagation — if another tab clears the auth token
-    // or refresh token, drop the session here too. Wired into this same
-    // effect (instead of a new useEffect) so the listener lifecycle stays
-    // tied to having an active session; it's torn down alongside the
-    // refresh timer when oauthTokenExpiry resets to null.
     const stopCrossTab = startAuthCrossTabListener(() => {
       try {
         const s = useGameStore.getState();
@@ -1296,75 +1313,7 @@ function App() {
       }
     });
 
-    if (delay <= 0) return stopCrossTab;
-
-    // Shared by the scheduled refresh and the 30s retry. Returns true on
-    // success; throws on failure (caller decides retry vs logout based on
-    // the error class).
-    const attemptRefresh = async () => {
-      // Check both stores for the refresh token (keep-signed-in lives in localStorage).
-      let refresh = null;
-      try { refresh = localStorage.getItem('poker_oauth_refresh') || sessionStorage.getItem('poker_oauth_refresh'); } catch {}
-      if (!refresh) return false;
-      const tokens = await refreshAccessToken(refresh);
-      setAuthToken(tokens.access_token);
-      const keep = isKeepSignedIn();
-      const store = keep ? localStorage : sessionStorage;
-      try { store.setItem('poker_oauth_refresh', tokens.refresh_token); } catch {}
-      try { store.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000)); } catch {}
-      const state = useGameStore.getState();
-      state.setAuth(state.userId, tokens.access_token);
-      return true;
-    };
-
-    // Retry-once pattern: on a transient error (network blip, 5xx,
-    // timeout) wait 30s and try again exactly once before forcing logout.
-    // On an explicit RefreshTokenRevokedError we surrender immediately —
-    // retrying will never succeed. No global banner mechanism exists in
-    // gameStore today, so surface via console.warn (per CLAUDE.md's "do
-    // not invent a new one"); swap to a real banner once one lands.
-    let retryTimer = null;
-    const forceLogout = (reason) => {
-      try {
-        console.warn('[App] OAuth refresh failed, logging out:', reason);
-        const s = useGameStore.getState();
-        // 2026-07-02 Finding #4 — foreground refresh-revoked teardown: clear
-        // LOCAL state only, matching the background scheduler path. Don't
-        // redirect to /session/end on a token expiry (the UI surfaces re-login);
-        // skipRedirect avoids an abrupt full-page bounce on a background failure.
-        if (typeof s.logout === 'function') s.logout({ skipRedirect: true });
-      } catch (err) {
-        console.error('[App] forceLogout threw:', err);
-      }
-    };
-
-    const timer = setTimeout(async () => {
-      try {
-        await attemptRefresh();
-      } catch (err) {
-        if (err instanceof RefreshTokenRevokedError) {
-          forceLogout(err);
-          return;
-        }
-        // Transient — wait 30s and retry once. The singleton inflight
-        // guard in authService.refreshAccessToken prevents us from
-        // racing an unrelated concurrent refresh on the retry.
-        console.warn('[App] OAuth refresh transient failure, retrying in 30s:', err?.message || err);
-        retryTimer = setTimeout(async () => {
-          try {
-            await attemptRefresh();
-          } catch (err2) {
-            forceLogout(err2);
-          }
-        }, 30000);
-      }
-    }, delay);
-
-    return () => {
-      clearTimeout(timer);
-      if (retryTimer) clearTimeout(retryTimer);
-      stopCrossTab();
-    };
+    return stopCrossTab;
   }, [useGameStore((s) => s.oauthTokenExpiry)]);
 
   // Deep-link from player app. If it's a waitlist hand-off, emit

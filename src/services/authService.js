@@ -8,6 +8,42 @@ const CLIENT_ID = 'poker-3d';
 const REDIRECT_URI = `${window.location.origin}/auth/callback`;
 const SCOPES = 'openid profile offline_access';
 
+// 2026-07-06 P2 auth fix (.club canonical bounce) — this same bundle is ALSO
+// served on https://sevendeucepoker.club, which is NOT a registered OAuth
+// origin. REDIRECT_URI above is built from window.location.origin, so
+// starting OAuth from .club sends an unregistered redirect_uri and
+// oidc-provider hard-400s on the auth origin — a dead-end the user cannot
+// recover from (~9 real-browser hits/day in auth logs). Any origin outside
+// this set gets a client-side canonical bounce to .online (same path+search)
+// INSTEAD of starting OAuth (simple + reversible). If .club is ever blessed
+// as a first-class origin: register its redirect/post-logout URIs in
+// auth-server clients.ts, add it to the auth-server CSP and master-API CORS
+// allowlists, then remove this bounce.
+const REGISTERED_OAUTH_ORIGINS = [
+  'https://americanpubpoker.online',
+  'http://localhost:5173', // vite dev
+  'http://localhost:5183', // vite dev (alt port)
+];
+export const CANONICAL_ORIGIN = 'https://americanpubpoker.online';
+
+export function isRegisteredOAuthOrigin() {
+  try { return REGISTERED_OAUTH_ORIGINS.includes(window.location.origin); } catch { return false; }
+}
+
+/**
+ * If the current origin is not registered with the auth-server, navigate to
+ * the canonical origin (preserving path + search) and return true — the
+ * caller MUST stop (do NOT start OAuth on this origin). Returns false on a
+ * registered origin (no-op).
+ */
+export function bounceToCanonicalOriginIfUnregistered() {
+  if (isRegisteredOAuthOrigin()) return false;
+  try {
+    window.location.href = CANONICAL_ORIGIN + window.location.pathname + window.location.search;
+  } catch { /* navigation blocked — nothing else we can safely do */ }
+  return true;
+}
+
 // 2026-06-16 Phase 3 — RFC 8707 resource indicator. .online sends the
 // access_token as its API bearer (setAuthToken(tokens.access_token)). Sent ONLY
 // on the authorize request (binds it to the grant); token-exchange + refresh do
@@ -228,6 +264,10 @@ function consumePending(state) {
 }
 
 export async function startLogin({ prompt = null, returnTo = null } = {}) {
+  // 2026-07-06 P2 auth fix — unregistered origin (e.g. sevendeucepoker.club):
+  // bounce to the canonical origin instead of 400ing at the auth-server.
+  // Checked FIRST so a .club visitor is never dead-ended by a later error.
+  if (bounceToCanonicalOriginIfUnregistered()) return;
   // 2026-05-07 device-audit P0 — bail with a clear, actionable message
   // for browsers without WebCrypto instead of a generic toast.
   _assertCryptoAvailable();
@@ -283,8 +323,13 @@ export async function startSilentLogin({ returnTo = null } = {}) {
 // login form appears (which is the right behavior — better than dropping the
 // user with "your session expired" and forcing them to click Login).
 //
-// Used by App.jsx and authScheduler when a refresh fails with
-// RefreshTokenRevokedError. Equivalent to player-web's silentReauth().
+// 2026-07-06 accuracy note: NOT currently called from anywhere (verified by
+// grep — the comment above previously claimed App.jsx + authScheduler used
+// it; they never did). Revoked-refresh teardown flows through the
+// 'poker:session-expired' event → main.jsx listener → gameStore.logout,
+// which lands the user on the login screen where the Sign In button performs
+// the same SSO-cookie /authorize round-trip. Kept (exported, unchanged) as
+// the documented entry point if a programmatic re-auth path is wanted again.
 export function silentReauth() {
   return startLogin();
 }
@@ -417,44 +462,120 @@ export async function waitForRefreshCompletion(timeoutMs = REFRESH_LOCK_TTL_MS) 
   return false;
 }
 
+// 2026-07-06 F6 — how long a WAITER tab polls for the leader's completion
+// stamp. Deliberately LONGER than the 5s lock TTL: the leader heartbeats the
+// lock every 2s while its fetch (up to FETCH_TIMEOUT_MS = 12s) is in flight,
+// so a healthy-but-slow leader legitimately holds the lock past 5s. A waiter
+// that gave up at the TTL would barge in on a live leader mid-flight and race
+// the refresh-token rotation (double-spend → spurious logout). Crashed
+// leaders still unblock waiters in ~5s: their heartbeat stops, the lock goes
+// stale, and waitForRefreshCompletion's isRefreshInFlight() probe exits
+// early. waitForRefreshCompletion's exported DEFAULT stays
+// REFRESH_LOCK_TTL_MS (mixed-version tab compat) — the extended budget is
+// passed explicitly at the call sites inside refreshAccessToken only.
+const WAITER_BUDGET_MS = FETCH_TIMEOUT_MS + 3000;
+
+// Read the tokens a PEER tab persisted after winning the refresh race.
+// Returns a refresh-response-shaped object, or null if nothing usable landed.
+function _readPeerRefreshedTokens() {
+  try {
+    const fresh = getOAuthItem('poker_oauth_access');
+    const expRaw = getOAuthItem('poker_token_expiry');
+    if (fresh) {
+      const expiresIn = expRaw
+        ? Math.max(0, Math.floor((parseInt(expRaw, 10) - Date.now()) / 1000))
+        : null;
+      // 2026-07-05 completeness fix: another tab refreshed — sync this tab's
+      // primary bearer (poker_auth_token) too, else getAuthToken() stays stale here.
+      setAuthToken(fresh);
+      return { access_token: fresh, expires_in: expiresIn };
+    }
+  } catch {}
+  return null;
+}
+
 export async function refreshAccessToken(refreshToken) {
   // In-tab dedup first — cheapest possible path.
   if (_inflightRefresh) return _inflightRefresh;
 
+  // 2026-07-06 F6 — assign the in-tab singleton SYNCHRONOUSLY, before any
+  // await: the atomic-ish lock acquisition below awaits a 15–40ms read-back
+  // delay (and the waiter paths poll for seconds), and two same-tab callers
+  // entering during those awaits would otherwise BOTH proceed to fetch.
+  // Pre-F6 the acquisition was synchronous, so deferring the assignment
+  // until after it was safe; it no longer is.
+  _inflightRefresh = _refreshAccessTokenFlow(refreshToken);
+  try {
+    return await _inflightRefresh;
+  } finally {
+    _inflightRefresh = null;
+  }
+}
+
+// The actual refresh flow: cross-tab dedup → lock acquisition (with
+// read-back) → heartbeat → network call → persist + release. Only ever
+// invoked through refreshAccessToken's in-tab singleton above.
+async function _refreshAccessTokenFlow(refreshToken) {
   // Cross-tab dedup: if another .online tab is already refreshing, wait for
   // it to complete then read its result from localStorage. This avoids two
   // tabs each consuming the refresh_token (which under rotation would burn
   // one of them).
   if (isRefreshInFlight()) {
-    const completed = await waitForRefreshCompletion();
+    const completed = await waitForRefreshCompletion(WAITER_BUDGET_MS);
     if (completed) {
-      try {
-        const fresh = getOAuthItem('poker_oauth_access');
-        const expRaw = getOAuthItem('poker_token_expiry');
-        if (fresh) {
-          const expiresIn = expRaw
-            ? Math.max(0, Math.floor((parseInt(expRaw, 10) - Date.now()) / 1000))
-            : null;
-          // 2026-07-05 completeness fix: another tab refreshed — sync this tab's
-          // primary bearer (poker_auth_token) too, else getAuthToken() stays stale here.
-          setAuthToken(fresh);
-          return { access_token: fresh, expires_in: expiresIn };
-        }
-      } catch {}
+      const peer = _readPeerRefreshedTokens();
+      if (peer) return peer;
     }
     // Fall through and try our own refresh — the leader tab probably crashed.
   }
 
   // Acquire the cross-tab lock BEFORE the network call.
-  const lockToken = _generateLockToken();
-  try {
-    localStorage.setItem(
-      REFRESH_LOCK_KEY,
-      JSON.stringify({ token: lockToken, startedAt: Date.now() })
-    );
-  } catch {}
+  //
+  // 2026-07-06 F6 (atomic-ish acquisition) — localStorage has no
+  // compare-and-swap, and the old check-then-set let two tabs pass
+  // isRefreshInFlight() in the same instant and both believe they held the
+  // lock. Write our token, wait a random 15–40ms (de-synchronizes the two
+  // writers), then read back: if another tab's token is stored, it overwrote
+  // us — it is the leader and we take the waiter path.
+  let lockToken = _generateLockToken();
+  const _stampLock = () => {
+    try {
+      localStorage.setItem(
+        REFRESH_LOCK_KEY,
+        JSON.stringify({ token: lockToken, startedAt: Date.now() })
+      );
+    } catch {}
+  };
+  _stampLock();
+  await new Promise((r) => setTimeout(r, 15 + Math.floor(Math.random() * 26)));
+  const lockAfterWrite = _readLock();
+  if (lockAfterWrite && lockAfterWrite.token && lockAfterWrite.token !== lockToken) {
+    // Lost the acquisition race — become a waiter on the winner.
+    const completed = await waitForRefreshCompletion(WAITER_BUDGET_MS);
+    if (completed) {
+      const peer = _readPeerRefreshedTokens();
+      if (peer) return peer;
+    }
+    // Winner crashed mid-flight (lock stale / no completion stamp) — take
+    // the lock over with a FRESH token and proceed as leader.
+    lockToken = _generateLockToken();
+    _stampLock();
+  }
 
-  _inflightRefresh = (async () => {
+  // 2026-07-06 F6 (heartbeat) — the lock TTL is 5s but our fetch can run up
+  // to FETCH_TIMEOUT_MS (12s): a slow-but-healthy leader used to lose the
+  // lock mid-flight, letting a peer fire a CONCURRENT refresh (rotating-RT
+  // race → spurious logout). Re-stamp startedAt (SAME token) every 2s while
+  // our fetch is in flight; TTL stays 5s. Ownership guard: only re-stamp
+  // while WE still hold the lock — never resurrect a lock that was already
+  // released (the success path removes it before stamping the done-marker)
+  // or taken over by another tab.
+  const heartbeat = setInterval(() => {
+    const current = _readLock();
+    if (current && current.token === lockToken) _stampLock();
+  }, 2000);
+
+  try {
     let response;
     try {
       response = await fetchWithTimeout(`${AUTH_SERVER}/token`, {
@@ -527,7 +648,15 @@ export async function refreshAccessToken(refreshToken) {
           setOAuthItem('poker_oauth_id_token', data.id_token);
         }
         // Order matters: drop the lock AFTER tokens land, then stamp completion.
-        localStorage.removeItem(REFRESH_LOCK_KEY);
+        // F6 ownership guard: only remove the lock if it's still OURS — if our
+        // tab froze long enough for another tab to take over, don't clobber
+        // the new leader's live lock. (No awaits between this removal and the
+        // outer finally's clearInterval, so the heartbeat can't re-stamp a
+        // lock we just released — its ownership guard would fail anyway.)
+        const lockNow = _readLock();
+        if (!lockNow || lockNow.token === lockToken) {
+          localStorage.removeItem(REFRESH_LOCK_KEY);
+        }
         localStorage.setItem(
           REFRESH_DONE_KEY,
           JSON.stringify({ token: lockToken, completedAt: Date.now() })
@@ -567,17 +696,25 @@ export async function refreshAccessToken(refreshToken) {
       `Refresh failed (${response.status}${oauthError ? `: ${oauthError}` : ''})`,
       { status: response.status, oauthError, body: errBody },
     );
-  })();
-
-  try {
-    return await _inflightRefresh;
   } catch (err) {
     // On any failure, drop the lock so other tabs don't sit waiting for a
-    // completion stamp that will never come.
-    try { localStorage.removeItem(REFRESH_LOCK_KEY); } catch {}
+    // completion stamp that will never come — but only if it's still OURS
+    // (F6: don't clobber a lock another tab has legitimately taken over).
+    try {
+      const current = _readLock();
+      if (!current || current.token === lockToken) {
+        localStorage.removeItem(REFRESH_LOCK_KEY);
+      }
+    } catch {}
     throw err;
   } finally {
-    _inflightRefresh = null;
+    // F6: clear the heartbeat synchronously with the release paths above —
+    // no awaits sit between the lock removal (success or failure path) and
+    // this clearInterval, and the heartbeat's ownership guard refuses to
+    // stamp a lock that is no longer ours, so a released lock can never be
+    // resurrected. (The in-tab singleton reset lives in refreshAccessToken's
+    // own finally, which wraps this whole flow.)
+    clearInterval(heartbeat);
   }
 }
 

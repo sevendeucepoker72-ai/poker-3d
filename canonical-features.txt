@@ -37,9 +37,25 @@ poker_oauth_refresh
 poker_oauth_id_token
 poker_token_expiry
 oauth_pending
-oauth_access_token
+# 2026-07-06 P2 auth fix — retired token `oauth_access_token`: that key was
+# only ever READ by authEvents.js and belongs to the PLAYER-APP namespace;
+# poker-3d never writes it (its keys are poker_*), so the lookup always
+# missed. authEvents.js now reads via tokenStorage (poker_auth_token /
+# poker_oauth_access). Lock the auth-events feature by its route literal
+# instead:
+auth-events/log
 # Tab-resume event from sessionLifecycle.js — proves it compiled in
 poker3d:tab-resumed
+
+# ─── 2026-07-06 P2 auth fixes ───────────────────────────────────────
+# Session-expired teardown (single-path): scheduler dispatches this event,
+# main.jsx listener runs gameStore.logout + socket disconnect + notice.
+poker:session-expired
+# Login-screen notice shown after a revoked-refresh teardown.
+Your session ended — please sign in again.
+# Canonical-origin bounce for unregistered OAuth origins (.club fix) —
+# this dev-origin literal only exists in the REGISTERED_OAUTH_ORIGINS set.
+localhost:5183
 
 # ─── Bridge token (legacy / share-link fallback) ───────────────────
 # Socket emit name from App.jsx parseDeepLinkContext flow.

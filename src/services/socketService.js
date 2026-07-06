@@ -242,6 +242,36 @@ export const disconnectFromServer = () => {
   }
 };
 
+/**
+ * 2026-07-06 P2 auth fix — logout teardown: kill the authenticated socket
+ * SESSION without destroying the socket INSTANCE.
+ *
+ * Why not disconnectFromServer()? App.jsx attaches all its game listeners to
+ * the instance in mount-once effects, and connectToServer() runs once per
+ * page load — nulling the instance would orphan every listener until a full
+ * reload, breaking a re-login on the same tab. We only cycle the CONNECTION:
+ *
+ *   1. Strip the auth token from the handshake payload so any reconnect
+ *      (manual, or via the module-level visibility/online handlers below)
+ *      handshakes UNAUTHENTICATED — token storage was already wiped by
+ *      gameStore.logout() before this is called.
+ *   2. socket.disconnect() closes the transport. Server-side, the
+ *      'disconnect' handler (poker-server index.ts ~10374) deletes the
+ *      authSession for the old socket.id and runs the existing
+ *      reserved-seat flow (seat held ~10 min; at-table stack cashed out
+ *      additively on expiry — it never overwrites wallet chips).
+ *   3. Reconnect immediately so the login screen has a live socket for
+ *      guest login / online-count — the fresh connection has a NEW
+ *      socket.id with no auth session, so a different user logging in on
+ *      this tab can never inherit the previous user's server-side session.
+ */
+export const disconnect = () => {
+  if (!socket) return;
+  try { if (socket.auth) delete socket.auth.token; } catch { /* ignore */ }
+  try { socket.disconnect(); } catch { /* ignore */ }
+  try { socket.connect(); } catch { /* ignore */ }
+};
+
 // -----------------------------------------------------------------------
 // Attach-once document/window listeners.
 //

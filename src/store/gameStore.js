@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { getSocket } from '../services/socketService';
+import { getSocket, disconnect as disconnectSocket } from '../services/socketService';
 import { clearAllProgressionStorage, resetSyncState } from '../services/persistenceService';
 
 const AVATAR_STORAGE_KEY = 'poker_avatar';
@@ -60,6 +60,12 @@ export const useGameStore = create((set, get) => ({
   userId: null,
   authToken: null,
 
+  // 2026-07-06 P2 auth fix — set by the 'poker:session-expired' teardown
+  // (main.jsx listener) so the login screen can show a clear "session ended"
+  // notice instead of silently yanking the user. Cleared on the next
+  // successful login/oauthLogin.
+  sessionExpiredNotice: null,
+
   // OAuth2 token state
   oauthAccessToken: null,
   oauthRefreshToken: null,
@@ -114,6 +120,7 @@ export const useGameStore = create((set, get) => ({
       isLoggedIn: true,
       userId: userData.id,
       authToken: token,
+      sessionExpiredNotice: null,
       playerName: userData.displayName || userData.username,
       phone: userData.phone || '',
       needsUsername: userData.needsUsername || false,
@@ -135,6 +142,7 @@ export const useGameStore = create((set, get) => ({
       isLoggedIn: true,
       userId: userData.id,
       authToken: tokens.access_token,
+      sessionExpiredNotice: null,
       oauthAccessToken: tokens.access_token,
       oauthRefreshToken: tokens.refresh_token,
       oauthIdToken: tokens.id_token || null,
@@ -233,6 +241,20 @@ export const useGameStore = create((set, get) => ({
       vipLevel: null,
       vipExpiration: null,
     });
+    // 2026-07-06 P2 auth fix — kill the authenticated SOCKET session too.
+    // Pre-fix, logout wiped tokens and flipped screen→'login' but never
+    // touched the socket: the server-side authSession (keyed by socket.id)
+    // stayed live, so after a revoked-refresh teardown the seat + session
+    // kept running invisibly, and a DIFFERENT user logging in on the same
+    // tab reused that socket (shared-device account-takeover adjacent).
+    // socketService.disconnect() cycles the connection: the server's
+    // 'disconnect' handler runs its existing reserved-seat flow (seat held
+    // ~10 min, at-table stack cashed out additively on expiry — verified it
+    // never writes wallet chips, poker-server index.ts ~10386), and the
+    // fresh reconnect handshakes unauthenticated (token storage already
+    // cleared above). Called AFTER the local state teardown so no further
+    // emits ride the dying socket.
+    try { disconnectSocket(); } catch { /* never block logout */ }
     // SSO logout: redirect to /session/end to clear the SSO cookie AND perform
     // GLOBAL logout (destroy all grants + stamp force_logout_at). 2026-07-02
     // Finding #4 — this now fires even when oauthIdToken is null (legacy JWT,
