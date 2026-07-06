@@ -523,13 +523,17 @@ function App() {
             ? (ts.activeTables.get(deltaTableId)?.gameState ?? null)
             : ts.gameState;
           state = prev ? { ...prev, ...data.delta } : { ...data.delta };
-          // Clear stale hole cards whenever handId changes, regardless of
-          // whether the delta itself includes fresh cards (they'll arrive in
-          // a subsequent message). This prevents old cards leaking into a new hand.
-          // 2026-04-22 audit fix: dropped the `prev?.handId != null` guard so
-          // reconnect (where prev is null/empty) still clears stale handResult
-          // banners from the previous hand.
-          if (data.delta?.handId != null && data.delta.handId !== prev?.handId) {
+          // Clear stale per-hand state whenever the hand changes, regardless of
+          // whether the delta itself includes fresh values (they'll arrive in a
+          // subsequent message). Prevents old cards / a stale handResult leaking
+          // into a new hand.
+          // 2026-07-06 FIX: this guarded on `handId`, but the server never sends
+          // handId — it sends `handNumber`. So this whole block was DEAD CODE:
+          // `handResult` never cleared and lingered into every subsequent hand,
+          // which (via `&& !gameState.handResult`) permanently hid the
+          // between-turns pre-action pills after the first showdown, and left
+          // stale winner banners/cards. Compare `handNumber` so it actually runs.
+          if (data.delta?.handNumber != null && data.delta.handNumber !== prev?.handNumber) {
             if (!data.delta.yourCards) state.yourCards = [];
             if (!data.delta.selectedDiscards) state.selectedDiscards = [];
             if (!data.delta.handResult) state.handResult = null;

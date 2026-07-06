@@ -61,7 +61,10 @@ function applyGameState(slot, data) {
     } else {
       const prev = slot.gameState;
       const next = prev ? { ...prev, ...data.delta } : { ...data.delta };
-      if (data.delta?.handId != null && data.delta.handId !== prev?.handId) {
+      // 2026-07-06: server sends handNumber, not handId — the old handId check
+      // was dead code, so stale handResult lingered across hands (same bug fixed
+      // in App.jsx). Compare handNumber so per-hand state actually resets.
+      if (data.delta?.handNumber != null && data.delta.handNumber !== prev?.handNumber) {
         if (!data.delta.yourCards) next.yourCards = [];
         if (!data.delta.handResult) next.handResult = null;
       }
