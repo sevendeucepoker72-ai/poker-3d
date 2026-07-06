@@ -33,22 +33,13 @@ const LEAK_CHECKS = [
     tip: 'Be more aggressive with your strong hands and semi-bluffs. Raise and bet instead of just calling.',
   },
   {
-    id: 'over_bluffing',
-    name: 'Over-Bluffing',
-    check: (stats) => (stats.bluffFrequency || 0) > 40,
-    severity: (stats) => (stats.bluffFrequency || 0) > 55 ? 'danger' : 'warning',
-    stat: (stats) => `Bluff Freq: ${(stats.bluffFrequency || 0).toFixed(1)}% (threshold: 40%)`,
-    description: 'You are bluffing too frequently. Observant opponents will start calling you down with marginal hands.',
-    tip: 'Be more selective with your bluffs. Choose spots with good blockers and credible board runouts.',
-  },
-  {
-    id: 'not_defending_blinds',
-    name: 'Not Defending Blinds',
-    check: (stats) => (stats.foldToSteal || 0) > 75,
-    severity: (stats) => (stats.foldToSteal || 0) > 85 ? 'danger' : 'warning',
-    stat: (stats) => `Fold to Steal: ${(stats.foldToSteal || 0).toFixed(1)}% (threshold: 75%)`,
-    description: 'You fold too often in the blinds against steals. Opponents can profitably attack your blinds every hand.',
-    tip: 'Defend your blinds more often, especially the big blind. You already have money invested and get a good price.',
+    id: 'wide_gap',
+    name: 'Passive Preflop (VPIP/PFR Gap)',
+    check: (stats) => (stats.vpip || 0) > 0 && (stats.pfr || 0) > 0 && ((stats.vpip || 0) - (stats.pfr || 0)) > 18,
+    severity: (stats) => ((stats.vpip || 0) - (stats.pfr || 0)) > 28 ? 'danger' : 'warning',
+    stat: (stats) => `VPIP-PFR gap: ${((stats.vpip || 0) - (stats.pfr || 0)).toFixed(1)}% (threshold: 18%)`,
+    description: 'A big gap between how often you enter pots and how often you raise means you are limping and cold-calling too much.',
+    tip: 'Enter more pots with a raise. If a hand is worth playing, it is usually worth raising rather than limping.',
   },
 ];
 
@@ -74,28 +65,21 @@ export default function LeakFinder({ onClose }) {
     }
   }, []);
 
-  // Merge server stats with sessionStorage stats
+  // Pull REAL server-tracked stats (getDetailedStats now computes vpip/pfr/af
+  // from actual hand data). Default to 0 — never fabricate a stat, because a
+  // fake default would surface a leak the player doesn't actually have.
   const stats = {};
   const raw = detailedStats || progress || {};
+  stats.vpip = raw.vpip ?? raw.stats?.vpip ?? 0;
+  stats.pfr = raw.pfr ?? raw.stats?.pfr ?? 0;
+  stats.af = raw.af ?? raw.stats?.af ?? 0;
 
-  // Try to pull real stats, fall back to ADVANCED_STATS defaults
-  stats.vpip = raw.vpip ?? raw.stats?.vpip ?? 28;
-  stats.pfr = raw.pfr ?? raw.stats?.pfr ?? 18;
-  stats.af = raw.af ?? raw.stats?.af ?? 2.4;
-  stats.bluffFrequency = raw.bluffFrequency ?? raw.stats?.bluffFrequency ?? 25;
-  stats.foldToSteal = raw.foldToSteal ?? raw.stats?.foldToSteal ?? 60;
+  // Require a minimum sample before grading — leaks read off a handful of
+  // hands are noise. totalHandsPlayed comes from the detailedStats spread.
+  const handsPlayed = raw.totalHandsPlayed ?? raw.handsPlayed ?? progress?.handsPlayed ?? 0;
+  const enoughData = handsPlayed >= 20;
 
-  // Also check sessionStorage for any additional stored stats
-  try {
-    const stored = JSON.parse(sessionStorage.getItem('poker_player_stats') || '{}');
-    if (stored.vpip !== undefined) stats.vpip = stored.vpip;
-    if (stored.pfr !== undefined) stats.pfr = stored.pfr;
-    if (stored.af !== undefined) stats.af = stored.af;
-    if (stored.bluffFrequency !== undefined) stats.bluffFrequency = stored.bluffFrequency;
-    if (stored.foldToSteal !== undefined) stats.foldToSteal = stored.foldToSteal;
-  } catch { /* ignore */ }
-
-  const activeLeaks = LEAK_CHECKS.filter((leak) => leak.check(stats));
+  const activeLeaks = enoughData ? LEAK_CHECKS.filter((leak) => leak.check(stats)) : [];
   const gradeInfo = getGrade(activeLeaks.length);
 
   return createPortal(
@@ -106,6 +90,12 @@ export default function LeakFinder({ onClose }) {
           <button className="leak-finder-close" onClick={onClose}>Close</button>
         </div>
 
+        {!enoughData ? (
+          <div className="leak-finder-clean">
+            <span className="leak-finder-clean-icon">&#8987;</span>
+            Play at least 20 hands to unlock your leak analysis. So far: {handsPlayed} hand{handsPlayed !== 1 ? 's' : ''}.
+          </div>
+        ) : (<>
         <div className="leak-finder-grade">
           <div
             className="leak-finder-grade-circle"
@@ -139,6 +129,7 @@ export default function LeakFinder({ onClose }) {
             );
           })
         )}
+        </>)}
       </div>
     </div>,
     document.body

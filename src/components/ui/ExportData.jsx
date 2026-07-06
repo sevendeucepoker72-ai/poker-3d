@@ -15,32 +15,63 @@ function downloadCSV(filename, csvContent) {
   URL.revokeObjectURL(url);
 }
 
+function cardsToStr(cards) {
+  if (!Array.isArray(cards)) return '';
+  return cards
+    .map((c) => (c && (c.display || (c.rank != null && c.suit != null ? `${c.rank}${c.suit}` : ''))) || '')
+    .filter(Boolean)
+    .join(' ');
+}
+
 function exportHandHistory() {
-  // Batch 5d: read the REAL hand history from the table store (hydrated from the
-  // server's durableState), not the never-written sessionStorage key that made
-  // this export always empty.
+  // Read the REAL hand history from the table store (hydrated from the server).
+  // Each record is a full multi-player HandHistoryRecord — the player's own
+  // cards / seat / net result live inside players[], NOT at the top level, and
+  // the board is `communityCards`. The previous flat field names (h.holeCards,
+  // h.board, h.chipsWon…) never matched the record, so every column was blank.
   let history = [];
+  let myName = '';
+  let mySeat = -1;
   try { history = useTableStore.getState().handHistories || []; } catch { /* ignore */ }
+  try { mySeat = useTableStore.getState().mySeat ?? -1; } catch { /* ignore */ }
+  try {
+    const p = useProgressStore.getState().progress || {};
+    myName = p.playerName || p.displayName || p.name || '';
+  } catch { /* ignore */ }
 
   if (!Array.isArray(history) || history.length === 0) {
     alert('No hand history yet — play some hands first.');
     return;
   }
 
-  // Build CSV
-  const headers = ['Hand #', 'Date', 'Table', 'Position', 'Hole Cards', 'Board', 'Hand Rank', 'Pot', 'Result', 'Chips Won/Lost'];
-  const rows = history.map((h, i) => [
-    i + 1,
-    h.timestamp ? new Date(h.timestamp).toLocaleString() : '',
-    h.tableName || h.table || '',
-    h.position || '',
-    h.holeCards || '',
-    h.board || '',
-    h.handRank || h.rank || '',
-    h.pot || '',
-    h.result || (h.won ? 'Won' : 'Lost'),
-    h.chipsWon || h.chipChange || '',
-  ]);
+  // Build CSV — one row per hand, from this player's perspective.
+  const headers = ['Hand #', 'Seat', 'Hole Cards', 'Board', 'Hand Rank', 'Pot', 'Result', 'Net Chips'];
+  const rows = history.map((h, i) => {
+    const players = Array.isArray(h.players) ? h.players : [];
+    // Prefer a name match; fall back to the current seat if names are absent.
+    const me = (myName && players.find((p) => p && p.name === myName))
+      || (mySeat >= 0 && players.find((p) => p && p.seatIndex === mySeat))
+      || null;
+    const board = cardsToStr(h.communityCards);
+    const pot = Array.isArray(h.pots)
+      ? h.pots.reduce((s, pt) => s + (pt?.amount || 0), 0)
+      : (h.pot || 0);
+    const winners = Array.isArray(h.winners) ? h.winners : [];
+    const iWon = me ? winners.some((w) => w && w.seatIndex === me.seatIndex) : false;
+    const net = me && typeof me.endChips === 'number' && typeof me.startChips === 'number'
+      ? me.endChips - me.startChips
+      : '';
+    return [
+      h.handNumber ?? (i + 1),
+      me ? me.seatIndex + 1 : '',
+      me ? cardsToStr(me.holeCards) : '',
+      board,
+      me ? (me.handName || '') : '',
+      pot,
+      me ? (iWon ? 'Won' : (me.folded ? 'Folded' : 'Lost')) : '',
+      net,
+    ];
+  });
 
   const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   downloadCSV(`poker_hand_history_${new Date().toISOString().slice(0, 10)}.csv`, csv);

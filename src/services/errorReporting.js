@@ -32,7 +32,7 @@ let installed = false;
 function readToken() {
   try {
     return (
-      localStorage.getItem('oauth_access_token') ||
+      localStorage.getItem('poker_oauth_access') ||
       localStorage.getItem('poker_auth_token') ||
       null
     );

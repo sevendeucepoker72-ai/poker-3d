@@ -162,15 +162,21 @@ export default function PauseCoach({
   yourCards,
   onResume,
   onClose,
+  // Real derived amounts from GameHUD (call = to-call, raise = min legal raise-to).
+  // gameState has `pot` but NOT callAmount/raiseAmount (those are computed), so
+  // without these props the coach fell back to placeholder 120/360 sizes.
+  pot: potProp,
+  callAmount: callAmountProp,
+  raiseAmount: raiseAmountProp,
 }) {
   const { calculateEquity } = useEquityWorker();
   const [equity, setEquity] = useState(null);
   const [calculating, setCalculating] = useState(true);
   const [revealBest, setRevealBest] = useState(false);
 
-  const pot         = gameState?.pot         ?? 840;
-  const callAmount  = gameState?.callAmount  ?? 120;
-  const raiseAmount = gameState?.raiseAmount ?? 360;
+  const pot         = potProp         ?? gameState?.pot         ?? 0;
+  const callAmount  = callAmountProp  ?? gameState?.callAmount  ?? 0;
+  const raiseAmount = raiseAmountProp ?? gameState?.raiseAmount ?? 0;
   const phase       = gameState?.phase       ?? 'FLOP';
   const communityCards = gameState?.communityCards ?? [];
   const cards       = yourCards ?? [];

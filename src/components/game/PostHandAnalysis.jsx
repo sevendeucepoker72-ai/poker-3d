@@ -98,18 +98,38 @@ export default function PostHandAnalysis({ gameState, yourSeat, handHistory, onD
   }, [handHistory, yourSeat]);
 
   const actionsPerStreet = useMemo(() => {
-    if (!myHistoryPlayer?.actions) return {};
     const map = { Preflop: [], Flop: [], Turn: [], River: [] };
-    let curStreet = 'Preflop';
-    for (const a of myHistoryPlayer.actions) {
-      if (typeof a !== 'string') continue;
-      if (a.startsWith('[Flop]')) { curStreet = 'Flop'; continue; }
-      if (a.startsWith('[Turn]')) { curStreet = 'Turn'; continue; }
-      if (a.startsWith('[River]')) { curStreet = 'River'; continue; }
-      map[curStreet].push(a);
+    // Preferred source: the street-tagged actionLog (each entry has .street =
+    // GamePhase and .seatIndex). The per-player `actions` array is just the raw
+    // action strings with NO street markers, so the old `[Flop]`-prefix split
+    // never matched and dumped every action into Preflop — the P1 grading bug.
+    const log = handHistory?.actionLog;
+    if (Array.isArray(log) && log.length > 0 && yourSeat >= 0) {
+      for (const entry of log) {
+        if (!entry || entry.seatIndex !== yourSeat || !entry.action) continue;
+        const st = String(entry.street || '').toLowerCase();
+        const key = st.includes('pre') ? 'Preflop'
+          : st.includes('flop') ? 'Flop'
+          : st.includes('turn') ? 'Turn'
+          : st.includes('river') ? 'River'
+          : null;
+        if (key) map[key].push(entry.action);
+      }
+      return map;
+    }
+    // Fallback for older records without actionLog: best-effort [Street] split.
+    if (myHistoryPlayer?.actions) {
+      let curStreet = 'Preflop';
+      for (const a of myHistoryPlayer.actions) {
+        if (typeof a !== 'string') continue;
+        if (a.startsWith('[Flop]')) { curStreet = 'Flop'; continue; }
+        if (a.startsWith('[Turn]')) { curStreet = 'Turn'; continue; }
+        if (a.startsWith('[River]')) { curStreet = 'River'; continue; }
+        map[curStreet].push(a);
+      }
     }
     return map;
-  }, [myHistoryPlayer]);
+  }, [handHistory, myHistoryPlayer, yourSeat]);
 
   // Evaluate hand at each street level
   const streetAnalysis = useMemo(() => {

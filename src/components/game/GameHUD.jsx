@@ -4541,6 +4541,9 @@ export default function GameHUD() {
           visible={showPauseCoach}
           gameState={gameState}
           yourCards={yourCards}
+          pot={pot}
+          callAmount={callAmount}
+          raiseAmount={raiseAmount || minRaiseTotal}
           onResume={() => setShowPauseCoach(false)}
           onClose={() => setShowPauseCoach(false)}
         />

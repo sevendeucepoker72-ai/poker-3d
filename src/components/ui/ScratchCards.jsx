@@ -18,7 +18,7 @@ export function checkScratchCardEarned() {
   try {
     let hands = parseInt(sessionStorage.getItem(HANDS_KEY) || '0', 10);
     hands += 1;
-    if (hands >= 10) {
+    if (hands >= 20) { // match the server threshold (tickScratchProgress: 20 hands)
       const cards = parseInt(sessionStorage.getItem(CARDS_KEY) || '0', 10);
       sessionStorage.setItem(CARDS_KEY, String(cards + 1));
       sessionStorage.setItem(HANDS_KEY, '0');
@@ -277,7 +277,7 @@ export default function ScratchCards({ onClose }) {
                 </button>
               )}
               <div className="scratch-earn-info">
-                Earn 1 card for every 10 hands played
+                Earn 1 card for every 20 hands played
               </div>
             </div>
           ) : (
@@ -285,7 +285,7 @@ export default function ScratchCards({ onClose }) {
               <span className="scratch-no-cards-icon">{'\uD83C\uDFB4'}</span>
               No scratch cards available.
               <div className="scratch-earn-info">
-                Play 10 more hands to earn a scratch card!
+                Keep playing — you earn a scratch card every 20 hands!
               </div>
             </div>
           )
