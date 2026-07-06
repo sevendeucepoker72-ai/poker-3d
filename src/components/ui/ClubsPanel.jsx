@@ -139,6 +139,9 @@ export default function ClubsPanel({ onClose }) {
   const [createMaxMembers, setCreateMaxMembers] = useState(100);
   const [createRequireApproval, setCreateRequireApproval] = useState(false);
   const [createRake, setCreateRake] = useState(0);
+  // isPrivate controls club discovery. Default private (matches old behavior);
+  // a public club appears in Search / Featured / Club-of-Week.
+  const [createIsPrivate, setCreateIsPrivate] = useState(true);
 
   // Join club form
   const [joinCode, setJoinCode] = useState('');
@@ -159,6 +162,7 @@ export default function ClubsPanel({ onClose }) {
   const [settingsRake, setSettingsRake] = useState(0);
   const [settingsMaxMembers, setSettingsMaxMembers] = useState(100);
   const [settingsRequireApproval, setSettingsRequireApproval] = useState(false);
+  const [settingsIsPrivate, setSettingsIsPrivate] = useState(true);
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -668,7 +672,7 @@ export default function ClubsPanel({ onClose }) {
         maxMembers: createMaxMembers,
         requireApproval: createRequireApproval,
         rake: createRake,
-        isPrivate: true,
+        isPrivate: createIsPrivate,
       },
     });
   };
@@ -712,6 +716,7 @@ export default function ClubsPanel({ onClose }) {
     setSettingsRake(club.settings?.rake || 0);
     setSettingsMaxMembers(club.settings?.maxMembers || 100);
     setSettingsRequireApproval(club.settings?.requireApproval || false);
+    setSettingsIsPrivate(club.settings?.isPrivate ?? true);
     setSelectedBadge(club.badge || '♠');
   };
 
@@ -776,6 +781,7 @@ export default function ClubsPanel({ onClose }) {
         rake: settingsRake,
         maxMembers: settingsMaxMembers,
         requireApproval: settingsRequireApproval,
+        isPrivate: settingsIsPrivate,
       },
     });
   };
@@ -1179,6 +1185,12 @@ export default function ClubsPanel({ onClose }) {
                   <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>
                     {club.description || 'No description'}
                   </span>
+                  <button
+                    className="clubs-btn clubs-btn-green clubs-btn-sm"
+                    onClick={(e) => { e.stopPropagation(); const s = getSocket(); if (s && club.clubCode) { s.emit('joinClub', { clubCode: club.clubCode }); } }}
+                  >
+                    Join
+                  </button>
                 </div>
               </div>
             ))}
@@ -1307,6 +1319,16 @@ export default function ClubsPanel({ onClose }) {
           onClick={() => setCreateRequireApproval(!createRequireApproval)}
         >
           {createRequireApproval ? 'ON' : 'OFF'}
+        </button>
+      </div>
+
+      <div className="clubs-form-group clubs-form-toggle">
+        <label>Public Club (discoverable in Search)</label>
+        <button
+          className={`clubs-toggle ${!createIsPrivate ? 'active' : ''}`}
+          onClick={() => setCreateIsPrivate((v) => !v)}
+        >
+          {!createIsPrivate ? 'PUBLIC' : 'PRIVATE'}
         </button>
       </div>
 
@@ -2019,6 +2041,16 @@ export default function ClubsPanel({ onClose }) {
           onClick={() => setSettingsRequireApproval(!settingsRequireApproval)}
         >
           {settingsRequireApproval ? 'ON' : 'OFF'}
+        </button>
+      </div>
+
+      <div className="clubs-form-group clubs-form-toggle">
+        <label>Public Club (discoverable in Search)</label>
+        <button
+          className={`clubs-toggle ${!settingsIsPrivate ? 'active' : ''}`}
+          onClick={() => setSettingsIsPrivate((v) => !v)}
+        >
+          {!settingsIsPrivate ? 'PUBLIC' : 'PRIVATE'}
         </button>
       </div>
 
