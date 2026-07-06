@@ -7236,3 +7236,49 @@ html.kb-open .table-pot-odds {
 .action-btn.call::before{ content:"\2713"; }
 .action-btn.raise::before{ content:"\2191"; }
 .action-btn.allin::before{ content:"\21C8"; }
+
+/* ============================================================
+   2026-07-06 — "Championship" premium action-button reskin.
+   Appended LAST so it wins the cascade over the earlier
+   !important layers. VISUAL ONLY (background / box-shadow /
+   filter) — no padding/size/flex, so the carefully-tuned
+   responsive action-bar layout is completely untouched.
+   Semantics kept: fold=garnet, call/check=emerald, all-in=gold;
+   raise gets its own royal-violet so it no longer reads the same
+   muddy orange as all-in.
+   ============================================================ */
+.action-btn.fold {
+  background: linear-gradient(180deg, #8a1a26 0%, #5c0f18 55%, #3a0a10 100%) !important;
+  color: #ffd7d7 !important;
+  box-shadow: 0 5px 18px rgba(150,20,32,0.40), inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -3px 12px rgba(0,0,0,0.38) !important;
+}
+.action-btn.check,
+.action-btn.call {
+  background: linear-gradient(180deg, #12946a 0%, #0a6b4a 55%, #05432e 100%) !important;
+  color: #d8ffee !important;
+  box-shadow: 0 5px 18px rgba(16,150,105,0.42), inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -3px 12px rgba(0,0,0,0.32) !important;
+}
+.action-btn.raise {
+  background: linear-gradient(180deg, #5d55f2 0%, #4038c9 55%, #2b2594 100%) !important;
+  color: #e7e5ff !important;
+  box-shadow: 0 5px 18px rgba(79,70,229,0.48), inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -3px 12px rgba(0,0,0,0.32) !important;
+}
+.action-btn.allin {
+  background: linear-gradient(180deg, #fff3cb 0%, #f2c14e 46%, #d4941f 100%) !important;
+  color: #2a1c04 !important;
+  box-shadow: 0 5px 20px rgba(215,167,66,0.52), inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -3px 12px rgba(120,70,10,0.32) !important;
+}
+.action-btn:not(:disabled):hover {
+  filter: brightness(1.12) saturate(1.06) !important;
+}
+/* Bet-sizing presets — refine into premium gold-outline chips */
+.ab-preset {
+  border: 1px solid rgba(246, 220, 138, 0.28) !important;
+  background: linear-gradient(180deg, rgba(20,32,56,0.9), rgba(9,16,30,0.9)) !important;
+  color: #cbd6ec !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06) !important;
+}
+.ab-preset:hover:not(:disabled) {
+  border-color: rgba(246, 220, 138, 0.55) !important;
+  color: #f6dc8a !important;
+}

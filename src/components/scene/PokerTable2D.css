@@ -12,12 +12,23 @@
   justify-content: center;
 }
 
-/* ── Background ───────────────────────────────────────────── */
+/* ── Background — atmospheric high-roller room ────────────── */
 .table2d-bg {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 50% 40%, #1a2235 0%, #0a0f1a 70%, #060a12 100%);
+  /* Spotlight from above the table + deep sapphire-to-black room, with a soft
+     vignette so the eye is drawn to the lit felt. */
+  background:
+    radial-gradient(ellipse 130% 90% at 50% 30%, rgba(58, 104, 168, 0.30) 0%, rgba(24, 52, 92, 0.10) 38%, transparent 62%),
+    radial-gradient(ellipse at 50% 44%, #12233f 0%, #0a1226 52%, #05080f 100%);
   z-index: 0;
+}
+.table2d-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 75% 65% at 50% 46%, transparent 55%, rgba(0,0,0,0.55) 100%);
+  pointer-events: none;
 }
 
 /* ── Table oval (felt) ────────────────────────────────────── */
@@ -34,18 +45,24 @@
   border-radius: 50%;
   z-index: 1;
 
-  /* Layered oval: outer shadow → rail → felt */
+  /* Layered sapphire felt: a spotlit centre falling to a dark rim, with an
+     inset vignette + top sheen for real depth. */
   background:
-    radial-gradient(ellipse at 50% 35%, #1a4a7a 0%, #0e2f56 55%, #071830 100%);
+    radial-gradient(ellipse at 50% 30%, #235a95 0%, #164277 40%, #0d2c53 68%, #08203e 100%);
   box-shadow:
-    /* Outer glow */
-    0 0 60px 10px rgba(0,0,0,0.8),
-    /* Rail border */
-    0 0 0 14px #2a1f0f,
-    0 0 0 18px #4a3418,
-    0 0 0 22px #2a1f0f,
-    /* Deep shadow */
-    0 12px 80px 20px rgba(0,0,0,0.9);
+    /* soft room glow around the oval */
+    0 0 70px 18px rgba(22, 66, 119, 0.35),
+    /* felt depth — dark rim + a cool inner sheen from the top light */
+    inset 0 0 90px 34px rgba(3, 12, 28, 0.72),
+    inset 0 3px 46px rgba(130, 190, 255, 0.12),
+    /* RAIL: obsidian base → brushed-gold trim ring → outer leather */
+    0 0 0 11px #0a0e17,
+    0 0 0 15px #6b4e1c,
+    0 0 0 18px #d7a742,
+    0 0 0 19px #f6dc8a,
+    0 0 0 24px #120d07,
+    /* deep drop shadow onto the room */
+    0 26px 80px 8px rgba(0,0,0,0.78);
 
   display: flex;
   flex-direction: column;
@@ -54,23 +71,37 @@
   gap: 6px;
 }
 
-/* inner felt edge highlight */
+/* inner felt edge highlight (thin gold-tinted rim just inside the rail) */
 .table2d-felt::before {
   content: '';
   position: absolute;
-  inset: 6px;
+  inset: 5px;
   border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(246, 220, 138, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  pointer-events: none;
+}
+
+/* betting-line arc — a faint gold ellipse on the felt, a real card-room detail */
+.table2d-felt::after {
+  content: '';
+  position: absolute;
+  inset: 15%;
+  border-radius: 50%;
+  border: 1px solid rgba(246, 220, 138, 0.08);
+  box-shadow: inset 0 0 50px rgba(130, 190, 255, 0.05);
   pointer-events: none;
 }
 
 /* ── Table logo ────────────────────────────────────────────── */
 .table2d-felt__logo {
   font-family: 'Segoe UI', system-ui, sans-serif;
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.25em;
-  color: rgba(255,255,255,0.12);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.34em;
+  /* Embossed gold watermark — engraved into the felt. */
+  color: rgba(246, 220, 138, 0.15);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.45), 0 -1px 0 rgba(246,220,138,0.05);
   text-transform: uppercase;
   user-select: none;
   position: absolute;
@@ -84,26 +115,35 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  background: rgba(0,0,0,0.55);
-  border: 1px solid rgba(255,255,255,0.12);
+  /* Gold-rimmed glass pot chip */
+  background: linear-gradient(180deg, rgba(14,24,44,0.94) 0%, rgba(6,12,26,0.94) 100%);
+  border: 1px solid rgba(246, 220, 138, 0.45);
   border-radius: 20px;
-  padding: 3px 10px 3px 7px;
+  padding: 3px 11px 3px 8px;
   font-family: 'Segoe UI', system-ui, sans-serif;
-  color: #e2e8f0;
+  color: #e8eefc;
   font-size: 0.8rem;
   font-weight: 700;
   margin-bottom: 4px;
   flex-wrap: wrap;
   justify-content: center;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08), 0 0 14px rgba(215,167,66,0.14);
 }
 
 .table2d-pot__icon {
-  color: #fbbf24;
+  color: #f6dc8a;
   font-size: 0.55rem;
+  text-shadow: 0 0 6px rgba(246,220,138,0.5);
 }
 
 .table2d-pot__amount {
-  color: #ffffff;
+  /* gold-leaf pot value */
+  background: linear-gradient(180deg, #fff4cf 0%, #f2c14e 55%, #d99a2b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 
 .table2d-pot__side {
@@ -128,8 +168,10 @@
   width: 46px;
   height: 64px;
   border-radius: 6px;
-  background: rgba(0,0,0,0.18);
-  border: 1px solid rgba(255,255,255,0.06);
+  /* recessed card well cut into the felt */
+  background: radial-gradient(ellipse at 50% 40%, rgba(4,12,26,0.45), rgba(2,8,18,0.30));
+  border: 1px solid rgba(246, 220, 138, 0.10);
+  box-shadow: inset 0 2px 8px rgba(0,0,0,0.4);
   transition: background 0.2s;
   flex-shrink: 0;
 }
@@ -324,8 +366,8 @@
   font-weight: 800;
   color: #ffffff;
   font-family: 'Segoe UI', system-ui, sans-serif;
-  border: 2px solid rgba(255,255,255,0.2);
-  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  border: 2px solid rgba(246, 220, 138, 0.30);
+  box-shadow: 0 2px 14px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(255,255,255,0.06);
   position: relative;
   z-index: 1;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -333,11 +375,12 @@
 }
 
 .seat-pod__avatar--empty {
-  background: rgba(255,255,255,0.06) !important;
-  border: 2px dashed rgba(255,255,255,0.15) !important;
-  color: rgba(255,255,255,0.3) !important;
+  background: radial-gradient(circle at 50% 40%, rgba(246,220,138,0.06), rgba(255,255,255,0.03)) !important;
+  border: 2px dashed rgba(246, 220, 138, 0.22) !important;
+  color: rgba(246, 220, 138, 0.45) !important;
   font-size: 1.4rem;
   font-weight: 300;
+  box-shadow: none !important;
 }
 
 /* Active seat glow */
@@ -405,33 +448,40 @@
 
 /* ── Nameplate ────────────────────────────────────────────── */
 .seat-pod__nameplate {
-  background: rgba(6, 10, 20, 0.88);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 8px;
-  padding: 3px 8px;
+  /* premium glass plate — deep navy with a thin gold top edge that catches the
+     table light, like an engraved brass nameplate. */
+  background: linear-gradient(180deg, rgba(18, 30, 54, 0.95) 0%, rgba(7, 13, 27, 0.95) 100%);
+  border: 1px solid rgba(150, 180, 235, 0.16);
+  border-top: 1px solid rgba(246, 220, 138, 0.30);
+  border-radius: 9px;
+  padding: 3px 9px;
   min-width: 90px;
   max-width: 120px;
   text-align: center;
-  box-shadow: 0 3px 12px rgba(0,0,0,0.6);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
 }
 
 .seat-pod__name {
   font-family: 'Segoe UI', system-ui, sans-serif;
   font-size: 0.72rem;
   font-weight: 700;
-  color: #e2e8f0;
+  color: #eef3fb;
+  letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
 .seat-pod__chips {
   font-family: 'Segoe UI', system-ui, sans-serif;
   font-size: 0.65rem;
-  color: #94a3b8;
+  /* gold-tinted stack value */
+  color: #f3d488;
+  font-variant-numeric: tabular-nums;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -440,16 +490,19 @@
 
 .seat-pod__pos {
   font-size: 0.58rem;
-  font-weight: 700;
-  padding: 0 4px;
-  border-radius: 4px;
+  font-weight: 800;
+  padding: 0 5px;
+  border-radius: 5px;
   background: rgba(55,65,81,0.7);
   color: #9ca3af;
+  letter-spacing: 0.04em;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
 }
 
 .seat-pod__pos--btn, .seat-pod__pos--btnsb {
-  background: rgba(234,179,8,0.25);
-  color: #fbbf24;
+  background: linear-gradient(180deg, rgba(246,220,138,0.35), rgba(215,167,66,0.28));
+  color: #fff4cf;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 0 8px rgba(215,167,66,0.25);
 }
 
 .seat-pod__pos--sb {
