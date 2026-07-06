@@ -140,3 +140,26 @@
   color: #4ADE80;
   cursor: default;
 }
+
+.tournament-registered-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.btn-tournament-withdraw {
+  padding: 6px 20px;
+  border: 1px solid rgba(120, 160, 255, 0.5);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: transparent;
+  color: #7ba0ff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-tournament-withdraw:hover {
+  background: rgba(120, 160, 255, 0.12);
+  border-color: #7ba0ff;
+}

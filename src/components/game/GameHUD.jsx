@@ -4580,8 +4580,16 @@ export default function GameHUD() {
           }}
           socket={getSocket()}
           onClose={() => setShowSessionRecap(false)}
-          onOpenAnalytics={() => {}}
-          onViewReplay={() => {}}
+          onOpenAnalytics={() => {
+            if (!lastHandHistory) return;
+            setShowSessionRecap(false);
+            setShowPostHandCoach(true);
+          }}
+          onViewReplay={() => {
+            if (!lastHandHistory) return;
+            setShowSessionRecap(false);
+            setShowReplay(true);
+          }}
         />
         <PredictionMarket
           gameState={gameState}

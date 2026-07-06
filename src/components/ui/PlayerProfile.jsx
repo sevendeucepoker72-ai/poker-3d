@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useProgressStore } from '../../store/progressStore';
+import { useGameStore } from '../../store/gameStore';
 import { RANK_TIERS } from './RankBadge';
 import './PlayerProfile.css';
+
+// Mirror the server display-name whitelist (authManager.setDisplayName):
+// ASCII letters/digits/space/_.'- , at least one alphanumeric, length 2-20.
+function validateDisplayName(name) {
+  const n = (name || '').trim();
+  if (n.length < 2 || n.length > 20) return 'Name must be 2-20 characters.';
+  if (!/^[A-Za-z0-9 _.'-]+$/.test(n)) return 'Only letters, numbers, spaces and _ . \' - allowed.';
+  if (!/[A-Za-z0-9]/.test(n)) return 'Name needs at least one letter or number.';
+  return null;
+}
 
 // Generate a deterministic color from a username string
 function nameToColor(name = '') {
@@ -100,8 +111,33 @@ export default function PlayerProfile({ username, socket, onClose, onViewReplay 
   const [loading, setLoading] = useState(true);
   const [showAllAchievements, setShowAllAchievements] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [localName, setLocalName] = useState(null); // optimistic override after a rename
 
   const isOwnProfile = username === ownUsername || username === null;
+
+  const handleSaveName = () => {
+    const err = validateDisplayName(nameInput);
+    if (err) { setNameError(err); return; }
+    if (!socket) { setNameError('Not connected.'); return; }
+    setSavingName(true);
+    setNameError('');
+    socket.emit('setDisplayName', { name: nameInput.trim() });
+    socket.once('setDisplayNameResult', (data) => {
+      setSavingName(false);
+      if (data?.success) {
+        const nm = data.displayName || nameInput.trim();
+        setLocalName(nm);
+        try { useGameStore.getState().setPlayerName(nm); } catch { /* ignore */ }
+        setEditingName(false);
+      } else {
+        setNameError(data?.error || 'Failed to update name.');
+      }
+    });
+  };
 
   useEffect(() => {
     if (!username) return;
@@ -239,7 +275,30 @@ export default function PlayerProfile({ username, socket, onClose, onViewReplay 
             {initial}
           </div>
           <div className="profile-header-info">
-            <h2 className="profile-username">{username}</h2>
+            {editingName ? (
+              <div className="profile-name-editor">
+                <input
+                  className="profile-name-input"
+                  value={nameInput}
+                  maxLength={20}
+                  autoFocus
+                  onChange={(e) => { setNameInput(e.target.value); if (nameError) setNameError(''); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') setEditingName(false); }}
+                  aria-label="Edit display name"
+                />
+                <div className="profile-name-editor-actions">
+                  <button className="profile-name-save" onClick={handleSaveName} disabled={savingName}>
+                    {savingName ? 'Saving…' : 'Save'}
+                  </button>
+                  <button className="profile-name-cancel" onClick={() => { setEditingName(false); setNameError(''); }} disabled={savingName}>
+                    Cancel
+                  </button>
+                </div>
+                {nameError && <div className="profile-name-error">{nameError}</div>}
+              </div>
+            ) : (
+              <h2 className="profile-username">{localName || username}</h2>
+            )}
             <div className="profile-badges-row">
               <span className="profile-rank-badge">
                 {rankInfo.icon} {rankInfo.current.name}
@@ -250,8 +309,11 @@ export default function PlayerProfile({ username, socket, onClose, onViewReplay 
               <button className="profile-copy-btn" onClick={handleCopyLink}>
                 {copied ? '✓ Copied!' : '📋 Copy Profile Link'}
               </button>
-              {isOwnProfile && (
-                <button className="profile-edit-btn">✏️ Edit</button>
+              {isOwnProfile && !editingName && (
+                <button
+                  className="profile-edit-btn"
+                  onClick={() => { setNameInput(localName || username || ownUsername || ''); setNameError(''); setEditingName(true); }}
+                >✏️ Edit</button>
               )}
             </div>
           </div>

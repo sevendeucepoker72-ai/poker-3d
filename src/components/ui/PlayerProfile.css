@@ -189,6 +189,66 @@
   border-color: #10b981;
 }
 
+/* ===== Display-name inline editor ===== */
+.profile-name-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.profile-name-input {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 160, 255, 0.45);
+  background: rgba(10, 22, 40, 0.85);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  max-width: 260px;
+}
+.profile-name-input:focus {
+  outline: none;
+  border-color: #7ba0ff;
+  box-shadow: 0 0 0 2px rgba(120, 160, 255, 0.25);
+}
+.profile-name-editor-actions {
+  display: flex;
+  gap: 8px;
+}
+.profile-name-save,
+.profile-name-cancel {
+  padding: 5px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.2s;
+}
+.profile-name-save {
+  background: rgba(120, 160, 255, 0.18);
+  border-color: rgba(120, 160, 255, 0.5);
+  color: #a5b4fc;
+}
+.profile-name-save:hover:not(:disabled) {
+  background: rgba(120, 160, 255, 0.32);
+  border-color: #7ba0ff;
+}
+.profile-name-cancel {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #9aa4bf;
+}
+.profile-name-save:disabled,
+.profile-name-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.profile-name-error {
+  color: #fca5a5;
+  font-size: 12px;
+}
+
 /* ===== Stats row ===== */
 .profile-stats-row {
   display: grid;

@@ -37,6 +37,7 @@ const BankrollAI          = lazy(() => import('./BankrollAI'));
 const NFTBadges           = lazy(() => import('./NFTBadges'));
 const AdminDashboard      = lazy(() => import('./AdminDashboard'));
 const ExportData          = lazy(() => import('./ExportData'));
+const HandReplayViewer    = lazy(() => import('../replay/HandReplayViewer'));
 // Kept eager — rendered in the default lobby view, not gated behind a modal.
 import ClubsPanel from './ClubsPanel';
 import SpinWheel from './SpinWheel';
@@ -1232,6 +1233,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const [showScratchCards, setShowScratchCards] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [showExportData, setShowExportData] = useState(false);
+  const [replayHand, setReplayHand] = useState(null);
   const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [showStakingMarketplace, setShowStakingMarketplace] = useState(false);
   const [showTournamentBracket, setShowTournamentBracket] = useState(false);
@@ -2176,7 +2178,11 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <button
           className="btn-accent"
           style={{ flex: 1 }}
-          onClick={() => {}}
+          onClick={() => {
+            const hh = useTableStore.getState().handHistories || [];
+            if (!hh.length) { alert('No hands recorded yet — play some hands first.'); return; }
+            setReplayHand(hh[hh.length - 1]);
+          }}
         >
           Hand History
         </button>
@@ -3051,6 +3057,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {showBankrollGraph && <BankrollGraph onClose={() => setShowBankrollGraph(false)} />}
         {showAdminDashboard && <AdminDashboard onClose={() => setShowAdminDashboard(false)} />}
         {showExportData && <ExportData onClose={() => setShowExportData(false)} />}
+        {replayHand && <HandReplayViewer history={replayHand} onClose={() => setReplayHand(null)} />}
         {showHandQuiz && <HandQuiz onClose={() => setShowHandQuiz(false)} />}
         {showAdvancedAnalytics && <AdvancedAnalytics progress={progress} handHistories={handHistories || []} onClose={() => setShowAdvancedAnalytics(false)} />}
         {showStakingMarketplace && <StakingMarketplace playerName={playerName} chips={progress?.chips ?? chipCount ?? 0} onClose={() => setShowStakingMarketplace(false)} />}

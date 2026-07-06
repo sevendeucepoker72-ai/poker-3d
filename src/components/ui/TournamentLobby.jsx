@@ -28,9 +28,20 @@ export default function TournamentLobby() {
     const handleStarted = (data) => {
       setScreen('table');
     };
+    // Withdraw confirmation from the server — drop the registration locally and
+    // surface any entry-fee refund. Server only allows this while 'registering'.
+    const handleUnregistered = (data) => {
+      setRegisteredIds((prev) => {
+        const next = new Set(prev);
+        next.delete(data.tournamentId);
+        return next;
+      });
+      socket.emit('getTournaments');
+    };
 
     socket.on('tournamentList', handleList);
     socket.on('tournamentRegistered', handleRegistered);
+    socket.on('tournamentUnregistered', handleUnregistered);
     socket.on('tournamentStarted', handleStarted);
 
     const interval = setInterval(() => socket.emit('getTournaments'), 5000);
@@ -38,6 +49,7 @@ export default function TournamentLobby() {
     return () => {
       socket.off('tournamentList', handleList);
       socket.off('tournamentRegistered', handleRegistered);
+      socket.off('tournamentUnregistered', handleUnregistered);
       socket.off('tournamentStarted', handleStarted);
       clearInterval(interval);
     };
@@ -47,6 +59,12 @@ export default function TournamentLobby() {
     const socket = getSocket();
     if (!socket || !playerName) return;
     socket.emit('registerTournament', { tournamentId, playerName });
+  };
+
+  const handleWithdraw = (tournamentId) => {
+    const socket = getSocket();
+    if (!socket) return;
+    socket.emit('leaveTournament', { tournamentId });
   };
 
   const formatTime = (timestamp) => {
@@ -136,7 +154,15 @@ export default function TournamentLobby() {
                   </button>
                 )}
                 {t.status === 'registering' && isRegistered && (
-                  <button className="btn-tournament-registered">Registered</button>
+                  <div className="tournament-registered-actions">
+                    <button className="btn-tournament-registered" disabled>Registered</button>
+                    <button
+                      className="btn-tournament-withdraw"
+                      onClick={() => handleWithdraw(t.tournamentId)}
+                    >
+                      Withdraw
+                    </button>
+                  </div>
                 )}
                 {t.status === 'running' && (
                   <span style={{ color: '#4ADE80', fontSize: '0.8rem', fontWeight: 600 }}>
