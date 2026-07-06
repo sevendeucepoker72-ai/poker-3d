@@ -1243,6 +1243,21 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [showStakingMarketplace, setShowStakingMarketplace] = useState(false);
   const [showTournamentBracket, setShowTournamentBracket] = useState(false);
+  const [bracketTournament, setBracketTournament] = useState(null);
+  // Live Bracket: while the modal is open, fetch the running tournament's
+  // standings (the server defaults to the first running one) and poll for
+  // updates. TournamentBracket renders empty without this `tournament` prop.
+  useEffect(() => {
+    if (!showTournamentBracket) { setBracketTournament(null); return; }
+    const socket = getSocket();
+    if (!socket) return;
+    const onStandings = (data) => setBracketTournament(data || null);
+    socket.on('tournamentStandings', onStandings);
+    const fetchStandings = () => socket.emit('getTournamentStandings', {});
+    fetchStandings();
+    const iv = setInterval(fetchStandings, 3000);
+    return () => { clearInterval(iv); socket.off('tournamentStandings', onStandings); };
+  }, [showTournamentBracket]);
   const [showTournamentDirector, setShowTournamentDirector] = useState(false);
   const [showHandHistoryImporter, setShowHandHistoryImporter] = useState(false);
   const [showMultiTable, setShowMultiTable] = useState(false);
@@ -3067,7 +3082,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {showHandQuiz && <HandQuiz onClose={() => setShowHandQuiz(false)} />}
         {showAdvancedAnalytics && <AdvancedAnalytics progress={progress} handHistories={handHistories || []} onClose={() => setShowAdvancedAnalytics(false)} />}
         {showStakingMarketplace && <StakingMarketplace playerName={playerName} chips={progress?.chips ?? chipCount ?? 0} onClose={() => setShowStakingMarketplace(false)} />}
-        {showTournamentBracket && <TournamentBracket onClose={() => setShowTournamentBracket(false)} />}
+        {showTournamentBracket && <TournamentBracket tournament={bracketTournament} onClose={() => setShowTournamentBracket(false)} />}
         {showTournamentDirector && <TournamentDirector onClose={() => setShowTournamentDirector(false)} />}
         {showHandHistoryImporter && <HandHistoryImporter onClose={() => setShowHandHistoryImporter(false)} />}
         {showSocialBracket && <SocialBracket socket={getSocket()} onClose={() => setShowSocialBracket(false)} />}

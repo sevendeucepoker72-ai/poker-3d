@@ -141,3 +141,4 @@ claimRefill
 # anti-stall guard silently — lock both string literals.
 stateVersion
 STALE_STATE
+tournamentStandings
