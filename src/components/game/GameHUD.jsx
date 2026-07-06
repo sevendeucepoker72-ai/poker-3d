@@ -1021,18 +1021,26 @@ export default function GameHUD() {
         const action = preAction;
         setPreAction(null);
         hasSentActionRef.current = true;
+        // Tell the player WHAT their queued pre-action just did, the instant it
+        // fires — otherwise an armed Fold/Check-Fold folds them the moment their
+        // turn opens and reads as "it folded me when I was going to bet".
+        const preToast = (msg, type) => { try { addToast(msg, type, 2600); } catch { /* addToast defined later in render; safe when this effect actually runs */ } };
         if (action === 'fold') {
           // Pure auto-fold: fold the moment it's our turn, whatever the action
           // (even if a free check were available — the player armed "Fold").
           playSound('fold'); sendAction('fold');
+          preToast('⚡ Queued action fired: Folded', 'warn');
         } else if (action === 'checkFold') {
           if (callAmount === 0) {
             playSound('check'); sendAction('check');
+            preToast('⚡ Queued action fired: Checked', 'info');
           } else {
             playSound('fold'); sendAction('fold');
+            preToast('⚡ Queued action fired: Folded (faced a bet)', 'warn');
           }
         } else if (action === 'callAny') {
           playSound('bet'); sendAction('call');
+          preToast('⚡ Queued action fired: Called', 'info');
         } else if (action === 'checkOnly') {
           if (callAmount === 0) {
             playSound('check'); sendAction('check');
