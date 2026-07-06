@@ -302,6 +302,7 @@ const SeatPod = memo(function SeatPod({
   handResult, phase, onClickNameplate,
   bigBlind, heroEmoji, onSitHere, winStreak,
   isTournament, heroAlreadySeated, isPendingMoveTarget,
+  onBetSlide,
 }) {
   const turnStartedAt = useTimerStore(s => s.turnStartedAt);
   const turnTimeout   = useTimerStore(s => s.turnTimeout);
@@ -351,6 +352,22 @@ const SeatPod = memo(function SeatPod({
   // aren't being dealt in. Only render if owed > 0 (non-null missedBlind
   // can linger before reset).
   const hasDeadBlindDebt = (deadBlindOwedChips || 0) > 0;
+
+  // Bet-slide trigger: when this seat's committed bet INCREASES
+  // (bet / raise / call / blind post), ask the table to fling a chip stack
+  // from this seat to the pot. `currentBet` is reset to 0 by the server each
+  // street, so a DECREASE is never a wager — fire only on increase. prevBetRef
+  // starts null so mounting mid-hand (rejoin / spectate) never fires spuriously.
+  // Must stay above the early return at line ~374 so hook order is stable.
+  const prevBetRef = useRef(null);
+  useEffect(() => {
+    if (!isOccupied && !isSittingOut) { prevBetRef.current = null; return; }
+    const cur = currentBet || 0;
+    const prev = prevBetRef.current;
+    prevBetRef.current = cur;
+    if (prev === null) return;
+    if (cur > prev) onBetSlide?.(seatIndex);
+  }, [currentBet, isOccupied, isSittingOut, seatIndex, onBetSlide]);
 
   /* ── Empty / vacatable seat ─────────────────────────────────
      Renders an "Open" placeholder for any seat that isn't actively
@@ -772,6 +789,38 @@ export default function PokerTable2D() {
     return () => ro.disconnect();
   }, []);
 
+  /* ── Chip-to-pot flyers ──────────────────────────────────────
+     A short-lived list of chip stacks flung from a seat to the pot on each
+     wager (fired by SeatPod's bet-diff effect via onBetSlide). Positions
+     reuse the EXACT seat-placement math (duplicated below, NOT shared — so
+     the live seat map at ~1058 is never touched and seats can never move).
+     The px travel-delta is measured once at spawn from sceneRef (not per
+     frame); the keyframe then animates a GPU-only translate. The layer is an
+     absolute, pointer-events:none sibling inside .table2d-scene, so it never
+     affects feltRef's rect or the seat layout. */
+  const [chipFlyers, setChipFlyers] = useState([]);
+  const flyerIdRef = useRef(0);
+  const flyPosRef = useRef({ seatEllipse: null, yourSeat: -1 });
+  flyPosRef.current = { seatEllipse, yourSeat };
+  const handleBetSlide = useCallback((seatIndex) => {
+    const scene = sceneRef.current;
+    const { seatEllipse: se, yourSeat: ys } = flyPosRef.current;
+    if (!scene || !se) return;
+    const sr = scene.getBoundingClientRect();
+    if (!sr.width || !sr.height) return;
+    // Identical rotation + ellipse math as the seat map (kept in lock-step).
+    const heroAngle = ys >= 0 ? SEAT_ANGLES[ys] : Math.PI / 2;
+    const angle = SEAT_ANGLES[seatIndex] + (Math.PI / 2 - heroAngle);
+    const seatLeft = (se.cx + Math.cos(angle) * se.xR) * 100;
+    const seatTop  = (se.cy + Math.sin(angle) * se.yR) * 100;
+    // Target = felt centre (se.cx/se.cy) — the same measured point seats orbit.
+    const dx = (se.cx * 100 - seatLeft) / 100 * sr.width;
+    const dy = (se.cy * 100 - seatTop)  / 100 * sr.height;
+    const id = flyerIdRef.current++;
+    setChipFlyers(f => [...f, { id, left: seatLeft, top: seatTop, dx, dy }]);
+    setTimeout(() => setChipFlyers(f => f.filter(x => x.id !== id)), 650);
+  }, []);
+
   /* ── Table theme ──────────────────────────────────────────────
      Default felt changed from 🟢 Classic green → 🔵 Speed blue per user
      request ("CHANGE THE BASE DEFAULT FELT COLOR TO THE BLUE ONE").
@@ -1100,9 +1149,31 @@ export default function PokerTable2D() {
             isTournament={isTournamentTbl}
             heroAlreadySeated={yourSeat >= 0}
             isPendingMoveTarget={pendingSeat === i}
+            onBetSlide={handleBetSlide}
           />
         );
       })}
+
+      {/* Chip-to-pot flyers — absolute, pointer-events:none; sibling of the
+          seat pods so it shares the scene coordinate space but never touches
+          feltRef / seat layout. Each travels from its seat to the felt centre. */}
+      {chipFlyers.map(fl => (
+        <div
+          key={fl.id}
+          className="chip-fly"
+          style={{
+            left: `${fl.left}%`,
+            top: `${fl.top}%`,
+            '--fly-dx': `${fl.dx}px`,
+            '--fly-dy': `${fl.dy}px`,
+          }}
+          aria-hidden="true"
+        >
+          <span className="chip-fly__disc" />
+          <span className="chip-fly__disc" />
+          <span className="chip-fly__disc" />
+        </div>
+      ))}
     </div>
   );
 }

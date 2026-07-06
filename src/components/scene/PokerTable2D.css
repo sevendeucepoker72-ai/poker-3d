@@ -1739,3 +1739,41 @@
   }
 }
 
+/* ════════════════════════════════════════════════════════════
+   Chip-to-pot flyer — a small sapphire/gold chip stack that slides
+   from a seat to the felt centre on each wager. GPU-only (transform +
+   opacity); px travel-delta supplied inline as --fly-dx/--fly-dy.
+   z-index 45 sits above per-seat bet chips (.chip-stack:15) and the
+   chip-delta flash (.chip-delta:40), below the action bar (.hud-bottom:100).
+   ════════════════════════════════════════════════════════════ */
+.chip-fly {
+  position: absolute;
+  width: 26px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  z-index: 45;
+  pointer-events: none;
+  animation: chip-fly-travel 0.55s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.chip-fly__disc {
+  position: absolute;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  background: radial-gradient(circle at 38% 34%, #2f66b0, #143b6e 70%);
+  border: 2px solid #e7bf5c;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 1px 2px rgba(255,255,255,0.35);
+}
+.chip-fly__disc:nth-child(1) { top: 5px; }
+.chip-fly__disc:nth-child(2) { top: 1px; }
+.chip-fly__disc:nth-child(3) { top: -3px; }
+@keyframes chip-fly-travel {
+  0%   { transform: translate(-50%, -50%) scale(0.9); opacity: 0; }
+  16%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--fly-dx)), calc(-50% + var(--fly-dy))) scale(0.62); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .chip-fly { display: none; } }
+

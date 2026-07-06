@@ -142,3 +142,11 @@ claimRefill
 stateVersion
 STALE_STATE
 tournamentStandings
+
+# ─── 2026-07-06 — chip-to-pot bet animation ─────────────────────────
+# On each wager a sapphire/gold chip stack slides from the seat to the
+# felt centre (PokerTable2D SeatPod bet-diff effect → onBetSlide → the
+# .chip-fly flyer layer). Lock the class literal — it appears in both the
+# built CSS selector and the className string, so a refactor that drops
+# the flyer fails the deploy guardrail.
+chip-fly

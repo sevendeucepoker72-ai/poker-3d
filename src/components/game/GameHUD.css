@@ -3951,8 +3951,8 @@
 
 /* ── #4: Card deal animation ────────────────────────────── */
 @keyframes card-deal-in {
-  0%   { transform: translateY(28px) scale(0.82); opacity: 0; }
-  65%  { transform: translateY(-3px) scale(1.03); opacity: 1; }
+  0%   { transform: translateY(30px) translateX(-18px) rotate(-8deg) scale(0.8); opacity: 0; }
+  60%  { transform: translateY(-4px) translateX(2px) rotate(1.5deg) scale(1.04); opacity: 1; }
   100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 .hud-cards--dealt .card-peek:nth-child(1) { animation: card-deal-in 0.32s cubic-bezier(0.34,1.56,0.64,1) both; }
@@ -5965,12 +5965,16 @@ html.kb-open .table-pot-odds {
 
 /* ── Upgrade 4: Community Card Flip Animation ───────────── */
 @keyframes card-flip {
-  0%   { transform: rotateY(90deg); opacity: 0.5; }
-  100% { transform: rotateY(0); opacity: 1; }
+  0%   { transform: perspective(700px) rotateY(-88deg) translateY(-10px) scale(0.92); opacity: 0; }
+  55%  { transform: perspective(700px) rotateY(10deg) translateY(0) scale(1.04); opacity: 1; }
+  100% { transform: perspective(700px) rotateY(0deg) translateY(0) scale(1); opacity: 1; }
 }
 .community-card {
   perspective: 600px;
-  animation: card-flip 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* `backwards` holds the 0% frame through the nth-child delay (no pre-flash),
+     but does NOT persist a transform after — so no permanent stacking context
+     that would trap the .card-hover-popup tooltip. */
+  animation: card-flip 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
 }
 .community-card:nth-child(2) { animation-delay: 0.06s; }
 .community-card:nth-child(3) { animation-delay: 0.12s; }
@@ -7281,4 +7285,58 @@ html.kb-open .table-pot-odds {
 .ab-preset:hover:not(:disabled) {
   border-color: rgba(246, 220, 138, 0.55) !important;
   color: #f6dc8a !important;
+}
+
+/* ════════════════════════════════════════════════════════════
+   HERO restyle — own nameplate + hole cards → sapphire / gold.
+   Visual-only: color / border / background / shadow. NO layout
+   properties (position, size, padding, transform) are touched, so
+   hit-targets + the 2026-07-05 mobile-audit fixes stay intact.
+   Every selector is scoped to .hud-nameplate-me / .card-peek /
+   .hud-cards — the hero's own classes. Opponents render via
+   .seat-pod__* and .card2d* (PokerTable2D.css) and are never hit.
+   ════════════════════════════════════════════════════════════ */
+.hud-nameplate-me {
+  background: linear-gradient(180deg, rgba(10,22,54,0.9), rgba(6,14,36,0.92));
+  border-color: rgba(245,196,81,0.35);
+}
+/* wins over the reskin's !important nameplate shadow (~line 7155) */
+.hud-nameplate-me {
+  box-shadow: 0 10px 26px rgba(0,0,0,0.55), inset 0 1px 0 rgba(245,196,81,0.16) !important;
+}
+.hud-nameplate-me--active {
+  border-color: rgba(245,196,81,0.6);
+  /* !important so the active glow beats the base nameplate !important shadow */
+  box-shadow: 0 0 18px rgba(245,196,81,0.30), 0 10px 26px rgba(0,0,0,0.55) !important;
+}
+.hud-np-name { color: #f5d98a; }                 /* was green #4ade80 */
+.hud-np-pos  { background: rgba(245,196,81,0.14); }
+/* higher specificity than the bundled avatar reskin (~line 7149 !important) */
+.hud-nameplate-me .hud-np-avatar {
+  border-color: rgba(245,196,81,0.5) !important;
+}
+/* Card back: dark-red barber-pole → sapphire weave (keeps its gold border
+   + gold ♦). Honours the "no red, use blue" brand rule. */
+.card-peek-back {
+  background: repeating-linear-gradient(45deg,
+    #0d2c53 0px, #0d2c53 8px, #164277 8px, #164277 16px);
+}
+/* Active-turn hero glow: green → gold (scoped to the hero's cards only) */
+.hud-cards-active .card-peek-front {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 0 20px rgba(245,196,81,0.3);
+  border-color: rgba(245,196,81,0.45);
+}
+.hud-cards-active .card-peek-back {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 0 20px rgba(245,196,81,0.3);
+  border-color: rgba(245,196,81,0.55);
+}
+/* Hero card resting glow: blue tint (reskin ~7184) → warm gold */
+.card-peek { box-shadow: 0 12px 26px rgba(0,0,0,0.55), 0 0 14px rgba(245,196,81,0.18); }
+
+/* Card-deal flourish — explicit reduced-motion kill. a11y.css already
+   shortens durations globally, but the community stagger uses animation
+   delays it doesn't zero, so remove the animations outright: cards appear
+   instantly at rest instead of holding an invisible pre-delay frame. */
+@media (prefers-reduced-motion: reduce) {
+  .community-card, .card-peek, .card2d { animation: none !important; }
 }

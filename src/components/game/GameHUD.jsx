@@ -3352,7 +3352,7 @@ export default function GameHUD() {
                     x="1" y="1" width="98" height="98" rx="10" ry="10"
                     pathLength="100"
                     fill="none"
-                    stroke={danger ? '#ef4444' : '#4ade80'}
+                    stroke={danger ? '#ef4444' : '#f5c451'}
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeDasharray="100"
@@ -3362,7 +3362,7 @@ export default function GameHUD() {
                 </svg>
               );
             })()}
-            <div className="hud-np-avatar" style={{ background: '#16a34a' }}>
+            <div className="hud-np-avatar" style={{ background: 'linear-gradient(135deg,#1e3a8a,#0d2c53)' }}>
               {(playerName || 'P').charAt(0).toUpperCase()}
             </div>
             <div className="hud-np-info">
