@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import AvatarModel from '../avatar/AvatarModel';
@@ -8,6 +8,9 @@ import {
   EYE_COLORS, TOP_STYLES, TOP_COLORS, BOTTOM_STYLES,
   BOTTOM_COLORS, ACCESSORIES, FACE_SLIDERS,
 } from '../../utils/avatarConfig';
+import { getAuthToken } from '../../services/tokenStorage';
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
+import { API_BASE as MASTER_API } from '../../config';
 import './AvatarCustomizer.css';
 
 /* Upgrade #6: Preset seat-circle colors */
@@ -24,17 +27,57 @@ export default function AvatarCustomizer() {
   const resetAvatar = useGameStore((s) => s.resetAvatar);
   const setScreen = useGameStore((s) => s.setScreen);
 
-  /* Upgrade #1: photo upload — center-crop & resize to 80×80 JPEG */
+  // Photo moderation status: null | 'uploading' | 'pending' | 'error'.
+  // A locally-picked photo is held in `pendingPreview` for the customizer's own
+  // preview ONLY — it is NEVER written into the socket-emitted avatar object, so
+  // an unmoderated image can't reach the table. It shows table-wide only after
+  // admin approval, rendered from the approved master-API avatar (avatarService
+  // → GET /avatars/display/:id, which returns approved uploads only).
+  const [photoStatus, setPhotoStatus] = useState(null);
+  const [photoMessage, setPhotoMessage] = useState('');
+  const [pendingPreview, setPendingPreview] = useState(null);
+
+  /* Upgrade #1: photo upload — center-crop & resize to 80×80 JPEG, then submit
+     to the MODERATED master-API pipeline (POST /avatars/upload → mime/magic-byte
+     check → Cloud Vision SafeSearch → admin approval queue). Fail-closed: not
+     shown table-wide until approved. */
   const fileInputRef = useRef(null);
+  const submitPhotoForModeration = async (dataUrl) => {
+    const userId = useGameStore.getState().userId;
+    if (!userId) { setPhotoStatus('error'); setPhotoMessage('Sign in to upload a photo.'); return; }
+    const token = getAuthToken();
+    if (!token) { setPhotoStatus('error'); setPhotoMessage('Sign in to upload a photo.'); return; }
+    setPhotoStatus('uploading');
+    setPhotoMessage('Uploading…');
+    try {
+      const res = await fetchWithTimeout(`${MASTER_API}/avatars/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userId, imageData: dataUrl }),
+      }, 15000);
+      const body = await res.json().catch(() => null);
+      if (res.ok && body?.success) {
+        setPhotoStatus('pending');
+        setPhotoMessage('Photo submitted — pending review. It appears at the table once an admin approves it.');
+      } else {
+        setPhotoStatus('error');
+        setPhotoMessage(body?.message || 'Upload failed. Please try again.');
+        setPendingPreview(null);
+      }
+    } catch {
+      setPhotoStatus('error');
+      setPhotoMessage('Upload failed (network). Please try again.');
+      setPendingPreview(null);
+    }
+  };
   const handlePhotoUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     // 2026-07-06 audit P3 — validate BEFORE processing. The image is center-
-    // cropped to an 80×80 JPEG data URL and sent to the server, but there was no
-    // guard: a huge file froze the main thread on decode, and a non-image
-    // (renamed .exe/.svg) reached the upload path. Cap type + size here. This is
-    // a client convenience check only — the server remains the moderation
-    // authority (Cloud Vision SafeSearch on avatars.js when enabled).
+    // cropped to an 80×80 JPEG data URL and submitted to the moderated pipeline;
+    // guard type + size here so a huge file can't freeze the main thread on
+    // decode and a renamed non-image can't reach the upload path. The server
+    // remains the moderation authority (mime/magic-byte + Cloud Vision).
     const MAX_BYTES = 8 * 1024 * 1024; // 8 MB — plenty for a source photo
     if (!/^image\/(png|jpe?g|webp|gif|bmp|heic|heif)$/i.test(file.type || '')) {
       // eslint-disable-next-line no-alert
@@ -60,12 +103,23 @@ export default function AvatarCustomizer() {
         const sx = (img.width - minDim) / 2;
         const sy = (img.height - minDim) / 2;
         ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, SIZE, SIZE);
-        updateAvatar('photo', canvas.toDataURL('image/jpeg', 0.75));
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        // Local preview only — NOT written to the socket-emitted avatar.
+        setPendingPreview(dataUrl);
+        submitPhotoForModeration(dataUrl);
       };
       img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+  const clearPendingPhoto = () => {
+    setPendingPreview(null);
+    setPhotoStatus(null);
+    setPhotoMessage('');
+    // Clear any legacy locally-set photo too so the seat falls back to the
+    // moderated/approved avatar rather than an unmoderated table-wide image.
+    if (avatar.photo) updateAvatar('photo', null);
   };
 
   const seatPreview = avatar.seatColor || avatar.skinTone || '#6366f1';
@@ -97,7 +151,7 @@ export default function AvatarCustomizer() {
       <div className="customizer-panel">
         <h2>Create Your Avatar</h2>
 
-        {/* Upgrade #1: Photo upload */}
+        {/* Upgrade #1: Photo upload — moderated pipeline (pending until approved) */}
         <Section title="Seat Photo">
           <div className="photo-upload-row">
             <div
@@ -105,21 +159,24 @@ export default function AvatarCustomizer() {
               style={{ background: seatPreview }}
               onClick={() => fileInputRef.current?.click()}
             >
-              {avatar.photo
-                ? <img src={avatar.photo} alt="avatar" className="photo-preview__img" />
+              {(pendingPreview || avatar.photo)
+                ? <img src={pendingPreview || avatar.photo} alt="avatar" className="photo-preview__img" />
                 : <span className="photo-preview__placeholder">📷</span>
               }
             </div>
             <div className="photo-upload-actions">
-              <button className="btn-upload" onClick={() => fileInputRef.current?.click()}>
-                Upload Photo
+              <button className="btn-upload" onClick={() => fileInputRef.current?.click()} disabled={photoStatus === 'uploading'}>
+                {photoStatus === 'uploading' ? 'Uploading…' : 'Upload Photo'}
               </button>
-              {avatar.photo && (
-                <button className="btn-remove-photo" onClick={() => updateAvatar('photo', null)}>
+              {(pendingPreview || avatar.photo) && (
+                <button className="btn-remove-photo" onClick={clearPendingPhoto}>
                   Remove
                 </button>
               )}
-              <span className="photo-hint">Shown as your seat icon at the table</span>
+              {photoMessage
+                ? <span className="photo-hint" style={{ color: photoStatus === 'error' ? '#F87171' : (photoStatus === 'pending' ? '#4ADE80' : '#9fb4d8') }}>{photoMessage}</span>
+                : <span className="photo-hint">Photos are reviewed before appearing at the table</span>
+              }
             </div>
             <input
               ref={fileInputRef}

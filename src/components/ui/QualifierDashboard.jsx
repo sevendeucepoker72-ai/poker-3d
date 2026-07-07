@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSocket } from '../../services/socketService';
 import { useTableStore } from '../../store/tableStore';
 import { DEFAULT_BLIND_STRUCTURE } from '../../store/qualifierStore';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
+import { notify } from '../../hooks/usePushNotifications';
 
 function formatTime(secs) {
   const m = Math.floor(secs / 60);
@@ -58,6 +59,19 @@ export default function QualifierDashboard({ qualifier, tournamentData, isRegist
     return () => clearInterval(id);
   }, [qualifier.scheduledAt]);
 
+  // Local push when this qualifier transitions to running (rising edge), so a
+  // registered player who backgrounded the tab gets nudged to their seat.
+  // notify.tournamentStart self-guards on Notification.permission==='granted'.
+  const prevRunningRef = useRef(isRunning);
+  useEffect(() => {
+    if (isRunning && !prevRunningRef.current) {
+      if (typeof document === 'undefined' || document.visibilityState === 'hidden') {
+        notify.tournamentStart(qualifier.name);
+      }
+    }
+    prevRunningRef.current = isRunning;
+  }, [isRunning, qualifier.name]);
+
   // #7 — register/unregister needs a loading state so double-clicks don't
   // emit duplicate events. We flip the flag on click and clear it when the
   // parent re-renders with a new `isRegistered` value (i.e., server ack).
@@ -77,14 +91,18 @@ export default function QualifierDashboard({ qualifier, tournamentData, isRegist
     setTimeout(() => setPending((p) => p === 'unregister' ? null : p), 8000);
   };
 
-  // Prize structure
+  // Prize structure — read the server-driven config when present, falling back
+  // to the generic seat structure only for legacy configs missing the field.
   const prizePool = regCount * 0; // free qualifier — prizes are qualifier seats
-  const prizes = [
+  const DEFAULT_PRIZES = [
     { place: '1st', prize: 'Championship Seat' },
     { place: '2nd', prize: 'Championship Seat' },
     { place: '3rd', prize: 'Championship Seat' },
     { place: '4th-5th', prize: 'Next Qualifier Entry' },
   ];
+  const prizes = (Array.isArray(qualifier.prizeStructure) && qualifier.prizeStructure.length > 0)
+    ? qualifier.prizeStructure
+    : DEFAULT_PRIZES;
 
   const tabs = [
     { key: 'overview', label: 'Overview' },

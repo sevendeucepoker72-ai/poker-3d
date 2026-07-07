@@ -81,13 +81,23 @@ export default function BattlePass({ onClose }) {
   // Hardware back button closes the modal (not the app) on Android/iOS
   useBackButtonClose(true, onClose);
 
-  const claimable = useMemo(
-    () => TIERS.filter(t => t.tier <= currentTier && !claimedTiers.includes(t.tier)),
-    [currentTier, claimedTiers]
-  );
+  // 2026-07-07 gap-fill — claims are now track-aware. The server sends
+  // claimedTiers as `${tier}:${track}` keys, so free and premium are tracked
+  // independently (both claimable once per tier). isClaimed checks a specific
+  // track; claimable enumerates unclaimed (tier, track) pairs the user can take.
+  const isClaimed = (tier, track) => claimedTiers.includes(`${tier}:${track}`);
+  const claimable = useMemo(() => {
+    const out = [];
+    for (const t of TIERS) {
+      if (t.tier > currentTier) continue;
+      if (!claimedTiers.includes(`${t.tier}:free`)) out.push({ tier: t.tier, track: 'free' });
+      if (hasPremium && !claimedTiers.includes(`${t.tier}:premium`)) out.push({ tier: t.tier, track: 'premium' });
+    }
+    return out;
+  }, [currentTier, claimedTiers, hasPremium]);
 
-  function claimTier(tier) {
-    if (claimedTiers.includes(tier)) return;
+  function claimTier(tier, track = 'free') {
+    if (isClaimed(tier, track)) return;
     const socket = getSocket();
     if (!socket) return;
     // Optimistic: local immediate update; server will re-broadcast durableState
@@ -104,7 +114,7 @@ export default function BattlePass({ onClose }) {
     };
     activeListenersRef.current.add(onResult);
     socket.on('battlePassTierClaimed', onResult);
-    socket.emit('claimBattlePassTier', { seasonId: 'season_1_the_river', tierId: tier });
+    socket.emit('claimBattlePassTier', { seasonId: 'season_1_the_river', tierId: tier, track });
   }
 
   const [claimingAll, setClaimingAll] = useState(false);
@@ -114,8 +124,8 @@ export default function BattlePass({ onClose }) {
     const socket = getSocket();
     if (!socket) return;
     setClaimingAll(true);
-    for (const t of claimable) {
-      socket.emit('claimBattlePassTier', { seasonId: 'season_1_the_river', tierId: t.tier });
+    for (const c of claimable) {
+      socket.emit('claimBattlePassTier', { seasonId: 'season_1_the_river', tierId: c.tier, track: c.track });
     }
     // 2026-07-06 audit P3 — store the refresh timeout in a ref that the unmount
     // effect clears. The previous approach spun up a 200ms setInterval to "watch
@@ -178,16 +188,17 @@ export default function BattlePass({ onClose }) {
         <div className="bp-tier-scroll">
           {visibleTiers.map(({ tier, freeReward, premiumReward, isMilestone }) => {
             const unlocked = tier <= currentTier;
-            const claimed = claimedTiers.includes(tier);
-            const canClaim = unlocked && !claimed;
+            // 2026-07-07 gap-fill — free and premium are claimed independently.
+            const freeClaimed = isClaimed(tier, 'free');
+            const premiumClaimed = isClaimed(tier, 'premium');
             return (
               <div key={tier} className={`bp-tier-row ${isMilestone ? 'bp-tier-row--milestone' : ''} ${unlocked ? 'bp-tier-row--unlocked' : ''}`}>
                 {/* Free reward */}
-                <div className={`bp-reward-cell bp-reward-free ${unlocked ? 'bp-reward--unlocked' : ''} ${claimed ? 'bp-reward--claimed' : ''}`}>
+                <div className={`bp-reward-cell bp-reward-free ${unlocked ? 'bp-reward--unlocked' : ''} ${freeClaimed ? 'bp-reward--claimed' : ''}`}>
                   <span className="bp-reward-icon">{freeReward.icon || (freeReward.type === 'chips' ? '🪙' : '⚡')}</span>
                   <span className="bp-reward-label">{freeReward.label}</span>
-                  {canClaim && <button className="bp-claim-btn" onClick={() => claimTier(tier)}>Claim</button>}
-                  {claimed && <span className="bp-claimed-badge">✓</span>}
+                  {unlocked && !freeClaimed && <button className="bp-claim-btn" onClick={() => claimTier(tier, 'free')}>Claim</button>}
+                  {freeClaimed && <span className="bp-claimed-badge">✓</span>}
                 </div>
 
                 {/* Tier number */}
@@ -197,12 +208,12 @@ export default function BattlePass({ onClose }) {
                 </div>
 
                 {/* Premium reward */}
-                <div className={`bp-reward-cell bp-reward-premium ${hasPremium && unlocked ? 'bp-reward--unlocked' : ''} ${claimed && hasPremium ? 'bp-reward--claimed' : ''} ${!hasPremium ? 'bp-reward--locked' : ''}`}>
+                <div className={`bp-reward-cell bp-reward-premium ${hasPremium && unlocked ? 'bp-reward--unlocked' : ''} ${premiumClaimed && hasPremium ? 'bp-reward--claimed' : ''} ${!hasPremium ? 'bp-reward--locked' : ''}`}>
                   {!hasPremium && <span className="bp-lock-icon">🔒</span>}
                   <span className="bp-reward-icon">{premiumReward.icon || (premiumReward.type === 'stars' ? '⭐' : '🪙')}</span>
                   <span className="bp-reward-label">{premiumReward.label}</span>
-                  {hasPremium && canClaim && <button className="bp-claim-btn bp-claim-btn--premium" onClick={() => claimTier(tier)}>Claim</button>}
-                  {hasPremium && claimed && <span className="bp-claimed-badge">✓</span>}
+                  {hasPremium && unlocked && !premiumClaimed && <button className="bp-claim-btn bp-claim-btn--premium" onClick={() => claimTier(tier, 'premium')}>Claim</button>}
+                  {hasPremium && premiumClaimed && <span className="bp-claimed-badge">✓</span>}
                 </div>
               </div>
             );

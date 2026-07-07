@@ -39,6 +39,12 @@ const DEFAULT_QUALIFIERS = [
     recurrence: null,
     templateId: null,
     blindStructure: DEFAULT_BLIND_STRUCTURE,
+    prizeStructure: [
+      { place: '1st', prize: 'Championship Seat' },
+      { place: '2nd', prize: 'Championship Seat' },
+      { place: '3rd', prize: 'Championship Seat' },
+      { place: '4th-5th', prize: 'Next Qualifier Entry' },
+    ],
   },
   {
     id: 'monthly-qualifier',
@@ -56,6 +62,14 @@ const DEFAULT_QUALIFIERS = [
     recurrence: null,
     templateId: null,
     blindStructure: DEFAULT_BLIND_STRUCTURE,
+    prizeStructure: [
+      { place: '1st', prize: 'Championship Seat' },
+      { place: '2nd', prize: 'Championship Seat' },
+      { place: '3rd', prize: 'Championship Seat' },
+      { place: '4th', prize: 'Championship Seat' },
+      { place: '5th', prize: 'Championship Seat' },
+      { place: '6th', prize: 'Championship Seat' },
+    ],
   },
 ];
 
@@ -292,6 +306,12 @@ export const qualifierActions = {
     notify();
   },
 
+  // Admin-console bookkeeping only. Player self-registration goes through the
+  // dedicated 'registerQualifierTournament' socket path (QualifierLobby), NOT
+  // this store method. persistToServer() emits the admin-gated
+  // 'saveQualifierConfigs' so the registrant edit actually reaches the server
+  // and survives the next getQualifierConfigs sync (previously it only wrote
+  // sessionStorage via saveToStorage() and was clobbered on the next sync).
   register: (qualifierId, playerName) => {
     _qualifiers = _qualifiers.map((q) => {
       if (q.id !== qualifierId) return q;
@@ -299,7 +319,7 @@ export const qualifierActions = {
       if (existing.includes(playerName)) return q; // already registered, don't double-count
       return { ...q, registrants: [...existing, playerName], registered: (q.registered || 0) + 1 };
     });
-    saveToStorage(_qualifiers);
+    persistToServer();
     notify();
   },
 
@@ -310,7 +330,7 @@ export const qualifierActions = {
       if (!existing.includes(playerName)) return q; // not registered, nothing to remove
       return { ...q, registrants: existing.filter((r) => r !== playerName), registered: Math.max(0, (q.registered || 0) - 1) };
     });
-    saveToStorage(_qualifiers);
+    persistToServer();
     notify();
   },
 

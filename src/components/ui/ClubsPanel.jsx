@@ -326,6 +326,10 @@ export default function ClubsPanel({ onClose }) {
       if (selectedClub) socket.emit('getClubMembers', { clubId: selectedClub.id });
     };
 
+    const onMemberDemoted = () => {
+      if (selectedClub) socket.emit('getClubMembers', { clubId: selectedClub.id });
+    };
+
     const onClubSettingsUpdated = (data) => {
       setLoading(false);
       if (data.success && data.club) {
@@ -569,6 +573,7 @@ export default function ClubsPanel({ onClose }) {
     socket.on('memberApproved', onMemberApproved);
     socket.on('memberRemoved', onMemberRemoved);
     socket.on('memberPromoted', onMemberPromoted);
+    socket.on('memberDemoted', onMemberDemoted);
     socket.on('clubSettingsUpdated', onClubSettingsUpdated);
     socket.on('clubDeleted', onClubDeleted);
     socket.on('clubSearchResults', onClubSearchResults);
@@ -629,6 +634,7 @@ export default function ClubsPanel({ onClose }) {
       socket.off('memberApproved', onMemberApproved);
       socket.off('memberRemoved', onMemberRemoved);
       socket.off('memberPromoted', onMemberPromoted);
+      socket.off('memberDemoted', onMemberDemoted);
       socket.off('clubSettingsUpdated', onClubSettingsUpdated);
       socket.off('clubDeleted', onClubDeleted);
       socket.off('clubSearchResults', onClubSearchResults);
@@ -793,6 +799,12 @@ export default function ClubsPanel({ onClose }) {
     const socket = getSocket();
     if (!socket || !selectedClub) return;
     socket.emit('promoteToManager', { clubId: selectedClub.id, userId });
+  };
+
+  const handleDemoteMember = (userId) => {
+    const socket = getSocket();
+    if (!socket || !selectedClub) return;
+    socket.emit('demoteToMember', { clubId: selectedClub.id, userId });
   };
 
   const handleSaveSettings = () => {
@@ -1947,6 +1959,13 @@ export default function ClubsPanel({ onClose }) {
                   )}
                   <button className="clubs-btn clubs-btn-danger clubs-btn-sm" onClick={() => handleRemoveMember(m.userId)}>
                     Remove
+                  </button>
+                </div>
+              )}
+              {isOwner && m.role === 'manager' && (
+                <div className="club-member-actions">
+                  <button className="clubs-btn clubs-btn-sm" onClick={() => handleDemoteMember(m.userId)}>
+                    Demote
                   </button>
                 </div>
               )}

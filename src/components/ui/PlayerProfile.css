@@ -476,6 +476,16 @@
   height: 100%;
 }
 
+.profile-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #64748b;
+  font-size: 14px;
+  text-align: center;
+}
+
 /* ===== Hand history ===== */
 .hand-history-list {
   display: flex;

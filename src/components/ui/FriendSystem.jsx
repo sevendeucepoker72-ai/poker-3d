@@ -1,7 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { getSocket } from '../../services/socketService';
+import { useTableStore } from '../../store/tableStore';
+import { notify } from '../../hooks/usePushNotifications';
 import './FriendSystem.css';
+
+// The friend invite must carry the inviter's current table id so the recipient
+// can actually join. gameState.tableId covers the primary single-table path;
+// currentTableId covers the multi-table path. Null => inviter isn't seated.
+function getCurrentTableId() {
+  const ts = useTableStore.getState();
+  return ts.gameState?.tableId || ts.currentTableId || null;
+}
 
 // 2026-06-18 — Phase 3a: real, durable friends backed by poker-server
 // (Postgres). Replaces the sessionStorage mock. Server events:
@@ -32,6 +42,11 @@ export default function FriendSystem({ onClose }) {
   const [inviteSent, setInviteSent] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Tracks each friend's last-known presence so we can fire a local
+  // notification on an offline->online transition (hidden tab only). Seeded on
+  // the first payload so already-online friends don't all fire at once.
+  const prevPresenceRef = useRef(null);
+
   const refresh = useCallback(() => {
     const s = getSocket();
     if (s?.connected) s.emit('getFriends');
@@ -40,7 +55,26 @@ export default function FriendSystem({ onClose }) {
   useEffect(() => {
     const s = getSocket();
     if (!s) { setLoading(false); return undefined; }
-    const onList = (data) => { setFriends(Array.isArray(data?.friends) ? data.friends : []); setLoading(false); };
+    const onList = (data) => {
+      const list = Array.isArray(data?.friends) ? data.friends : [];
+      // Detect friends that just came online. Only after the first payload, and
+      // only when the tab is backgrounded, to avoid on-screen + push spam.
+      const prev = prevPresenceRef.current;
+      if (prev && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        for (const f of list) {
+          if (f.status !== 'accepted') continue;
+          const was = prev[f.userId];
+          const isOnline = f.presence === 'online' || f.presence === 'in-game';
+          const wasOffline = was === undefined || was === 'offline';
+          if (isOnline && wasOffline) notify.friendOnline(f.username);
+        }
+      }
+      const next = {};
+      for (const f of list) { if (f.status === 'accepted') next[f.userId] = f.presence; }
+      prevPresenceRef.current = next;
+      setFriends(list);
+      setLoading(false);
+    };
     const onChanged = () => refresh();
     const onSent = (d) => setNotice(d?.status === 'accepted' ? 'Friend added!' : 'Request sent');
     const onErr = (d) => setNotice(d?.message || 'Something went wrong');
@@ -79,8 +113,10 @@ export default function FriendSystem({ onClose }) {
   const handleAccept = (userId) => { const s = getSocket(); if (s?.connected) s.emit('acceptFriendRequest', { userId }); };
   const handleRemove = (userId) => { const s = getSocket(); if (s?.connected) s.emit('removeFriend', { userId }); };
   const handleInvite = (userId) => {
+    const tableId = getCurrentTableId();
+    if (!tableId) { setNotice('Join a table first'); return; }
     const s = getSocket();
-    if (s?.connected) s.emit('inviteFriendToTable', { userId });
+    if (s?.connected) s.emit('inviteFriendToTable', { userId, tableId });
     setInviteSent(userId);
     setTimeout(() => setInviteSent(null), 2000);
   };
@@ -92,6 +128,7 @@ export default function FriendSystem({ onClose }) {
   const order = { online: 0, 'in-game': 1, offline: 2 };
   const sorted = [...accepted].sort((a, b) => (order[a.presence] ?? 3) - (order[b.presence] ?? 3));
   const onlineCount = accepted.filter((f) => f.presence === 'online' || f.presence === 'in-game').length;
+  const atTable = !!getCurrentTableId();
 
   return createPortal(
     <div className="friends-overlay" onClick={onClose}>
@@ -158,7 +195,12 @@ export default function FriendSystem({ onClose }) {
               </div>
               <div className="friends-card-actions">
                 {f.presence === 'online' && (
-                  <button className="friends-invite-btn" onClick={() => handleInvite(f.userId)} disabled={inviteSent === f.userId}>
+                  <button
+                    className="friends-invite-btn"
+                    onClick={() => handleInvite(f.userId)}
+                    disabled={inviteSent === f.userId || !atTable}
+                    title={atTable ? 'Invite to your table' : 'Join a table first'}
+                  >
                     {inviteSent === f.userId ? 'Sent!' : 'Invite to Table'}
                   </button>
                 )}

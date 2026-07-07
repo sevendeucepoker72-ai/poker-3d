@@ -28,6 +28,7 @@ import { getSocket, subscribeConnectionStatus } from '../../services/socketServi
 import { useTimerStore } from '../../store/timerStore';
 import { loadHotkeys } from '../ui/HotkeySettings';
 import { useAFKTracker } from '../../hooks/useAFKTracker';
+import { notify } from '../../hooks/usePushNotifications';
 import './GameHUD.css';
 
 import OverlayBoundary from '../ui/OverlayBoundary';
@@ -1245,6 +1246,13 @@ export default function GameHUD() {
     // Play 'turn' when it becomes player's turn
     if (isMyTurn && !prevIsMyTurnRef.current) {
       playSound('turn');
+      // Local push when the tab is backgrounded so a player who switched away
+      // doesn't time out. Foreground players already see the on-screen turn UI,
+      // so only fire when hidden to avoid spam. notify.yourTurn self-guards on
+      // Notification.permission==='granted'.
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        notify.yourTurn();
+      }
     }
     prevIsMyTurnRef.current = isMyTurn;
   }, [isMyTurn, playSound]);
@@ -4594,6 +4602,12 @@ export default function GameHUD() {
           visible={showCoachingRail}
           onClose={() => setShowCoachingRail(false)}
         />
+        {/* GAP: notify.sessionEnd(net) has no wiring point here — there is no
+            setShowSessionRecap(true) call site in this client, so the recap
+            modal is never opened and the session-end rising edge doesn't
+            exist. Wiring the notification requires the session-end trigger to
+            be implemented first (see gap-spec #18, which is server-coupled and
+            out of scope for this client-only pass). Not faking a trigger. */}
         <SessionRecap
           visible={showSessionRecap}
           sessionStats={{

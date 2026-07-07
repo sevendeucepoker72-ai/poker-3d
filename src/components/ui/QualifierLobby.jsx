@@ -253,6 +253,12 @@ export default function QualifierLobby({ onSpectate }) {
         const isRunning = tournStatus === 'running';
         const isFinished = tournStatus === 'finished';
         const registeredPlayers = tData?.players || [];
+        // Prize copy: prefer the server-driven prizeStructure (count of places
+        // that win a seat) over the hardcoded literals. Falls back to the
+        // legacy numbers (Weekly=3, Monthly=6) when the config lacks the field.
+        const seatWinnerCount = (Array.isArray(q.prizeStructure) && q.prizeStructure.length > 0)
+          ? q.prizeStructure.filter((p) => /seat/i.test(p.prize || '')).length || q.prizeStructure.length
+          : (q.type === 'Weekly' ? 3 : 6);
         const signupOpen = tData?.signupOpen ?? true;
         const signupOpensAt = tData?.signupOpensAt;
         const signupClosesAt = tData?.signupClosesAt;
@@ -343,9 +349,9 @@ export default function QualifierLobby({ onSpectate }) {
             }}>
               <div style={{ color: '#cfe0ff', fontWeight: 700, marginBottom: 4, fontSize: '0.7rem', letterSpacing: '0.05em' }}>📋 HOW TO QUALIFY</div>
               {q.type === 'Weekly' ? (
-                <>Finish <strong style={{ color: '#fff' }}>top 5 in any live game</strong> at any venue to earn a credit and an entry here. Top 3 here win a seat to the Championship at Bally's Blackhawk; the top 10% advance to the Monthly Major.</>
+                <>Finish <strong style={{ color: '#fff' }}>top 5 in any live game</strong> at any venue to earn a credit and an entry here. Top {seatWinnerCount} here win a seat to the Championship at Bally's Blackhawk; the top 10% advance to the Monthly Major.</>
               ) : (
-                <>Three ways in: <strong style={{ color: '#fff' }}>top 10%</strong> of any Weekly online qualifier · <strong style={{ color: '#fff' }}>top 20%</strong> of each league's leaderboard (auto-added on the 1st) · <strong style={{ color: '#fff' }}>top 20%</strong> of your venue's average attendance. Top 6 here win Bally's seats.</>
+                <>Three ways in: <strong style={{ color: '#fff' }}>top 10%</strong> of any Weekly online qualifier · <strong style={{ color: '#fff' }}>top 20%</strong> of each league's leaderboard (auto-added on the 1st) · <strong style={{ color: '#fff' }}>top 20%</strong> of your venue's average attendance. Top {seatWinnerCount} here win Bally's seats.</>
               )}
             </div>
 

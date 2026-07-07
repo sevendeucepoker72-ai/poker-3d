@@ -95,14 +95,6 @@ const ACHIEVEMENT_DEFS = [
   { id: 'big_bluff',      name: 'The Bluffer',      icon: '🃏', requirement: 'Win a pot with a bluff' },
 ];
 
-// Sample session data fallback
-function generateSampleSessions() {
-  const base = 10000;
-  return Array.from({ length: 10 }, (_, i) => ({
-    chips: base + Math.floor((Math.sin(i * 0.8) + Math.random() - 0.5) * 3000),
-  }));
-}
-
 export default function PlayerProfile({ username, socket, onClose, onViewReplay }) {
   const ownProgress = useProgressStore((s) => s.progress);
   const ownUsername = useProgressStore((s) => s.username);
@@ -143,11 +135,9 @@ export default function PlayerProfile({ username, socket, onClose, onViewReplay 
     if (!username) return;
 
     if (isOwnProfile) {
-      // Use local store data
-      const profile = buildProfileFromProgress(ownProgress, ownUsername);
-      // Only fall back to mock if there's genuinely no data at all
-      const hasData = ownProgress && (ownProgress.level > 1 || (ownProgress.totalHandsPlayed ?? ownProgress.totalHands ?? 0) > 0 || (ownProgress.wins ?? 0) > 0);
-      setProfileData(hasData ? profile : buildMockProfile(ownUsername));
+      // Always render real store data — a brand-new player showing level 1 /
+      // 0 hands is honest. No mock fabrication.
+      setProfileData(buildProfileFromProgress(ownProgress, ownUsername));
       setLoading(false);
     } else if (socket) {
       socket.emit('requestProfile', { username });
@@ -160,8 +150,9 @@ export default function PlayerProfile({ username, socket, onClose, onViewReplay 
       socket.on('profileData', handler);
       return () => socket.off('profileData', handler);
     } else {
-      // Fallback: generate placeholder data
-      setProfileData(buildMockProfile(username));
+      // No socket to fetch another player's real profile — show an honest
+      // unavailable state instead of fabricating one.
+      setProfileData(null);
       setLoading(false);
     }
   }, [username, isOwnProfile, socket, ownProgress, ownUsername]);
@@ -191,26 +182,6 @@ export default function PlayerProfile({ username, socket, onClose, onViewReplay 
     };
   }
 
-  function buildMockProfile(uname) {
-    return {
-      username: uname,
-      level: 12,
-      elo: 850,
-      wins: 134,
-      losses: 98,
-      totalHands: 432,
-      winRate: '37.2',
-      netChips: 14200,
-      vpip: 28,
-      pfr: 19,
-      vipTier: 'Silver',
-      vipXp: 4200,
-      unlockedAchievements: ['first_win', 'hands_100', 'bluff_caught'],
-      sessionHistory: null,
-      handHistory: [],
-    };
-  }
-
   function handleCopyLink() {
     const link = window.location.origin + '?profile=' + encodeURIComponent(username);
     navigator.clipboard.writeText(link).then(() => {
@@ -233,6 +204,17 @@ export default function PlayerProfile({ username, socket, onClose, onViewReplay 
     );
   }
 
+  if (!profileData) {
+    return (
+      <div className="player-profile-overlay" onClick={handleOverlayClick}>
+        <div className="player-profile-card" role="dialog" aria-modal="true" aria-label={`${username}'s profile`}>
+          <button className="profile-close-btn" onClick={onClose} aria-label="Close profile">×</button>
+          <div className="profile-loading">Profile unavailable.</div>
+        </div>
+      </div>
+    );
+  }
+
   const {
     level, elo, wins, losses, totalHands, winRate,
     netChips, vpip, pfr, vipTier, vipXp,
@@ -242,7 +224,14 @@ export default function PlayerProfile({ username, socket, onClose, onViewReplay 
   const avatarColor = nameToColor(username);
   const initial = (username[0] ?? '?').toUpperCase();
   const rankInfo = getRankFromElo(elo);
-  const sessions = sessionHistory ?? generateSampleSessions();
+  // Real session trend from the daily chip snapshot (own profile) or the
+  // server-provided sessionHistory (other profiles). No random sample data —
+  // <2 points renders an honest empty state below instead of a fake line.
+  const dailyChipHistory = isOwnProfile ? (ownProgress?.dailyChipHistory ?? []) : [];
+  const sessions = (Array.isArray(sessionHistory) && sessionHistory.length > 0)
+    ? sessionHistory
+    : dailyChipHistory;
+  const hasSessionTrend = Array.isArray(sessions) && sessions.length >= 2;
 
   const unlockedSet = new Set(unlockedAchievements);
   const achievementsWithState = ACHIEVEMENT_DEFS.map((a) => ({
@@ -407,7 +396,11 @@ export default function PlayerProfile({ username, socket, onClose, onViewReplay 
         <div className="profile-section">
           <h3 className="profile-section-title">Recent Sessions</h3>
           <div className="session-chart-wrapper">
-            <SessionChart sessions={sessions} />
+            {hasSessionTrend ? (
+              <SessionChart sessions={sessions} />
+            ) : (
+              <div className="profile-empty-state">Not enough session history yet.</div>
+            )}
           </div>
         </div>
 

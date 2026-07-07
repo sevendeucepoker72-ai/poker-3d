@@ -70,6 +70,7 @@ import KeyboardShortcuts from './components/ui/KeyboardShortcuts';
 import Tutorial from './components/ui/Tutorial';
 import HandReplayViewer from './components/replay/HandReplayViewer';
 import { API_BASE } from './config';
+import { checkSubscriptionHealth, isPushSupported, notify } from './hooks/usePushNotifications';
 import './components/ui/Transitions.css';
 
 /** Decode a ?replay=... URL param into a history object (returns null on failure). */
@@ -422,8 +423,34 @@ function App() {
       }
     };
 
+    // Self-heal a drifted push subscription (browser has a sub the server
+    // lost). Fire-and-forget on mount + resume; only when push is supported and
+    // already permitted, so it never prompts. 'resynced' needs no user action.
+    const healPushSubscription = () => {
+      try {
+        if (isPushSupported() && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          checkSubscriptionHealth(userId).catch(() => {});
+        }
+      } catch { /* best-effort */ }
+    };
+
+    // Local nudge when a daily bonus is claimable and the tab is backgrounded.
+    // Reads the existing client daily-claim state (progress.lastLoginClaimDate)
+    // — no new server field. notify.dailyBonus self-guards on permission.
+    const notifyDailyBonusIfClaimable = () => {
+      try {
+        if (typeof document === 'undefined' || document.visibilityState !== 'hidden') return;
+        const progress = useProgressStore.getState().progress;
+        const today = new Date().toISOString().slice(0, 10);
+        if (progress && progress.lastLoginClaimDate !== today) {
+          notify.dailyBonus();
+        }
+      } catch { /* best-effort */ }
+    };
+
     // Fire once on mount.
     refreshUserRolesFromMe();
+    healPushSubscription();
 
     // Re-fire on every tab-resume. sessionLifecycle.onResume returns an
     // unsubscriber.
@@ -432,6 +459,8 @@ function App() {
       if (typeof mod.onResume === 'function') {
         removeOnResume = mod.onResume(() => {
           refreshUserRolesFromMe();
+          healPushSubscription();
+          notifyDailyBonusIfClaimable();
         });
       }
     }).catch(() => {});
@@ -773,7 +802,14 @@ function App() {
       useProgressStore.getState().addNotification({ type: 'mission', message: `${data?.from || 'Someone'} sent you a friend request.` });
     });
     socket.on('tableInvite', (data) => {
-      useProgressStore.getState().addNotification({ type: 'mission', message: `${data?.from || 'A friend'} invited you to their table.` });
+      // Carry the inviter's tableId so the toast can render an actionable "Join"
+      // button (handled in AchievementPopup). Falls back to a plain toast when
+      // no tableId is present (older senders that didn't include one).
+      useProgressStore.getState().addNotification({
+        type: 'mission',
+        message: `${data?.from || 'A friend'} invited you to their table.`,
+        inviteTableId: data?.tableId || null,
+      });
     });
     socket.on('tableBroken', () => {
       useProgressStore.getState().addNotification({ type: 'mission', message: 'Your tournament table is combining with another.' });
@@ -878,6 +914,21 @@ function App() {
       const timestamp = Date.now();
       store.addEmote({ ...data, timestamp });
       // Auto-remove after 2.5 seconds using the same timestamp
+      const t = setTimeout(() => {
+        emoteTimeouts.delete(t);
+        useTableStore.getState().removeEmote(timestamp);
+      }, 2500);
+      emoteTimeouts.add(t);
+    });
+
+    // Table reactions (clap/laugh/cry/shock from EmoteWheel). The server
+    // rebroadcasts these with { seatIndex, reactionId, playerName }. Normalize
+    // reactionId -> emoteId so it reuses the same addEmote render + auto-expire
+    // machinery as 'emote' above (EMOTE_MAP already contains the reaction ids).
+    socket.on('tableReaction', (data) => {
+      const store = useTableStore.getState();
+      const timestamp = Date.now();
+      store.addEmote({ seatIndex: data.seatIndex, emoteId: data.reactionId, playerName: data.playerName, isReaction: true, timestamp });
       const t = setTimeout(() => {
         emoteTimeouts.delete(t);
         useTableStore.getState().removeEmote(timestamp);
@@ -991,6 +1042,7 @@ function App() {
       socket.off('deckSeedRevealed');
       socket.off('stakingUpdated');
       socket.off('emote');
+      socket.off('tableReaction');
       socket.off('spectating');
       socket.off('themePurchased');
       socket.off('themeEquipped');

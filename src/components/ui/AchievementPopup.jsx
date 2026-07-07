@@ -1,10 +1,28 @@
 import { useEffect } from 'react';
 import { useProgressStore } from '../../store/progressStore';
+import { useTableStore } from '../../store/tableStore';
+import { useGameStore } from '../../store/gameStore';
 import './Progression.css';
 
 export default function AchievementPopup() {
   const notifications = useProgressStore((s) => s.notifications);
   const dismissNotification = useProgressStore((s) => s.dismissNotification);
+
+  // Accept a table invite: join the inviter's table (seat auto-assign, -1).
+  // buyIn defaults to 1000 (mirrors Lobby's `table.minBuyIn || 1000` fallback);
+  // the recipient doesn't carry the table object, so the server validates/clamps
+  // against the real table stakes. The invite payload could later include the
+  // table's minBuyIn for an exact figure.
+  const acceptInvite = (notification) => {
+    const tableId = notification.inviteTableId;
+    if (tableId) {
+      const gs = useGameStore.getState();
+      try {
+        useTableStore.getState().joinTable(tableId, gs.playerName, -1, 1000, gs.avatar);
+      } catch { /* new table state arrives via broadcast */ }
+    }
+    dismissNotification(notification.id);
+  };
 
   // Auto-dismiss after 5 seconds
   useEffect(() => {
@@ -44,6 +62,15 @@ export default function AchievementPopup() {
               {notification.type === 'achievement' ? 'Achievement Unlocked!' : 'Mission Complete!'}
             </div>
             <div className="achievement-popup-name">{notification.message}</div>
+            {notification.inviteTableId && (
+              <button
+                className="achievement-popup-invite-join"
+                onClick={(e) => { e.stopPropagation(); acceptInvite(notification); }}
+                style={{ pointerEvents: 'auto' }}
+              >
+                Join Table
+              </button>
+            )}
             {notification.reward && (
               <div className="achievement-popup-reward">
                 {notification.reward.chips > 0 && (

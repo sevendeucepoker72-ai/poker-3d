@@ -5,13 +5,24 @@ import { clearAllProgressionStorage, resetSyncState } from '../services/persiste
 const AVATAR_STORAGE_KEY = 'poker_avatar';
 
 // Debounced persistence sweep: sync avatar customization to server (400ms quiet).
+// The `photo` data URL is STRIPPED before emit — a table-wide seat photo must go
+// through the MODERATED master-API pipeline (AvatarCustomizer → POST
+// /avatars/upload → Cloud Vision SafeSearch → admin approval), never the
+// unmoderated socket path. Approved photos render at the seat via avatarService
+// (GET /avatars/display/:id). Fail-closed: unmoderated photo never broadcasts.
+// GAP: needs server — poker-server's updateAvatar handler should also strip any
+// `photo` field from persistCustomization so an out-of-date client can't inject
+// an unmoderated image; stripping here closes the current client's path.
 let _avatarSyncTimer = null;
 function scheduleAvatarSync(avatar) {
   if (_avatarSyncTimer) clearTimeout(_avatarSyncTimer);
   _avatarSyncTimer = setTimeout(() => {
     _avatarSyncTimer = null;
     const socket = getSocket();
-    if (socket && socket.connected) socket.emit('updateAvatar', avatar);
+    if (socket && socket.connected) {
+      const { photo: _strippedPhoto, ...avatarNoPhoto } = avatar || {};
+      socket.emit('updateAvatar', avatarNoPhoto);
+    }
   }, 400);
 }
 

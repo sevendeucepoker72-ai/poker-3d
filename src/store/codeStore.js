@@ -98,12 +98,12 @@ export const codeActions = {
   // updated list back via 'adminPromotions', which refreshes _promos.
   addPromo: (promo) => {
     const socket = getSocket();
-    if (socket) socket.emit('savePromotion', { name: promo.name, description: promo.description || '', startDate: promo.startDate || '', endDate: promo.endDate || '' });
+    if (socket) socket.emit('savePromotion', { name: promo.name, description: promo.description || '', color: promo.color || '', startDate: promo.startDate || '', endDate: promo.endDate || '' });
   },
 
   updatePromo: (id, changes) => {
     const socket = getSocket();
-    if (socket) socket.emit('savePromotion', { id, name: changes.name, description: changes.description || '', startDate: changes.startDate || '', endDate: changes.endDate || '' });
+    if (socket) socket.emit('savePromotion', { id, name: changes.name, description: changes.description || '', color: changes.color || '', startDate: changes.startDate || '', endDate: changes.endDate || '' });
   },
 
   deletePromo: (id) => {
