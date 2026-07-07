@@ -519,7 +519,17 @@ export async function refreshAccessToken(refreshToken) {
   // entering during those awaits would otherwise BOTH proceed to fetch.
   // Pre-F6 the acquisition was synchronous, so deferring the assignment
   // until after it was safe; it no longer is.
-  _inflightRefresh = _refreshAccessTokenFlow(refreshToken);
+  // 2026-07-07 — wrap the cross-tab flow in a TRUE mutex (Web Locks API). The
+  // localStorage single-flight inside _refreshAccessTokenFlow is only
+  // "atomic-ish" (no compare-and-swap), so sibling tabs still occasionally
+  // raced the single-use rotating refresh token -> invalid_grant. navigator.locks
+  // gives real cross-tab exclusion; only one tab refreshes at a time and late
+  // waiters read the freshly-rotated token. Falls back to the bare flow (which
+  // keeps its own localStorage lock) where the API is unavailable.
+  const runFlow = () => _refreshAccessTokenFlow(refreshToken);
+  _inflightRefresh = (typeof navigator !== 'undefined' && navigator.locks && navigator.locks.request)
+    ? navigator.locks.request('oauth_token_refresh', runFlow)
+    : runFlow();
   try {
     return await _inflightRefresh;
   } finally {
@@ -531,6 +541,29 @@ export async function refreshAccessToken(refreshToken) {
 // read-back) → heartbeat → network call → persist + release. Only ever
 // invoked through refreshAccessToken's in-tab singleton above.
 async function _refreshAccessTokenFlow(refreshToken) {
+  // 2026-07-07 — inside the Web Locks mutex a sibling tab may have JUST rotated
+  // the token and released the lock. If a still-fresh access token is present
+  // and the stored refresh token has moved past the one we were handed, reuse
+  // it rather than re-presenting our now-consumed refresh_token (invalid_grant,
+  // which reuse-detection could escalate to a full grant-family revocation).
+  try {
+    const freshAt = localStorage.getItem('oauth_access_token');
+    const expRaw = localStorage.getItem('oauth_expires_at');
+    const remainingMs = expRaw ? (parseInt(expRaw, 10) - Date.now()) : 0;
+    const storedRt = localStorage.getItem('oauth_refresh_token');
+    if (freshAt && remainingMs > 60000 && storedRt && storedRt !== refreshToken) {
+      return {
+        access_token: freshAt,
+        refresh_token: storedRt,
+        id_token: localStorage.getItem('oauth_id_token') || undefined,
+        expires_in: Math.max(0, Math.floor(remainingMs / 1000)),
+      };
+    }
+    // AT not fresh, but a sibling rotated the RT — refresh with the CURRENT
+    // stored token, never the stale one we were handed.
+    if (storedRt && storedRt !== refreshToken) refreshToken = storedRt;
+  } catch {}
+
   // Cross-tab dedup: if another .online tab is already refreshing, wait for
   // it to complete then read its result from localStorage. This avoids two
   // tabs each consuming the refresh_token (which under rotation would burn
@@ -621,8 +654,12 @@ async function _refreshAccessTokenFlow(refreshToken) {
       // fetch rejected (network down, DNS, CORS, or AbortController timeout).
       // Classify as transient — the refresh_token is probably still valid,
       // so the caller should retry rather than force-logout.
-      // Observability only — best-effort, never blocks the throw.
-      try { logAuthEvent('refresh_failed', { reason: 'network', path: '/token' }); } catch {}
+      // 2026-07-07 auth-health — emit refresh_TRANSIENT, not refresh_failed:
+      // the dashboard counts refresh_failed as a HARD failure, but this branch
+      // throws RefreshTokenTransientError (retryable). Emitting refresh_failed
+      // here mislabeled benign network blips as hard failures (matches the
+      // player-web/marketing #8 semantics). Observability only, never blocks.
+      try { logAuthEvent('refresh_transient', { reason: 'network', path: '/token' }); } catch {}
       throw new RefreshTokenTransientError(
         `Refresh network error: ${err?.message || err}`,
         { cause: err },
@@ -696,8 +733,10 @@ async function _refreshAccessTokenFlow(refreshToken) {
     // work again. 400/401 without an explicit error are treated the same
     // because that's what the auth server returns for revoked sessions.
     if (oauthError === 'invalid_grant' || response.status === 400 || response.status === 401) {
-      // Observability only — best-effort, never blocks the throw.
-      try { logAuthEvent('refresh_failed', { status: response.status, path: '/token' }); } catch {}
+      // 2026-07-07 auth-health #8 — a hard refresh failure is counted server-
+      // side (auth-server grant.error -> refresh_failed, origin='api'). The
+      // .online client used to ALSO emit here, double-counting every genuine
+      // failure on the dashboard. Removed to match player-web/marketing/admin.
       throw new RefreshTokenRevokedError(
         `Refresh token revoked (${response.status}${oauthError ? `: ${oauthError}` : ''})`,
         { status: response.status, oauthError, body: errBody },
@@ -705,8 +744,10 @@ async function _refreshAccessTokenFlow(refreshToken) {
     }
 
     // 5xx / 429 / anything else — transient. Caller should retry.
-    // Observability only — best-effort, never blocks the throw.
-    try { logAuthEvent('refresh_failed', { status: response.status, path: '/token' }); } catch {}
+    // 2026-07-07 auth-health — emit refresh_TRANSIENT (uncounted), not
+    // refresh_failed: this branch throws RefreshTokenTransientError (retryable),
+    // so counting it as a hard failure inflated the dashboard rate.
+    try { logAuthEvent('refresh_transient', { status: response.status, path: '/token' }); } catch {}
     throw new RefreshTokenTransientError(
       `Refresh failed (${response.status}${oauthError ? `: ${oauthError}` : ''})`,
       { status: response.status, oauthError, body: errBody },
