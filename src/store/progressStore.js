@@ -286,6 +286,8 @@ function defaultProgress() {
     equippedBy: {},   // { card_back: id, frame: id, ... }
     // Claimed battle pass tiers for current season
     battlePassClaimed: [],
+    // Server-durable Career Mode progress: [{ venue, stage, stars }]
+    careerProgress: [],
     // Avatar customization (skinTone, hairStyle, ...) — synced to server
     customization: {},
     // UI preferences — synced to server
@@ -383,6 +385,9 @@ export const useProgressStore = create((set, get) => ({
       ownedBy,
       equippedBy,
       battlePassClaimed: payload?.battlePassClaims || [],
+      // 2026-07-07 gap-fill — server-durable career progress (cross-device).
+      // Keep-prev guard so a partial payload can't wipe it.
+      careerProgress: Array.isArray(payload?.careerProgress) ? payload.careerProgress : (prev.careerProgress || []),
       customization: payload?.customization || prev.customization || {},
       preferences: payload?.preferences || prev.preferences || {},
       // 2026-06-19: keep-prev guards (matching `stars`) so a PARTIAL durableState

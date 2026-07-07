@@ -91,9 +91,10 @@ export default function CareerMode() {
 
   const playerLevel = progress?.level || 1;
 
-  // Career progress — persisted to localStorage (survives sessions). The server
-  // now emits careerGameComplete on a stage win/loss; App.jsx writes the result
-  // here. Read once on mount; returning to this screen re-mounts and re-reads.
+  // Career progress. The SERVER is now the durable source of truth
+  // (progress.careerProgress, hydrated from durableState → survives cross-device
+  // + cache clear, 2026-07-07 gap-fill). localStorage is kept as an offline cache
+  // and to reflect a just-won stage instantly before the next durableState sync.
   const [careerProgress] = useState(() => {
     try {
       const saved = localStorage.getItem('pokerCareerProgress')
@@ -106,7 +107,17 @@ export default function CareerMode() {
 
   const getVenueProgress = (venueIndex) => {
     const key = `venue_${venueIndex}`;
-    return careerProgress[key] || { stagesCompleted: 0, stars: [0, 0, 0] };
+    const local = careerProgress[key] || { stagesCompleted: 0, stars: [0, 0, 0] };
+    // Merge server-durable rows with the local cache, taking the best stars per
+    // stage so progress survives a new device/cache-clear AND a just-won stage
+    // (in localStorage, not yet re-synced) still shows.
+    const serverRows = (progress?.careerProgress || []).filter((r) => r.venue === venueIndex);
+    if (!serverRows.length) return local;
+    const stars = [0, 1, 2].map((s) => {
+      const row = serverRows.find((r) => r.stage === s);
+      return Math.max(row?.stars || 0, local.stars?.[s] || 0);
+    });
+    return { stars, stagesCompleted: stars.filter((s) => s > 0).length };
   };
 
   const isVenueUnlocked = (venueIndex) => {
