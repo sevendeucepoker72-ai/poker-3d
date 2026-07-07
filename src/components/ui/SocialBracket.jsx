@@ -83,15 +83,23 @@ export default function SocialBracket({ socket: socketProp, onClose }) {
     socket.on('socialBracketError', onErr);
 
     // Share-link viewer: ?bracket=ID auto-loads that bracket.
+    // 2026-07-06 audit P2 — on a COLD page load from a share link the socket
+    // isn't connected yet, so the old `&& socket.connected` guard silently
+    // no-op'd and the bracket never loaded. Emit now if already connected, else
+    // load on the next 'connect' (also refreshes after a reconnect).
     const urlId = new URLSearchParams(window.location.search).get('bracket');
-    if (urlId && socket.connected) {
-      setLoading(true);
-      socket.emit('getSocialBracket', { bracketId: urlId.toUpperCase() });
+    let onConnectLoad = null;
+    if (urlId) {
+      const bracketId = urlId.toUpperCase();
+      const emitLoad = () => { setLoading(true); socket.emit('getSocialBracket', { bracketId }); };
+      if (socket.connected) emitLoad();
+      else { onConnectLoad = emitLoad; socket.on('connect', onConnectLoad); }
     }
     return () => {
       socket.off('socialBracketState', onState);
       socket.off('socialBracketRole', onRole);
       socket.off('socialBracketError', onErr);
+      if (onConnectLoad) socket.off('connect', onConnectLoad);
     };
   }, [socket]);
 

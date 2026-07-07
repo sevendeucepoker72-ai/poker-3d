@@ -89,12 +89,18 @@ export default function PredictionMarket({ gameState: gameStateRaw, socket, visi
       setResolved(prev => ({ ...prev, ...newResolved }));
       if (newToasts.length) {
         setToasts(t => [...t, ...newToasts]);
-        setTimeout(() => setToasts(t => t.slice(newToasts.length)), 3500);
+        // 2026-07-06 audit P3 — remove EXACTLY these toasts by id. The old
+        // slice(count)-from-front removed whichever toasts happened to be oldest
+        // when the timer fired, so overlapping settle/error timers dismissed the
+        // wrong toasts (early ones vanished, later ones lingered).
+        const ids = new Set(newToasts.map((x) => x.id));
+        setTimeout(() => setToasts(t => t.filter((x) => !ids.has(x.id))), 3500);
       }
     };
     const onErr = (d) => {
-      setToasts(t => [...t, { id: `err-${Date.now()}`, type: 'loss', text: d?.message || 'Bet rejected' }]);
-      setTimeout(() => setToasts(t => t.slice(1)), 3000);
+      const id = `err-${Date.now()}-${Math.round(performance.now())}`;
+      setToasts(t => [...t, { id, type: 'loss', text: d?.message || 'Bet rejected' }]);
+      setTimeout(() => setToasts(t => t.filter((x) => x.id !== id)), 3000);
     };
     socket.on('predictionWallet', onWallet);
     socket.on('predictionBetPlaced', onBetPlaced);

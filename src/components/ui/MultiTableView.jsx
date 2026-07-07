@@ -293,8 +293,16 @@ export default function MultiTableView({ onClose }) {
   const tableCount = panels.filter(Boolean).length || 1;
   const canAdd = secondary.length < MAX_SECONDARY_TABLES;
 
-  // Net chips proxy
-  const netChips = chips - 10000;
+  // Net chips this session.
+  // 2026-07-06 audit P3 — was `chips - 10000`, a hardcoded starting-stack guess
+  // that's wrong for anyone whose balance isn't 10k. Capture the balance when
+  // the multi-table view first opens and show the delta since — an honest,
+  // self-contained baseline (no fabricated starting stack).
+  const sessionStartChipsRef = useRef(null);
+  if (sessionStartChipsRef.current == null && typeof chips === 'number') {
+    sessionStartChipsRef.current = chips;
+  }
+  const netChips = (chips ?? 0) - (sessionStartChipsRef.current ?? chips ?? 0);
   const netLabel = netChips >= 0 ? `+${netChips.toLocaleString()}` : netChips.toLocaleString();
   const activePanel = panels[activeSlot];
   const activeTableName = activePanel?.tableName ?? 'None';

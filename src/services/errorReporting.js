@@ -31,9 +31,15 @@ let installed = false;
 
 function readToken() {
   try {
+    // 2026-07-06 audit P3 — also check sessionStorage. A "keep me signed in" OFF
+    // session stores its tokens there (per tokenStorage routing), so a
+    // localStorage-only read made every error report from those sessions
+    // anonymous (no user attribution in the auth-events / Sentry-lite sink).
     return (
       localStorage.getItem('poker_oauth_access') ||
       localStorage.getItem('poker_auth_token') ||
+      sessionStorage.getItem('poker_oauth_access') ||
+      sessionStorage.getItem('poker_auth_token') ||
       null
     );
   } catch (_) {

@@ -65,26 +65,33 @@ export default function TableCommentary({ socket, gameState: gameStateRaw, visib
     const seats = gameState.seats || [];
     const prevSeats = prev.seats || [];
 
-    // Detect all-ins
+    // Detect all-ins.
+    // 2026-07-06 audit P3 — the server seat uses `allIn` and `chipCount` (NOT
+    // `isAllIn`/`chips`; see GameHUD.jsx:887). The old field names were always
+    // undefined, so all-in and elimination commentary never fired. `prevSeat`
+    // chipCount is the amount they pushed (their stack before going all-in).
     seats.forEach((seat, i) => {
       const prevSeat = prevSeats[i];
       if (!seat || !seat.playerName) return;
-      if (seat.isAllIn && !prevSeat?.isAllIn) {
-        addEntry(generateLocalComment({ type: 'allin', playerName: seat.playerName, amount: seat.chips }), 'allin');
+      if (seat.allIn && !prevSeat?.allIn) {
+        const amount = prevSeat?.chipCount ?? seat.currentBet ?? seat.chipCount;
+        addEntry(generateLocalComment({ type: 'allin', playerName: seat.playerName, amount }), 'allin');
       }
       // Detect elimination
-      if (seat.chips === 0 && prevSeat?.chips > 0 && seat.folded) {
+      if (seat.chipCount === 0 && prevSeat?.chipCount > 0 && seat.folded) {
         addEntry(generateLocalComment({ type: 'elimination', playerName: seat.playerName }), 'elimination');
       }
     });
 
-    // Detect big pot wins (phase changes to HandComplete)
+    // Detect big pot wins (phase changes to HandComplete).
+    // 2026-07-06 audit P3 — name the ACTUAL winner from handResult.winners, not
+    // "the first non-folded seat" (which mislabeled split pots / multiway).
     if (gameState.phase === 'HandComplete' && prev.phase !== 'HandComplete') {
       const pot = gameState.pot || 0;
       if (pot > 2000) {
-        const winner = seats.find(s => s && !s.folded && s.lastAction !== 'fold');
-        if (winner) {
-          addEntry(generateLocalComment({ type: 'bigwin', playerName: winner.playerName, amount: pot }), 'bigwin');
+        const winner = gameState.handResult?.winners?.[0];
+        if (winner?.playerName) {
+          addEntry(generateLocalComment({ type: 'bigwin', playerName: winner.playerName, amount: winner.amount || pot }), 'bigwin');
         }
       }
     }

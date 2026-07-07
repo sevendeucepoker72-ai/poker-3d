@@ -65,6 +65,7 @@ export default function BattlePass({ onClose }) {
   // on the shared socket. Also prevents listener buildup if the user spams Claim.
   const activeListenersRef = useRef(new Set());
   const mountedRef = useRef(true);
+  const claimAllTimerRef = useRef(null); // 2026-07-06 audit — claimAll refresh timeout
   useEffect(() => {
     return () => {
       mountedRef.current = false;
@@ -73,6 +74,7 @@ export default function BattlePass({ onClose }) {
         activeListenersRef.current.forEach((fn) => sock.off('battlePassTierClaimed', fn));
       }
       activeListenersRef.current.clear();
+      if (claimAllTimerRef.current) { clearTimeout(claimAllTimerRef.current); claimAllTimerRef.current = null; }
     };
   }, []);
 
@@ -115,18 +117,16 @@ export default function BattlePass({ onClose }) {
     for (const t of claimable) {
       socket.emit('claimBattlePassTier', { seasonId: 'season_1_the_river', tierId: t.tier });
     }
-    const tid = setTimeout(() => {
+    // 2026-07-06 audit P3 — store the refresh timeout in a ref that the unmount
+    // effect clears. The previous approach spun up a 200ms setInterval to "watch
+    // for unmount", which never cleared itself while the component stayed mounted
+    // (a permanent 5Hz timer per claimAll, stacking on repeat clicks).
+    if (claimAllTimerRef.current) clearTimeout(claimAllTimerRef.current);
+    claimAllTimerRef.current = setTimeout(() => {
+      claimAllTimerRef.current = null;
       socket.emit('getDurableState', { seasonId: 'season_1_the_river' });
       if (mountedRef.current) setClaimingAll(false);
     }, 800);
-    // Hook into our unmount cleanup (mounted state already tracked above)
-    // via a tiny ref check — if component unmounts first, clear the timer.
-    const unmountInterval = setInterval(() => {
-      if (!mountedRef.current) {
-        clearTimeout(tid);
-        clearInterval(unmountInterval);
-      }
-    }, 200);
   }
 
   return createPortal(

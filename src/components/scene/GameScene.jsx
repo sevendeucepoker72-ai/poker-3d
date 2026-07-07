@@ -24,6 +24,10 @@ const SUIT_LABELS = {
   s: 'Spades', h: 'Hearts', d: 'Diamonds', c: 'Clubs',
   spades: 'Spades', hearts: 'Hearts', diamonds: 'Diamonds', clubs: 'Clubs',
   '♠': 'Spades', '♥': 'Hearts', '♦': 'Diamonds', '♣': 'Clubs',
+  // 2026-07-06 audit P3 — numeric suit indices (canonical cardUtils SUITS order
+  // ['hearts','diamonds','clubs','spades']) so the screen reader announces the
+  // suit name instead of "Ace of 0" when a card carries a numeric suit.
+  0: 'Hearts', 1: 'Diamonds', 2: 'Clubs', 3: 'Spades',
 };
 
 function describeCard(card) {

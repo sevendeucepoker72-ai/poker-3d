@@ -488,7 +488,22 @@ function _readPeerRefreshedTokens() {
       // 2026-07-05 completeness fix: another tab refreshed — sync this tab's
       // primary bearer (poker_auth_token) too, else getAuthToken() stays stale here.
       setAuthToken(fresh);
-      return { access_token: fresh, expires_in: expiresIn };
+      // 2026-07-06 audit P1 — return a COMPLETE refresh-response shape, not just
+      // {access_token, expires_in}. The leader tab persists the ROTATED
+      // poker_oauth_refresh / poker_oauth_id_token before releasing the lock
+      // (see the persist block below), so a waiter reads the correct fresh
+      // values here. Returning them (instead of undefined) stops the boot
+      // consumer in App.jsx from coercing `undefined` into the string
+      // "undefined" and destroying the auto-login credential. In session-only
+      // mode the leader's refresh/id live in its own (per-tab) sessionStorage,
+      // so getOAuthItem returns THIS tab's copy — still non-undefined; the
+      // shared access token from localStorage is fresh regardless.
+      return {
+        access_token: fresh,
+        expires_in: expiresIn,
+        refresh_token: getOAuthItem('poker_oauth_refresh') || undefined,
+        id_token: getOAuthItem('poker_oauth_id_token') || undefined,
+      };
     }
   } catch {}
   return null;

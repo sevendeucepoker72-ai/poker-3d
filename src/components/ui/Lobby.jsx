@@ -1009,9 +1009,18 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const [refilling, setRefilling] = useState(false);
   const [refillToast, setRefillToast] = useState(null); // null | { ok: bool, text }
   const refillTimerRef = useRef(null);
+  // 2026-07-06 audit P2 — capture the seat we were ALREADY on (if any) when a
+  // join starts. The watchdog below must not transition to 'table' on that
+  // stale prior-table payload — only on a genuinely NEW seating. Signature is
+  // `${tableId}:${seatIndex}`; null when not currently seated. Works for both
+  // targeted joins (join table B) and matchmaking (server picks the table).
+  const seatSig = (gs) =>
+    (gs?.yourSeat >= 0 && gs?.seats?.[gs.yourSeat]?.playerName)
+      ? `${gs.tableId ?? '?'}:${gs.yourSeat}`
+      : null;
   const beginJoin = (label, action) => {
     setJoinError(null);
-    setJoining({ since: Date.now(), label });
+    setJoining({ since: Date.now(), label, fromSig: seatSig(gameState) });
     try { action(); } catch (e) {
       setJoining(null);
       setJoinError(e?.message || 'Could not start join — try again.');
@@ -1023,8 +1032,12 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // state or a stale previous-table payload.
   useEffect(() => {
     if (!joining) return;
-    const seated = gameState?.yourSeat >= 0 && gameState?.seats?.[gameState.yourSeat]?.playerName;
-    if (seated) {
+    // 2026-07-06 audit P2 — require a seated signature that DIFFERS from the one
+    // captured at join start. Without this, beginning a join while a stale
+    // prior-table gameState still shows us seated transitioned instantly to
+    // that OLD table, orphaning the new join.
+    const sig = seatSig(gameState);
+    if (sig && sig !== joining.fromSig) {
       setJoining(null);
       setJoinError(null);
       setScreen('table');

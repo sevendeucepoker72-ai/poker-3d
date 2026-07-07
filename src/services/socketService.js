@@ -267,6 +267,11 @@ export const disconnectFromServer = () => {
  */
 export const disconnect = () => {
   if (!socket) return;
+  // 2026-07-06 audit P3 — drop any queued player action on logout. Otherwise a
+  // fold/call the previous user queued while disconnected would flush on the
+  // post-logout reconnect (or, worse, after a different user signs in on this
+  // tab). Logout must not carry an action across the session boundary.
+  _pendingAction = null;
   try { if (socket.auth) delete socket.auth.token; } catch { /* ignore */ }
   try { socket.disconnect(); } catch { /* ignore */ }
   try { socket.connect(); } catch { /* ignore */ }

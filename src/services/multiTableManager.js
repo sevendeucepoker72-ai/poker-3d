@@ -153,7 +153,19 @@ export function leaveMultiTable(slotId) {
 export function sendMultiTableAction(slotId, type, amount) {
   const slot = _slots.find((s) => s.id === slotId);
   if (!slot?.socket?.connected) return false;
-  slot.socket.emit('action', { type, amount, nonce: makeNonce() });
+  // 2026-07-06 audit P2 — echo the secondary table's own stateVersion, matching
+  // the sanctioned primary path (socketService.emitPlayerAction). Without it the
+  // server can't reject a click that the table advanced past (timeout-fold / new
+  // hand) while the secondary socket lagged, so a stale multi-table action could
+  // land on the wrong decision point. stateVersion is read from THIS slot's
+  // gameState (the per-table delta stream), never the primary's.
+  //
+  // No reconnect-queue here (unlike the primary): a secondary socket that drops
+  // re-runs oauthLogin{skipSeatRecovery} → joinTable{seatIndex:-1}, i.e. the
+  // server RE-SEATS it, so replaying a pre-disconnect action against a possibly-
+  // different seat/hand is unsafe. Returning false lets MultiTableView reflect
+  // the drop; the user re-acts on fresh state.
+  slot.socket.emit('action', { type, amount, nonce: makeNonce(), stateVersion: slot.gameState?.stateVersion });
   return true;
 }
 

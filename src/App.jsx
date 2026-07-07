@@ -233,6 +233,15 @@ function App() {
   const [deepLinkContext] = useState(() => parseDeepLinkContext());
   const waitlistContext = deepLinkContext?.source === 'waitlist' ? deepLinkContext : null;
   const [deepLinkTimedOut, setDeepLinkTimedOut] = useState(false);
+  // 2026-07-06 audit P2 — a #bridge_id_token in the URL at mount means we
+  // arrived via cross-site SSO and the bridge consumer (below) is about to
+  // exchange it + socket-auth. Show a spinner instead of a LoginScreen flash
+  // until that resolves. Cleared by the bridge IIFE on completion (ok/fail) and
+  // as a safety net when isLoggedIn flips true.
+  const [bridgePending, setBridgePending] = useState(() => {
+    try { return new URLSearchParams((window.location.hash || '').replace(/^#/, '')).has('bridge_id_token'); }
+    catch { return false; }
+  });
   const [showSpinReveal, setShowSpinReveal] = useState(false);
   const [spinMultiplier, setSpinMultiplier] = useState(2);
   const [quickGameResult, setQuickGameResult] = useState(null);
@@ -250,6 +259,16 @@ function App() {
   useEffect(() => {
     try { sessionStorage.setItem('poker_active_nav_tab', activeNavTab); } catch { /* ignore */ }
   }, [activeNavTab]);
+
+  // 2026-07-06 audit P2 — clear the bridge-handoff spinner on login success,
+  // and cap it at 26s (just past the bridge socket-auth 25s timeout) so a
+  // failed/stalled handoff falls through to LoginScreen instead of hanging.
+  useEffect(() => {
+    if (!bridgePending) return undefined;
+    if (isLoggedIn) { setBridgePending(false); return undefined; }
+    const t = setTimeout(() => setBridgePending(false), 26000);
+    return () => clearTimeout(t);
+  }, [bridgePending, isLoggedIn]);
 
   // Transition state
   const [displayedScreen, setDisplayedScreen] = useState(screen);
@@ -1017,7 +1036,13 @@ function App() {
       try {
         const { consumeBridgeIfPresent } = await import('./services/bridge');
         const result = await consumeBridgeIfPresent();
-        if (cancelled || !result?.ok) return;
+        if (cancelled) return;
+        // 2026-07-06 audit P2 — token exchange resolved (ok or not). If it
+        // failed (no bridge / exchange error), drop the spinner NOW so the user
+        // falls straight to LoginScreen instead of waiting. On success we keep
+        // the spinner until oauthLogin flips isLoggedIn (handleResult below), so
+        // the lobby only appears once the socket is actually authenticated.
+        if (!result?.ok) { setBridgePending(false); return; }
         // Tokens are now persisted. Drive the same socket-side oauthLogin
         // flow the refresh path uses (extracted as runOauthLoginViaSocket).
         const tokens = result.tokens;
@@ -1102,8 +1127,25 @@ function App() {
       let oauthTimeoutId = null;
 
       refreshAccessToken(oauthRefresh)
-        .then((tokens) => {
+        .then((rawTokens) => {
           if (cancelled) return;
+          // 2026-07-06 audit P1 — refreshAccessToken can resolve to a peer-tab
+          // object that (pre-fix) carried no refresh_token/id_token when another
+          // tab won the cross-tab refresh race. Guard against writing undefined
+          // over the persisted credential: only overwrite refresh/id when the
+          // resolved value is truthy, and merge the existing value into the
+          // object handed to oauthLogin (mirrors authScheduler's `|| existing`).
+          // Belt-and-suspenders to the source fix in _readPeerRefreshedTokens.
+          const existingId = (() => {
+            try { return localStorage.getItem('poker_oauth_id_token') || sessionStorage.getItem('poker_oauth_id_token') || ''; }
+            catch { return ''; }
+          })();
+          const tokens = {
+            access_token: rawTokens.access_token,
+            refresh_token: rawTokens.refresh_token || oauthRefresh,
+            id_token: rawTokens.id_token || existingId,
+            expires_in: rawTokens.expires_in,
+          };
           // Use tokenStorage so the access token respects "Keep me signed in".
           setAuthToken(tokens.access_token);
           // OAuth refresh token / id token / expiry: also route to the
@@ -1111,9 +1153,9 @@ function App() {
           // keep-signed-in, sessionStorage otherwise).
           const keep = isKeepSignedIn();
           const store = keep ? localStorage : sessionStorage;
-          try { store.setItem('poker_oauth_refresh', tokens.refresh_token); } catch {}
-          try { store.setItem('poker_oauth_id_token', tokens.id_token || ''); } catch {}
-          try { store.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000)); } catch {}
+          if (rawTokens.refresh_token) { try { store.setItem('poker_oauth_refresh', rawTokens.refresh_token); } catch {} }
+          if (rawTokens.id_token) { try { store.setItem('poker_oauth_id_token', rawTokens.id_token); } catch {} }
+          if (rawTokens.expires_in != null) { try { store.setItem('poker_token_expiry', String(Date.now() + Number(rawTokens.expires_in) * 1000)); } catch {} }
 
           const handleResult = (result) => {
             if (cancelled) return;
@@ -1451,6 +1493,33 @@ function App() {
   }
 
   if (displayedScreen === 'login') {
+    // 2026-07-06 audit P2 — cross-site SSO bridge handoff in progress. The
+    // bridge consumer is exchanging #bridge_id_token + authenticating the
+    // socket; show a spinner (not LoginScreen) until it resolves, mirroring the
+    // deep-link ticket path so there is no login flash.
+    if (bridgePending && !isLoggedIn) {
+      return (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'linear-gradient(135deg,#0a0a1a,#1a1a3e 60%,#0d0d2b)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#e0e0e0', fontFamily: 'system-ui',
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{
+              width: 40, height: 40, margin: '0 auto 16px',
+              border: '3px solid rgba(255,210,74,0.3)', borderTopColor: '#ffd24a',
+              borderRadius: '50%', animation: 'dl-spin 0.8s linear infinite',
+            }} />
+            <h2 style={{ color: '#fcd34d', margin: 0, fontSize: 22 }}>Signing you in…</h2>
+            <p style={{ opacity: 0.7, marginTop: 12, fontSize: 14 }}>
+              Connecting your American Pub Poker session.
+            </p>
+          </div>
+          <style>{`@keyframes dl-spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      );
+    }
     // Deep-link from marketing/player app: we have a signed ticket in the URL
     // and are actively authenticating via authWithTicket. Show a spinner
     // instead of the login screen — making users "sign in again" here is

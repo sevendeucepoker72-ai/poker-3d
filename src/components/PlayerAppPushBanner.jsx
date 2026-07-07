@@ -10,9 +10,9 @@
  * lives — same user account, works across any device the player signs
  * into.
  *
- * Dismissal sticks for 60 days (longer than marketing's 30d since this
- * is a more passive nudge — players come here for gameplay, not for
- * notification setup).
+ * Dismissal sticks for 30 days (aligned to marketing's TTL — see
+ * DISMISS_TTL_MS below; the "60 days" this doc used to claim was corrected
+ * in the 2026-05-04 audit when the constant dropped 60d → 30d).
  */
 
 import React, { useState, useEffect } from 'react';

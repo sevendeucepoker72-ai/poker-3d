@@ -123,29 +123,51 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
     const socket = getSocket();
     if (!socket?.connected) { setError('Not connected.'); return; }
 
-    // Track whether we've already resolved this join — otherwise a late
-    // gameState broadcast (e.g., from another table) could re-trigger setScreen.
-    let settled = false;
+    // 2026-07-06 audit P2 — settling on ANY gameState broadcast was wrong: a
+    // routine broadcast from a table the user is spectating would falsely
+    // confirm the join and jump to the WRONG table (`settled` only stopped a
+    // SECOND resolution, not a wrong first one). Correlate instead on OUR seat:
+    // resolve only when the merged store state shows us freshly seated
+    // (signature differs from before the emit). App.jsx's gameState handler
+    // merges into the store before this later-registered listener fires, so
+    // reading getState() here sees the up-to-date seat.
+    const seatSig = (gs) =>
+      (gs?.yourSeat >= 0 && gs?.seats?.[gs.yourSeat]?.playerName)
+        ? `${gs.tableId ?? '?'}:${gs.yourSeat}`
+        : null;
+    const fromSig = seatSig(useGameStore.getState().gameState);
 
-    const onJoinError = ({ message }) => {
-      if (settled) return;
+    let settled = false;
+    let timeoutId = null;
+    const finish = (fn) => {
       settled = true;
       detach(socket, 'joinError', onJoinError);
       detach(socket, 'gameState', onGameState);
-      if (!mountedRef.current) return;
-      setError(message);
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+      fn();
+    };
+    const onJoinError = ({ message }) => {
+      if (settled) return;
+      finish(() => { if (mountedRef.current) setError(message); });
     };
     const onGameState = () => {
       if (settled) return;
-      settled = true;
-      detach(socket, 'joinError', onJoinError);
-      detach(socket, 'gameState', onGameState);
-      if (!mountedRef.current) return;
-      if (playerName) setPlayerName(playerName);
-      setScreen('table');
+      const sig = seatSig(useGameStore.getState().gameState);
+      if (!sig || sig === fromSig) return; // not our fresh seat yet — keep waiting
+      finish(() => {
+        if (!mountedRef.current) return;
+        if (playerName) setPlayerName(playerName);
+        setScreen('table');
+      });
     };
     attach(socket, 'joinError', onJoinError);
     attach(socket, 'gameState', onGameState);
+    // Watchdog: if no seat / error arrives, don't leave the listeners dangling
+    // or the user stuck — surface a retry message.
+    timeoutId = setTimeout(() => {
+      if (settled) return;
+      finish(() => { if (mountedRef.current) setError('Server didn\'t respond in time. Check your connection and try again.'); });
+    }, 10000);
 
     socket.emit('joinByInviteCode', {
       inviteCode: code,

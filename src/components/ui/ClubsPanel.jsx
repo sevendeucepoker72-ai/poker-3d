@@ -1668,7 +1668,12 @@ export default function ClubsPanel({ onClose }) {
         </div>
         {scheduledTables.length === 0 && <div className="clubs-empty" style={{ padding: '8px 0', fontSize: '0.75rem' }}>No scheduled tables.</div>}
         {scheduledTables.map((st) => {
-          const cfg = typeof st.tableConfig === 'string' ? JSON.parse(st.tableConfig) : st.tableConfig;
+          // 2026-07-06 audit P3 — guard the parse: an unparseable tableConfig
+          // string used to throw DURING render inside .map, taking down the
+          // entire Tables tab (white screen) instead of just skipping one row.
+          let cfg = {};
+          try { cfg = typeof st.tableConfig === 'string' ? JSON.parse(st.tableConfig) : (st.tableConfig || {}); }
+          catch { cfg = {}; }
           const timeLeft = new Date(st.scheduledTime) - Date.now();
           const countdown = timeLeft > 0 ? Math.floor(timeLeft / 3600000) + 'h ' + Math.floor((timeLeft % 3600000) / 60000) + 'm' : 'Now';
           return (

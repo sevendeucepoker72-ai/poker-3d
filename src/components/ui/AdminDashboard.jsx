@@ -238,8 +238,12 @@ export default function AdminDashboard({ onClose }) {
 
     // Batch 5b: real entry codes. Normalize server field names to the client
     // shape the codes UI already uses.
+    // 2026-07-06 audit P2 — the server returns promotion_NAME, not the promo id.
+    // Keep it as promotionName; the codes view resolves it to a real promotionId
+    // against the promos list (see renderCodes). Storing the name in promotionId
+    // (as before) made every id-keyed promo filter + per-promo code count read 0.
     const normalizeCode = (c) => ({
-      code: c.code, qualifierType: c.qualifier_type, promotionId: c.promotion_name,
+      code: c.code, qualifierType: c.qualifier_type, promotionName: c.promotion_name,
       usedBy: c.redeemed_by, usedAt: c.redeemed_at, expiresAt: c.expires_at,
     });
     const onCodesList = (data) => setServerCodes((data?.codes || []).map(normalizeCode));
@@ -764,12 +768,22 @@ export default function AdminDashboard({ onClose }) {
   // ════════════════════════════════════════════════════════
   const renderCodes = () => {
     // Batch 5b: use the REAL server-backed codes for the whole codes view.
-    const allCodes = serverCodes;
+    // 2026-07-06 audit P2 — resolve each code's promotionName → promotionId
+    // against the (now-loaded) promos list so the id-keyed filter, per-promo
+    // counts, and scope label below all match. Falls back to null when the
+    // promo can't be resolved (deleted promo / not yet loaded).
+    const allCodes = serverCodes.map((c) => ({
+      ...c,
+      promotionId: c.promotionName ? (promos.find((p) => p.name === c.promotionName)?.id || null) : null,
+    }));
+    // 2026-07-06 audit P2 — qualifier-type filter is case-insensitive; the
+    // server stores lowercase qualifier_type ('weekly') while the filter
+    // <option> values were TitleCase, so Weekly/Monthly/Special matched nothing.
     const displayCodes = codeFilter === 'all'
       ? allCodes
       : codeFilter === 'unused'
         ? allCodes.filter((c) => !c.usedBy)
-        : allCodes.filter((c) => c.qualifierType === codeFilter || c.promotionId === codeFilter);
+        : allCodes.filter((c) => String(c.qualifierType || '').toLowerCase() === String(codeFilter).toLowerCase() || c.promotionId === codeFilter);
 
     return (
       <>
@@ -921,9 +935,12 @@ export default function AdminDashboard({ onClose }) {
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, maxHeight: 260, overflowY: 'auto', padding: '4px 0' }}>
             {displayCodes.map((c) => {
-              const expired = new Date(c.expiresAt) < Date.now();
-              const scopeLabel = c.promotionId
-                ? promos.find((p) => p.id === c.promotionId)?.name || c.promotionId
+              // 2026-07-06 audit P2 — a code with no expiry (expiresAt null) is
+              // NOT expired; new Date(null) is epoch 1970 which is always < now,
+              // so the old check rendered every no-expiry code as 'expired'.
+              const expired = c.expiresAt ? new Date(c.expiresAt) < Date.now() : false;
+              const scopeLabel = c.promotionName
+                ? (c.promotionId ? (promos.find((p) => p.id === c.promotionId)?.name || c.promotionName) : c.promotionName)
                 : c.qualifierType || '?';
               return (
                 <div key={c.code} style={{

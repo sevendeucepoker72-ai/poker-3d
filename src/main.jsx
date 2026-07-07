@@ -50,7 +50,6 @@ sessionLifecycle.start()
 // sits on a stale token. Cooperates with sessionLifecycle (which calls
 // refreshNow on tab resume).
 import * as authScheduler from './services/authScheduler.js'
-import { setAuthToken, setOAuthItem } from './services/tokenStorage.js'
 authScheduler.start()
 
 // 2026-05-05 Phase 3 — cross-tab logout sync. When ANY same-origin .online
@@ -183,64 +182,18 @@ async function bootstrapBridgeOrMount() {
     if (hash) bridgeToken = new URLSearchParams(hash).get('bridge_id_token') || ''
   } catch {}
 
-  if (bridgeToken) {
-    // Strip the fragment immediately so a refresh doesn't reprocess.
-    try {
-      const hash = (window.location.hash || '').replace(/^#/, '')
-      const params = new URLSearchParams(hash)
-      params.delete('bridge_id_token')
-      const remaining = params.toString()
-      const newUrl = window.location.pathname + window.location.search +
-        (remaining ? '#' + remaining : '')
-      window.history.replaceState({}, '', newUrl)
-    } catch {}
-
-    try {
-      const response = await fetch('https://auth.americanpubpoker.online/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'urn:apk:bridge',
-          subject_token: bridgeToken,
-          client_id: 'poker-3d',
-        }),
-      })
-      if (response.ok) {
-        const tokens = await response.json()
-        try {
-          // F1: persist via the keep-signed-in-aware helpers so a bridge-SSO
-          // arrival for a user who turned "keep me signed in" OFF doesn't leave
-          // tokens in localStorage on a shared device.
-          if (tokens.access_token) setAuthToken(tokens.access_token)
-          if (tokens.id_token) setOAuthItem('poker_oauth_id_token', tokens.id_token)
-          if (tokens.refresh_token) setOAuthItem('poker_oauth_refresh', tokens.refresh_token)
-          if (tokens.expires_in) {
-            // expiry stays in localStorage (short-lived cross-tab coordination).
-            localStorage.setItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000))
-          }
-          // Seed gameStore zustand state so the LoginScreen doesn't render.
-          // Decode id_token claims for username + sub.
-          if (tokens.id_token) {
-            const parts = tokens.id_token.split('.')
-            const payloadB64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-            const padded = payloadB64 + '=='.slice(0, (4 - payloadB64.length % 4) % 4)
-            const claims = JSON.parse(atob(padded))
-            useGameStore.setState({
-              isLoggedIn: true,
-              userId: claims.sub,
-              playerName: claims.preferred_username || claims.username || 'Player',
-              authToken: tokens.access_token,
-              oauthAccessToken: tokens.access_token,
-              oauthIdToken: tokens.id_token,
-              oauthRefreshToken: tokens.refresh_token,
-              oauthTokenExpiry: tokens.expires_in ? Date.now() + tokens.expires_in * 1000 : null,
-              screen: 'lobby',
-            })
-          }
-        } catch {}
-      }
-    } catch {}
-  }
+  // 2026-07-06 audit P2 — bridge handoff is now owned SOLELY by App.jsx's
+  // consumeBridgeIfPresent (App.jsx ~1016). That path is purpose-built: it
+  // exchanges the token, persists it (keep-signed-in aware, `!= null` expiry),
+  // AND drives the socket-side oauthLogin with a persistent connect handler +
+  // 25s timeout. The old inline exchange here did NOT authenticate the socket
+  // and stripped the hash before App.jsx could run — so the app rendered a
+  // logged-in lobby over an UNAUTHENTICATED game socket. We now leave the
+  // #bridge_id_token in the hash for App.jsx to consume; the only thing main
+  // must do is NOT fire the cold-start silent-SSO redirect over it (guarded
+  // below with `!bridgeToken`), and App shows a "Signing you in…" spinner
+  // (keyed on the bridge token present at mount) so there is no LoginScreen
+  // flash during the exchange.
 
   // 2026-05-08 — Cold-start cross-site silent SSO. Same pattern as
   // player-web index.js. If we have no local OAuth tokens AND no bridge
@@ -259,7 +212,7 @@ async function bootstrapBridgeOrMount() {
     const path = window.location.pathname || '/';
     const isAuthCallback = path.startsWith('/auth/callback');
 
-    if (!hasLocalToken && !triedSilent && !isAuthCallback) {
+    if (!hasLocalToken && !triedSilent && !isAuthCallback && !bridgeToken) {
       const { startSilentLogin, bounceToCanonicalOriginIfUnregistered } =
         await import('./services/authService.js');
       // 2026-07-06 P2 auth fix (.club canonical bounce) — this bundle is also

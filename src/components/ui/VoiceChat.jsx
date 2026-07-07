@@ -14,6 +14,7 @@ export default function VoiceChat({ tableId, username, visible }) {
   const localStreamRef = useRef(null);
   const peerConnectionsRef = useRef({}); // socketId -> RTCPeerConnection
   const analyserNodesRef = useRef({}); // socketId -> AnalyserNode
+  const remoteAudioRef = useRef({}); // socketId -> HTMLAudioElement (remote playback)
   const audioContextRef = useRef(null);
   const speakingTimersRef = useRef({}); // socketId -> animationFrameId
   const localAnalyserRef = useRef(null);
@@ -92,6 +93,10 @@ export default function VoiceChat({ tableId, username, visible }) {
       const remoteStream = e.streams[0];
       const audio = new Audio();
       audio.srcObject = remoteStream;
+      // 2026-07-06 audit P2 — keep a handle so removePeer can detach it. Without
+      // this the per-peer <audio> element + its decoder pipeline outlive the peer
+      // (accumulating on a busy table).
+      remoteAudioRef.current[socketId] = audio;
       // Autoplay can reject on browsers with strict autoplay policies (the
        // user hasn't interacted yet, or the tab is backgrounded). Swallow is
        // safe — they'll hear audio once they gesture — but log at debug so
@@ -122,6 +127,13 @@ export default function VoiceChat({ tableId, username, visible }) {
     if (pc) {
       pc.close();
       delete peerConnectionsRef.current[socketId];
+    }
+    // 2026-07-06 audit P2 — detach the remote audio element so its media decoder
+    // is released instead of lingering after the peer leaves.
+    const audio = remoteAudioRef.current[socketId];
+    if (audio) {
+      try { audio.pause(); audio.srcObject = null; } catch { /* ignore */ }
+      delete remoteAudioRef.current[socketId];
     }
     stopSpeakingDetection(socketId);
     setPeers(prev => {
@@ -161,6 +173,13 @@ export default function VoiceChat({ tableId, username, visible }) {
       cancelAnimationFrame(localSpeakingTimerRef.current);
     }
     localAnalyserRef.current = null;
+    // 2026-07-06 audit P3 — close the AudioContext so repeated join/leave cycles
+    // don't exhaust the browser's per-page AudioContext limit (~6 on Chrome).
+    // startSpeakingDetection lazily recreates it on the next join.
+    if (audioContextRef.current) {
+      try { audioContextRef.current.close(); } catch { /* ignore */ }
+      audioContextRef.current = null;
+    }
     setLocalSpeaking(false);
     setJoined(false);
     joinedRef.current = false;

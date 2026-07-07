@@ -29,6 +29,25 @@ export default function AvatarCustomizer() {
   const handlePhotoUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    // 2026-07-06 audit P3 — validate BEFORE processing. The image is center-
+    // cropped to an 80×80 JPEG data URL and sent to the server, but there was no
+    // guard: a huge file froze the main thread on decode, and a non-image
+    // (renamed .exe/.svg) reached the upload path. Cap type + size here. This is
+    // a client convenience check only — the server remains the moderation
+    // authority (Cloud Vision SafeSearch on avatars.js when enabled).
+    const MAX_BYTES = 8 * 1024 * 1024; // 8 MB — plenty for a source photo
+    if (!/^image\/(png|jpe?g|webp|gif|bmp|heic|heif)$/i.test(file.type || '')) {
+      // eslint-disable-next-line no-alert
+      alert('Please choose an image file (PNG, JPG, WEBP, GIF).');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      // eslint-disable-next-line no-alert
+      alert('That image is too large (max 8 MB). Pick a smaller photo.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (ev) => {
       const img = new Image();
