@@ -220,6 +220,16 @@
   color: rgba(255, 255, 255, 0.72);
 }
 
+.recap-prose__tag {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffd24a;
+  margin-bottom: 3px;
+}
+
 /* ── Hand of Session card ───────────────────────────────────────────────── */
 
 .recap-hot-hand {

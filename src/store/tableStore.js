@@ -85,7 +85,14 @@ export const useTableStore = create((set, get) => ({
     // version the user is looking at. The server rejects the action if the table
     // has since advanced past it and re-pushes fresh state. undefined pre-rollout.
     const stateVersion = get().gameState?.stateVersion;
-    const result = emitPlayerAction(type, amount, stateVersion);
+    // 2026-07-07 gap-fill [5]: pass the active table id so multi-table actions
+    // route to the table the user is looking at. currentTableId is null for
+    // single-table players → the server falls back to the primary session
+    // (unchanged behavior). In multi-table mode it tracks the focused pane, and
+    // the store's gameState is swapped to match it, so this stays consistent
+    // with the stateVersion above.
+    const tableId = get().currentTableId || undefined;
+    const result = emitPlayerAction(type, amount, stateVersion, tableId);
     if (!result.sent && !result.queued) {
       console.warn('[sendAction] Action dropped');
     } else if (result.queued) {

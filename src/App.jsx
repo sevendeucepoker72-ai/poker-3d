@@ -542,13 +542,13 @@ function App() {
 
     // Handle both full state and delta patches from the server
     socket.on('gameState', (data) => {
+      const ts = useTableStore.getState();
       let state;
       if (data && typeof data === 'object' && 'full' in data) {
         // New delta-aware protocol
         if (data.full) {
           // Full state replacement
           state = data.state;
-          useTableStore.getState().setGameState(state);
         } else {
           // Partial delta merge contract:
           //   - delta[key] = <value>  → set prev[key] to <value>
@@ -569,7 +569,6 @@ function App() {
           // the player had A selected — corrupting B's cached state in the
           // activeTables map. Fall back to the top-level gameState only when
           // the delta carries no tableId (legacy single-table path).
-          const ts = useTableStore.getState();
           const deltaTableId = data.delta?.tableId;
           const prev = deltaTableId
             ? (ts.activeTables.get(deltaTableId)?.gameState ?? null)
@@ -590,15 +589,29 @@ function App() {
             if (!data.delta.selectedDiscards) state.selectedDiscards = [];
             if (!data.delta.handResult) state.handResult = null;
           }
-          useTableStore.getState().setGameState(state);
         }
       } else {
         // Legacy full-state format (backwards compatibility)
         state = data;
-        useTableStore.getState().setGameState(state);
       }
 
-      useTableStore.getState().setMySeat(state?.yourSeat ?? -1);
+      // 2026-07-07 gap-fill [5] — multi-table routing. A snapshot for a table
+      // that is NOT the one currently on screen must ONLY refresh that table's
+      // activeTables cache; it must never clobber the displayed table's
+      // gameState / seat / spectator chrome. Before gap [5] only the primary
+      // table broadcast, so this was latent; now every background multi-table
+      // pane broadcasts a full snapshot each tick (server broadcastGameState),
+      // which would otherwise flicker the on-screen table to the wrong data and
+      // point the action bar at the wrong seat. currentTableId is null for a
+      // normal single-table player, so this guard is a no-op for them.
+      const stId = state?.tableId;
+      if (stId && ts.currentTableId && stId !== ts.currentTableId) {
+        ts.updateActiveTable(stId, state);
+        return;
+      }
+
+      ts.setGameState(state);
+      ts.setMySeat(state?.yourSeat ?? -1);
 
       // Handle spectator mode.
       // 2026-04-22 audit fix: unconditionally mirror the server flag so
@@ -606,18 +619,18 @@ function App() {
       // UI back to player mode. Previously this only latched true, which
       // left the UI stuck in spectator chrome after the server already
       // considered the socket a seated player.
-      useTableStore.getState().setIsSpectating(!!state?.isSpectator);
+      ts.setIsSpectating(!!state?.isSpectator);
 
       // Handle training data from server
       if (state?.trainingData) {
-        useTableStore.getState().setTrainingData(state.trainingData);
+        ts.setTrainingData(state.trainingData);
       } else if (state !== null) {
-        useTableStore.getState().setTrainingData(null);
+        ts.setTrainingData(null);
       }
 
       // Update multi-table state if applicable
       if (state?.tableId) {
-        useTableStore.getState().updateActiveTable(state.tableId, state);
+        ts.updateActiveTable(state.tableId, state);
       }
     });
 

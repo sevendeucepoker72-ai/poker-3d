@@ -1272,6 +1272,30 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     return () => { clearInterval(iv); socket.off('tournamentStandings', onStandings); };
   }, [showTournamentBracket]);
   const [showTournamentDirector, setShowTournamentDirector] = useState(false);
+  // Success toast surfaced when the server acks a custom tournament create
+  // (`customTournamentCreated { tournamentId, name }`). null | { text }.
+  const [tdNotice, setTdNotice] = useState(null);
+  // Emitted by the TournamentDirector wizard's Create button. The server
+  // handler is admin-gated; non-admins get a `socialBracketError`-style
+  // rejection there (surfaced via the generic error toast). We just fire the
+  // event and close the director — success is confirmed by the listener below.
+  const handleCreateCustomTournament = useCallback((config) => {
+    getSocket()?.emit('createCustomTournament', { config });
+    setShowTournamentDirector(false);
+  }, []);
+  // Listen for the create ack + refresh the tournament list so the new event
+  // shows up immediately.
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const onCreated = (data) => {
+      setTdNotice({ text: `✓ Tournament created: ${data?.name || 'Custom Tournament'}` });
+      socket.emit('getTournaments');
+      setTimeout(() => setTdNotice(null), 4000);
+    };
+    socket.on('customTournamentCreated', onCreated);
+    return () => socket.off('customTournamentCreated', onCreated);
+  }, []);
   const [showHandHistoryImporter, setShowHandHistoryImporter] = useState(false);
   const [showMultiTable, setShowMultiTable] = useState(false);
   const [showSocialBracket, setShowSocialBracket] = useState(
@@ -1575,10 +1599,21 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         ) : (
           <div className="rank-card-next" style={{ color: homeRankInfo.info.color }}>MAX RANK — Champion 🏆</div>
         )}
-        {/* Mini sparkline repurposed as ELO history placeholder */}
+        {/* Mini sparkline of real ELO history — honest empty state until the
+            server populates enough trend data. Padding with the current elo
+            would draw a fake flat line, so we only render a sparkline once
+            there are >=2 DISTINCT elo values. */}
         <div className="upc-sparkline" style={{ marginTop: 8 }}>
           <span className="upc-sparkline-label">ELO trend</span>
-          <Sparkline data={(() => { const eh = progress?.eloHistory || []; const pts = eh.slice(-7).map(h => h.elo); while (pts.length < 7) pts.unshift(pts[0] ?? progress?.elo ?? 500); return pts; })()} width={110} height={28} />
+          {(() => {
+            const eh = progress?.eloHistory || [];
+            const pts = eh.slice(-7).map(h => h.elo).filter(v => typeof v === 'number');
+            const distinct = new Set(pts);
+            if (distinct.size < 2) {
+              return <span className="upc-sparkline-empty">No rank trend yet</span>;
+            }
+            return <Sparkline data={pts} width={110} height={28} />;
+          })()}
         </div>
       </div>
     );
@@ -3096,7 +3131,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {showAdvancedAnalytics && <AdvancedAnalytics progress={progress} handHistories={handHistories || []} onClose={() => setShowAdvancedAnalytics(false)} />}
         {showStakingMarketplace && <StakingMarketplace playerName={playerName} chips={progress?.chips ?? chipCount ?? 0} onClose={() => setShowStakingMarketplace(false)} />}
         {showTournamentBracket && <TournamentBracket tournament={bracketTournament} onClose={() => setShowTournamentBracket(false)} />}
-        {showTournamentDirector && <TournamentDirector onClose={() => setShowTournamentDirector(false)} />}
+        {showTournamentDirector && <TournamentDirector onClose={() => setShowTournamentDirector(false)} onCreateTournament={handleCreateCustomTournament} playerName={playerName} />}
         {showHandHistoryImporter && <HandHistoryImporter onClose={() => setShowHandHistoryImporter(false)} />}
         {showSocialBracket && <SocialBracket socket={getSocket()} onClose={() => setShowSocialBracket(false)} />}
         {showBankrollAI && <BankrollAI currentChips={chipCount} onClose={() => setShowBankrollAI(false)} />}
@@ -3110,6 +3145,22 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       {showScratchCards && <ScratchCards onClose={() => setShowScratchCards(false)} />}
       {showMultiTable && <MultiTableView onClose={() => setShowMultiTable(false)} />}
       {showPlayerProfile && <PlayerProfile username={nameInput || 'Player'} socket={getSocket()} onClose={() => setShowPlayerProfile(false)} onViewReplay={() => {}} />}
+
+      {/* Custom-tournament create confirmation toast (GAP 14). Root-level so it
+          shows regardless of which lobby tab is active after the director closes. */}
+      {tdNotice && (
+        <div
+          style={{
+            position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 10000, padding: '10px 18px', borderRadius: 10,
+            background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)', color: '#fff',
+            fontSize: 14, fontWeight: 600, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          }}
+          onClick={() => setTdNotice(null)}
+        >
+          {tdNotice.text}
+        </div>
+      )}
     </div>
   );
 }

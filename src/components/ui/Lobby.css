@@ -2412,6 +2412,7 @@
   border-top: 1px solid rgba(255,255,255,0.06);
 }
 .upc-sparkline-label { font-size:0.68rem; color:#555; flex-shrink:0; }
+.upc-sparkline-empty { font-size:0.68rem; color:#666; font-style:italic; flex-shrink:0; }
 .upc-sparkline-trend { font-size:0.75rem; font-weight:700; flex-shrink:0; }
 .upc-avatar-inner {
   width: 100% !important;

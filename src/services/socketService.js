@@ -52,7 +52,9 @@ function flushPendingAction() {
   // moved on during the disconnect, the server rejects this as stale and pushes
   // fresh state — exactly the behaviour we want for a queued action that may no
   // longer be valid. If nothing changed, the version still matches and it lands.
-  socket.emit('action', { type: p.type, amount: p.amount, nonce: p.nonce, stateVersion: p.stateVersion });
+  // 2026-07-07 gap-fill [5]: carry the active tableId so a queued action from a
+  // secondary (multi-table) tab flushes to the RIGHT table, not the primary.
+  socket.emit('action', { type: p.type, amount: p.amount, nonce: p.nonce, stateVersion: p.stateVersion, tableId: p.tableId });
 }
 
 /**
@@ -67,10 +69,13 @@ function flushPendingAction() {
  * store's current gameState by the caller; undefined is fine (server treats a
  * missing version as "don't check", so older builds keep working).
  */
-export const emitPlayerAction = (type, amount, stateVersion) => {
-  const payload = { type, amount, nonce: makeNonce(), stateVersion, queuedAt: Date.now() };
+export const emitPlayerAction = (type, amount, stateVersion, tableId) => {
+  const payload = { type, amount, nonce: makeNonce(), stateVersion, tableId, queuedAt: Date.now() };
   if (socket?.connected) {
-    socket.emit('action', { type, amount, nonce: payload.nonce, stateVersion });
+    // 2026-07-07 gap-fill [5]: include the active tableId so multi-table players'
+    // actions apply to the table they're looking at. Omitting it (single-table
+    // callers) keeps the server on the primary-session path exactly as before.
+    socket.emit('action', { type, amount, nonce: payload.nonce, stateVersion, tableId });
     return { sent: true, nonce: payload.nonce };
   }
   _pendingAction = payload;

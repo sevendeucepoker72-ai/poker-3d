@@ -90,10 +90,16 @@ export default function SessionRecap({
     winRate = 0,
     biggestPot = 0,
     bestHand = '—',
-    profitableStreak = 0,
-    longestStreak = 0,
+    sessionMinutes = 0,
     handHistory = [],
   } = stats;
+
+  // Streak sub-widgets only render when real values are supplied (from the
+  // progress store). We never fabricate 0s — if the fields aren't threaded
+  // through, the streak block is hidden entirely.
+  const profitableStreak = stats.profitableStreak;
+  const longestStreak = stats.longestStreak;
+  const hasStreakData = typeof profitableStreak === 'number' || typeof longestStreak === 'number';
 
   // Session date/time
   const sessionDate = new Date().toLocaleDateString([], {
@@ -110,18 +116,45 @@ export default function SessionRecap({
     : null;
 
   // ── Socket listener ───────────────────────────────────────────────────────
+  // The server replies to `requestSessionRecap` with `sessionRecapResult`:
+  //   { success, paragraphs: { whatWentWell, biggestLeak, nextSession } }
+  // The LLM path is env-gated on ANTHROPIC_API_KEY server-side, so on
+  // success:false (or if no key) we keep the local template shown below.
+  // `nextSession` (a next-session tip) maps into the 3rd prose slot.
 
   useEffect(() => {
     if (!socket) return;
-    const handler = ({ paragraphs, stats: remoteStats }) => {
-      if (paragraphs) setRecap(paragraphs);
-      if (remoteStats) setSocketStats(remoteStats);
+    const handler = ({ success, paragraphs }) => {
+      if (success && paragraphs) {
+        setRecap({
+          whatWentWell: paragraphs.whatWentWell,
+          biggestLeak: paragraphs.biggestLeak,
+          handOfSession: paragraphs.nextSession,
+        });
+      }
+      // success:false → leave the local fallback recap in place.
     };
-    socket.on('sessionRecap', handler);
-    return () => socket.off('sessionRecap', handler);
+    socket.on('sessionRecapResult', handler);
+    return () => socket.off('sessionRecapResult', handler);
   }, [socket]);
 
+  // ── Request the server recap when the modal opens ─────────────────────────
+
+  useEffect(() => {
+    if (!visible || !socket) return;
+    socket.emit('requestSessionRecap', {
+      handsPlayed,
+      netChips,
+      winRate,
+      biggestPot,
+      sessionMinutes,
+    });
+  }, [visible, socket]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Generate local recap when visible and no socket recap yet ────────────
+  // Kept as the graceful fallback: it renders immediately and stays until a
+  // successful sessionRecapResult arrives (or forever if the server LLM is
+  // disabled / returns success:false).
 
   useEffect(() => {
     if (visible && !recap) {
@@ -192,7 +225,10 @@ export default function SessionRecap({
           </div>
           <div className="recap-prose__item">
             <span className="recap-prose__num">03</span>
-            <p className="recap-prose__text">{activeRecap.handOfSession}</p>
+            <p className="recap-prose__text">
+              <span className="recap-prose__tag">Next Session</span>
+              {activeRecap.handOfSession}
+            </p>
           </div>
         </div>
 
@@ -221,17 +257,25 @@ export default function SessionRecap({
           </div>
         )}
 
-        {/* Streak indicators */}
-        <div className="recap-streaks">
-          <div className="recap-streak">
-            <span className="recap-streak__value">{profitableStreak}</span>
-            <span className="recap-streak__label">Sessions Profitable in a Row</span>
+        {/* Streak indicators — only shown when real streak data is supplied.
+            We never render fabricated 0s (these fields don't exist in the
+            progress store yet; hidden until they do). */}
+        {hasStreakData && (
+          <div className="recap-streaks">
+            {typeof profitableStreak === 'number' && (
+              <div className="recap-streak">
+                <span className="recap-streak__value">{profitableStreak}</span>
+                <span className="recap-streak__label">Sessions Profitable in a Row</span>
+              </div>
+            )}
+            {typeof longestStreak === 'number' && (
+              <div className="recap-streak">
+                <span className="recap-streak__value">{longestStreak}</span>
+                <span className="recap-streak__label">Longest Profitable Streak</span>
+              </div>
+            )}
           </div>
-          <div className="recap-streak">
-            <span className="recap-streak__value">{longestStreak}</span>
-            <span className="recap-streak__label">Longest Profitable Streak</span>
-          </div>
-        </div>
+        )}
 
         {/* Action buttons */}
         <div className="recap-actions">

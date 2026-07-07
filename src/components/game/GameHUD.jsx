@@ -544,6 +544,7 @@ export default function GameHUD() {
 
   // === Session stats tracking (for SessionRecap) ===
   const sessionStartChipsRef = useRef(null);
+  const sessionStartTimeRef = useRef(Date.now());
   const sessionHandsRef = useRef(0);
   const sessionBiggestPotRef = useRef(0);
   const sessionPrevPhaseRef = useRef(null);
@@ -2563,6 +2564,39 @@ export default function GameHUD() {
   const isShowdown = phase === 'Showdown';
   const lastHandHistory = handHistories.length > 0 ? handHistories[handHistories.length - 1] : null;
   const winnerSeatSet = handResult ? new Set((handResult.winners ?? []).map((w) => w.seatIndex)) : new Set();
+
+  // Normalize the in-memory hand-history buffer into the shape SessionRecap's
+  // "Hand of the Session" reducer expects ({ pot, cards, result }). Records
+  // store pots as pots[].amount and hole cards as {rank, suit-index}; convert
+  // hero (yourSeat) cards to the string glyph form CardGlyph parses (e.g. 'Ah').
+  const recapHandHistory = useMemo(() => {
+    // Suit index -> single letter used by SessionRecap.CardGlyph (0=h,1=d,2=c,3=s)
+    const SUIT_IDX_TO_LETTER = { 0: 'h', 1: 'd', 2: 'c', 3: 's' };
+    const cardToStr = (c) => {
+      if (!c || typeof c.rank === 'undefined') return null;
+      const letter = SUIT_IDX_TO_LETTER[c.suit] ?? '';
+      return `${serverRankDisplay(c.rank)}${letter}`;
+    };
+    return handHistories
+      .map((h) => {
+        if (!h || !Array.isArray(h.players)) return null;
+        const pot = Array.isArray(h.pots) ? h.pots.reduce((s, p) => s + (p?.amount || 0), 0) : 0;
+        const hero = h.players.find((p) => p.seatIndex === yourSeat);
+        const cards = hero && Array.isArray(hero.holeCards)
+          ? hero.holeCards.map(cardToStr).filter(Boolean)
+          : [];
+        const heroWon = Array.isArray(h.winners) && hero
+          ? h.winners.some((w) => w.seatIndex === hero.seatIndex)
+          : undefined;
+        return {
+          pot,
+          cards,
+          result: heroWon === undefined ? undefined : (heroWon ? 'win' : 'loss'),
+          handNumber: h.handNumber,
+        };
+      })
+      .filter(Boolean);
+  }, [handHistories, yourSeat]);
 
   // Timer percentage for circular indicator
   const timerPct = (timeLeft / 30) * 100;
@@ -4615,6 +4649,8 @@ export default function GameHUD() {
             netChips: myChips - (sessionStartChipsRef.current ?? myChips),
             winRate: sessionHandsRef.current > 0 ? Math.round(((myChips - (sessionStartChipsRef.current ?? myChips)) / sessionHandsRef.current) * 10) / 10 : 0,
             biggestPot: sessionBiggestPotRef.current,
+            sessionMinutes: Math.max(0, Math.round((Date.now() - sessionStartTimeRef.current) / 60000)),
+            handHistory: recapHandHistory,
           }}
           socket={getSocket()}
           onClose={() => setShowSessionRecap(false)}

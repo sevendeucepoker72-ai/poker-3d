@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getSocket } from '../../services/socketService';
+import { useGameStore } from '../../store/gameStore';
 import './SocialBracket.css';
 
 // 2026-06-18 — Phase 3d: real, durable, LIVE social brackets backed by
@@ -28,9 +29,15 @@ const THEMES = [
   { id: 'western', label: '🤠 Western', accent: '#D97706' },
 ];
 
-function SideBetModal({ players, accent, onClose, onPlace }) {
+function SideBetModal({ players, accent, available, onClose, onPlace }) {
   const [target, setTarget] = useState(players[0] || '');
   const [amount, setAmount] = useState(500);
+  // Chip side bets move REAL play-money now (server deducts atomically), so
+  // block a submit the server would only reject: below the 100 minimum or
+  // above the player's balance.
+  const tooLow = amount < 100;
+  const tooHigh = amount > available;
+  const invalid = !target || tooLow || tooHigh;
   return (
     <div className="sbet-overlay" onClick={onClose}>
       <div className="sbet-modal" onClick={e => e.stopPropagation()}>
@@ -41,9 +48,18 @@ function SideBetModal({ players, accent, onClose, onPlace }) {
         </select>
         <label className="sbet-label">Amount (chips)</label>
         <input className="sbet-input" type="number" min={100} step={100} value={amount} onChange={e => setAmount(Number(e.target.value))} />
+        <div className="sbet-balance">
+          Available: {available.toLocaleString()} chips
+          {tooHigh && <span className="sbet-balance-warn"> — not enough chips</span>}
+        </div>
         <div className="sbet-btns">
           <button className="sbet-btn sbet-btn--cancel" onClick={onClose}>Cancel</button>
-          <button className="sbet-btn sbet-btn--confirm" style={{ background: accent }} onClick={() => { if (target) onPlace({ target, amount }); onClose(); }}>
+          <button
+            className="sbet-btn sbet-btn--confirm"
+            style={{ background: accent, opacity: invalid ? 0.5 : 1 }}
+            disabled={invalid}
+            onClick={() => { if (!invalid) { onPlace({ target, amount }); onClose(); } }}
+          >
             Confirm
           </button>
         </div>
@@ -56,6 +72,15 @@ const DEFAULT_ROSTER = 'Player 1\nPlayer 2\nPlayer 3\nPlayer 4\nPlayer 5\nPlayer
 
 export default function SocialBracket({ socket: socketProp, onClose }) {
   const socket = socketProp || getSocket();
+
+  // Real play-chip balance + sign-in status (GAP 24). Side bets now move real
+  // play-money: the server deducts on placement and settles parimutuel on
+  // bracket completion. Guests are rejected server-side; we hide the form for
+  // them and reflect the live balance in the form + on settlement.
+  const chips = useGameStore((s) => s.chips);
+  const setChips = useGameStore((s) => s.setChips);
+  const isLoggedIn = useGameStore((s) => s.isLoggedIn);
+  const availableChips = typeof chips === 'number' ? chips : 0;
 
   // Create-form state
   const [bracketName, setBracketName] = useState('Home Game Showdown');
@@ -78,9 +103,24 @@ export default function SocialBracket({ socket: socketProp, onClose }) {
     const onState = (state) => { setServerState(state); setLoading(false); };
     const onRole = (d) => { if (d?.isOrganizer != null) setIsOrganizer(!!d.isOrganizer); };
     const onErr = (d) => { setNotice(d?.message || 'Something went wrong'); setLoading(false); };
+    // GAP 24 — placement confirmation: server escrowed the chips atomically.
+    const onPlaced = (d) => {
+      setNotice(`Bet placed: ${(d?.amount || 0).toLocaleString()} chips escrowed`);
+    };
+    // GAP 24 — settlement: server credits winnings / refunds and sends the
+    // player's NEW balance. Sync the local wallet + toast the result.
+    const onSettled = (d) => {
+      if (d && typeof d.chips === 'number') setChips(d.chips);
+      const amt = (d?.amount || 0).toLocaleString();
+      setNotice(d?.won
+        ? `Your bracket side bet hit! +${amt} chips`
+        : `Side bet refunded: +${amt} chips`);
+    };
     socket.on('socialBracketState', onState);
     socket.on('socialBracketRole', onRole);
     socket.on('socialBracketError', onErr);
+    socket.on('socialSideBetPlaced', onPlaced);
+    socket.on('socialSideBetSettled', onSettled);
 
     // Share-link viewer: ?bracket=ID auto-loads that bracket.
     // 2026-07-06 audit P2 — on a COLD page load from a share link the socket
@@ -99,9 +139,11 @@ export default function SocialBracket({ socket: socketProp, onClose }) {
       socket.off('socialBracketState', onState);
       socket.off('socialBracketRole', onRole);
       socket.off('socialBracketError', onErr);
+      socket.off('socialSideBetPlaced', onPlaced);
+      socket.off('socialSideBetSettled', onSettled);
       if (onConnectLoad) socket.off('connect', onConnectLoad);
     };
-  }, [socket]);
+  }, [socket, setChips]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -298,13 +340,17 @@ export default function SocialBracket({ socket: socketProp, onClose }) {
                 Side Bets
               </div>
               {!champion && (
-                <button
-                  className="sb-sidebet-add-btn"
-                  style={{ borderColor: activeTheme.accent + '66', color: activeTheme.accent }}
-                  onClick={() => setShowSideBet(true)}
-                >
-                  + Add Bet
-                </button>
+                isLoggedIn ? (
+                  <button
+                    className="sb-sidebet-add-btn"
+                    style={{ borderColor: activeTheme.accent + '66', color: activeTheme.accent }}
+                    onClick={() => setShowSideBet(true)}
+                  >
+                    + Add Bet
+                  </button>
+                ) : (
+                  <span className="sb-signin-hint">Sign in to place a chip side bet</span>
+                )
               )}
             </div>
             {(serverState.sideBets || []).length === 0 ? (
@@ -313,17 +359,34 @@ export default function SocialBracket({ socket: socketProp, onClose }) {
               <div className="sb-bets-list">
                 {serverState.sideBets.map((bet, idx) => {
                   const targetOut = players.find(p => p.name === bet.target)?.out;
+                  // Prefer the REAL server settlement when present: the bracket
+                  // has been settled and this row carries settled/payout. A
+                  // positive payout = won (parimutuel winnings) or refunded; a
+                  // zero payout on a settled row = lost. Falls back to the
+                  // cosmetic champion/eliminated inference only pre-settlement.
+                  const settled = serverState.sidebetsSettled || bet.settled;
+                  const payout = typeof bet.payout === 'number' ? bet.payout : null;
                   return (
                     <div key={idx} className="sb-bet-row">
                       <span className="sb-bet-bettor">{bet.bettor}</span>
                       <span className="sb-bet-arrow">→</span>
                       <span className="sb-bet-target" style={{ color: activeTheme.accent }}>{bet.target}</span>
                       <span className="sb-bet-amount">+{bet.amount.toLocaleString()}</span>
-                      {champion?.name === bet.target && (
-                        <span className="sb-bet-result sb-bet-result--won">Won!</span>
-                      )}
-                      {!champion && targetOut && (
-                        <span className="sb-bet-result sb-bet-result--lost">Lost</span>
+                      {settled ? (
+                        payout && payout > 0 ? (
+                          <span className="sb-bet-result sb-bet-result--won">+{payout.toLocaleString()}</span>
+                        ) : (
+                          <span className="sb-bet-result sb-bet-result--lost">Lost</span>
+                        )
+                      ) : (
+                        <>
+                          {champion?.name === bet.target && (
+                            <span className="sb-bet-result sb-bet-result--won">Won!</span>
+                          )}
+                          {!champion && targetOut && (
+                            <span className="sb-bet-result sb-bet-result--lost">Lost</span>
+                          )}
+                        </>
                       )}
                     </div>
                   );
@@ -341,6 +404,7 @@ export default function SocialBracket({ socket: socketProp, onClose }) {
           <SideBetModal
             players={activePlayers.map(p => p.name)}
             accent={activeTheme.accent}
+            available={availableChips}
             onClose={() => setShowSideBet(false)}
             onPlace={handleSideBet}
           />

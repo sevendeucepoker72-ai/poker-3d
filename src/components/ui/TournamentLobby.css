@@ -163,3 +163,28 @@
   background: rgba(120, 160, 255, 0.12);
   border-color: #7ba0ff;
 }
+
+/* GAP 15 — admin-only live tournament-director controls */
+.tournament-td-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+  margin-top: 8px;
+}
+.btn-tournament-td {
+  padding: 6px 16px;
+  border: 1px solid rgba(255, 210, 74, 0.5);
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: transparent;
+  color: #ffd24a;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-tournament-td:hover {
+  background: rgba(255, 210, 74, 0.12);
+  border-color: #ffd24a;
+}

@@ -253,6 +253,7 @@
   cursor: pointer;
 }
 .sb-no-bets { font-size: 10px; color: #334155; text-align: center; padding: 8px; }
+.sb-signin-hint { font-size: 10px; color: #94A3B8; font-style: italic; }
 .sb-bets-list { display: flex; flex-direction: column; gap: 4px; }
 .sb-bet-row {
   display: flex;
@@ -316,6 +317,9 @@
   outline: none;
   font-family: inherit;
 }
+.sbet-balance { font-size: 11px; color: #94A3B8; margin-top: 2px; }
+.sbet-balance-warn { color: #F59E0B; font-weight: 700; }
+.sbet-btn:disabled { cursor: not-allowed; }
 .sbet-btns { display: flex; gap: 8px; margin-top: 4px; }
 .sbet-btn { flex: 1; padding: 9px; border-radius: 8px; border: none; font-size: 13px; font-weight: 700; cursor: pointer; }
 .sbet-btn--cancel { background: rgba(255,255,255,0.06); color: #64748B; }

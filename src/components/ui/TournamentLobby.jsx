@@ -12,8 +12,15 @@ const TOURNAMENT_ICONS = {
 export default function TournamentLobby() {
   const [tournaments, setTournaments] = useState([]);
   const [registeredIds, setRegisteredIds] = useState(new Set());
+  // Live paused-state per running tournament, driven by the server's
+  // `tournamentPaused` / `tournamentResumed` broadcasts (GAP 15). Only
+  // meaningful for the admin TD controls below.
+  const [pausedIds, setPausedIds] = useState(new Set());
   const playerName = useGameStore((s) => s.playerName);
   const setScreen = useGameStore((s) => s.setScreen);
+  // Admin flag (set from the server's loginResult userData). Server enforces
+  // the actual privilege on every TD control emit; this only gates the UI.
+  const isAdmin = useGameStore((s) => s.isAdmin);
 
   useEffect(() => {
     const socket = getSocket();
@@ -27,6 +34,19 @@ export default function TournamentLobby() {
     };
     const handleStarted = (data) => {
       setScreen('table');
+    };
+    // GAP 15 — reflect live pause state pushed to the tournament's table rooms.
+    const handlePaused = (data) => {
+      if (!data?.tournamentId) return;
+      setPausedIds((prev) => new Set([...prev, data.tournamentId]));
+    };
+    const handleResumed = (data) => {
+      if (!data?.tournamentId) return;
+      setPausedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(data.tournamentId);
+        return next;
+      });
     };
     // Withdraw confirmation from the server — drop the registration locally and
     // surface any entry-fee refund. Server only allows this while 'registering'.
@@ -43,6 +63,8 @@ export default function TournamentLobby() {
     socket.on('tournamentRegistered', handleRegistered);
     socket.on('tournamentUnregistered', handleUnregistered);
     socket.on('tournamentStarted', handleStarted);
+    socket.on('tournamentPaused', handlePaused);
+    socket.on('tournamentResumed', handleResumed);
 
     const interval = setInterval(() => socket.emit('getTournaments'), 5000);
 
@@ -51,6 +73,8 @@ export default function TournamentLobby() {
       socket.off('tournamentRegistered', handleRegistered);
       socket.off('tournamentUnregistered', handleUnregistered);
       socket.off('tournamentStarted', handleStarted);
+      socket.off('tournamentPaused', handlePaused);
+      socket.off('tournamentResumed', handleResumed);
       clearInterval(interval);
     };
   }, [setScreen]);
@@ -65,6 +89,23 @@ export default function TournamentLobby() {
     const socket = getSocket();
     if (!socket) return;
     socket.emit('leaveTournament', { tournamentId });
+  };
+
+  // ── GAP 15: live TD controls (admin-only; server enforces the privilege) ──
+  const handleTogglePause = (tournamentId, paused) => {
+    const socket = getSocket();
+    if (!socket) return;
+    socket.emit('pauseTournament', { tournamentId, paused });
+  };
+  const handleAdvanceLevel = (tournamentId) => {
+    const socket = getSocket();
+    if (!socket) return;
+    socket.emit('advanceTournamentLevel', { tournamentId });
+  };
+  const handleRebalance = (tournamentId) => {
+    const socket = getSocket();
+    if (!socket) return;
+    socket.emit('rebalanceTournament', { tournamentId });
   };
 
   const formatTime = (timestamp) => {
@@ -85,6 +126,11 @@ export default function TournamentLobby() {
         {tournaments.map((t) => {
           const isRegistered = registeredIds.has(t.tournamentId);
           const icon = TOURNAMENT_ICONS[t.name] || '\uD83C\uDFC6';
+          // Prefer the server's authoritative paused flag from the polled list
+          // (an admin in the LOBBY isn't in the tournament's table room, so the
+          // tournamentPaused echo alone never reaches them); the echo just gives
+          // instant feedback between 5s polls.
+          const isPaused = !!t.paused || pausedIds.has(t.tournamentId);
 
           return (
             <div
@@ -173,8 +219,32 @@ export default function TournamentLobby() {
                 )}
                 {t.status === 'running' && (
                   <span style={{ color: '#4ADE80', fontSize: '0.8rem', fontWeight: 600 }}>
-                    In Progress
+                    {isPaused ? 'Paused' : 'In Progress'}
                   </span>
+                )}
+                {/* GAP 15 — admin-only live TD controls. Server re-checks the
+                    privilege on every emit, so this is UX gating only. */}
+                {isAdmin && t.status === 'running' && (
+                  <div className="tournament-td-controls">
+                    <button
+                      className="btn-tournament-td"
+                      onClick={() => handleTogglePause(t.tournamentId, !isPaused)}
+                    >
+                      {isPaused ? '▶ Resume' : '⏸ Pause'}
+                    </button>
+                    <button
+                      className="btn-tournament-td"
+                      onClick={() => handleAdvanceLevel(t.tournamentId)}
+                    >
+                      ⏭ Advance Level
+                    </button>
+                    <button
+                      className="btn-tournament-td"
+                      onClick={() => handleRebalance(t.tournamentId)}
+                    >
+                      ⚖ Rebalance Now
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
