@@ -54,6 +54,33 @@ export function getAuthToken() {
 }
 
 /**
+ * Bearer token for MASTER-API HTTP calls (avatars, push, notifications).
+ *
+ * 2026-07-14 platform-auth-uniformity fix — align .online with the three web
+ * SPAs (player-app tokenSelect.readBearerToken / admin readToken), which prefer
+ * the JWT access token but FALL BACK to the JWT id_token when the access token
+ * is OPAQUE (bridge / ticket / legacy grants that didn't carry
+ * resource=API_RESOURCE). The master API's requireAuth can't verify an opaque
+ * bearer ("Invalid Compact JWS" -> 401 under enforce), but it DOES accept the
+ * id_token (RS256 JWT, aud=client_id which is in REQUIRE_AUTH_AUDIENCES). The
+ * primary bearer (poker_auth_token) is the ACCESS token — a JWT for the common
+ * resource=API_RESOURCE login, so this is a no-op there.
+ *
+ * IMPORTANT: HTTP-ONLY. The Socket.io transport (socketService /
+ * multiTableManager) MUST keep sending the ACCESS token via getAuthToken():
+ * poker-server's JWKS path requires typ='at+jwt' and REJECTS id_tokens, so an
+ * id_token would break socket auth. Never route the socket through this.
+ */
+export function getHttpBearer() {
+  const isJwt = (t) => typeof t === 'string' && t.split('.').length === 3;
+  const at = getAuthToken();
+  const id = getOAuthItem('poker_oauth_id_token');
+  if (isJwt(at)) return at;   // JWT access token (RFC 9068) — preferred
+  if (isJwt(id)) return id;   // opaque AT -> fall back to the JWT id_token
+  return at || id || null;    // last resort
+}
+
+/**
  * Persist the auth token. If keep-signed-in is on (default), writes to
  * localStorage so the token survives tab close; otherwise writes to
  * sessionStorage only (dies with the tab).

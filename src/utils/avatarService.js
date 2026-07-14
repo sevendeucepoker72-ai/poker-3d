@@ -19,7 +19,7 @@
  *   const info = getAvatarInfo(playerId); // { type, url, emoji, ... } | null
  */
 
-import { getAuthToken } from '../services/tokenStorage';
+import { getHttpBearer } from '../services/tokenStorage';
 import { fetchWithTimeout } from './fetchWithTimeout';
 import { API_BASE as MASTER_API } from '../config';
 
@@ -40,7 +40,7 @@ const AVATAR_FETCH_TIMEOUT_MS = 8000;
  */
 function authHeaders(extra = {}) {
   const headers = { ...extra };
-  const token = getAuthToken();
+  const token = getHttpBearer();
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
 }
