@@ -714,8 +714,12 @@ async function _refreshAccessTokenFlow(refreshToken) {
           JSON.stringify({ token: lockToken, completedAt: Date.now() })
         );
       } catch {}
-      // Observability only — best-effort, after tokens are persisted.
-      try { logAuthEvent('refresh_success', { path: '/token' }); } catch {}
+      // 2026-08-13 sweep — success is counted server-side (auth-server
+      // grant.success -> refresh_success, origin='api') for ALL clients. This
+      // client ALSO emitted refresh_success here, double-counting .online
+      // successes and diluting the fleet failure rate the auth-health alerts
+      // compute. Removed to match the failure-side removal below (2026-07-07
+      // auth-health #8) and the three web SPAs.
       return data;
     }
 
