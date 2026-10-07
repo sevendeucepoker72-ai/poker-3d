@@ -166,3 +166,110 @@ tournamentStandings
 # built CSS selector and the className string, so a refactor that drops
 # the flyer fails the deploy guardrail.
 chip-fly
+
+# ─── 2026-08-17 — .online sign-in outage fixes (P0) ──────────────────
+# Symptom: "Play Online" failed ~2 of every 3 attempts for a week
+# (60 bridge_socket_auth_failed + 20 socket_timeout vs 41 login_success in
+# 7d, mobile-dominated). Proven from live logs: the auth-server minted a
+# valid token set, poker-server's introspection of it returned active:true
+# WITH the username claim, and the login was refused anyway — while the
+# client wiped the just-minted tokens and burned a blank 26s spinner.
+#
+# These mechanisms are locked here. Losing any of them silently re-opens
+# the outage, so the deploy must fail instead.
+#
+# 1) requestId attribution (services/socketAuth.js). FIVE auth flows share
+#    ONE socket and ONE global `loginResult` event; without the echoed id
+#    each flow accepts whichever result lands first, so the stale-token
+#    tokenLogin's instant rejection was consumed by the bridge handoff.
+#    Object-literal + member-access property name — survives minification.
+requestId
+# 2) The bridge no longer deletes valid credentials on a socket-auth
+#    failure; it resolves the spinner immediately and says why. Lock the
+#    user-facing copy (LoginScreen renders it via sessionExpiredNotice).
+We could not connect you to the game server. Please try signing in again.
+# 3) Guest-play watchdog (LOGIN-11) — "Play as Guest" could hang forever
+#    with both buttons disabled and no error.
+Couldn't reach the game server — please try again.
+# 4) New labelled telemetry reason for the boot-refresh socket auth path,
+#    so a failure there is distinguishable from the bridge's on the
+#    Auth Health dashboard.
+boot_refresh_socket_auth_failed
+# 5) The bridge token exchange has a hard deadline, and a bridge failure
+#    FALLS BACK to the local refresh/legacy paths. Sequencing the boot flows
+#    made startLocalAutoLogin() reachable only from behind
+#    `await consumeBridgeIfPresent()`, so a hung fetch (no timeout, no
+#    AbortController) meant ZERO auto-login attempts and a user stranded on
+#    LoginScreen holding a valid 180-day refresh token. Mobile-dominated, so
+#    this is the common case.
+#
+#    2026-08-17 TOKEN CORRECTION (feature UNCHANGED — read the diff carefully).
+#    This block used to lock `BRIDGE_EXCHANGE_TIMEOUT_MS`, an exported const
+#    NAME. That violates this file's own minification-safety rule, and it was
+#    passing for an accidental reason: App.jsx dynamically imported
+#    services/bridge, so Rollup emitted a 115-byte re-export facade chunk whose
+#    literal `export{t as BRIDGE_EXCHANGE_TIMEOUT_MS}` statement was the only
+#    place that string survived. The token was therefore asserting the existence
+#    of a build artifact, not of a feature.
+#
+#    That facade was itself the P2 bug: an un-preloaded, uncached, blocking
+#    network round-trip on the critical path of every bridged sign-in, whose
+#    stall produced zero auto-login attempts. App.jsx now imports bridge
+#    STATICALLY (the module was already in the eager main chunk — Rollup
+#    reported INEFFECTIVE_DYNAMIC_IMPORT), the facade chunk is gone, and the
+#    const name is minified away as it always should have been.
+#
+#    Replaced with LITERAL STRINGS that prove the same two mechanisms are
+#    compiled in: the deadline's telemetry reason (App.jsx) and the
+#    unparseable-body guard that lives beside the AbortController (bridge.js).
+bridge_exchange_timeout
+bad-token-response
+# 6) The deep-link ticket flow (authWithTicket / joinWithWaitlistContext) is
+#    routed through runSocketLogin like every other flow. Because socketAuth
+#    accepts un-echoed frames for back-compat, ONE unconverted flow keeps the
+#    cross-talk bug live in BOTH directions permanently. `reemitOnReconnect`
+#    is what stops the re-emit from burning the one-shot ticket
+#    (server-side markTicketUsed answers a replay `ticket_replayed`).
+#
+#    2026-08-17 CORRECTION — an earlier version of this note called it "the
+#    last un-attributed loginResult consumer". That was wrong, and the error
+#    was on the SERVER side: this flow has TWO server handlers, and
+#    `joinWithWaitlistContext` emitted no `loginResult` on any branch at all
+#    (failures went to `error`, success to `gameState`). Routing it through a
+#    requestId-SCOPED listener therefore guaranteed a 15s watchdog timeout on
+#    every at-venue waitlist deep-link — while the server had already seated
+#    the player and deducted their buy-in — and injected a fabricated
+#    `login_failed` row, origin `online`, into the exact dashboard bucket this
+#    work exists to make trustworthy. poker-server's handler now answers on
+#    `loginResult` on every terminal branch, success included.
+reemitOnReconnect
+deeplink_ticket_auth_failed
+# The waitlist deep-link's own labelled telemetry reason. Locked so the flow
+# cannot silently regress to being answered by another flow's frame.
+waitlist_ticket_auth_failed
+# 7) Credential-deletion boundary. A socket-auth failure is NOT proof a
+#    credential is dead; only the server saying it rejected THAT token is.
+#    `identity_conflict` is the one refusal that must NOT fall through to
+#    another credential (the server would refuse it for the same reason).
+identity_conflict
+# 8) 2026-10-06 review fixes for the 2026-08-17 batch (ASCII-only tokens).
+#  a) The OIDC callback LEAVES <AuthCallback/>. App.jsx latched
+#     isOAuthCallback at mount, and HEAD's only exit was a 25s timer that
+#     reloaded to '/'. runSocketLogin clears its watchdog on success, so a
+#     successful sign-in sat on "Signing in..." forever. AuthCallback now calls
+#     App's handleAuthCallbackExit (logs the tag below) on success, and every
+#     socket-login failure reloads to '/' so the boot refresh path retries
+#     with the stored tokens (logs the reload tag).
+[auth-callback-exit]
+[auth-callback-reload]
+#  b) One-shot ticket flows (authWithTicket / joinWithWaitlistContext): the
+#     watchdog starts when the ticket is EMITTED, not when the flow starts,
+#     and a timeout is a notice, not a teardown -- the ORIGINAL requestId's
+#     late success is still accepted (the server burned the ticket on
+#     receipt, so a re-emit can only be answered ticket_replayed). Retry keeps
+#     waiting on the original request instead of re-sending it.
+#     Object-literal property names -- survive minification.
+armWatchdogOnEmit
+keepListeningAfterTimeout
+connectStallMs
+ticket_late_success

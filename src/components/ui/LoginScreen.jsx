@@ -40,12 +40,38 @@ export default function LoginScreen() {
   const tables = useTableStore((s) => s.tables);
   const totalOnline = tables.reduce((sum, t) => sum + (t.playerCount || 0), 0);
 
+  // 2026-08-17 LOGIN-11 — guest-play watchdog. handleGuestPlay used to
+  // setLoading(true) and fire-and-forget `register`; the ONLY thing that ever
+  // cleared the flag was a registerResult that came back. If the socket died
+  // between the `.connected` precheck and the reply (Railway cold start,
+  // network blip, backgrounded tab), the spinner ran forever with BOTH buttons
+  // disabled and no error — the page had to be reloaded. Every other socket-auth
+  // path in this app carries a watchdog; this one didn't.
+  const guestTimerRef = useRef(null);
+  // 2026-08-17 — ABORT flag for the guest attempt. The watchdog fixed the
+  // forever-spinner but introduced its mirror image: a `registerResult` that
+  // arrives AFTER the 25s timeout still ran the full success path and called
+  // login(...), signing the user in underneath a visible
+  // "Couldn't reach the game server" error — the UI says failed, the app says
+  // signed in. Once an attempt is abandoned (timeout or disconnect) its late
+  // reply must be ignored entirely; the user has already been told to retry,
+  // and the retry starts a fresh attempt.
+  const guestAbortedRef = useRef(false);
+  const clearGuestTimer = () => {
+    if (guestTimerRef.current) { clearTimeout(guestTimerRef.current); guestTimerRef.current = null; }
+  };
+  useEffect(() => clearGuestTimer, []);
+
   // Listen for guest register result
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
 
     const handleRegisterResult = (result) => {
+      // Late reply to an abandoned attempt — the user is already looking at an
+      // error and may have moved on. Do not sign them in behind it.
+      if (guestAbortedRef.current) return;
+      clearGuestTimer();
       setLoading(false);
       if (result.success) {
         // Route the token to localStorage when "Keep me signed in" is on
@@ -59,8 +85,22 @@ export default function LoginScreen() {
       }
     };
 
+    // A server-forced or transient disconnect must also release the UI —
+    // otherwise the buttons stay disabled until a reload.
+    const handleDisconnect = () => {
+      if (!guestTimerRef.current) return; // no guest attempt in flight
+      guestAbortedRef.current = true;
+      clearGuestTimer();
+      setLoading(false);
+      setError('Lost connection to the game server — please try again.');
+    };
+
     socket.on('registerResult', handleRegisterResult);
-    return () => socket.off('registerResult', handleRegisterResult);
+    socket.on('disconnect', handleDisconnect);
+    return () => {
+      socket.off('registerResult', handleRegisterResult);
+      socket.off('disconnect', handleDisconnect);
+    };
   }, [login, rememberMe]);
 
   const handleSSOLogin = () => {
@@ -93,8 +133,23 @@ export default function LoginScreen() {
       setError('Not connected to server. Please wait...');
       return;
     }
+    setError('');
     setLoading(true);
+    // Fresh attempt — re-arm the abort flag so a previous abandoned attempt's
+    // state can't suppress this one's result.
+    guestAbortedRef.current = false;
     socket.emit('register', { username: guestName, password: randomGuestPassword() });
+    // 25s matches the OAuth paths (AuthCallback + App boot). Fires only as a
+    // safety net — registerResult or 'disconnect' normally clears it first.
+    clearGuestTimer();
+    guestTimerRef.current = setTimeout(() => {
+      guestTimerRef.current = null;
+      // Abandon this attempt: a registerResult that arrives after this point
+      // must NOT call login() beneath the error we're about to show.
+      guestAbortedRef.current = true;
+      setLoading(false);
+      setError("Couldn't reach the game server — please try again.");
+    }, 25000);
   };
 
   return (

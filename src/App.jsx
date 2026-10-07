@@ -1,7 +1,27 @@
 import { useEffect, useState, useRef, Component, lazy, Suspense } from 'react';
 import { useGameStore } from './store/gameStore';
 import { useTableStore } from './store/tableStore';
-import { getAuthToken, setAuthToken, clearAuthToken, isKeepSignedIn } from './services/tokenStorage';
+import { getAuthToken, setAuthToken, clearAuthToken, setOAuthItem } from './services/tokenStorage';
+import { runSocketLogin, isCredentialDead, isDefinitiveLoginFailure } from './services/socketAuth';
+// 2026-08-17 P2 — STATIC, deliberately. This was `await import('./services/
+// bridge')` inside the boot-auth IIFE, and the comment there claimed the
+// Promise.race below covered "a dynamic-import stall". It could not: the import
+// was awaited BEFORE the race was constructed, so a stalled module fetch hung
+// the whole boot sequence with the deadline not yet armed.
+//
+// And the fetch was real. Rollup reports INEFFECTIVE_DYNAMIC_IMPORT for this
+// module (PlayerAppPushBanner.jsx already imports it statically, so the code
+// itself lives in the eager main chunk) — but it still emitted a separate
+// 115-byte re-export facade, `assets/bridge-*.js`, which index.html does NOT
+// modulepreload. So the dynamic import bought zero code-splitting and cost one
+// uncached, un-preloaded, blocking network round-trip on the critical path of
+// every bridged sign-in. On the flaky mobile uplinks that dominate this outage,
+// a stall there produced ZERO auto-login attempts — the exact outcome this work
+// exists to eliminate.
+//
+// Static import removes the round-trip and the failure mode outright, at no
+// byte cost (the module was already in the main chunk). Keep it static.
+import { consumeBridgeIfPresent, BRIDGE_EXCHANGE_TIMEOUT_MS } from './services/bridge';
 import FriendlyErrorFallback from './components/ui/FriendlyErrorFallback';
 
 // Root ErrorBoundary (2026-04-22 audit fixes).
@@ -223,7 +243,27 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [loadingExiting, setLoadingExiting] = useState(false);
   // OAuth2 callback detection
-  const [isOAuthCallback] = useState(() => checkIsAuthCallback());
+  //
+  // 2026-10-06 — resettable. This used to be a mount-only latch with no
+  // setter, so <AuthCallback/> stayed on screen until a full page load. HEAD's
+  // only way out was AuthCallback's always-firing 25s timer that reloaded to
+  // '/'; once the socket login was routed through runSocketLogin (which clears
+  // its watchdog on success) a SUCCESSFUL sign-in sat on "Signing in..."
+  // forever. AuthCallback now calls handleAuthCallbackExit when it is done.
+  const [isOAuthCallback, setIsOAuthCallback] = useState(() => checkIsAuthCallback());
+  // Set when the callback exits signed in (or with a definitive refusal), so
+  // the boot auto-login effect — which re-runs when isOAuthCallback flips to
+  // false — does not start a second, redundant login on the same socket.
+  const skipBootAutoLoginRef = useRef(false);
+  const handleAuthCallbackExit = ({ signedIn = false, notice = null } = {}) => {
+    console.warn('[auth-callback-exit]', signedIn ? 'signed-in' : (notice ? 'refused' : 'to-login'));
+    if (signedIn || notice) skipBootAutoLoginRef.current = true;
+    if (notice) {
+      try { useGameStore.setState({ sessionExpiredNotice: notice }); } catch { /* best-effort */ }
+    }
+    try { window.history.replaceState({}, '', '/'); } catch { /* ignore */ }
+    setIsOAuthCallback(false);
+  };
   // Shared replay link — show viewer without requiring login
   const [sharedReplay] = useState(() => parseReplayParam());
   const [overlayConfig] = useState(() => parseOverlayParam());
@@ -1075,22 +1115,43 @@ function App() {
   useEffect(() => {
     // Skip auto-login if we're handling an OAuth callback
     if (isOAuthCallback) return;
+    // ...or if that callback already signed this tab in (it re-runs this
+    // effect by resetting isOAuthCallback — see handleAuthCallbackExit).
+    if (skipBootAutoLoginRef.current) return;
 
     let cancelled = false;
+    let cancelBridgeLogin = null;
+    let cancelRefreshLogin = null;
+    let cancelLegacyLogin = null;
+    let localAutoLoginStarted = false;
     const socket = getSocket();
     if (!socket) return;
 
-    const clearStoredTokens = () => {
-      // Clear BOTH stores for each key so localStorage-backed "Keep me
-      // signed in" sessions are also purged on auto-login failure.
-      clearAuthToken();
-      // F2 (2026-07-01 audit): include poker_oauth_access — it was omitted, so
-      // a live access token survived logout in localStorage.
-      for (const k of ['poker_keep_signed_in','poker_oauth_access','poker_oauth_refresh','poker_oauth_id_token','poker_token_expiry']) {
-        try { localStorage.removeItem(k); } catch {}
-        try { sessionStorage.removeItem(k); } catch {}
-      }
-    };
+    // 2026-08-17 — the wholesale credential wipe that used to run on ANY
+    // socket-auth failure is GONE from the login paths. Two narrower rules
+    // replace it:
+    //   • the refresh path deletes tokens only on a NON-transient token-endpoint
+    //     rejection (the catch below), never on a network blip;
+    //   • the legacy path deletes ONLY the legacy token, and only when
+    //     socketAuth.isCredentialDead says the server actually rejected that
+    //     token (tryLegacyAutoLogin below).
+    // A socket-auth failure on its own is not evidence any credential is dead.
+
+    // 2026-08-17 — SEQUENCE the boot auth flows instead of racing them.
+    //
+    // A bridged arrival used to start the bridge exchange AND (synchronously,
+    // milliseconds earlier) the local refresh / stale-token auto-login, all on
+    // the same socket. That is what produced two `oauthLogin`/`tokenLogin`
+    // emits inside the same tick — visible in the auth-server log as two
+    // introspections 5ms apart, one of a dead token and one of the fresh
+    // bridge token. When a #bridge_id_token is present the bridge is the
+    // authoritative credential, so the local paths now WAIT and only run if the
+    // bridge doesn't produce a session. requestId scoping (socketAuth.js) is
+    // the belt; this is the braces.
+    const hasBridgeHandoff = (() => {
+      try { return new URLSearchParams((window.location.hash || '').replace(/^#/, '')).has('bridge_id_token'); }
+      catch { return false; }
+    })();
 
     // 2026-05-07 — Bridge-token boot consumer. If we arrived via a link
     // from another American Pub Poker site, the URL fragment contains
@@ -1099,97 +1160,181 @@ function App() {
     // no-op (consumeBridgeIfPresent returns reason='no-bridge').
     (async () => {
       try {
-        const { consumeBridgeIfPresent } = await import('./services/bridge');
-        const result = await consumeBridgeIfPresent();
+        // 2026-08-17 P1 — RACE the exchange against a deadline.
+        //
+        // Sequencing the boot flows made startLocalAutoLogin() reachable ONLY
+        // from inside this IIFE, behind this await. bridge.js now aborts its
+        // own fetch, but this second deadline is deliberate belt-and-braces:
+        // if the promise never settles for ANY reason (a browser that ignores
+        // the abort signal, a suspended tab resuming mid-fetch), the
+        // refresh-token and legacy paths would never run and the user would
+        // reach LoginScreen having attempted NOTHING — while holding a valid
+        // 180-day refresh token. Pre-sequencing, the parallel refresh path
+        // would simply have signed them in.
+        //
+        // NOTE — an earlier revision of this comment also claimed the race
+        // covered "a dynamic-import stall". It never did (the import was
+        // awaited before the race was built) and it no longer needs to: the
+        // bridge module is now a STATIC import at the top of this file. See
+        // that import for the measurement that forced the change.
+        //
+        // +1500ms over the fetch's own budget so the inner abort normally wins
+        // and we get its specific reason; this only fires if that fails.
+        const TIMEOUT = Symbol('bridge-exchange-timeout');
+        let raceTimer = null;
+        const result = await Promise.race([
+          consumeBridgeIfPresent(),
+          new Promise((resolve) => {
+            raceTimer = setTimeout(() => resolve(TIMEOUT), (BRIDGE_EXCHANGE_TIMEOUT_MS || 20000) + 1500);
+          }),
+        ]).finally(() => { if (raceTimer) clearTimeout(raceTimer); });
         if (cancelled) return;
+        if (result === TIMEOUT) {
+          try { logAuthEvent('login_failed', { reason: 'bridge_exchange_timeout' }); } catch {}
+          setBridgePending(false);
+          startLocalAutoLogin();
+          return;
+        }
         // 2026-07-06 audit P2 — token exchange resolved (ok or not). If it
         // failed (no bridge / exchange error), drop the spinner NOW so the user
         // falls straight to LoginScreen instead of waiting. On success we keep
         // the spinner until oauthLogin flips isLoggedIn (handleResult below), so
         // the lobby only appears once the socket is actually authenticated.
-        if (!result?.ok) { setBridgePending(false); return; }
+        if (!result?.ok) {
+          // bridge.js's own AbortController deadline normally wins the race
+          // above, so log its timeout under the same reason — otherwise the
+          // deadline firing would be invisible on the Auth Health dashboard.
+          if (result?.reason === 'timeout') {
+            try { logAuthEvent('login_failed', { reason: 'bridge_exchange_timeout', via: 'abort' }); } catch {}
+          }
+          setBridgePending(false);
+          startLocalAutoLogin();
+          return;
+        }
         // Tokens are now persisted. Drive the same socket-side oauthLogin
         // flow the refresh path uses (extracted as runOauthLoginViaSocket).
         const tokens = result.tokens;
-        if (!tokens?.access_token) return;
-        let resultListener = null;
-        let connectHandler = null;
-        let timeoutId = null;
-        const handleResult = (r) => {
-          if (cancelled) return;
-          socket.off('loginResult', handleResult);
-          resultListener = null;
-          // 2026-05-19 — also remove the 'connect' re-emit listener so it
-          // doesn't keep re-firing oauthLogin on future reconnects of
-          // this socket (would duplicate audit events + race a future
-          // graceful logout).
-          if (connectHandler) {
-            socket.off('connect', connectHandler);
-            connectHandler = null;
-          }
-          if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
-          if (r?.success && r.userData) {
-            try { logAuthEvent('login_success', { via: 'bridge' }); } catch {}
-            useGameStore.getState().oauthLogin(tokens, r.userData);
-          } else {
-            try { logAuthEvent('login_failed', { reason: 'bridge_socket_auth_failed' }); } catch {}
-            clearStoredTokens();
-          }
+        if (!tokens?.access_token) { setBridgePending(false); startLocalAutoLogin(); return; }
+        // 2026-08-17 OUTAGE FIX. Three things changed here, all forced by live
+        // evidence that this branch was firing on results that weren't ours and
+        // then destroying valid credentials:
+        //
+        //  (a) runSocketLogin tags the emit with a requestId and ignores any
+        //      loginResult carrying someone else's — the stale-token
+        //      `tokenLogin` this app fires CONCURRENTLY on the same socket
+        //      (tryLegacyAutoLogin, below) can no longer be mistaken for the
+        //      bridge's own answer. See services/socketAuth.js.
+        //  (b) a socket-auth failure NO LONGER calls clearStoredTokens(). The
+        //      auth-server minted these tokens seconds ago; they are valid for
+        //      the master API and for a retry. poker-server declining to seat
+        //      the socket is not evidence the credential is dead, and wiping it
+        //      is what forced a full re-authentication (and, for one user, a
+        //      global sign-out that killed their americanpub.poker session too).
+        //  (c) we resolve the spinner IMMEDIATELY and say what happened,
+        //      instead of leaving bridgePending true and burning the blanket
+        //      26s watchdog before showing a bare LoginScreen.
+        //
+        //  (d) 2026-08-17 P1 — and it now RECOVERS. Setting bridgePending=false
+        //      plus a notice was still "we hold valid credentials and refuse to
+        //      use them": a user with a live 180-day refresh token who hit any
+        //      bridge hiccup was dropped on the login screen with those tokens
+        //      retained and unused. Every non-definitive failure now falls
+        //      through to startLocalAutoLogin(), which is exactly what would
+        //      have signed them in before the flows were sequenced.
+        //
+        // DEFINITIVE vs RECOVERABLE, and why the list is this short:
+        //   Definitive = "this credential is dead, retrying with a DIFFERENT
+        //   stored credential is pointless AND the user must act". Only the
+        //   token endpoint's `invalid_grant` / `token_revoked` prove that, and
+        //   they arrive on the refresh path (authService's
+        //   RefreshTokenRevokedError), never on a socket loginResult. See
+        //   services/socketAuth.js:isCredentialDead — the single definition
+        //   both call sites share.
+        //   `identity_conflict` is added here as definitive for a different
+        //   reason: it is a deliberate server-side REFUSAL (the local row
+        //   belongs to another master account), so retrying with any other
+        //   credential this browser holds cannot help and would only produce a
+        //   second confusing failure. The user needs support, not a retry.
+        // Everything else — maintenance, user_upsert_failed, a Railway blip, an
+        // unlabelled fault, a timeout — is recoverable: try the local paths.
+        const finishBridge = (noticeKey, detail, { recover = true } = {}) => {
+          try { logAuthEvent('login_failed', detail); } catch {}
+          setBridgePending(false);
+          try {
+            useGameStore.setState({ sessionExpiredNotice: noticeKey });
+          } catch { /* notice is best-effort */ }
+          // Deferred a tick so the notice/state above lands first and a
+          // synchronous re-entry can't race setBridgePending.
+          if (recover) setTimeout(() => { if (!cancelled) startLocalAutoLogin(); }, 0);
         };
-        const doAuth = () => {
-          if (cancelled) return;
-          socket.emit('oauthLogin', { accessToken: tokens.access_token });
-        };
-        resultListener = handleResult;
-        socket.on('loginResult', handleResult);
-        // 2026-05-19 — bridge handoff (Play Online from americanpub.poker
-        // → americanpubpoker.online via #bridge_id_token=...) used to use
-        // `.once('connect', doAuth)`, which fired only on the FIRST
-        // connect of this socket. If the socket disconnected between
-        // that emit and the server's `loginResult` response (Railway
-        // scale-up cold start, Safari background throttle, network
-        // blip), the server's emit landed on a dead socket and the
-        // client's 12s timeout silently cleaned up without a status
-        // message — user stuck on "Signing in…" forever. Switching to
-        // a persistent `.on('connect', doAuth)` re-fires oauthLogin on
-        // every reconnect; handleResult above removes both listeners on
-        // success so we don't keep re-emitting.
-        connectHandler = doAuth;
-        socket.on('connect', doAuth);
-        if (socket.connected) doAuth();
-        timeoutId = setTimeout(() => {
-          if (cancelled) return;
-          timeoutId = null;
-          try { logAuthEvent('login_failed', { reason: 'bridge_socket_timeout' }); } catch {}
-          if (resultListener) {
-            socket.off('loginResult', resultListener);
-            resultListener = null;
-          }
-          if (connectHandler) {
-            socket.off('connect', connectHandler);
-            connectHandler = null;
-          }
-        }, 25000);
-        // 2026-05-26 — bumped 12s → 25s to match AuthCallback after
-        // live-reproducing "Login timed out — please try again" on
-        // .online. Bridge handoff races the same Railway-cold-start +
-        // socket.io handshake the auth-callback path does; 12s wasn't
-        // enough headroom for the 5–8s websocket upgrade on a cold edge.
+        cancelBridgeLogin = runSocketLogin({
+          socket,
+          event: 'oauthLogin',
+          payload: { accessToken: tokens.access_token },
+          label: 'bridge',
+          // 25s covers worst-case Railway cold start (websocket upgrade can
+          // take 5–8s on a cold edge POP) + introspection + /me.
+          timeoutMs: 25000,
+          isCancelled: () => cancelled,
+          onResult: (r) => {
+            if (r?.success && r.userData) {
+              try { logAuthEvent('login_success', { via: 'bridge' }); } catch {}
+              useGameStore.getState().oauthLogin(tokens, r.userData);
+              return;
+            }
+            // Carry the server's own reason through to telemetry. Discarding
+            // it is why this outage was undiagnosable for weeks: the row said
+            // "bridge_socket_auth_failed" and nothing else, while the server
+            // knew exactly which branch it took.
+            const definitive = isDefinitiveLoginFailure(r);
+            finishBridge(
+              definitive
+                ? 'This account could not be matched securely. Please contact support.'
+                : 'We could not connect you to the game server. Please try signing in again.',
+              {
+                reason: 'bridge_socket_auth_failed',
+                code: String(r?.code || 'unlabelled').slice(0, 64),
+                error: String(r?.error || '').slice(0, 200),
+              },
+              { recover: !definitive }
+            );
+          },
+          onTimeout: () => {
+            finishBridge(
+              'The game server did not respond. Please try signing in again.',
+              { reason: 'bridge_socket_timeout' }
+            );
+          },
+        });
       } catch {
-        // Silent failure — fall through to the normal boot path below.
+        // Silent failure — fall through to the normal boot path.
+        setBridgePending(false);
+        startLocalAutoLogin();
       }
     })();
 
-    // Attempt OAuth refresh token flow — check localStorage first
-    // (keep-signed-in) then sessionStorage fallback.
-    const oauthRefresh = (() => {
-      try { return localStorage.getItem('poker_oauth_refresh') || sessionStorage.getItem('poker_oauth_refresh'); }
-      catch { return null; }
-    })();
-    if (oauthRefresh) {
-      let oauthResultListener = null;
-      let oauthConnectHandler = null;
-      let oauthTimeoutId = null;
+    // The local (non-bridge) boot paths: refresh-token first, legacy token
+    // second. Runs immediately on a normal load; on a bridged arrival it is
+    // deferred until the bridge handoff resolves without a session.
+    function startLocalAutoLogin() {
+      if (cancelled || localAutoLoginStarted) return;
+      localAutoLoginStarted = true;
+
+      // Attempt OAuth refresh token flow — check localStorage first
+      // (keep-signed-in) then sessionStorage fallback.
+      const oauthRefresh = (() => {
+        try { return localStorage.getItem('poker_oauth_refresh') || sessionStorage.getItem('poker_oauth_refresh'); }
+        catch { return null; }
+      })();
+      if (!oauthRefresh) {
+        // 2026-05-07 — iframe-based silent SSO retired (broken in modern Chrome
+        // CHIPS semantics). Cross-site SSO now flows through LoginScreen + a
+        // top-level redirect to /authorize when the user clicks "Sign In". If
+        // the auth-server SSO cookie is alive, the redirect auto-bounces back
+        // with a code; otherwise the password form shows.
+        tryLegacyAutoLogin();
+        return;
+      }
 
       refreshAccessToken(oauthRefresh)
         .then((rawTokens) => {
@@ -1213,95 +1358,87 @@ function App() {
           };
           // Use tokenStorage so the access token respects "Keep me signed in".
           setAuthToken(tokens.access_token);
-          // OAuth refresh token / id token / expiry: also route to the
-          // same storage the auth token went to (localStorage if
-          // keep-signed-in, sessionStorage otherwise).
-          const keep = isKeepSignedIn();
-          const store = keep ? localStorage : sessionStorage;
-          if (rawTokens.refresh_token) { try { store.setItem('poker_oauth_refresh', rawTokens.refresh_token); } catch {} }
-          if (rawTokens.id_token) { try { store.setItem('poker_oauth_id_token', rawTokens.id_token); } catch {} }
-          if (rawTokens.expires_in != null) { try { store.setItem('poker_token_expiry', String(Date.now() + Number(rawTokens.expires_in) * 1000)); } catch {} }
+          // 2026-08-17 LOGIN-4 — these three used to be raw setItem on the
+          // keep-signed-in store, which WROTE one store without SWEEPING the
+          // other. The read path (getOAuthItem / App.jsx:1184) prefers
+          // localStorage, so a session-only login left the PREVIOUS user's
+          // persistent refresh token in place and the next boot on a shared
+          // venue laptop signed in as them. setOAuthItem writes one store and
+          // removes the key from the other, so exactly one copy can exist.
+          if (rawTokens.refresh_token) setOAuthItem('poker_oauth_refresh', rawTokens.refresh_token);
+          if (rawTokens.id_token) setOAuthItem('poker_oauth_id_token', rawTokens.id_token);
+          if (rawTokens.expires_in != null) {
+            setOAuthItem('poker_token_expiry', String(Date.now() + Number(rawTokens.expires_in) * 1000));
+          }
 
-          const handleResult = (result) => {
-            if (cancelled) return;
-            socket.off('loginResult', handleResult);
-            oauthResultListener = null;
-            // 2026-05-19 — also remove the persistent 'connect' re-emit
-            // listener so it doesn't keep firing oauthLogin on every
-            // future reconnect of this socket.
-            if (oauthConnectHandler) {
-              socket.off('connect', oauthConnectHandler);
-              oauthConnectHandler = null;
-            }
-            if (oauthTimeoutId) {
-              clearTimeout(oauthTimeoutId);
-              oauthTimeoutId = null;
-            }
-            if (result?.success && result.userData) {
-              useGameStore.getState().oauthLogin(tokens, result.userData);
-            } else {
-              clearStoredTokens();
-            }
-          };
-
-          const doAuth = () => {
-            if (cancelled) return;
-            socket.emit('oauthLogin', { accessToken: tokens.access_token });
-          };
-
-          oauthResultListener = handleResult;
-          socket.on('loginResult', handleResult);
-          // 2026-05-19 — persistent 'connect' listener (was `.once`) so a
-          // socket reconnect mid-login re-emits oauthLogin to the new
-          // socket. Server's `loginResult` emit follows the latest
-          // connection, listener catches it, handleResult clears both.
-          // See AuthCallback.jsx for the full rationale.
-          oauthConnectHandler = doAuth;
-          socket.on('connect', doAuth);
-          if (socket.connected) doAuth();
-          // 25s watchdog: covers worst-case Railway cold-start
-          // (socket.io websocket upgrade can take 5–8s on a cold edge
-          // POP) plus introspect + /me (~6s each). Bumped 12s → 25s
-          // 2026-05-26 after live-reproducing "Login timed out — please
-          // try again" on .online; see AuthCallback.jsx for the same
-          // fix and the full timeline. Fires only as a safety net; the
-          // re-emit-on-reconnect path above is the primary fix.
-          oauthTimeoutId = setTimeout(() => {
-            if (cancelled) return;
-            oauthTimeoutId = null;
-            if (oauthResultListener) {
-              socket.off('loginResult', oauthResultListener);
-              oauthResultListener = null;
-            }
-            if (oauthConnectHandler) {
-              socket.off('connect', oauthConnectHandler);
-              oauthConnectHandler = null;
-            }
-          }, 25000);
+          // 2026-08-17 — requestId-scoped (see services/socketAuth.js): this
+          // flow can run at the same instant as the bridge handoff and the
+          // legacy tokenLogin on the SAME socket, and previously accepted
+          // whichever loginResult landed first regardless of owner.
+          //
+          // The failure branch no longer calls clearStoredTokens(). The
+          // refresh we JUST completed proves the credential is alive; a socket
+          // rejection from poker-server does not disprove it. The old code
+          // deleted a working session on any server-side hiccup.
+          cancelRefreshLogin = runSocketLogin({
+            socket,
+            event: 'oauthLogin',
+            payload: { accessToken: tokens.access_token },
+            label: 'boot-refresh',
+            // 25s watchdog: worst-case Railway cold start (websocket upgrade
+            // 5–8s on a cold edge POP) plus introspect + /me.
+            timeoutMs: 25000,
+            isCancelled: () => cancelled,
+            onResult: (result) => {
+              if (result?.success && result.userData) {
+                useGameStore.getState().oauthLogin(tokens, result.userData);
+                return;
+              }
+              try {
+                logAuthEvent('login_failed', {
+                  reason: 'boot_refresh_socket_auth_failed',
+                  code: String(result?.code || 'unlabelled').slice(0, 64),
+                  error: String(result?.error || '').slice(0, 200),
+                });
+              } catch {}
+            },
+            onTimeout: () => {
+              try { logAuthEvent('login_failed', { reason: 'boot_refresh_socket_timeout' }); } catch {}
+            },
+          });
         })
-        .catch(() => {
+        .catch((err) => {
           if (cancelled) return;
           // PWA audit #3: iOS Safari / PWA Storage Access API evicts
           // localStorage after ~7 days of no app interaction. When the
           // user comes back, the refresh token we saved is gone AND the
           // call fails silently. Previously this path tried a legacy
           // auto-login which also has no valid token — so the UI got
-          // stuck on "Signing in…" forever. Clear BOTH stores and hand
-          // off to the legacy path; if it also fails we land cleanly
-          // on the login screen rather than infinite-spinnering.
+          // stuck on "Signing in…" forever.
+          //
+          // 2026-08-17 LOGIN-6 — but this catch used to take NO argument and
+          // wipe the session for ANY rejection, including
+          // RefreshTokenTransientError (a 12s fetch timeout on bar wifi, a DNS
+          // blip, being offline). Twelve seconds of bad signal permanently
+          // destroyed a 180-day "keep me signed in" session that was never
+          // revoked. Only a DEFINITIVE invalid_grant justifies deleting it.
+          const transient = err?.name === 'RefreshTokenTransientError'
+            || err?.transient === true
+            || /network|timeout|abort|failed to fetch/i.test(String(err?.message || ''));
+          if (transient) {
+            try { logAuthEvent('refresh_transient', { reason: 'boot_refresh', keptSession: true }); } catch {}
+            // Leave every token in place and fall through to the legacy path,
+            // which will simply do nothing if there is no legacy token. The
+            // next boot (or authScheduler's retry) picks the session back up.
+            tryLegacyAutoLogin();
+            return;
+          }
           for (const k of ['poker_oauth_refresh','poker_oauth_id_token','poker_token_expiry','poker_auth_token']) {
             try { localStorage.removeItem(k);   } catch {}
             try { sessionStorage.removeItem(k); } catch {}
           }
           tryLegacyAutoLogin();
         });
-
-      return () => {
-        cancelled = true;
-        if (oauthTimeoutId) clearTimeout(oauthTimeoutId);
-        if (oauthResultListener) socket.off('loginResult', oauthResultListener);
-        if (oauthConnectHandler) socket.off('connect', oauthConnectHandler);
-      };
     }
 
     // Legacy token auto-login (existing HS256 JWT).
@@ -1312,48 +1449,73 @@ function App() {
       const savedToken = getAuthToken();
       if (!savedToken) return;
 
-      let timeoutId = null;
+      // 2026-08-17 — THIS is the flow that broke the bridge handoff.
+      //
+      // On a returning player's phone a stale `poker_auth_token` is almost
+      // always present, so this fires on EVERY boot — including the boot that
+      // is simultaneously consuming a #bridge_id_token. The server answers a
+      // dead token with `loginResult{success:false}` in ~15ms while the bridge's
+      // own oauthLogin is still doing introspection + DB work, and (pre-fix)
+      // every `loginResult` listener on the socket received it. The bridge
+      // treated this rejection as its own and wiped its freshly-minted tokens.
+      //
+      // Two changes: requestId scoping so this result reaches only this flow,
+      // and a failure path that clears ONLY the legacy token it just proved
+      // dead — never the OAuth credentials, which it knows nothing about.
+      //
+      // 2026-08-17 P3 — "proved dead" is now enforced, not assumed. This is the
+      // ONE remaining place in the boot path that discards a credential, so it
+      // is where isCredentialDead belongs (it previously existed, tested codes
+      // the server never sends, and was called from nowhere). A blanket drop
+      // here threw the token away on `maintenance`, `rate_limited`,
+      // `user_upsert_failed` (a Railway Postgres blip) and `handler_exception`
+      // — none of which the server even evaluated the token for.
+      const dropLegacyTokenOnly = () => { try { clearAuthToken(); } catch {} };
 
-      const handleAutoLoginResult = (result) => {
-        if (cancelled) return;
-        clearTimeout(timeoutId);
-        socket.off('loginResult', handleAutoLoginResult);
-        if (result?.success && result.userData) {
-          // Re-persist the refreshed token using the user's stored
-          // keep-signed-in preference. Preserves localStorage placement.
-          setAuthToken(result.token);
-          useGameStore.getState().login(result.userData, result.token);
-        } else {
-          clearStoredTokens();
-        }
-      };
-
-      const doLogin = () => {
-        if (cancelled) return;
-        socket.on('loginResult', handleAutoLoginResult);
-        socket.emit('tokenLogin', { token: savedToken });
-        // 10s — legacy token auto-login only needs the server to look up
-        // a local JWT + hit the DB, no Master API calls. 5s was too
-        // aggressive under Railway cold start (which can take 3–4s
-        // before the server even accepts the socket emit).
-        timeoutId = setTimeout(() => {
-          if (cancelled) return;
-          socket.off('loginResult', handleAutoLoginResult);
-          clearStoredTokens();
-        }, 10000);
-      };
-
-      if (socket.connected) doLogin();
-      else socket.once('connect', doLogin);
+      cancelLegacyLogin = runSocketLogin({
+        socket,
+        event: 'tokenLogin',
+        payload: { token: savedToken },
+        label: 'legacy',
+        // 10s — legacy token auto-login only needs the server to look up a
+        // local JWT + hit the DB, no Master API calls. 5s was too aggressive
+        // under Railway cold start (3–4s before the socket emit is accepted).
+        timeoutMs: 10000,
+        // 2026-10-06 — the 10s starts at the EMIT, as it did in HEAD (the
+        // timer lived inside doLogin). Armed at call time it was spent while a
+        // cold socket was still connecting, and the timeout's cleanup removed
+        // the pending connect-emit, so the legacy login was never sent.
+        armWatchdogOnEmit: true,
+        isCancelled: () => cancelled,
+        onResult: (result) => {
+          if (result?.success && result.userData) {
+            // Re-persist the refreshed token using the user's stored
+            // keep-signed-in preference. Preserves localStorage placement.
+            setAuthToken(result.token);
+            useGameStore.getState().login(result.userData, result.token);
+            return;
+          }
+          if (isCredentialDead(result)) dropLegacyTokenOnly();
+        },
+        // A watchdog expiry proves nothing about the token — the server may
+        // never have answered (Railway cold start, socket churn). Keep it; the
+        // next boot re-tries. Dropping on timeout cost returning players their
+        // legacy session over a single cold start.
+        onTimeout: () => {},
+      });
     }
 
-    // 2026-05-07 — iframe-based silent SSO retired (broken in modern Chrome
-    // CHIPS semantics). Cross-site SSO now flows through LoginScreen + a
-    // top-level redirect to /authorize when the user clicks "Sign In". If
-    // the auth-server SSO cookie is alive, the redirect auto-bounces back
-    // with a code; otherwise the password form shows.
-    tryLegacyAutoLogin();
-    return () => { cancelled = true; };
+    // On a bridged arrival the local paths are deferred — the bridge IIFE
+    // above calls startLocalAutoLogin() only if the handoff fails to produce a
+    // session, so the two never race on the same socket.
+    if (!hasBridgeHandoff) startLocalAutoLogin();
+
+    return () => {
+      cancelled = true;
+      if (cancelBridgeLogin) cancelBridgeLogin();
+      if (cancelRefreshLogin) cancelRefreshLogin();
+      if (cancelLegacyLogin) cancelLegacyLogin();
+    };
   }, [isOAuthCallback]);
 
   // Handle seat reconnection after token login.
@@ -1432,81 +1594,171 @@ function App() {
   // the login via useGameStore. Without this listener the deep-link spinner
   // stays forever because the store never transitions to isLoggedIn=true.
   const didEmitDeepLinkRef = useRef(false);
+  // 2026-08-17 P1 — the Retry button (in the timed-out deep-link screen) needs
+  // to restart the SAME flow. It used to get away with a bare
+  // `socket.emit('authWithTicket')` because the old raw `loginResult` listener
+  // stayed registered forever; runSocketLogin correctly tears its listener down
+  // when the flow resolves, so Retry now re-runs the whole flow through here.
+  const deepLinkRetryRef = useRef(null);
   useEffect(() => {
     if (!deepLinkContext) return;
-    if (didEmitDeepLinkRef.current) return;
     const socket = getSocket();
     if (!socket) return;
 
     let cancelled = false;
-    let connectHandler = null;
-    let timeoutId = null;
+    let cancelFlow = null;
+    let flowSocket = null;
+    // True once a timeout notice was shown for the current attempt, so a late
+    // success can be recorded as such (the timeout already logged a failure).
+    let timeoutReported = false;
 
-    const handleLoginResult = (result) => {
+    // 2026-08-17 P1 — routed through runSocketLogin. This was the LAST
+    // unconverted `loginResult` producer/consumer pair, and it broke in BOTH
+    // directions on a returning player's phone, where the boot flows run on the
+    // same socket milliseconds apart:
+    //   • inbound — a stale legacy token's ~15ms rejection was consumed here as
+    //     the ticket's answer, so the user was told their link had failed while
+    //     the ticket auth was still in flight;
+    //   • outbound — this flow's un-attributed result was ACCEPTED by the
+    //     back-compat rule in socketAuth.js and acted on by the legacy/bridge
+    //     flows.
+    // Because that back-compat rule accepts un-echoed frames by design, an
+    // unconverted emitter is a PERMANENT hole, not a transitional one — which
+    // is why poker-server's authWithTicket now echoes requestId and carries a
+    // `code` on every branch.
+    const startDeepLinkAuth = () => {
       if (cancelled) return;
-      if (result?.success && result.userData) {
-        try {
-          if (result.token) setAuthToken(result.token);
-          sessionStorage.setItem('poker_keep_signed_in', '1');
-        } catch {}
-        if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
-        setDeepLinkTimedOut(false);
-        useGameStore.getState().login(result.userData, result.token);
-      } else {
-        // Surface the actual server error (token_already_used / ticket_expired /
-        // token_verify_failed) so the spinner stops and the user sees a sensible
-        // "Sign in manually" path instead of an infinite retry loop.
-        console.error('[deep-link] authWithTicket failed:', result?.error);
-        if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
-        setDeepLinkTimedOut(true);
-      }
-    };
-    socket.on('loginResult', handleLoginResult);
-
-    // auth-only tickets can fire before isLoggedIn (that's the point); waitlist
-    // tickets also include auth, so same rule applies.
-    const emit = () => {
-      if (cancelled) return;
-      if (didEmitDeepLinkRef.current) return;
+      if (cancelFlow) { cancelFlow(); cancelFlow = null; }
       didEmitDeepLinkRef.current = true;
-      connectHandler = null;
-      if (deepLinkContext.source === 'waitlist') {
-        socket.emit('joinWithWaitlistContext', {
-          token: deepLinkContext.token,
-          context: {
-            source: 'waitlist',
-            gameId: deepLinkContext.gameId,
-            position: deepLinkContext.position,
-            venue: deepLinkContext.venue,
-            startTime: deepLinkContext.startTime,
-          },
-        });
-      } else {
-        socket.emit('authWithTicket', { token: deepLinkContext.token });
-      }
-
-      // Fail-safe: if loginResult never comes back within 15s, surface a
-      // retry affordance so the user isn't staring at a forever-spinner.
-      timeoutId = setTimeout(() => {
-        if (cancelled) return;
-        timeoutId = null;
-        console.warn('[deep-link] loginResult never received — ticket likely expired or socket stalled');
-        setDeepLinkTimedOut(true);
-      }, 15000);
+      timeoutReported = false;
+      const isWaitlist = deepLinkContext.source === 'waitlist';
+      // Use the CURRENT socket instance: socketService.forceReconnect() can
+      // replace it after socket.io's reconnect loop gives up, and a flow bound
+      // to the dead instance could never emit.
+      flowSocket = getSocket() || socket;
+      cancelFlow = runSocketLogin({
+        socket: flowSocket,
+        // auth-only tickets can fire before isLoggedIn (that's the point);
+        // waitlist tickets also include auth, so the same rule applies.
+        event: isWaitlist ? 'joinWithWaitlistContext' : 'authWithTicket',
+        payload: isWaitlist
+          ? {
+              token: deepLinkContext.token,
+              context: {
+                source: 'waitlist',
+                gameId: deepLinkContext.gameId,
+                position: deepLinkContext.position,
+                venue: deepLinkContext.venue,
+                startTime: deepLinkContext.startTime,
+              },
+            }
+          : { token: deepLinkContext.token },
+        label: isWaitlist ? 'waitlist' : 'ticket',
+        // Fail-safe: if loginResult never comes back within 15s OF THE EMIT,
+        // surface a retry affordance so the user isn't staring at a
+        // forever-spinner.
+        timeoutMs: 15000,
+        // ONE-SHOT credential. Both server handlers call markTicketUsed(), so a
+        // reconnect re-emit is answered `ticket_replayed` — it would convert a
+        // recoverable socket blip into a permanent "request a new link".
+        reemitOnReconnect: false,
+        // 2026-10-06 review fixes (explicit here; they are also the one-shot
+        // defaults in socketAuth.js):
+        //  - the 15s starts when the ticket is actually EMITTED. Armed at call
+        //    time, a slow first connect used up the budget and the timeout's
+        //    cleanup dropped the pending emit, so the ticket was never sent.
+        //  - the timeout is a NOTICE, not a teardown. The server burns the
+        //    ticket on receipt, so the ORIGINAL request is the only one that
+        //    can still succeed; we keep listening for its requestId and accept
+        //    a late success underneath the Retry screen.
+        armWatchdogOnEmit: true,
+        keepListeningAfterTimeout: true,
+        // Socket still not connected after 20s (socket.io's own per-attempt
+        // connect timeout): show the Retry screen, but keep the emit pending
+        // so the ticket still goes out the moment the socket connects.
+        connectStallMs: 20000,
+        isCancelled: () => cancelled,
+        onResult: (result) => {
+          if (result?.success && result.userData) {
+            try {
+              if (result.token) setAuthToken(result.token);
+              sessionStorage.setItem('poker_keep_signed_in', '1');
+            } catch {}
+            if (timeoutReported) {
+              // The timeout already wrote a login_failed row for this attempt;
+              // record that it actually succeeded so the dashboard can net it out.
+              try {
+                logAuthEvent('login_success', {
+                  via: isWaitlist ? 'waitlist_ticket' : 'ticket',
+                  late: 'ticket_late_success',
+                });
+              } catch {}
+            }
+            setDeepLinkTimedOut(false);
+            useGameStore.getState().login(result.userData, result.token);
+            return;
+          }
+          // Surface the actual server reason (ticket_replayed / ticket_invalid /
+          // ticket_verify_failed …) so the spinner stops and the user gets a
+          // sensible "Sign in manually" path instead of an infinite retry loop.
+          console.error('[deep-link] ticket auth failed:', result?.code || 'unlabelled', result?.error);
+          try {
+            logAuthEvent('login_failed', {
+              reason: isWaitlist ? 'waitlist_ticket_auth_failed' : 'deeplink_ticket_auth_failed',
+              code: String(result?.code || 'unlabelled').slice(0, 64),
+              error: String(result?.error || '').slice(0, 200),
+            });
+          } catch {}
+          setDeepLinkTimedOut(true);
+        },
+        onTimeout: (info) => {
+          const phase = info?.phase === 'connect' ? 'connect' : 'result';
+          console.warn(
+            phase === 'connect'
+              ? '[deep-link] socket not connected yet — ticket still queued, will send on connect'
+              : '[deep-link] loginResult not received yet — still listening for the original request'
+          );
+          // One row per attempt: re-armed notices after a Retry are not new failures.
+          if (!timeoutReported) {
+            timeoutReported = true;
+            try {
+              logAuthEvent('login_failed', {
+                reason: isWaitlist ? 'waitlist_ticket_timeout' : 'deeplink_ticket_timeout',
+                phase,
+                keptListening: true,
+              });
+            } catch {}
+          }
+          setDeepLinkTimedOut(true);
+        },
+      });
     };
 
-    if (socket.connected) {
-      emit();
-    } else {
-      connectHandler = emit;
-      socket.once('connect', emit);
-    }
+    // Retry (timed-out screen). NEVER re-emit a ticket that is already on the
+    // wire and may still be answered — the server burned it on receipt, so a
+    // second emit can only come back `ticket_replayed`, and it would race the
+    // original's success. runSocketLogin.retry() keeps waiting on the SAME
+    // request ('waiting') unless that request can no longer succeed
+    // ('restart': it settled, or its connection dropped after the emit so the
+    // answer went to a dead socket). Only then is a fresh attempt started.
+    const retryDeepLinkAuth = () => {
+      if (cancelled) return;
+      const live = getSocket();
+      const sameSocket = !live || live === flowSocket;
+      const outcome = (cancelFlow && typeof cancelFlow.retry === 'function' && sameSocket)
+        ? cancelFlow.retry()
+        : 'restart';
+      if (outcome === 'waiting') return;
+      startDeepLinkAuth();
+    };
+
+    deepLinkRetryRef.current = retryDeepLinkAuth;
+    if (!didEmitDeepLinkRef.current) startDeepLinkAuth();
 
     return () => {
       cancelled = true;
-      socket.off('loginResult', handleLoginResult);
-      if (connectHandler) socket.off('connect', connectHandler);
-      if (timeoutId) clearTimeout(timeoutId);
+      if (cancelFlow) cancelFlow();
+      deepLinkRetryRef.current = null;
     };
     // 2026-05-05 — was `[deepLinkContext, connStatus]`. The connStatus
     // dep caused this effect to re-run on every socket reconnect, and
@@ -1518,9 +1770,9 @@ function App() {
     // `cancelled = true`, then handed off to a new listener that had
     // never fired authWithTicket. Result: spinner stuck forever, no
     // timeout (because the cleanup also clears the timer between runs).
-    // Mount-only deps keep the listener alive across reconnects; the
-    // socket.on('connect', emit) registration inside handles reconnect
-    // timing for the initial emit.
+    // Mount-only deps keep the listener alive across reconnects;
+    // runSocketLogin's own 'connect' registration handles the timing of
+    // the initial emit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkContext]);
 
@@ -1530,7 +1782,7 @@ function App() {
 
   // OAuth2 callback — intercept before any other screen
   if (isOAuthCallback) {
-    return <AuthCallback />;
+    return <AuthCallback onExit={handleAuthCallbackExit} />;
   }
 
   // OBS browser-source overlay (?overlay=<tableId>) — a clean, transparent,
@@ -1612,14 +1864,18 @@ function App() {
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 18 }}>
                   <button
                     onClick={() => {
-                      didEmitDeepLinkRef.current = false;
                       setDeepLinkTimedOut(false);
-                      // Force the effect to re-run by bumping connStatus dep via a no-op
+                      // 2026-08-17 — route Retry through the real flow instead
+                      // of firing a bare `authWithTicket` emit (which had nobody
+                      // listening once runSocketLogin tore its listener down).
+                      // 2026-10-06 — and never re-send a ticket that is already
+                      // on the wire: retryDeepLinkAuth keeps waiting on the
+                      // ORIGINAL request (fresh 15s, late success accepted) and
+                      // only starts a new attempt when that request can no
+                      // longer be answered (settled, or its socket dropped).
                       const socket = getSocket();
-                      if (socket) {
-                        if (socket.connected) socket.emit('authWithTicket', { token: deepLinkContext.token });
-                        else socket.connect();
-                      }
+                      if (socket && !socket.connected) socket.connect();
+                      if (deepLinkRetryRef.current) deepLinkRetryRef.current();
                     }}
                     style={{
                       padding: '10px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
