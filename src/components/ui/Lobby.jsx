@@ -45,6 +45,7 @@ import ScratchCards from './ScratchCards';
 import MultiTableView from './MultiTableView';
 import PlayerProfile from './PlayerProfile';
 import { getSocket } from '../../services/socketService';
+import { reportPlayRefusal, runPlayFlow } from '../../services/playRefusal';
 import { PlayerAvatar } from '../../hooks/useAvatar';
 import './Lobby.css';
 
@@ -1018,14 +1019,30 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     (gs?.yourSeat >= 0 && gs?.seats?.[gs.yourSeat]?.playerName)
       ? `${gs.tableId ?? '?'}:${gs.yourSeat}`
       : null;
+  // 2026-10-07 — the play-refusal replay (services/playRefusal.js): when a
+  // join is refused login_required on a tab that is still signed in (socket
+  // reconnected and not re-authenticated yet), the socket is re-authenticated
+  // silently and the WHOLE join — spinner and seat watcher included — is run
+  // again once via the latest beginJoin. Skipped if the Lobby has unmounted.
+  const beginJoinRef = useRef(null);
+  const lobbyMountedRef = useRef(false);
+  useEffect(() => {
+    lobbyMountedRef.current = true;
+    return () => { lobbyMountedRef.current = false; };
+  }, []);
   const beginJoin = (label, action) => {
     setJoinError(null);
     setJoining({ since: Date.now(), label, fromSig: seatSig(gameState) });
-    try { action(); } catch (e) {
+    try {
+      runPlayFlow(() => {
+        if (lobbyMountedRef.current && beginJoinRef.current) beginJoinRef.current(label, action);
+      }, action);
+    } catch (e) {
       setJoining(null);
       setJoinError(e?.message || 'Could not start join — try again.');
     }
   };
+  useEffect(() => { beginJoinRef.current = beginJoin; });
   // Watch for gameState with our seat — that's the signal that the server
   // has accepted us and play can begin. `gameState.yourSeat >= 0` with a
   // playerName confirms we're actually seated, not just receiving spectator
@@ -1064,6 +1081,11 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     const onServerError = (err) => {
       if (!err) return;
       setJoining(null);
+      // 2026-10-07 — a suspension / account-required refusal (codes
+      // player_suspended, login_required, guest_disabled) is shown verbatim by
+      // the shared PlayRefusalNotice, which also offers sign-in. Don't show it
+      // a second time in the banner below.
+      if (reportPlayRefusal(err)) { setJoinError(null); return; }
       setJoinError(err.message || 'Server rejected the join.');
     };
     socket.on('error', onServerError);
@@ -2924,16 +2946,18 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         </div>
       )}
 
-      {/* Join error toast — shown briefly if the server didn't seat us in time */}
+      {/* Join error toast — shown briefly if the server didn't seat us in time.
+          2026-10-07: blue + gold, not red (owner preference). */}
       {joinError && !joining && (
         <div
           role="alert"
           style={{
             position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)',
-            zIndex: 3100, background: 'rgba(120,20,20,0.96)', color: '#fff',
+            zIndex: 3100, background: 'linear-gradient(135deg, rgba(12,28,72,0.97), rgba(8,18,48,0.97))',
+            color: '#ffd24a',
             padding: '10px 18px', borderRadius: 10, fontSize: 13, maxWidth: 320,
             boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-            border: '1px solid rgba(239,68,68,0.6)',
+            border: '1px solid rgba(255,210,74,0.55)',
           }}
           onClick={() => setJoinError(null)}
         >

@@ -1,9 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { useQualifiers } from '../../store/qualifierStore';
 import { getSocket } from '../../services/socketService';
 import { useTableStore } from '../../store/tableStore';
+import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
 import QualifierDashboard from './QualifierDashboard';
+
+// A first entry waits on the master API's credit consume (awaited server-side),
+// so allow longer than a table join before calling the server unreachable.
+const REGISTER_WATCHDOG_MS = 20000;
 
 function formatCountdown(isoDate) {
   const diff = new Date(isoDate) - Date.now();
@@ -31,6 +36,13 @@ export default function QualifierLobby({ onSpectate }) {
   const [redeemCode, setRedeemCode] = useState('');        // Batch 5b: entry-code redemption
   const [redeemMsg, setRedeemMsg] = useState(null);        // { ok, text }
   const [redeeming, setRedeeming] = useState(false);
+  // 2026-10-07 — a refused registration (qualifierRegistrationResult
+  // {success:false}) used to be dropped silently. pendingReg: the qualifier id
+  // whose Register is awaiting an answer. regMsg: the last non-refusal
+  // failure, shown verbatim. Refusals (suspended / no account) go to the shared
+  // PlayRefusalNotice instead.
+  const [pendingReg, setPendingReg] = useState(null);
+  const [regMsg, setRegMsg] = useState(null);
 
   // Batch 5b: listen for the entry-code redemption result.
   useEffect(() => {
@@ -98,13 +110,18 @@ export default function QualifierLobby({ onSpectate }) {
       }));
     };
     const regResultHandler = (data) => {
-      if (data.success) {
+      setPendingReg(null);
+      if (data?.success) {
+        setRegMsg(null);
         if (data.unregistered) {
           setMyRegistrations(prev => { const s = new Set(prev); s.delete(data.qualifierId); return s; });
         } else {
           setMyRegistrations(prev => new Set([...prev, data.qualifierId]));
         }
+        return;
       }
+      if (reportPlayRefusal(data)) { setRegMsg(null); return; }
+      setRegMsg(data?.error || data?.message || 'Registration failed — please try again.');
     };
     const tournStartHandler = (data) => {
       setTournamentData(prev => ({
@@ -163,19 +180,62 @@ export default function QualifierLobby({ onSpectate }) {
     };
   }, [phone, playerName]);
 
+  // While a Register is in flight: some refusals arrive on the shared
+  // 'error' event instead of qualifierRegistrationResult (e.g. a socket with no
+  // signed-in session), so listen for it during that window only, and give up
+  // after REGISTER_WATCHDOG_MS. A late success still lands via regResultHandler.
+  useEffect(() => {
+    if (!pendingReg) return undefined;
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onServerError = (err) => {
+      setPendingReg(null);
+      if (reportPlayRefusal(err)) { setRegMsg(null); return; }
+      setRegMsg(err?.message || 'Registration failed — please try again.');
+    };
+    socket.on('error', onServerError);
+    const watchdog = setTimeout(() => {
+      setPendingReg(null);
+      setRegMsg(GAME_SERVER_UNREACHABLE_TEXT);
+    }, REGISTER_WATCHDOG_MS);
+    return () => {
+      socket.off('error', onServerError);
+      clearTimeout(watchdog);
+    };
+  }, [pendingReg]);
+
+  // 2026-10-07 — play-refusal replay (services/playRefusal.js): a
+  // login_required on a still-signed-in tab re-authenticates the socket and
+  // runs this registration again ONCE through the latest handleRegister,
+  // unless the lobby has unmounted.
+  const handleRegisterRef = useRef(null);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const handleRegister = useCallback((qualifier) => {
     const socket = getSocket();
     if (!socket) return;
-    socket.emit('registerQualifierTournament', {
+    setRegMsg(null);
+    setPendingReg(qualifier.id);
+    runPlayFlow(() => {
+      if (mountedRef.current && handleRegisterRef.current) handleRegisterRef.current(qualifier);
+    }, () => socket.emit('registerQualifierTournament', {
       qualifierId: qualifier.id,
       playerName,
       phone,
-    });
+    }));
   }, [playerName, phone]);
+  useEffect(() => { handleRegisterRef.current = handleRegister; }, [handleRegister]);
 
+  // No pending/watchdog here: poker-server's unregister handler returns
+  // silently on some branches (no session, tournament no longer registering),
+  // so a missing answer is not proof the server is unreachable.
   const handleUnregister = useCallback((qualifier) => {
     const socket = getSocket();
     if (!socket) return;
+    setRegMsg(null);
     socket.emit('unregisterQualifierTournament', { qualifierId: qualifier.id });
   }, []);
 
@@ -208,6 +268,27 @@ export default function QualifierLobby({ onSpectate }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* 2026-10-07 — registration failure, verbatim. Fixed + above the
+          QualifierDashboard modal (zIndex 1000), because tapping Register on a
+          card also opens that modal. Blue + gold, not red. */}
+      {regMsg && (
+        <div
+          className="qualifier-register-msg"
+          role="alert"
+          onClick={() => setRegMsg(null)}
+          style={{
+            position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 3100, width: 'min(92vw, 360px)', boxSizing: 'border-box',
+            padding: '10px 16px', borderRadius: 10, cursor: 'pointer',
+            background: 'linear-gradient(135deg, rgba(12,28,72,0.97), rgba(8,18,48,0.97))',
+            border: '1px solid rgba(255,210,74,0.55)', color: '#ffd24a',
+            fontSize: 13, fontWeight: 600, lineHeight: 1.4, textAlign: 'center',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          }}
+        >
+          {regMsg} <span style={{ opacity: 0.7, fontWeight: 400, marginLeft: 6 }}>(tap to dismiss)</span>
+        </div>
+      )}
       {/* Batch 5b: redeem a promo entry code for a qualifier credit. */}
       <div style={{
         background: 'linear-gradient(135deg, rgba(10,10,20,0.9), rgba(30,20,60,0.6))',
@@ -408,12 +489,14 @@ export default function QualifierLobby({ onSpectate }) {
                 Signup window has closed
               </div>
             ) : isQualified ? (
-              <button onClick={() => handleRegister(q)} style={{
+              <button onClick={() => handleRegister(q)} disabled={pendingReg === q.id} style={{
                 width: '100%', padding: '12px 18px', borderRadius: 8, fontWeight: 700, fontSize: '0.9rem',
                 background: `linear-gradient(135deg, ${color}, ${color}bb)`,
-                color: '#0a0a1a', border: 'none', cursor: 'pointer',
+                color: '#0a0a1a', border: 'none',
+                cursor: pendingReg === q.id ? 'default' : 'pointer',
+                opacity: pendingReg === q.id ? 0.7 : 1,
               }}>
-                Register — You're Qualified!
+                {pendingReg === q.id ? 'Registering…' : "Register — You're Qualified!"}
               </button>
             ) : (
               <div style={{

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { getSocket } from '../../services/socketService';
+import { reportPlayRefusal, runPlayFlow } from '../../services/playRefusal';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
@@ -42,6 +43,8 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState(null);
   const [creating, setCreating] = useState(false);
+  // Join-by-code in flight (waiting for the server to seat us or refuse).
+  const [joiningByCode, setJoiningByCode] = useState(false);
 
   const { sb, bb } = BLINDS[blindIdx];
 
@@ -78,6 +81,88 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
     socket.off(event, fn);
   }
 
+  // `${tableId}:${seat}` when the TABLE store's gameState shows us seated,
+  // else null. (The join-by-code watcher used to read
+  // useGameStore.getState().gameState — gameState lives in useTableStore, so
+  // that was always undefined and the watcher could never confirm a join: it
+  // timed out after 10s even on success.)
+  const seatSig = (gs) =>
+    (gs?.yourSeat >= 0 && gs?.seats?.[gs.yourSeat]?.playerName)
+      ? `${gs.tableId ?? '?'}:${gs.yourSeat}`
+      : null;
+
+  /**
+   * 2026-10-07 — emit a join and switch to the table screen ONLY once the
+   * server confirms it (our fresh seat shows up in the table store). A
+   * refusal (suspended / no account) or any other join error keeps the player
+   * here: refusals go to the shared PlayRefusalNotice, other errors to this
+   * modal's error line. Previously both flows called setScreen('table')
+   * immediately (create) or could never confirm (join by code), so a refused
+   * player was dropped onto an empty table.
+   *
+   * App.jsx's gameState handler merges into the table store before this
+   * later-registered listener fires, so getState() here is up to date.
+   */
+  function joinAndConfirm(socket, { errorEvent, emitJoin, expectTableId, onSeated, onFailed }) {
+    const fromSig = seatSig(useTableStore.getState().gameState);
+    let settled = false;
+    let timeoutId = null;
+    const finish = (fn) => {
+      if (settled) return;
+      settled = true;
+      detach(socket, errorEvent, onJoinFailed);
+      detach(socket, 'gameState', onGameState);
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+      if (mountedRef.current) fn();
+    };
+    function onJoinFailed(payload) {
+      if (settled) return;
+      const refused = reportPlayRefusal(payload);
+      finish(() => onFailed(refused ? null : (payload?.message || 'Could not join the table.')));
+    }
+    function onGameState() {
+      if (settled) return;
+      const gs = useTableStore.getState().gameState;
+      const sig = seatSig(gs);
+      if (!sig || sig === fromSig) return; // not our fresh seat yet — keep waiting
+      if (expectTableId && gs?.tableId && gs.tableId !== expectTableId) return;
+      finish(onSeated);
+    }
+    attach(socket, errorEvent, onJoinFailed);
+    attach(socket, 'gameState', onGameState);
+    // Watchdog: if no seat / error arrives, don't leave the listeners dangling
+    // or the user stuck — surface a retry message.
+    timeoutId = setTimeout(() => {
+      finish(() => onFailed('Server didn\'t respond in time. Check your connection and try again.'));
+    }, 10000);
+    emitJoin();
+  }
+
+  // Join the table we just created, as its host (seat 0). Re-runnable: the
+  // play-refusal replay (services/playRefusal.js) calls it again once after
+  // silently re-authenticating a signed-in tab that was refused login_required.
+  function joinCreatedTable(tableId) {
+    if (!mountedRef.current) return;
+    const socket = getSocket();
+    if (!socket?.connected) { setError('Not connected to server.'); setCreating(false); return; }
+    setCreating(true);
+    setError(null);
+    runPlayFlow(() => joinCreatedTable(tableId), () => joinAndConfirm(socket, {
+      errorEvent: 'error',
+      expectTableId: tableId,
+      emitJoin: () => joinTable(tableId, playerName, 0, bb * 100, avatar),
+      onSeated: () => {
+        setCreating(false);
+        if (playerName) setPlayerName(playerName);
+        setScreen('table');
+      },
+      onFailed: (msg) => {
+        setCreating(false);
+        setError(msg);
+      },
+    }));
+  }
+
   function handleCreate() {
     if (creating) return;
     setCreating(true);
@@ -94,11 +179,9 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
       detach(socket, 'privateTableCreated', onCreated);
       if (!mountedRef.current) return;
       setInviteCode(code);
-      setCreating(false);
-      // Auto-join as creator (seat 0, host)
-      if (playerName) setPlayerName(playerName);
-      joinTable(tableId, playerName, 0, bb * 100, avatar);
-      setScreen('table');
+      // Auto-join as creator (seat 0, host) — the table screen opens only
+      // once the server confirms the seat (joinAndConfirm).
+      joinCreatedTable(tableId);
     };
     attach(socket, 'privateTableCreated', onCreated);
 
@@ -118,63 +201,39 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
   function handleJoinByCode() {
     const code = inviteInput.trim().toUpperCase();
     if (code.length < 8) { setError('Invite code must be 8 characters.'); return; }
-    setError(null);
+    joinByCode(code);
+  }
 
+  // 2026-07-06 audit P2 — settling on ANY gameState broadcast was wrong: a
+  // routine broadcast from a table the user is spectating would falsely
+  // confirm the join and jump to the WRONG table. joinAndConfirm correlates on
+  // OUR fresh seat instead. Re-runnable for the play-refusal replay (see
+  // joinCreatedTable). A play refusal (suspended / no account) is shown
+  // verbatim by the shared PlayRefusalNotice, not repeated in this modal.
+  function joinByCode(code) {
+    if (!mountedRef.current) return;
+    setError(null);
     const socket = getSocket();
     if (!socket?.connected) { setError('Not connected.'); return; }
-
-    // 2026-07-06 audit P2 — settling on ANY gameState broadcast was wrong: a
-    // routine broadcast from a table the user is spectating would falsely
-    // confirm the join and jump to the WRONG table (`settled` only stopped a
-    // SECOND resolution, not a wrong first one). Correlate instead on OUR seat:
-    // resolve only when the merged store state shows us freshly seated
-    // (signature differs from before the emit). App.jsx's gameState handler
-    // merges into the store before this later-registered listener fires, so
-    // reading getState() here sees the up-to-date seat.
-    const seatSig = (gs) =>
-      (gs?.yourSeat >= 0 && gs?.seats?.[gs.yourSeat]?.playerName)
-        ? `${gs.tableId ?? '?'}:${gs.yourSeat}`
-        : null;
-    const fromSig = seatSig(useGameStore.getState().gameState);
-
-    let settled = false;
-    let timeoutId = null;
-    const finish = (fn) => {
-      settled = true;
-      detach(socket, 'joinError', onJoinError);
-      detach(socket, 'gameState', onGameState);
-      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
-      fn();
-    };
-    const onJoinError = ({ message }) => {
-      if (settled) return;
-      finish(() => { if (mountedRef.current) setError(message); });
-    };
-    const onGameState = () => {
-      if (settled) return;
-      const sig = seatSig(useGameStore.getState().gameState);
-      if (!sig || sig === fromSig) return; // not our fresh seat yet — keep waiting
-      finish(() => {
-        if (!mountedRef.current) return;
+    setJoiningByCode(true);
+    runPlayFlow(() => joinByCode(code), () => joinAndConfirm(socket, {
+      errorEvent: 'joinError',
+      emitJoin: () => socket.emit('joinByInviteCode', {
+        inviteCode: code,
+        playerName,
+        buyIn: 0,
+        avatar,
+      }),
+      onSeated: () => {
+        setJoiningByCode(false);
         if (playerName) setPlayerName(playerName);
         setScreen('table');
-      });
-    };
-    attach(socket, 'joinError', onJoinError);
-    attach(socket, 'gameState', onGameState);
-    // Watchdog: if no seat / error arrives, don't leave the listeners dangling
-    // or the user stuck — surface a retry message.
-    timeoutId = setTimeout(() => {
-      if (settled) return;
-      finish(() => { if (mountedRef.current) setError('Server didn\'t respond in time. Check your connection and try again.'); });
-    }, 10000);
-
-    socket.emit('joinByInviteCode', {
-      inviteCode: code,
-      playerName,
-      buyIn: 0,
-      avatar,
-    });
+      },
+      onFailed: (msg) => {
+        setJoiningByCode(false);
+        setError(msg);
+      },
+    }));
   }
 
   return createPortal(
@@ -270,7 +329,7 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
               ))}
             </div>
 
-            {error && <div style={{ color: '#EF4444', fontSize: '0.78rem', marginBottom: '10px' }}>{error}</div>}
+            {error && <div className="create-table-error" role="alert" style={errorStyle}>{error}</div>}
 
             <button onClick={handleCreate} disabled={creating || !tableName.trim()} style={{
               width: '100%', padding: '12px', borderRadius: '10px',
@@ -291,15 +350,15 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
               placeholder="e.g. A1B2C3D4"
               style={{ ...inputStyle, letterSpacing: '4px', textTransform: 'uppercase', fontWeight: 700 }}
             />
-            {error && <div style={{ color: '#EF4444', fontSize: '0.78rem', marginBottom: '10px' }}>{error}</div>}
-            <button onClick={handleJoinByCode} disabled={inviteInput.trim().length < 8} style={{
+            {error && <div className="create-table-error" role="alert" style={errorStyle}>{error}</div>}
+            <button onClick={handleJoinByCode} disabled={inviteInput.trim().length < 8 || joiningByCode} style={{
               width: '100%', padding: '12px', borderRadius: '10px',
               background: 'linear-gradient(135deg, #22C55E, #4ADE80)',
               border: 'none', color: '#0a1a0a', fontSize: '0.95rem', fontWeight: 700,
-              cursor: inviteInput.trim().length < 8 ? 'default' : 'pointer',
-              opacity: inviteInput.trim().length < 8 ? 0.5 : 1,
+              cursor: inviteInput.trim().length < 8 || joiningByCode ? 'default' : 'pointer',
+              opacity: inviteInput.trim().length < 8 ? 0.5 : (joiningByCode ? 0.7 : 1),
             }}>
-              Join Table
+              {joiningByCode ? 'Joining…' : 'Join Table'}
             </button>
           </>
         )}
@@ -309,5 +368,7 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
   );
 }
 
+// 2026-10-07 — join / create errors in blue + gold, not red (owner preference).
+const errorStyle = { color: '#ffd24a', background: 'rgba(12,28,72,0.85)', border: '1px solid rgba(255,210,74,0.45)', borderRadius: '8px', padding: '8px 10px', fontSize: '0.78rem', lineHeight: 1.4, marginBottom: '10px' };
 const labelStyle = { display: 'block', color: '#8888AA', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', letterSpacing: '1px', textTransform: 'uppercase' };
 const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#E0E0E0', padding: '8px 12px', fontSize: '0.88rem', marginBottom: '12px', outline: 'none', boxSizing: 'border-box' };

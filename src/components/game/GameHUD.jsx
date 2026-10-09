@@ -25,6 +25,7 @@ import { recordHandStats, getOpponentStats } from '../../utils/opponentTracker';
 import { useProgressStore } from '../../store/progressStore';
 import { useEquityWorker } from '../../hooks/useEquityWorker';
 import { getSocket, subscribeConnectionStatus } from '../../services/socketService';
+import { reportPlayRefusal, notePlayAttempt } from '../../services/playRefusal';
 import { useTimerStore } from '../../store/timerStore';
 import { loadHotkeys } from '../ui/HotkeySettings';
 import { useAFKTracker } from '../../hooks/useAFKTracker';
@@ -1759,6 +1760,9 @@ export default function GameHUD() {
         const minBuyIn = gameState?.minBuyIn || 5000;
         const socket = getSocket();
         if (socket?.connected) {
+          // 2026-10-07 — replayable once if refused login_required on a
+          // still-signed-in tab (services/playRefusal.js).
+          notePlayAttempt(() => { const s = getSocket(); if (s?.connected) s.emit('rebuy', { amount: minBuyIn }); });
           socket.emit('rebuy', { amount: minBuyIn });
           addToast(`♻ Auto-rebuying ${minBuyIn.toLocaleString()} chips`, 'success');
         }
@@ -1990,6 +1994,10 @@ export default function GameHUD() {
       // went wrong from their side, the table just advanced. Real errors (not
       // your turn, invalid amount, insufficient chips) still surface.
       if (data?.code === 'STALE_STATE') return;
+      // 2026-10-07 — a play refusal (suspended / no account, e.g. on rebuy or
+      // a career start) is shown by the shared PlayRefusalNotice, verbatim and
+      // without the 3s auto-hide. Don't toast it a second time.
+      if (reportPlayRefusal(data)) return;
       if (data?.message) {
         try { addToast(data.message, 'warn', 3000); } catch {}
       }

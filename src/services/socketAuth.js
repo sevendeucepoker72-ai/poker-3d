@@ -308,6 +308,8 @@ export function runSocketLogin({
  *   ticket_missing · ticket_replayed · ticket_verify_unreachable
  *   ticket_verify_failed · ticket_invalid · ticket_missing_user
  *   master_user_unreachable · master_user_shape
+ *   player_suspended · login_required · guest_disabled   (2026-10-07 play
+ *     refusals, contract C5 — see services/playRefusal.js)
  *
  * Plus `no_socket`, produced locally by runSocketLogin when there is no socket.
  */
@@ -344,11 +346,18 @@ export function isCredentialDead(result) {
  * credential cannot help, and the user must take action" — so an auth flow
  * should STOP rather than fall through to the next boot path.
  *
- * Only `identity_conflict` qualifies today. It is a deliberate server-side
+ * `identity_conflict` qualifies. It is a deliberate server-side
  * refusal: the local poker-server row matching this player's display name
  * belongs to a DIFFERENT master account, so the server will refuse every
  * credential this browser holds for the same reason. Falling through would just
  * produce a second identical failure and a more confusing message.
+ *
+ * 2026-10-07 — `player_suspended` qualifies for the same reason: the master
+ * account (or an account on the same phone) is suspended from play, so another
+ * stored credential cannot help. Callers show the server's own text for it
+ * (services/playRefusal.js:playRefusalText). poker-server is expected to let a
+ * suspended player SIGN IN and refuse only the play attempt; this only matters
+ * if a login path ever refuses with that code.
  *
  * Everything else — including a bare unlabelled failure from an older server —
  * is treated as recoverable, because "attempt the other credentials we hold" is
@@ -357,5 +366,5 @@ export function isCredentialDead(result) {
  * the one that produced the outage.
  */
 export function isDefinitiveLoginFailure(result) {
-  return result?.code === 'identity_conflict';
+  return result?.code === 'identity_conflict' || result?.code === 'player_suspended';
 }

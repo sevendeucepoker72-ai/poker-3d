@@ -1,9 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { getSocket } from '../../services/socketService';
+import { reportPlayRefusal, notePlayAttempt } from '../../services/playRefusal';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
 import './ClubsPanel.css';
+
+// 2026-10-07 — gated play emits record how to replay themselves, so a
+// login_required refusal on a still-signed-in tab (socket reconnected, not yet
+// re-authenticated) is recovered silently and retried ONCE
+// (services/playRefusal.js).
+function emitClubPlay(socket, event, payload) {
+  notePlayAttempt(() => {
+    const s = getSocket();
+    if (s?.connected) s.emit(event, payload);
+  });
+  socket.emit(event, payload);
+}
 
 // ─── Role badge colors ───
 const ROLE_COLORS = {
@@ -351,6 +364,9 @@ export default function ClubsPanel({ onClose }) {
 
     const onError = (data) => {
       setLoading(false);
+      // 2026-10-07 — play refusals (suspended / no account) are shown by the
+      // shared PlayRefusalNotice; don't repeat them in the panel's error line.
+      if (reportPlayRefusal(data)) { setError(''); return; }
       setError(data.message || 'An error occurred');
     };
 
@@ -888,7 +904,7 @@ export default function ClubsPanel({ onClose }) {
   const handleRegisterTournament = (tournamentId) => {
     const socket = getSocket();
     if (!socket) return;
-    socket.emit('registerClubTournament', { tournamentId });
+    emitClubPlay(socket, 'registerClubTournament', { tournamentId });
   };
 
   const handleStartTournament = (tournamentId) => {
@@ -909,7 +925,7 @@ export default function ClubsPanel({ onClose }) {
     const socket = getSocket();
     if (!socket || !selectedClub || !challengeTargetId) return;
     setLoading(true);
-    socket.emit('createClubChallenge', {
+    emitClubPlay(socket, 'createClubChallenge', {
       clubId: selectedClub.id,
       challengedId: challengeTargetId,
       stakes: challengeStakes,
@@ -919,7 +935,7 @@ export default function ClubsPanel({ onClose }) {
   const handleAcceptChallenge = (challengeId) => {
     const socket = getSocket();
     if (!socket) return;
-    socket.emit('acceptClubChallenge', { challengeId });
+    emitClubPlay(socket, 'acceptClubChallenge', { challengeId });
   };
 
   const handleDeclineChallenge = (challengeId) => {

@@ -5,6 +5,7 @@ import { handleCallback, getCallbackParams, clearCallbackParamsCache } from '../
 import { setAuthToken, setOAuthItem } from '../../services/tokenStorage';
 import { logAuthEvent } from '../../services/authEvents';
 import { runSocketLogin, isDefinitiveLoginFailure } from '../../services/socketAuth';
+import { playRefusalText } from '../../services/playRefusal';
 
 /**
  * @param {object}   props
@@ -208,7 +209,10 @@ export default function AuthCallback({ onExit } = {}) {
               // identity_conflict: every credential this browser holds will be
               // refused for the same reason, so a reload would only repeat it.
               // Go to the login screen with the reason, and skip boot auto-login.
-              const notice = 'This account could not be matched securely. Please contact support.';
+              // 2026-10-07 — player_suspended is definitive too, and carries
+              // the owner's own sentence: show the server's text verbatim.
+              const notice = playRefusalText(result)
+                || 'This account could not be matched securely. Please contact support.';
               setStatus(notice);
               schedule(() => {
                 useGameStore.getState().setScreen('login');

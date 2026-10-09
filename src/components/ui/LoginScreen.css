@@ -453,31 +453,8 @@
   color: #888888;
 }
 
-/* ── Guest play button (upgrade #1) ── */
-.login-guest-btn {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 11px 24px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #888888;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-family: inherit;
-  letter-spacing: 0.3px;
-}
-
-.login-guest-btn:hover:not(:disabled) {
-  border-color: rgba(120, 160, 255, 0.3);
-  color: #ffd24a;
-  background: rgba(120, 160, 255, 0.05);
-}
-
-.login-guest-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+/* (2026-10-07: the "Play as Guest" button and its .login-guest-btn styles were
+   retired with guest play — owner decision, see LoginScreen.jsx.) */
 
 /* ── Input error border ── */
 .login-input-wrap--error .login-input {

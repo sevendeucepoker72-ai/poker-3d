@@ -1,7 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { getSocket } from '../../services/socketService';
+import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
 import './TournamentLobby.css';
+
+// How long a Register tap waits for `tournamentRegistered` or an `error`
+// before telling the player the server never answered.
+const REGISTER_WATCHDOG_MS = 10000;
 
 const TOURNAMENT_ICONS = {
   'Freeroll': '\uD83C\uDFAF',
@@ -21,6 +26,13 @@ export default function TournamentLobby() {
   // Admin flag (set from the server's loginResult userData). Server enforces
   // the actual privilege on every TD control emit; this only gates the UI.
   const isAdmin = useGameStore((s) => s.isAdmin);
+  // 2026-10-07 — registerTournament refusals used to reach only App.jsx's
+  // console.error, so the player saw NOTHING (incl. a suspension). The id of
+  // the tournament whose Register tap is awaiting an answer, and the last
+  // non-refusal failure to show. Refusals (suspended / no account) go to the
+  // shared PlayRefusalNotice instead.
+  const [pendingRegId, setPendingRegId] = useState(null);
+  const [regError, setRegError] = useState(null);
 
   useEffect(() => {
     const socket = getSocket();
@@ -31,6 +43,8 @@ export default function TournamentLobby() {
     const handleList = (list) => setTournaments(list);
     const handleRegistered = (data) => {
       setRegisteredIds((prev) => new Set([...prev, data.tournamentId]));
+      setPendingRegId((cur) => (cur === data?.tournamentId ? null : cur));
+      setRegError(null);
     };
     const handleStarted = (data) => {
       setScreen('table');
@@ -79,11 +93,50 @@ export default function TournamentLobby() {
     };
   }, [setScreen]);
 
+  // While a Register tap is in flight, the server answers a refusal on the
+  // shared 'error' event (same pattern as Lobby.jsx's join spinner). Listen
+  // only during that window so unrelated errors aren't pinned on the
+  // registration, and give up after REGISTER_WATCHDOG_MS.
+  useEffect(() => {
+    if (!pendingRegId) return undefined;
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onServerError = (err) => {
+      setPendingRegId(null);
+      if (reportPlayRefusal(err)) { setRegError(null); return; }
+      setRegError(err?.message || 'Registration failed — please try again.');
+    };
+    socket.on('error', onServerError);
+    const watchdog = setTimeout(() => {
+      setPendingRegId(null);
+      setRegError(GAME_SERVER_UNREACHABLE_TEXT);
+    }, REGISTER_WATCHDOG_MS);
+    return () => {
+      socket.off('error', onServerError);
+      clearTimeout(watchdog);
+    };
+  }, [pendingRegId]);
+
+  // 2026-10-07 — play-refusal replay (services/playRefusal.js): a
+  // login_required on a still-signed-in tab re-authenticates the socket and
+  // runs this registration again ONCE (spinner + watchdog included) through
+  // the latest handleRegister, unless the lobby has unmounted.
+  const handleRegisterRef = useRef(null);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const handleRegister = (tournamentId) => {
     const socket = getSocket();
     if (!socket || !playerName) return;
-    socket.emit('registerTournament', { tournamentId, playerName });
+    setRegError(null);
+    setPendingRegId(tournamentId);
+    runPlayFlow(() => {
+      if (mountedRef.current && handleRegisterRef.current) handleRegisterRef.current(tournamentId);
+    }, () => socket.emit('registerTournament', { tournamentId, playerName }));
   };
+  useEffect(() => { handleRegisterRef.current = handleRegister; });
 
   const handleWithdraw = (tournamentId) => {
     const socket = getSocket();
@@ -122,6 +175,21 @@ export default function TournamentLobby() {
   return (
     <div className="tournament-section">
       <h2>Tournaments</h2>
+      {regError && (
+        <div
+          className="tournament-register-error"
+          role="alert"
+          onClick={() => setRegError(null)}
+          style={{
+            margin: '0 0 12px', padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+            background: 'linear-gradient(135deg, rgba(12,28,72,0.95), rgba(8,18,48,0.95))',
+            border: '1px solid rgba(255,210,74,0.5)', color: '#ffd24a',
+            fontSize: '0.85rem', fontWeight: 600, lineHeight: 1.4,
+          }}
+        >
+          {regError} <span style={{ opacity: 0.7, fontWeight: 400, marginLeft: 6 }}>(tap to dismiss)</span>
+        </div>
+      )}
       <div className="tournament-grid">
         {tournaments.map((t) => {
           const isRegistered = registeredIds.has(t.tournamentId);
@@ -201,9 +269,9 @@ export default function TournamentLobby() {
                   <button
                     className="btn-tournament-register"
                     onClick={() => handleRegister(t.tournamentId)}
-                    disabled={!playerName}
+                    disabled={!playerName || pendingRegId === t.tournamentId}
                   >
-                    Register
+                    {pendingRegId === t.tournamentId ? 'Registering…' : 'Register'}
                   </button>
                 )}
                 {t.status === 'registering' && isRegistered && (

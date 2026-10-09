@@ -61,6 +61,37 @@ function _readRefreshToken() {
   } catch { return null; }
 }
 
+// Write a successful refresh into the store + persistence so the rest of the
+// app (socket re-auth, HTTP bearer, the next refresh) reads fresh values.
+// Shared by the scheduled refresh and refreshNowAndApply.
+function _applyRefreshedTokens(tokens, refreshToken) {
+  try {
+    const expiresAt = Date.now() + (Number(tokens.expires_in) || 3600) * 1000;
+    useGameStore.setState({
+      oauthAccessToken: tokens.access_token,
+      oauthRefreshToken: tokens.refresh_token || refreshToken,
+      oauthIdToken: tokens.id_token || useGameStore.getState().oauthIdToken,
+      oauthTokenExpiry: expiresAt,
+      authToken: tokens.access_token,
+    });
+    // F1: refresh + id_token honor keep-signed-in (setOAuthItem); expiry is a
+    // short-lived cross-tab-coordination value and stays in localStorage.
+    try { localStorage.setItem('poker_token_expiry', String(expiresAt)); } catch {}
+    try {
+      if (tokens.refresh_token) setOAuthItem('poker_oauth_refresh', tokens.refresh_token);
+    } catch {}
+    try {
+      if (tokens.id_token) setOAuthItem('poker_oauth_id_token', tokens.id_token);
+    } catch {}
+  } catch {}
+}
+
+function _dispatchSessionExpired(reason) {
+  try {
+    window.dispatchEvent(new CustomEvent('poker:session-expired', { detail: { reason } }));
+  } catch {}
+}
+
 function _computeDelay() {
   const expiresAt = _readExpiresAt();
   if (!expiresAt) return MAX_DELAY_MS;
@@ -90,26 +121,7 @@ async function _doRefresh() {
   _refreshing = true;
   try {
     const tokens = await refreshAccessToken(refreshToken);
-    // Update store + persistence so the rest of the app reads fresh values.
-    try {
-      const expiresAt = Date.now() + (Number(tokens.expires_in) || 3600) * 1000;
-      useGameStore.setState({
-        oauthAccessToken: tokens.access_token,
-        oauthRefreshToken: tokens.refresh_token || refreshToken,
-        oauthIdToken: tokens.id_token || useGameStore.getState().oauthIdToken,
-        oauthTokenExpiry: expiresAt,
-        authToken: tokens.access_token,
-      });
-      // F1: refresh + id_token honor keep-signed-in (setOAuthItem); expiry is a
-      // short-lived cross-tab-coordination value and stays in localStorage.
-      try { localStorage.setItem('poker_token_expiry', String(expiresAt)); } catch {}
-      try {
-        if (tokens.refresh_token) setOAuthItem('poker_oauth_refresh', tokens.refresh_token);
-      } catch {}
-      try {
-        if (tokens.id_token) setOAuthItem('poker_oauth_id_token', tokens.id_token);
-      } catch {}
-    } catch {}
+    _applyRefreshedTokens(tokens, refreshToken);
     _scheduleNext();
   } catch (e) {
     if (e instanceof RefreshTokenRevokedError || e?.name === 'RefreshTokenRevokedError') {
@@ -121,11 +133,7 @@ async function _doRefresh() {
       // inline store.logout() that used to follow this dispatch was a second,
       // divergent teardown path — it double-fired logout for the same expiry
       // and predated the socket-disconnect + visible-notice flow.
-      try {
-        window.dispatchEvent(new CustomEvent('poker:session-expired', {
-          detail: { reason: 'refresh-revoked-by-scheduler' },
-        }));
-      } catch {}
+      _dispatchSessionExpired('refresh-revoked-by-scheduler');
       return;
     }
     // Transient — retry sooner, with jitter so multiple tabs (or a fleet of
@@ -201,6 +209,39 @@ export async function refreshNow() {
   const refreshToken = _readRefreshToken();
   if (!refreshToken) return null;
   return await refreshAccessToken(refreshToken);
+}
+
+/** True when this tab holds an OIDC refresh token (a signed-in account session). */
+export function hasRefreshToken() {
+  return !!_readRefreshToken();
+}
+
+/**
+ * 2026-10-07 — refresh NOW and apply the result exactly like a scheduled
+ * refresh does (store + persistence + next timer). Used by socket re-auth
+ * (services/socketReauth.js) so a reconnecting socket never presents an
+ * expired access token to oauthLogin. Funnels through refreshAccessToken's
+ * in-tab + cross-tab single-flight, so it never races the scheduler.
+ *
+ * Resolves to the token response, or null when there is no refresh token.
+ * Rejects with the refresh error. A RefreshTokenRevokedError also dispatches
+ * 'poker:session-expired' (the one teardown, main.jsx) — the same policy as
+ * the scheduler: only a revoked refresh token ends the session.
+ */
+export async function refreshNowAndApply() {
+  const refreshToken = _readRefreshToken();
+  if (!refreshToken) return null;
+  try {
+    const tokens = await refreshAccessToken(refreshToken);
+    _applyRefreshedTokens(tokens, refreshToken);
+    if (_started) _scheduleNext();
+    return tokens;
+  } catch (e) {
+    if (e instanceof RefreshTokenRevokedError || e?.name === 'RefreshTokenRevokedError') {
+      _dispatchSessionExpired('refresh-revoked-on-socket-reauth');
+    }
+    throw e;
+  }
 }
 
 export function isTokenExpiringSoon(thresholdMs = 60_000) {

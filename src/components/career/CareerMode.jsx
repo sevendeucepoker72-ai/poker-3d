@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
 import { useProgressStore } from '../../store/progressStore';
+import { getSocket } from '../../services/socketService';
+import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
 import './CareerMode.css';
 
 const VENUES = [
@@ -88,6 +90,13 @@ export default function CareerMode() {
   const progress = useProgressStore((s) => s.progress);
 
   const [selectedVenue, setSelectedVenue] = useState(null);
+  // 2026-10-07 — a stage start waits for the server to CONFIRM it
+  // (`careerGameStarted`) before switching to the table screen. Previously
+  // setScreen('table') ran right after the emit, so a refused start
+  // (suspended / no account) left the player on an empty table.
+  // starting: null | { venueIndex, stage }
+  const [starting, setStarting] = useState(null);
+  const [startError, setStartError] = useState(null);
 
   const playerLevel = progress?.level || 1;
 
@@ -124,11 +133,56 @@ export default function CareerMode() {
     return playerLevel >= VENUES[venueIndex].level;
   };
 
+  // While a start is in flight: the server confirms with careerGameStarted
+  // (sent after the table state), or answers on the shared 'error' event —
+  // a play refusal (shown verbatim by the shared PlayRefusalNotice) or a
+  // normal error such as not enough chips (shown below the header).
+  useEffect(() => {
+    if (!starting) return undefined;
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onStarted = () => {
+      setStarting(null);
+      setScreen('table');
+    };
+    const onServerError = (err) => {
+      setStarting(null);
+      if (reportPlayRefusal(err)) { setStartError(null); return; }
+      setStartError(err?.message || 'Could not start the game — please try again.');
+    };
+    socket.on('careerGameStarted', onStarted);
+    socket.on('error', onServerError);
+    const watchdog = setTimeout(() => {
+      setStarting(null);
+      setStartError(GAME_SERVER_UNREACHABLE_TEXT);
+    }, 10000);
+    return () => {
+      socket.off('careerGameStarted', onStarted);
+      socket.off('error', onServerError);
+      clearTimeout(watchdog);
+    };
+  }, [starting, setScreen]);
+
+  // Play-refusal replay (services/playRefusal.js): a login_required on a
+  // still-signed-in tab re-authenticates the socket and runs this start again
+  // ONCE through the latest handlePlay, unless Career Mode has unmounted.
+  const handlePlayRef = useRef(null);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const handlePlay = (venueIndex, stage) => {
-    if (!playerName) return;
-    startCareerGame(venueIndex, stage);
-    setScreen('table');
+    if (!playerName || starting) return;
+    const socket = getSocket();
+    if (!socket?.connected) { setStartError(GAME_SERVER_UNREACHABLE_TEXT); return; }
+    setStartError(null);
+    setStarting({ venueIndex, stage });
+    runPlayFlow(() => {
+      if (mountedRef.current && handlePlayRef.current) handlePlayRef.current(venueIndex, stage);
+    }, () => startCareerGame(venueIndex, stage));
   };
+  useEffect(() => { handlePlayRef.current = handlePlay; });
 
   return (
     <div className="career-mode">
@@ -141,6 +195,20 @@ export default function CareerMode() {
           Level {playerLevel}
         </div>
       </div>
+
+      {startError && (
+        <div
+          className="career-start-error"
+          role="alert"
+          style={{
+            margin: '10px auto 0', maxWidth: 520, padding: '10px 14px', borderRadius: 10,
+            background: 'rgba(12,28,72,0.92)', border: '1px solid rgba(255,210,74,0.55)',
+            color: '#ffd24a', fontSize: 14, textAlign: 'center',
+          }}
+        >
+          {startError}
+        </div>
+      )}
 
       <div className="career-path">
         {VENUES.map((venue, vi) => {
@@ -224,8 +292,11 @@ export default function CareerMode() {
                               e.stopPropagation();
                               handlePlay(vi, stage);
                             }}
+                            disabled={!!starting}
                           >
-                            {stageCompleted ? 'Replay' : 'Play'}
+                            {starting && starting.venueIndex === vi && starting.stage === stage
+                              ? 'Starting…'
+                              : (stageCompleted ? 'Replay' : 'Play')}
                           </button>
                         </div>
                       );

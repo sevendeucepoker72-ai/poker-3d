@@ -1,5 +1,18 @@
 import { create } from 'zustand';
 import { getSocket, emitPlayerAction } from '../services/socketService';
+import { notePlayAttempt } from '../services/playAttempt';
+
+// 2026-10-07 — every gated play emit records how to replay itself, so a
+// login_required refusal that lands on a signed-out socket (reconnect race) can
+// be re-authenticated silently and retried ONCE (services/playRefusal.js).
+// No-op inside a screen's runPlayFlow, which records its whole flow instead.
+function emitPlay(socket, event, payload) {
+  notePlayAttempt(() => {
+    const s = getSocket();
+    if (s?.connected) s.emit(event, payload);
+  });
+  socket.emit(event, payload);
+}
 
 export const useTableStore = create((set, get) => ({
   // Game state from server
@@ -110,7 +123,7 @@ export const useTableStore = create((set, get) => ({
     const socket = getSocket();
     if (socket?.connected) {
       console.log('[joinTable] Joining:', tableId, playerName, 'expected:', expectedVariant);
-      socket.emit('joinTable', { tableId, playerName, seatIndex, buyIn, avatar, expectedVariant });
+      emitPlay(socket, 'joinTable', { tableId, playerName, seatIndex, buyIn, avatar, expectedVariant });
     } else {
       console.warn('[joinTable] Socket not connected');
     }
@@ -120,7 +133,7 @@ export const useTableStore = create((set, get) => ({
     const socket = getSocket();
     if (socket?.connected) {
       console.log('[quickPlay] Emitting with name:', playerName);
-      socket.emit('quickPlay', { playerName, avatar });
+      emitPlay(socket, 'quickPlay', { playerName, avatar });
     } else {
       console.warn('[quickPlay] Socket not connected!');
     }
@@ -128,19 +141,19 @@ export const useTableStore = create((set, get) => ({
 
   quickHeadsUp: (playerName, avatar) => {
     const socket = getSocket();
-    if (socket?.connected) socket.emit('quickHeadsUp', { playerName, avatar });
+    if (socket?.connected) emitPlay(socket, 'quickHeadsUp', { playerName, avatar });
     else console.warn('[quickHeadsUp] Socket not connected');
   },
 
   quickSpinGo: (playerName, avatar) => {
     const socket = getSocket();
-    if (socket?.connected) socket.emit('quickSpinGo', { playerName, avatar });
+    if (socket?.connected) emitPlay(socket, 'quickSpinGo', { playerName, avatar });
     else console.warn('[quickSpinGo] Socket not connected');
   },
 
   quickAllInOrFold: (playerName, avatar) => {
     const socket = getSocket();
-    if (socket?.connected) socket.emit('quickAllInOrFold', { playerName, avatar });
+    if (socket?.connected) emitPlay(socket, 'quickAllInOrFold', { playerName, avatar });
     else console.warn('[quickAllInOrFold] Socket not connected');
   },
 
@@ -249,7 +262,7 @@ export const useTableStore = create((set, get) => ({
   // Career mode
   startCareerGame: (venue, stage) => {
     const socket = getSocket();
-    if (socket) socket.emit('startCareerGame', { venue, stage });
+    if (socket) emitPlay(socket, 'startCareerGame', { venue, stage });
   },
 
   // ========== Rabbit Hunt ==========
@@ -319,7 +332,7 @@ export const useTableStore = create((set, get) => ({
 
   joinAdditionalTable: (tableId, playerName, buyIn) => {
     const socket = getSocket();
-    if (socket) socket.emit('joinAdditionalTable', { tableId, playerName, buyIn });
+    if (socket) emitPlay(socket, 'joinAdditionalTable', { tableId, playerName, buyIn });
   },
 
   leaveAdditionalTable: (tableId) => {

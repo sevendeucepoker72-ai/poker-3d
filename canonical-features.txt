@@ -190,6 +190,13 @@ requestId
 We could not connect you to the game server. Please try signing in again.
 # 3) Guest-play watchdog (LOGIN-11) — "Play as Guest" could hang forever
 #    with both buttons disabled and no error.
+#    2026-10-07 RE-ANCHORED (token UNCHANGED): guest play was RETIRED by owner
+#    decision ("nobody plays .online without an American Pub Poker account"),
+#    and this watchdog went with LoginScreen's guest button. The same sentence
+#    is now the no-answer watchdog for tournament + qualifier REGISTRATION
+#    (services/playRefusal.js GAME_SERVER_UNREACHABLE_TEXT, used by
+#    TournamentLobby.jsx and QualifierLobby.jsx) — before 2026-10-07 a refused
+#    or unanswered registration showed the player nothing at all.
 Couldn't reach the game server — please try again.
 # 4) New labelled telemetry reason for the boot-refresh socket auth path,
 #    so a failure there is distinguishable from the bridge's on the
@@ -273,3 +280,62 @@ armWatchdogOnEmit
 keepListeningAfterTimeout
 connectStallMs
 ticket_late_success
+
+# ─── 2026-10-07 — game suspension + guest play OFF (client) ─────────
+# Owner decisions 2026-10-07: (1) a suspended ("86'd") player is refused EVERY
+# game and is told exactly "You are suspended from playing any games with
+# American Pub Poker."; (2) guest play is OFF for everyone — nobody plays .online
+# without an American Pub Poker account. poker-server refuses the play attempt
+# (contract C5: codes player_suspended / login_required / guest_disabled on the
+# event each path already uses). The client:
+#  - no longer offers "Play as Guest" (LoginScreen.jsx; sign-in only);
+#  - shows every refusal VERBATIM in the shared blue/gold PlayRefusalNotice,
+#    with the normal sign-in action for login_required / guest_disabled
+#    (services/playRefusal.js is the single recogniser; App.jsx 'error' +
+#    'joinError', Lobby joins, GameHUD, ClubsPanel, CreateTableModal);
+#  - shows registerTournament + qualifier registration failures (both used to
+#    be invisible) and a refused deep-link ticket (used to say "Connection
+#    timed out").
+# Locked: the notice class, its log tag, the refusal codes the client keys on,
+# the two fallback sentences, and the three per-surface class names.
+play-refusal-notice
+play-refusal-signin
+[play-refusal]
+player_suspended
+# login_required is the code for EVERY guest / unauthenticated play attempt —
+# the one that matters most with guest play off (review nit, 2026-10-07).
+# NOTE: the bare string also occurs in AuthCallback.jsx (the OIDC prompt=none
+# error), so this line alone cannot catch the refusal code being dropped from
+# playRefusal.js. Its signed-in recovery path is pinned separately by
+# "re-authenticating the socket" below.
+login_required
+guest_disabled
+You are suspended from playing any games with American Pub Poker.
+Sign in with your American Pub Poker account to play.
+deeplink-refusal
+tournament-register-error
+qualifier-register-msg
+
+# ─── 2026-10-07 review fixes (client) ─────────────────────────────────
+# (1) Reconnect re-auth (verified MAJOR): every socket (re)connect of a
+#     signed-in tab goes through services/socketReauth.js — refresh the access
+#     token FIRST when expired / near expiry, send oauthLogin requestId-scoped
+#     and WAIT for its loginResult, one forced-refresh retry if the server
+#     rejects the token. A play attempt refused login_required on a tab that
+#     still holds a signed-in account is recovered silently and replayed ONCE
+#     (playRefusal.js notePlayAttempt / runPlayFlow) before any Sign In notice.
+#     The replay waits until >= 3.2s after the original attempt (poker-server's
+#     per-socket quick-game rate limit runs BEFORE the play gate) and is dropped
+#     if the player has already tried again by hand. App.jsx sends the
+#     post-reconnect syncTableState after the re-auth answers, not on a 350ms
+#     timer.
+# (2) CreateTableModal + Career Mode switch to the table screen only after
+#     the server confirms the seat / start; a refusal keeps the player here
+#     (non-refusal join errors stay in the modal, blue + gold).
+# (3) The deep-link refusal screen's Sign In has LoginScreen's in-app-browser
+#     guard.
+[socket-reauth]
+re-authenticating the socket
+career-start-error
+create-table-error
+deeplink-inapp-notice

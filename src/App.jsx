@@ -3,6 +3,13 @@ import { useGameStore } from './store/gameStore';
 import { useTableStore } from './store/tableStore';
 import { getAuthToken, setAuthToken, clearAuthToken, setOAuthItem } from './services/tokenStorage';
 import { runSocketLogin, isCredentialDead, isDefinitiveLoginFailure } from './services/socketAuth';
+// 2026-10-07 — game suspension + guest play OFF: server play refusals (C5).
+import {
+  reportPlayRefusal, playRefusalCode, playRefusalText, refusalNeedsSignIn,
+  startAccountSignIn, GUEST_DISABLED,
+} from './services/playRefusal';
+import PlayRefusalNotice from './components/ui/PlayRefusalNotice';
+import { reauthSocket } from './services/socketReauth';
 // 2026-08-17 P2 — STATIC, deliberately. This was `await import('./services/
 // bridge')` inside the boot-auth IIFE, and the comment there claimed the
 // Promise.race below covered "a dynamic-import stall". It could not: the import
@@ -67,7 +74,7 @@ import AuthCallback from './components/ui/AuthCallback';
 // the steady-state refresh timer (the only consumer) moved to
 // services/authScheduler.js; refreshAccessToken is still used by the BOOT
 // auto-login path below.
-import { isAuthCallback as checkIsAuthCallback, refreshAccessToken } from './services/authService';
+import { isAuthCallback as checkIsAuthCallback, refreshAccessToken, detectInAppBrowser } from './services/authService';
 import { logAuthEvent } from './services/authEvents';
 import { startAuthCrossTabListener } from './services/authCrossTab';
 // Heavy screens loaded lazily — only when the user first navigates to them
@@ -274,6 +281,11 @@ function App() {
   const [deepLinkContext] = useState(() => parseDeepLinkContext());
   const waitlistContext = deepLinkContext?.source === 'waitlist' ? deepLinkContext : null;
   const [deepLinkTimedOut, setDeepLinkTimedOut] = useState(false);
+  // 2026-10-07 — the deep-link ticket was REFUSED as a play refusal
+  // ({code, message}: player_suspended / login_required / guest_disabled).
+  // Shown verbatim instead of the generic "Connection timed out" screen.
+  const [deepLinkRefusal, setDeepLinkRefusal] = useState(null);
+  const [deepLinkSignInError, setDeepLinkSignInError] = useState(null);
   // 2026-07-06 audit P2 — a #bridge_id_token in the URL at mount means we
   // arrived via cross-site SSO and the bridge consumer (below) is about to
   // exchange it + socket-auth. Show a spinner instead of a LoginScreen flash
@@ -560,7 +572,16 @@ function App() {
       if (!token) return;
       const st = useGameStore.getState();
       if (!st.isLoggedIn) return;
-      socket.emit('oauthLogin', { accessToken: token });
+      // 2026-10-07 review fix — this used to be a fire-and-forget
+      // `socket.emit('oauthLogin', { accessToken: token })`: no refresh first
+      // (access tokens live 15 min, so a phone asleep longer reconnected with
+      // an expired one) and nobody listened for the answer, so a rejected
+      // token left the socket signed out for the rest of the page's life —
+      // and, with guest play off, every play attempt refused login_required.
+      // reauthSocket refreshes first when the token is expired / near expiry,
+      // sends oauthLogin requestId-scoped, waits for loginResult, and retries
+      // once with a forced refresh if the server rejects the token itself.
+      const reauth = reauthSocket(socket, { reason: 'connect' });
 
       // PWA audit #2 + #11: after (re)connecting, if the user was
       // previously on a table, explicitly request a fresh game-state
@@ -568,12 +589,19 @@ function App() {
       // the oauthLogin handler, but this extra emit guarantees the
       // client has the current hand + seat occupancy + turn state,
       // protecting against the "resume to a stale table view" bug.
+      // 2026-10-07 — sent once the re-auth above has ANSWERED (it was a fixed
+      // 350ms "so oauthLogin completes first", which no longer holds now that
+      // an expired token is refreshed before oauthLogin is sent). The server
+      // answers syncTableState from the socket's seat session, which only the
+      // oauthLogin seat restore creates — sent earlier, it gets a spectator
+      // view. A superseded re-auth means a newer connection is doing its own.
       const ts = useTableStore.getState();
       if (ts.gameState?.tableId || ts.currentTableId) {
         const tableId = ts.gameState?.tableId || ts.currentTableId;
-        setTimeout(() => {
-          try { socket.emit('syncTableState', { tableId }); } catch {}
-        }, 350); // slight delay so oauthLogin auth completes first
+        reauth.then((r) => {
+          if (r?.reason === 'superseded' || !socket.connected) return;
+          try { socket.emit('syncTableState', { tableId }); } catch { /* best-effort resync */ }
+        });
       }
     };
     const handleDisconnect = () => useTableStore.getState().setConnected(false);
@@ -676,7 +704,18 @@ function App() {
 
     socket.on('tableList', (tables) => useTableStore.getState().setTables(tables));
 
-    socket.on('error', (err) => console.error('Server error:', err));
+    // 2026-10-07 — a play refusal (suspended / no account) can answer ANY play
+    // path, including ones with no spinner of their own (club-challenge
+    // auto-join, joinAdditionalTable, career start, rebuy, tournament register).
+    // Those used to reach only this console.error, so the player saw nothing.
+    // Route them to the shared PlayRefusalNotice; everything else logs as before.
+    socket.on('error', (err) => {
+      if (reportPlayRefusal(err)) return;
+      console.error('Server error:', err);
+    });
+    // joinByInviteCode answers on 'joinError' rather than 'error'.
+    const handleJoinErrorRefusal = (err) => { reportPlayRefusal(err); };
+    socket.on('joinError', handleJoinErrorRefusal);
 
     socket.on('handStarted', (state) => {
       useTableStore.getState().setGameState(state);
@@ -1064,6 +1103,9 @@ function App() {
       socket.off('gameState');
       socket.off('tableList');
       socket.off('error');
+      // Specific handler ref: CreateTableModal / Lobby register their own
+      // 'joinError' listeners, which a bare off('joinError') would remove.
+      socket.off('joinError', handleJoinErrorRefusal);
       socket.off('handStarted');
       socket.off('chatMessage');
       socket.off('trainingToggled');
@@ -1289,7 +1331,10 @@ function App() {
             const definitive = isDefinitiveLoginFailure(r);
             finishBridge(
               definitive
-                ? 'This account could not be matched securely. Please contact support.'
+                // 2026-10-07 — a play refusal (player_suspended) carries the
+                // owner's own sentence: show it verbatim, not the
+                // identity_conflict text.
+                ? (playRefusalText(r) || 'This account could not be matched securely. Please contact support.')
                 : 'We could not connect you to the game server. Please try signing in again.',
               {
                 reason: 'bridge_socket_auth_failed',
@@ -1401,6 +1446,13 @@ function App() {
                   error: String(result?.error || '').slice(0, 200),
                 });
               } catch {}
+              // 2026-10-07 — if the server refused this sign-in as a play
+              // refusal, say so on the login screen (verbatim) instead of
+              // leaving the player there with no explanation.
+              const refusalNotice = playRefusalText(result);
+              if (refusalNotice) {
+                try { useGameStore.setState({ sessionExpiredNotice: refusalNotice }); } catch { /* notice is best-effort */ }
+              }
             },
             onTimeout: () => {
               try { logAuthEvent('login_failed', { reason: 'boot_refresh_socket_timeout' }); } catch {}
@@ -1496,6 +1548,16 @@ function App() {
             return;
           }
           if (isCredentialDead(result)) dropLegacyTokenOnly();
+          // 2026-10-07 — guest play is OFF. A legacy token here is most often a
+          // pre-2026-10-07 "Play as Guest" credential; if the server refuses it
+          // as one (guest_disabled) it can never be used again, so drop it.
+          // Either way, show the server's text on the login screen, whose only
+          // button is the American Pub Poker sign-in.
+          const refusalCode = playRefusalCode(result);
+          if (refusalCode) {
+            if (refusalCode === GUEST_DISABLED) dropLegacyTokenOnly();
+            try { useGameStore.setState({ sessionExpiredNotice: playRefusalText(result) }); } catch { /* notice is best-effort */ }
+          }
         },
         // A watchdog expiry proves nothing about the token — the server may
         // never have answered (Railway cold start, socket churn). Keep it; the
@@ -1695,6 +1757,7 @@ function App() {
               } catch {}
             }
             setDeepLinkTimedOut(false);
+            setDeepLinkRefusal(null);
             useGameStore.getState().login(result.userData, result.token);
             return;
           }
@@ -1709,6 +1772,16 @@ function App() {
               error: String(result?.error || '').slice(0, 200),
             });
           } catch {}
+          // 2026-10-07 — a play refusal is a definite answer, not a timeout:
+          // show the server's text verbatim (and, for login_required /
+          // guest_disabled, the normal sign-in action) instead of
+          // "Connection timed out".
+          const refusalCode = playRefusalCode(result);
+          if (refusalCode) {
+            setDeepLinkRefusal({ code: refusalCode, message: playRefusalText(result) });
+            setDeepLinkTimedOut(false);
+            return;
+          }
           setDeepLinkTimedOut(true);
         },
         onTimeout: (info) => {
@@ -1842,6 +1915,8 @@ function App() {
     // instead of the login screen — making users "sign in again" here is
     // exactly the bug we're avoiding.
     if (deepLinkContext) {
+      // Only consulted when a refusal offers Sign In (see the button below).
+      const deepLinkInApp = deepLinkRefusal ? detectInAppBrowser() : { inApp: false, app: null };
       return (
         <div style={{
           position: 'fixed', inset: 0,
@@ -1853,7 +1928,67 @@ function App() {
             padding: 32, background: 'rgba(22,33,62,0.95)', borderRadius: 16,
             textAlign: 'center', maxWidth: 360,
           }}>
-            {deepLinkTimedOut ? (
+            {deepLinkRefusal ? (
+              // 2026-10-07 — play refusal (suspended / no account): the
+              // server's text verbatim, blue + gold. Sign-in is offered only
+              // when an account is what's missing.
+              <div className="deeplink-refusal" role="alert">
+                <h2 style={{ color: '#ffd24a', margin: 0, fontSize: 19, lineHeight: 1.4 }}>
+                  {deepLinkRefusal.message}
+                </h2>
+                {deepLinkSignInError && (
+                  <p style={{ color: '#cfe0ff', marginTop: 10, fontSize: 13, lineHeight: 1.4 }}>
+                    {deepLinkSignInError}
+                  </p>
+                )}
+                {/* 2026-10-07 — same in-app-browser guard as LoginScreen's
+                    Sign In: OAuth can't keep a session inside FB/IG/TikTok
+                    webviews, so say how to open the page in a real browser
+                    and disable the button instead of a redirect that fails. */}
+                {refusalNeedsSignIn(deepLinkRefusal.code) && deepLinkInApp.inApp && (
+                  <p className="deeplink-inapp-notice" style={{ color: '#cfe0ff', marginTop: 10, fontSize: 13, lineHeight: 1.4 }}>
+                    You're inside the {deepLinkInApp.app} app. Tap the <strong>•••</strong> menu and choose <strong>Open in Safari</strong> or <strong>Open in Chrome</strong> — sign-in won't keep your session in the in-app browser.
+                  </p>
+                )}
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 18 }}>
+                  {refusalNeedsSignIn(deepLinkRefusal.code) && (
+                    <button
+                      onClick={() => {
+                        if (deepLinkInApp.inApp) return;
+                        setDeepLinkSignInError(null);
+                        startAccountSignIn().catch((e) => {
+                          setDeepLinkSignInError(String(e?.message || e || 'Sign-in failed'));
+                        });
+                      }}
+                      disabled={deepLinkInApp.inApp}
+                      title={deepLinkInApp.inApp ? 'Open this page in your full browser to sign in' : undefined}
+                      style={{
+                        padding: '10px 18px', borderRadius: 8, border: 'none',
+                        cursor: deepLinkInApp.inApp ? 'default' : 'pointer',
+                        opacity: deepLinkInApp.inApp ? 0.6 : 1,
+                        background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', fontWeight: 700,
+                      }}
+                    >
+                      Sign In with American Pub Poker
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      // Drop the deep-link context and fall through to the
+                      // normal boot (stored session → lobby, else login screen).
+                      window.location.replace('/');
+                    }}
+                    style={{
+                      padding: '10px 18px', borderRadius: 8, cursor: 'pointer',
+                      background: 'transparent', color: '#cfe0ff',
+                      border: '1px solid rgba(120,160,255,0.45)',
+                    }}
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            ) : deepLinkTimedOut ? (
               <>
                 <div style={{ fontSize: 40, marginBottom: 8 }}>⏱️</div>
                 <h2 style={{ color: '#fcd34d', margin: 0, fontSize: 20 }}>Connection timed out</h2>
@@ -1940,6 +2075,7 @@ function App() {
     return (
       <Suspense fallback={<ChunkLoader />}>
         <CareerMode />
+        <PlayRefusalNotice />
         <AchievementPopup />
         <LevelUpPopup />
         <KeyboardShortcuts />
@@ -1967,6 +2103,9 @@ function App() {
             boundary — the root one catches any render error in the whole
             subtree and shows FriendlyErrorFallback. */}
         <Suspense fallback={null}><GameHUD /></Suspense>
+        {/* 2026-10-07 — server play refusals (rebuy, career start, extra
+            table, club challenge) shown verbatim; see services/playRefusal. */}
+        <PlayRefusalNotice />
         <AchievementPopup />
         <LevelUpPopup />
         <MissionsPanel />
@@ -2088,6 +2227,9 @@ function App() {
       <Suspense fallback={<ChunkLoader />}>
         <Lobby activeTab={activeNavTab} onTabChange={handleNavTabChange} pwaAction={pwaAction} waitlistContext={waitlistContext} />
       </Suspense>
+      {/* 2026-10-07 — server play refusals (suspended / no account) from any
+          lobby path, shown verbatim with the sign-in action when needed. */}
+      <PlayRefusalNotice />
       <AchievementPopup />
       <LevelUpPopup />
       <BottomNav activeTab={activeNavTab} onTabChange={handleNavTabChange} />

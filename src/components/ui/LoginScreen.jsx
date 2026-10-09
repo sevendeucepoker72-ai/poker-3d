@@ -1,36 +1,28 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
-import { getSocket } from '../../services/socketService';
 import { startLogin, detectInAppBrowser } from '../../services/authService';
-import { setAuthToken, setAuthUsername, isKeepSignedIn, setKeepSignedIn } from '../../services/tokenStorage';
+import { isKeepSignedIn, setKeepSignedIn } from '../../services/tokenStorage';
 import './LoginScreen.css';
 
-// Generate a cryptographically-random password for guest accounts. The previous
-// scheme (`guest_${Date.now()}_Xk9`) had only millisecond entropy and a static
-// suffix — two guests registered in the same tick could collide.
-function randomGuestPassword() {
-  try {
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    return 'guest_' + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-  } catch {
-    // Ultra-old browser fallback — still not a secret that leaves the device
-    return `guest_${Date.now()}_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
-  }
-}
-
+// 2026-10-07 — GUEST PLAY RETIRED (owner decision: nobody plays .online without
+// an American Pub Poker account). The "Play as Guest" button, its socket
+// `register` emit (random GuestNNNN name + random password), the
+// `registerResult` listener and the LOGIN-11 guest watchdog are gone. The only
+// way in is the American Pub Poker account (OIDC) below. poker-server refuses
+// a guest `register` (code guest_disabled) and any play attempt without an
+// account (code login_required); services/playRefusal.js shows those refusals
+// with this same sign-in action.
 export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   // "Remember me" — previously set silently to 1 by the SSO path; now the
   // user controls it. Defaults ON (matches previous behavior for returning
-  // users) but SSO + guest now both honor the checkbox.
+  // users) and the SSO path honors the checkbox.
   // "Keep me signed in" now reads from localStorage (via tokenStorage helper)
   // so the preference survives browser restart, matching the token it gates.
   const [rememberMe, setRememberMe] = useState(() => isKeepSignedIn());
 
-  const login = useGameStore((s) => s.login);
   // 2026-07-06 P2 auth fix — set by the 'poker:session-expired' teardown
   // (main.jsx listener) when the refresh token is revoked (logged out
   // elsewhere / admin revoke). Rendered as a visible notice below so the
@@ -39,69 +31,6 @@ export default function LoginScreen() {
   const sessionExpiredNotice = useGameStore((s) => s.sessionExpiredNotice);
   const tables = useTableStore((s) => s.tables);
   const totalOnline = tables.reduce((sum, t) => sum + (t.playerCount || 0), 0);
-
-  // 2026-08-17 LOGIN-11 — guest-play watchdog. handleGuestPlay used to
-  // setLoading(true) and fire-and-forget `register`; the ONLY thing that ever
-  // cleared the flag was a registerResult that came back. If the socket died
-  // between the `.connected` precheck and the reply (Railway cold start,
-  // network blip, backgrounded tab), the spinner ran forever with BOTH buttons
-  // disabled and no error — the page had to be reloaded. Every other socket-auth
-  // path in this app carries a watchdog; this one didn't.
-  const guestTimerRef = useRef(null);
-  // 2026-08-17 — ABORT flag for the guest attempt. The watchdog fixed the
-  // forever-spinner but introduced its mirror image: a `registerResult` that
-  // arrives AFTER the 25s timeout still ran the full success path and called
-  // login(...), signing the user in underneath a visible
-  // "Couldn't reach the game server" error — the UI says failed, the app says
-  // signed in. Once an attempt is abandoned (timeout or disconnect) its late
-  // reply must be ignored entirely; the user has already been told to retry,
-  // and the retry starts a fresh attempt.
-  const guestAbortedRef = useRef(false);
-  const clearGuestTimer = () => {
-    if (guestTimerRef.current) { clearTimeout(guestTimerRef.current); guestTimerRef.current = null; }
-  };
-  useEffect(() => clearGuestTimer, []);
-
-  // Listen for guest register result
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) return;
-
-    const handleRegisterResult = (result) => {
-      // Late reply to an abandoned attempt — the user is already looking at an
-      // error and may have moved on. Do not sign them in behind it.
-      if (guestAbortedRef.current) return;
-      clearGuestTimer();
-      setLoading(false);
-      if (result.success) {
-        // Route the token to localStorage when "Keep me signed in" is on
-        // (survives browser restart), sessionStorage otherwise (tab-only).
-        setKeepSignedIn(rememberMe);
-        setAuthToken(result.token, rememberMe);
-        setAuthUsername(result.userData.username);
-        login(result.userData, result.token);
-      } else {
-        setError(result.error || 'Guest login failed');
-      }
-    };
-
-    // A server-forced or transient disconnect must also release the UI —
-    // otherwise the buttons stay disabled until a reload.
-    const handleDisconnect = () => {
-      if (!guestTimerRef.current) return; // no guest attempt in flight
-      guestAbortedRef.current = true;
-      clearGuestTimer();
-      setLoading(false);
-      setError('Lost connection to the game server — please try again.');
-    };
-
-    socket.on('registerResult', handleRegisterResult);
-    socket.on('disconnect', handleDisconnect);
-    return () => {
-      socket.off('registerResult', handleRegisterResult);
-      socket.off('disconnect', handleDisconnect);
-    };
-  }, [login, rememberMe]);
 
   const handleSSOLogin = () => {
     // Persist the keep-signed-in choice BEFORE starting the OAuth flow;
@@ -125,32 +54,6 @@ export default function LoginScreen() {
   // "open in your browser" CTA instead of letting the redirect silently
   // fail.
   const inApp = detectInAppBrowser();
-
-  const handleGuestPlay = () => {
-    const guestName = `Guest${Math.floor(Math.random() * 9000) + 1000}`;
-    const socket = getSocket();
-    if (!socket?.connected) {
-      setError('Not connected to server. Please wait...');
-      return;
-    }
-    setError('');
-    setLoading(true);
-    // Fresh attempt — re-arm the abort flag so a previous abandoned attempt's
-    // state can't suppress this one's result.
-    guestAbortedRef.current = false;
-    socket.emit('register', { username: guestName, password: randomGuestPassword() });
-    // 25s matches the OAuth paths (AuthCallback + App boot). Fires only as a
-    // safety net — registerResult or 'disconnect' normally clears it first.
-    clearGuestTimer();
-    guestTimerRef.current = setTimeout(() => {
-      guestTimerRef.current = null;
-      // Abandon this attempt: a registerResult that arrives after this point
-      // must NOT call login() beneath the error we're about to show.
-      guestAbortedRef.current = true;
-      setLoading(false);
-      setError("Couldn't reach the game server — please try again.");
-    }, 25000);
-  };
 
   return (
     <div className="login-screen">
@@ -223,27 +126,6 @@ export default function LoginScreen() {
             >
               {loading && <span className="login-spinner" />}
               Sign In with American Pub Poker
-            </button>
-
-            <div style={{
-              textAlign: 'center',
-              color: 'rgba(255,255,255,0.3)',
-              fontSize: '12px',
-              margin: '12px 0',
-              textTransform: 'uppercase',
-              letterSpacing: '1px',
-            }}>
-              or
-            </div>
-
-            {/* Guest play */}
-            <button
-              type="button"
-              className="login-guest-btn"
-              onClick={handleGuestPlay}
-              disabled={loading}
-            >
-              Play as Guest
             </button>
 
             {/* Remember me */}
