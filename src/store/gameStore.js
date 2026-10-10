@@ -3,8 +3,9 @@ import { getSocket, disconnect as disconnectSocket } from '../services/socketSer
 import { clearAllProgressionStorage, resetSyncState } from '../services/persistenceService';
 import {
   getAuthToken, isGuestLegacyToken, stashGuestCredential, clearStashedGuestCredentialOnSignOut,
+  oidcSubject,
 } from '../services/tokenStorage';
-import { clearResumeRecord, resetTabSession } from '../services/sessionResume';
+import { clearResumeRecord, resetTabSession, getTabSession } from '../services/sessionResume';
 
 const AVATAR_STORAGE_KEY = 'poker_avatar';
 
@@ -122,6 +123,36 @@ const DEFAULT_AVATAR = {
 export const SEAT_COUNT = 9;
 
 /**
+ * F5 (2026-10-10) — a "Play Online" TICKET tab never carries ANOTHER
+ * account's OIDC session in its store. On a shared browser the boot's
+ * refresh-token sign-in (account B) can answer before the Play Online ticket
+ * (account A) does; the ticket then signs the tab in as A, and `login` leaves
+ * B's OIDC tokens in the store (and authScheduler kept writing B's refreshed
+ * tokens into it). Called right after a ticket / resume sign-in: when this
+ * tab is a ticket session and the store's OIDC tokens are not provably its
+ * own account's, they are dropped from the STORE only — the device's stored
+ * sign-in is left alone (B's other tabs keep working; U5). Returns true when
+ * something was dropped.
+ */
+export function clearOtherAccountOidcFromTicketTab() {
+  let tab = null;
+  try { tab = getTabSession(); } catch { tab = null; }
+  if (!tab || tab.kind !== 'ticket') return false;
+  const st = useGameStore.getState();
+  if (!(st.oauthAccessToken || st.oauthRefreshToken || st.oauthIdToken || st.oauthTokenExpiry)) return false;
+  const held = oidcSubject(st.oauthIdToken) || oidcSubject(st.oauthAccessToken);
+  if (tab.masterUserId && held === tab.masterUserId) return false;
+  useGameStore.setState({
+    oauthAccessToken: null,
+    oauthRefreshToken: null,
+    oauthIdToken: null,
+    oauthTokenExpiry: null,
+  });
+  try { console.warn('[session-resume] Play Online tab dropped another account\'s sign-in from its session state'); } catch { /* ignore */ }
+  return true;
+}
+
+/**
  * The local sign-out teardown — tokens, profile caches, store state, the
  * socket cycle and (unless `skipRedirect`) the global-logout redirect. Called
  * by gameStore.logout: at once for the silent teardowns (skipRedirect), and
@@ -171,7 +202,9 @@ function tearDownSession(set, get, skipRedirect) {
   // sessionStorage) so "Keep me signed in" state from a prior tab
   // can't resurrect the session on the next page load.
   // 2026-10-09 — includes the resumable game-server session
-  // (services/sessionResume.js, `poker_online_resume`).
+  // (services/sessionResume.js, `poker_online_resume`; since F5 2026-10-10
+  // this tab's sessionStorage copy, plus any device-wide one an older bundle
+  // left).
   for (const k of ['poker_auth_token','poker_keep_signed_in','poker_oauth_access','poker_oauth_refresh','poker_oauth_id_token','poker_token_expiry']) {
     try { localStorage.removeItem(k); } catch {}
     try { sessionStorage.removeItem(k); } catch {}

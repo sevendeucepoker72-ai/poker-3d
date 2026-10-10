@@ -448,3 +448,23 @@ sign-out kept a guest key bound to another account
 #     by socketService.guardNeverEmittedEvents, which drops such an emit and
 #     logs this line; the lock keeps the guard in the bundle.
 blocked a socket logout emit
+# (H) 2026-10-10 F5 — shared browser, one account per tab (contract C5).
+#     The Play-Online resume record is TAB-scoped (sessionStorage only, any
+#     keep-signed-in setting); a device-wide localStorage record an older
+#     bundle wrote is never presented and is removed on sight.
+removed a device-wide resume record
+#     At boot the record is never used while this browser holds a stored OIDC
+#     sign-in that is not provably the record's own account (master id from
+#     the resume token vs the OIDC `sub`): the boot takes the refresh path.
+boot skipped the resume record: this browser is signed in to a different account
+#     A 'ticket' tab never sends / refreshes / keeps another account's stored
+#     OIDC tokens: HTTP bearer (getHttpBearer, avatars, push, photo upload,
+#     auth-events, error reports, player-app bridge link), authScheduler, and
+#     the tab's store. It degrades (no bearer, push + photo upload skipped).
+holds no sign-in of its own account
+Play Online tab: not refreshing another account
+Play Online tab dropped another account
+has no sign-in of its own account on this browser
+needs_account_sign_in
+Push notifications need your American Pub Poker sign-in on this device.
+To upload a photo, sign in with your American Pub Poker account on this device.

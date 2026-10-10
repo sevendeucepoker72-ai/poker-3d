@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, Component, lazy, Suspense } from 'react';
-import { useGameStore } from './store/gameStore';
+import { useGameStore, clearOtherAccountOidcFromTicketTab } from './store/gameStore';
 import { useTableStore } from './store/tableStore';
-import { getAuthToken, setAuthToken, clearAuthToken, setOAuthItem } from './services/tokenStorage';
+import { getAuthToken, setAuthToken, clearAuthToken, setOAuthItem, bearerForThisTab } from './services/tokenStorage';
 import { runSocketLogin, isCredentialDead, isDefinitiveLoginFailure } from './services/socketAuth';
 // 2026-10-07 — game suspension + guest play OFF: server play refusals (C5).
 import {
@@ -15,6 +15,7 @@ import { reauthSocket } from './services/socketReauth';
 import {
   saveTicketResume, readResumeRecordForBoot, readResumeRecordForUser, clearResumeRecord,
   setTabSession, markTicketSignIn, RESUME_INVALID, RESUME_EVENT,
+  masterIdFromLoginResult, resumeRecordMasterId,
 } from './services/sessionResume';
 import { stashGuestCredential } from './services/tokenStorage';
 import { maybeOfferGuestCarryOver, resetGuestCarryOver } from './services/guestCarryOver';
@@ -1413,6 +1414,11 @@ function App() {
       // ticket is being presented right now (that ticket is the authoritative
       // credential, like the bridge). A non-definitive failure falls through
       // to the refresh-token / legacy paths exactly as before.
+      // 2026-10-10 (F5) — the record is THIS TAB's (sessionStorage), and it is
+      // never used while this browser holds a stored OIDC sign-in that is not
+      // provably the same account (readResumeRecordForBoot drops it): the tab
+      // then boots through the refresh token as before resume tokens existed,
+      // instead of socket = A while HTTP / token refresh = B.
       const resumeRec = deepLinkContext ? null : readResumeRecordForBoot();
       if (resumeRec) {
         tryResumeAutoLogin(resumeRec, () => runRefreshOrLegacy(oauthRefresh));
@@ -1445,8 +1451,15 @@ function App() {
         onResult: (r) => {
           if (r?.success && r.userData) {
             saveTicketResume(r, { keepIfMissing: true, expectUserId: rec.userId });
-            setTabSession('ticket', r.userData.id);
-            useGameStore.getState().login(r.userData, getAuthToken() || null);
+            // F5 — the ticket tab remembers WHICH account it is (master id from
+            // the server-signed resume token) so it never sends or adopts
+            // another account's stored OIDC tokens; its store keeps only a
+            // token of its own account (bearerForThisTab), never B's.
+            setTabSession('ticket', r.userData.id, {
+              masterUserId: masterIdFromLoginResult(r) || resumeRecordMasterId(rec),
+            });
+            useGameStore.getState().login(r.userData, bearerForThisTab(getAuthToken()) || null);
+            clearOtherAccountOidcFromTicketTab();
             return;
           }
           if (r?.code === RESUME_INVALID) clearResumeRecord();
@@ -1896,9 +1909,18 @@ function App() {
             // tab's same-user OIDC marker or takes the pre-R1 re-auth path —
             // never another account's (markTicketSignIn). A tab that is
             // already the same user's OIDC session stays 'oidc' (T6).
+            // 2026-10-10 (F5) — the record goes in THIS tab's sessionStorage
+            // only; the ticket tab keeps its master id (from the server-signed
+            // resume token) so it never sends or adopts another account's
+            // stored OIDC tokens; and if the boot's refresh sign-in of ANOTHER
+            // account answered before this ticket, that account's tokens are
+            // dropped from this tab's state (the device copy is left alone).
             const resumeStored = saveTicketResume(result);
-            markTicketSignIn(result.userData.id, resumeStored);
+            const tabKind = markTicketSignIn(result.userData.id, resumeStored, {
+              masterUserId: masterIdFromLoginResult(result),
+            });
             useGameStore.getState().login(result.userData, result.token);
+            if (tabKind === 'ticket') clearOtherAccountOidcFromTicketTab();
             return;
           }
           // Surface the actual server reason (ticket_replayed / ticket_invalid /

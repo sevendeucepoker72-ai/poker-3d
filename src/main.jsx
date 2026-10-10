@@ -59,9 +59,9 @@ authScheduler.start()
 import { onAuthEvent } from './services/authBroadcast.js'
 import { useGameStore } from './store/gameStore.js'
 // 2026-10-09 (R1) — the resumable "Play Online" session record. Every teardown
-// below forgets it too: this tab's sessionStorage copy (session-only mode)
-// survives a reload of the tab, so leaving it would sign the tab straight back
-// in on the next boot.
+// below forgets it too: the record lives in this tab's sessionStorage (F5,
+// 2026-10-10 — always, tab-scoped) and survives a reload of the tab, so
+// leaving it would sign the tab straight back in on the next boot.
 import { clearResumeRecord, resetTabSession } from './services/sessionResume.js'
 onAuthEvent((evt) => {
   if (evt.type === 'logout') {

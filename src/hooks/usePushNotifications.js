@@ -5,7 +5,7 @@
  * the same backend and VAPID key.
  */
 
-import { getHttpBearer } from '../services/tokenStorage';
+import { getHttpBearer, isTicketTabWithoutOwnBearer } from '../services/tokenStorage';
 import { fetchWithTimeout } from '../utils/fetchWithTimeout';
 import { API_BASE as MASTER_API } from '../config';
 
@@ -27,6 +27,28 @@ function authHeaders(extra = {}) {
   const token = getHttpBearer();
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
+}
+
+/**
+ * 2026-10-10 (F5) — true in a "Play Online" ticket tab that holds no sign-in
+ * of its OWN account on this browser (getHttpBearer never lends it another
+ * account's stored token). Push enrollment is per account and the browser's
+ * push subscription is shared by everyone on this browser, so there every
+ * per-user push call is skipped — no permission prompt, no subscribe /
+ * unsubscribe / resync, no server call — instead of being sent without the
+ * caller's identity (or touching another account's subscription).
+ */
+export function pushNeedsAccountSignIn() {
+  try { return isTicketTabWithoutOwnBearer(); } catch { return false; }
+}
+let _warnedPushSkipped = false;
+function skippedForTicketTab() {
+  if (!pushNeedsAccountSignIn()) return false;
+  if (!_warnedPushSkipped) {
+    _warnedPushSkipped = true;
+    try { console.warn('[push] skipped: this Play Online tab has no sign-in of its own account on this browser'); } catch { /* ignore */ }
+  }
+  return true;
 }
 
 function urlB64ToUint8Array(base64String) {
@@ -102,6 +124,7 @@ export async function requestPushPermission() {
 export async function subscribeToPush(userId) {
   try {
     if (!isPushSupported() || !userId) return false;
+    if (skippedForTicketTab()) return false;
     const permission = await requestPushPermission();
     if (permission !== 'granted') return false;
 
@@ -142,6 +165,7 @@ export async function subscribeToPush(userId) {
 export async function unsubscribeFromPush(userId) {
   try {
     if (!('serviceWorker' in navigator)) return false;
+    if (skippedForTicketTab()) return false;
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
     if (sub) await sub.unsubscribe();
@@ -162,6 +186,7 @@ export async function unsubscribeFromPush(userId) {
 /** Current enable/subscription state from the server. */
 export async function getPushStatus(userId) {
   if (!userId) return { push_enabled: false, has_subscription: false };
+  if (skippedForTicketTab()) return { push_enabled: false, has_subscription: false };
   try {
     const res = await fetchWithTimeout(`${MASTER_API}/notifications/push-status/${userId}`, {
       headers: authHeaders(),
@@ -179,6 +204,7 @@ export async function getPushStatus(userId) {
 export async function checkSubscriptionHealth(userId) {
   if (!userId) return { status: 'unsupported' };
   if (!isPushSupported()) return { status: 'unsupported' };
+  if (skippedForTicketTab()) return { status: 'needs_account_sign_in' };
   if (Notification.permission === 'denied') return { status: 'not_permitted' };
 
   try {

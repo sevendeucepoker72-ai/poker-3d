@@ -13,6 +13,7 @@
  * The flag itself ("poker_keep_signed_in") also lives in localStorage
  * so the next visit can know which storage to read from.
  */
+import { getTabSession } from './tabSession';
 
 const TOKEN_KEY = 'poker_auth_token';
 const FLAG_KEY  = 'poker_keep_signed_in';
@@ -70,14 +71,121 @@ export function getAuthToken() {
  * multiTableManager) MUST keep sending the ACCESS token via getAuthToken():
  * poker-server's JWKS path requires typ='at+jwt' and REJECTS id_tokens, so an
  * id_token would break socket auth. Never route the socket through this.
+ *
+ * 2026-10-10 (F5) — in a "Play Online" TICKET tab only a token that provably
+ * belongs to THIS tab's own account is returned (bearerForThisTab), else
+ * null: the tab holds no OIDC credential of its own, and the device-wide
+ * stored tokens can be a DIFFERENT account's sign-in (shared browser). The
+ * call then goes out without a bearer — degraded, never as another account.
+ * Every other tab: unchanged.
  */
 export function getHttpBearer() {
   const isJwt = (t) => typeof t === 'string' && t.split('.').length === 3;
   const at = getAuthToken();
   const id = getOAuthItem('poker_oauth_id_token');
+  if (isTicketTab()) {
+    const own = [at, id].find((t) => isJwt(t) && bearerForThisTab(t));
+    if (own) return own;
+    warnNoOwnBearerOnce();
+    return null;
+  }
   if (isJwt(at)) return at;   // JWT access token (RFC 9068) — preferred
   if (isJwt(id)) return id;   // opaque AT -> fall back to the JWT id_token
   return at || id || null;    // last resort
+}
+
+// ── Whose OIDC sign-in a token / this device holds (F5, 2026-10-10) ──────────
+// A shared browser can hold account B's OIDC sign-in (localStorage, keep me
+// signed in) while a "Play Online" ticket tab is account A's session. The
+// device-wide tokens are only ever used by such a tab when they provably name
+// the same account. Identity = the `sub` claim (the master users.id the
+// auth-server issues as the subject) of an OIDC JWT. Decoded, never verified:
+// this only decides whether to SEND a token, the server still verifies it.
+
+/**
+ * The master user id (`sub`) an auth-server JWT names, or null. Only
+ * asymmetrically signed JWTs count (the auth-server's RS256 / ES256): an
+ * HS256 poker-server token (legacy login, resume token) or an unsigned one is
+ * never an OIDC identity.
+ */
+export function oidcSubject(token) {
+  if (typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const header = decodeJwtSegment(parts[0]);
+  const alg = header && typeof header.alg === 'string' ? header.alg : '';
+  if (!alg || /^(HS\d+|none)$/i.test(alg)) return null;
+  const payload = decodeJwtSegment(parts[1]);
+  const sub = payload && (typeof payload.sub === 'string' || typeof payload.sub === 'number')
+    ? String(payload.sub).trim()
+    : '';
+  return sub || null;
+}
+
+/**
+ * The OIDC sign-in this DEVICE holds: `{ signedIn, masterUserId }`.
+ *   signedIn      a refresh token is stored (what the boot's refresh path
+ *                 signs in with);
+ *   masterUserId  the one master user id every stored OIDC JWT (id_token,
+ *                 access tokens) names — null when none is readable or they
+ *                 disagree (then it is not provably anyone's).
+ */
+export function getStoredOidcAccount() {
+  const subjects = new Set();
+  for (const t of [getOAuthItem('poker_oauth_id_token'), getOAuthItem('poker_oauth_access'), getAuthToken()]) {
+    const s = oidcSubject(t);
+    if (s) subjects.add(s);
+  }
+  return {
+    signedIn: !!getOAuthItem('poker_oauth_refresh'),
+    masterUserId: subjects.size === 1 ? [...subjects][0] : null,
+  };
+}
+
+/** True when THIS TAB is a "Play Online" ticket session (tabSession kind). */
+export function isTicketTabSession() {
+  return isTicketTab();
+}
+
+function isTicketTab() {
+  try {
+    const tab = getTabSession();
+    return !!(tab && tab.kind === 'ticket');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * May THIS TAB send `token` as an HTTP bearer? Returns the token, or null.
+ * Always the token, except in a "Play Online" TICKET tab: there only an OIDC
+ * JWT whose `sub` is this tab's own master user id (tabSession.masterUserId)
+ * is sent — never another account's stored sign-in, never a token whose
+ * owner cannot be read.
+ */
+export function bearerForThisTab(token) {
+  if (!token) return null;
+  let tab = null;
+  try { tab = getTabSession(); } catch { tab = null; }
+  if (!tab || tab.kind !== 'ticket') return token;
+  const mine = tab.masterUserId;
+  return mine && oidcSubject(token) === mine ? token : null;
+}
+
+/**
+ * True in a TICKET tab that holds no bearer of its own account: master-API
+ * calls that need the caller's identity (push enrollment, photo upload) are
+ * skipped there instead of being sent unauthenticated (F5).
+ */
+export function isTicketTabWithoutOwnBearer() {
+  return isTicketTab() && !getHttpBearer();
+}
+
+let _warnedNoOwnBearer = false;
+function warnNoOwnBearerOnce() {
+  if (_warnedNoOwnBearer) return;
+  _warnedNoOwnBearer = true;
+  try { console.warn('[http-bearer] Play Online tab holds no sign-in of its own account; master-API calls go out without a bearer'); } catch { /* ignore */ }
 }
 
 // ── Legacy guest credential (2026-10-09, guest carry-over) ──────────────────

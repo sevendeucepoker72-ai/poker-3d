@@ -11,7 +11,7 @@
  * the bridged session naturally.
  */
 
-import { setAuthToken, setOAuthItem } from './tokenStorage';
+import { setAuthToken, setOAuthItem, bearerForThisTab } from './tokenStorage';
 
 const AUTH_SERVER = import.meta.env.VITE_AUTH_SERVER_URL || 'https://auth.americanpubpoker.online';
 const CLIENT_ID = 'poker-3d';
@@ -44,8 +44,12 @@ export const BRIDGE_EXCHANGE_TIMEOUT_MS = 20000;
 
 export function withBridge(targetUrl) {
   try {
-    const idToken = localStorage.getItem('poker_oauth_id_token')
-      || sessionStorage.getItem('poker_oauth_id_token');
+    // 2026-10-10 (F5) — through bearerForThisTab: a "Play Online" ticket tab
+    // never hands the player app another account's sign-in stored on this
+    // browser (the link then opens without a bridge — the player app's own
+    // sign-in applies). Every other tab: unchanged.
+    const idToken = bearerForThisTab(localStorage.getItem('poker_oauth_id_token')
+      || sessionStorage.getItem('poker_oauth_id_token'));
     if (!idToken || typeof idToken !== 'string') return targetUrl;
     const url = new URL(targetUrl, typeof window !== 'undefined' ? window.location.href : 'https://americanpubpoker.online');
     const existingHash = url.hash.replace(/^#/, '');

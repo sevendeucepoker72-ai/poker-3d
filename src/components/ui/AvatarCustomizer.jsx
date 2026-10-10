@@ -8,7 +8,7 @@ import {
   EYE_COLORS, TOP_STYLES, TOP_COLORS, BOTTOM_STYLES,
   BOTTOM_COLORS, ACCESSORIES, FACE_SLIDERS,
 } from '../../utils/avatarConfig';
-import { getAuthToken } from '../../services/tokenStorage';
+import { getAuthToken, getHttpBearer, isTicketTabSession } from '../../services/tokenStorage';
 import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
 import { API_BASE as MASTER_API } from '../../config';
 import './AvatarCustomizer.css';
@@ -45,8 +45,19 @@ export default function AvatarCustomizer() {
   const submitPhotoForModeration = async (dataUrl) => {
     const userId = useGameStore.getState().userId;
     if (!userId) { setPhotoStatus('error'); setPhotoMessage('Sign in to upload a photo.'); return; }
-    const token = getAuthToken();
-    if (!token) { setPhotoStatus('error'); setPhotoMessage('Sign in to upload a photo.'); return; }
+    // 2026-10-10 (F5) — a "Play Online" ticket tab sends only a token of its
+    // OWN account (getHttpBearer's ticket-tab rule), never another account's
+    // sign-in stored on this browser; without one the upload is not sent.
+    // Every other tab: unchanged.
+    const ticketTab = isTicketTabSession();
+    const token = ticketTab ? getHttpBearer() : getAuthToken();
+    if (!token) {
+      setPhotoStatus('error');
+      setPhotoMessage(ticketTab
+        ? 'To upload a photo, sign in with your American Pub Poker account on this device.'
+        : 'Sign in to upload a photo.');
+      return;
+    }
     setPhotoStatus('uploading');
     setPhotoMessage('Uploading…');
     try {

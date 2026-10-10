@@ -18,6 +18,7 @@
 // login still report (anonymously).
 
 import { API_BASE } from '../config';
+import { bearerForThisTab } from './tokenStorage';
 
 const DEDUP_WINDOW_MS = 60_000;
 const DEDUP_MAX_KEYS = 10;
@@ -35,13 +36,16 @@ function readToken() {
     // session stores its tokens there (per tokenStorage routing), so a
     // localStorage-only read made every error report from those sessions
     // anonymous (no user attribution in the auth-events / Sentry-lite sink).
-    return (
-      localStorage.getItem('poker_oauth_access') ||
-      localStorage.getItem('poker_auth_token') ||
-      sessionStorage.getItem('poker_oauth_access') ||
-      sessionStorage.getItem('poker_auth_token') ||
-      null
-    );
+    // 2026-10-10 (F5) — each candidate through bearerForThisTab: a "Play
+    // Online" ticket tab never sends another account's sign-in stored on this
+    // browser (the report then goes out anonymously); every other tab is
+    // unchanged (first non-empty, same order as before).
+    return [
+      localStorage.getItem('poker_oauth_access'),
+      localStorage.getItem('poker_auth_token'),
+      sessionStorage.getItem('poker_oauth_access'),
+      sessionStorage.getItem('poker_auth_token'),
+    ].map((t) => bearerForThisTab(t)).find(Boolean) || null;
   } catch (_) {
     return null;
   }

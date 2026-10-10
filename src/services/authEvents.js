@@ -4,7 +4,7 @@
  */
 
 import { API_BASE } from '../config';
-import { getAuthToken, getOAuthItem } from './tokenStorage';
+import { getAuthToken, getOAuthItem, bearerForThisTab } from './tokenStorage';
 const ORIGIN = 'online';
 
 export function logAuthEvent(eventType, detail, opts = {}) {
@@ -22,7 +22,13 @@ export function logAuthEvent(eventType, detail, opts = {}) {
     // authService/tokenStorage), with poker_oauth_access as fallback.
     // Both are ACCESS tokens — /auth-events/log expects the same bearer
     // the rest of the API receives (NOT the id_token).
-    token = getAuthToken() || getOAuthItem('poker_oauth_access') || null;
+    // 2026-10-10 (F5) — through bearerForThisTab: a "Play Online" ticket tab
+    // never sends another account's sign-in stored on this browser (the row
+    // then goes out unattributed); every other tab is unchanged (first
+    // non-empty of the two, as before).
+    token = [getAuthToken(), getOAuthItem('poker_oauth_access')]
+      .map((t) => bearerForThisTab(t))
+      .find(Boolean) || null;
   } catch {}
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;

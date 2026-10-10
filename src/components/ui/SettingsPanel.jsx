@@ -10,6 +10,7 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
   getPushStatus,
+  pushNeedsAccountSignIn,
 } from '../../hooks/usePushNotifications';
 
 // Debounced server sync for preferences — persists across devices.
@@ -158,9 +159,13 @@ export default function SettingsPanel({ onClose }) {
       } else {
         const ok = await subscribeToPush(userId);
         if (!ok) {
-          setPushError(Notification.permission === 'denied'
-            ? 'Notifications are blocked in your browser settings. Allow them to enable.'
-            : 'Could not enable push. Try again.');
+          // 2026-10-10 (F5) — a Play Online tab without a sign-in of its own
+          // account on this browser cannot enroll push (it is per account).
+          setPushError(pushNeedsAccountSignIn()
+            ? 'Push notifications need your American Pub Poker sign-in on this device.'
+            : Notification.permission === 'denied'
+              ? 'Notifications are blocked in your browser settings. Allow them to enable.'
+              : 'Could not enable push. Try again.');
         } else {
           setPushEnabled(true);
         }

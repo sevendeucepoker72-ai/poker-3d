@@ -24,7 +24,8 @@
 
 import { refreshAccessToken, RefreshTokenRevokedError, REFRESH_DONE_KEY } from './authService';
 import { useGameStore } from '../store/gameStore';
-import { setOAuthItem, getOAuthItem } from './tokenStorage';
+import { setOAuthItem, getOAuthItem, getStoredOidcAccount, oidcSubject } from './tokenStorage';
+import { getTabSession } from './tabSession';
 
 const REFRESH_LEAD_MS = 5 * 60 * 1000;
 const MIN_DELAY_MS = 1000;
@@ -61,19 +62,59 @@ function _readRefreshToken() {
   } catch { return null; }
 }
 
+// F5 (2026-10-10) — a "Play Online" TICKET tab is account A's game session
+// and holds no OIDC sign-in of its own; on a shared browser the device's
+// stored OIDC sign-in can be account B's. Such a tab must never refresh B's
+// tokens into its own state (socket A, store B), nor end A's session because
+// B's refresh token was revoked. True when THIS tab is a ticket session and
+// the device's stored OIDC sign-in is not provably the same account. B's own
+// tabs keep refreshing B; B's next boot refreshes with the stored token.
+function _ticketTabForeignToDeviceOidc() {
+  try {
+    const tab = getTabSession();
+    if (!tab || tab.kind !== 'ticket') return false;
+    const dev = getStoredOidcAccount();
+    return !(tab.masterUserId && dev.masterUserId === tab.masterUserId);
+  } catch {
+    return false;
+  }
+}
+let _warnedForeignSkip = false;
+function _warnForeignSkipOnce() {
+  if (_warnedForeignSkip) return;
+  _warnedForeignSkip = true;
+  try { console.warn('[auth-scheduler] Play Online tab: not refreshing another account\'s stored sign-in'); } catch { /* ignore */ }
+}
+
+// May THIS tab's store hold `tokens`? Always, except in a ticket tab, where
+// only tokens naming the tab's own account (sub === its masterUserId) may.
+function _storeMayHold(tokens) {
+  try {
+    const tab = getTabSession();
+    if (!tab || tab.kind !== 'ticket') return true;
+    const sub = oidcSubject(tokens && tokens.id_token) || oidcSubject(tokens && tokens.access_token);
+    return !!(tab.masterUserId && sub === tab.masterUserId);
+  } catch {
+    return true;
+  }
+}
+
 // Write a successful refresh into the store + persistence so the rest of the
 // app (socket re-auth, HTTP bearer, the next refresh) reads fresh values.
 // Shared by the scheduled refresh and refreshNowAndApply.
 function _applyRefreshedTokens(tokens, refreshToken) {
   try {
     const expiresAt = Date.now() + (Number(tokens.expires_in) || 3600) * 1000;
-    useGameStore.setState({
-      oauthAccessToken: tokens.access_token,
-      oauthRefreshToken: tokens.refresh_token || refreshToken,
-      oauthIdToken: tokens.id_token || useGameStore.getState().oauthIdToken,
-      oauthTokenExpiry: expiresAt,
-      authToken: tokens.access_token,
-    });
+    // F5 — never another account's tokens into a ticket tab's store.
+    if (_storeMayHold(tokens)) {
+      useGameStore.setState({
+        oauthAccessToken: tokens.access_token,
+        oauthRefreshToken: tokens.refresh_token || refreshToken,
+        oauthIdToken: tokens.id_token || useGameStore.getState().oauthIdToken,
+        oauthTokenExpiry: expiresAt,
+        authToken: tokens.access_token,
+      });
+    }
     // F1: refresh + id_token honor keep-signed-in (setOAuthItem); expiry is a
     // short-lived cross-tab-coordination value and stays in localStorage.
     try { localStorage.setItem('poker_token_expiry', String(expiresAt)); } catch {}
@@ -115,6 +156,19 @@ async function _doRefresh() {
     return;
   }
   _pendingRefreshOnVisible = false;
+
+  // F5 — a ticket tab whose device sign-in is another account's: skip, and
+  // look again later (the tab may sign in to an OIDC session of its own).
+  // A fixed delay — B's stored expiry may be in the past, which would make
+  // _computeDelay fire every second.
+  if (_ticketTabForeignToDeviceOidc()) {
+    _warnForeignSkipOnce();
+    if (_started) {
+      if (_timerId) { clearTimeout(_timerId); _timerId = null; }
+      _timerId = setTimeout(_doRefresh, MAX_DELAY_MS);
+    }
+    return;
+  }
 
   const refreshToken = _readRefreshToken();
   if (!refreshToken) return;
@@ -206,6 +260,9 @@ export function stop() {
 }
 
 export async function refreshNow() {
+  // F5 — the tab-resume refresh (sessionLifecycle) never touches another
+  // account's stored sign-in from a ticket tab either.
+  if (_ticketTabForeignToDeviceOidc()) return null;
   const refreshToken = _readRefreshToken();
   if (!refreshToken) return null;
   return await refreshAccessToken(refreshToken);
@@ -229,6 +286,9 @@ export function hasRefreshToken() {
  * the scheduler: only a revoked refresh token ends the session.
  */
 export async function refreshNowAndApply() {
+  // F5 — same rule as the scheduled refresh (socketReauth never asks from a
+  // ticket tab; belt-and-braces).
+  if (_ticketTabForeignToDeviceOidc()) return null;
   const refreshToken = _readRefreshToken();
   if (!refreshToken) return null;
   try {

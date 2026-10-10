@@ -33,22 +33,33 @@
  * reconnect + the login_required silent recovery), App.jsx's boot path, and
  * multiTableManager's extra-table sockets.
  *
- * Storage: ONE record under `poker_online_resume`, in localStorage when "keep
- * me signed in" is on (the default), else sessionStorage — the same rule as
- * every other credential in tokenStorage.js, so a session-only shared device
- * forgets it with the tab. The record is BOUND to the local user id it was
+ * Storage (F5, 2026-10-10): ONE record per TAB under `poker_online_resume`
+ * in sessionStorage ONLY — whatever "keep me signed in" says. It survives a
+ * reload of the same tab and is gone when the tab closes, so the next person
+ * on a shared browser can never land in this player's game. (Until
+ * 2026-10-10 it was device-wide in localStorage: the next person opening
+ * .online on that browser was resumed into the first player's session for up
+ * to 24h. A device-wide record an older bundle left behind is never presented
+ * and is removed on sight.) The record is BOUND to the local user id it was
  * issued for (`userId`, from the token's localUserId claim): a signed-in tab
- * only ever presents a record for its own user (readResumeRecordForUser), so
- * a record another tab wrote for a different account can never switch this
- * tab's socket to that account. Cleared on sign-out (gameStore.logout), on
- * resume_invalid, on a refresh-token revocation wipe / session-expired
- * teardown / peer-tab sign-out, and when an OIDC or legacy sign-in replaces
- * the session. The player's own Sign Out also revokes it on the server
- * first — socket 'revokeSignInTokens' with an acknowledgement, which bumps the
- * row's users.token_version — so a copied record stops working on every
- * device.
+ * only ever presents a record for its own user (readResumeRecordForUser). At
+ * boot it is used only when the device's stored OIDC sign-in (if any) is
+ * provably the SAME account (readResumeRecordForBoot) — never to sign a tab
+ * in as A while the device's OIDC sign-in is B. Cleared on sign-out
+ * (gameStore.logout), on resume_invalid, on a refresh-token revocation wipe /
+ * session-expired teardown / peer-tab sign-out, and when an OIDC or legacy
+ * sign-in replaces the session. The player's own Sign Out also revokes it on
+ * the server first — socket 'revokeSignInTokens' with an acknowledgement,
+ * which bumps the row's users.token_version — so a copied record stops
+ * working everywhere.
  */
-import { isKeepSignedIn, decodeJwtPayload } from './tokenStorage';
+import { decodeJwtPayload, getStoredOidcAccount } from './tokenStorage';
+import { setTabSession, resetTabSession, getTabSession } from './tabSession';
+
+// The tab-session marker lives in services/tabSession.js (F5 — so the HTTP
+// bearer can read it without an import cycle); re-exported here for the
+// existing call sites.
+export { setTabSession, resetTabSession, getTabSession };
 
 export const RESUME_STORAGE_KEY = 'poker_online_resume';
 export const RESUME_INVALID = 'resume_invalid';
@@ -83,32 +94,78 @@ function idString(v) {
 /** Forget the stored resume credential (sign-out, resume_invalid, session change). */
 export function clearResumeRecord() {
   const { local, session } = stores();
+  // localStorage too: a device-wide record an older bundle wrote (pre-F5).
   safeRemove(local, RESUME_STORAGE_KEY);
   safeRemove(session, RESUME_STORAGE_KEY);
 }
 
+// F5 — a record in localStorage is a DEVICE-WIDE one an older bundle wrote
+// (until 2026-10-10). It is never presented: whose tab it came from cannot be
+// known, and presenting it is exactly how the next person on a shared browser
+// landed in the previous player's game. Removed wherever this module reads or
+// writes, logged once per page load.
+let _sweptDeviceWide = false;
+function dropDeviceWideRecord() {
+  const { local } = stores();
+  if (!safeGet(local, RESUME_STORAGE_KEY)) return;
+  safeRemove(local, RESUME_STORAGE_KEY);
+  if (_sweptDeviceWide) return;
+  _sweptDeviceWide = true;
+  try { console.warn('[session-resume] removed a device-wide resume record (resume records are tab-scoped now)'); } catch { /* ignore */ }
+}
+
 // ── Which kind of session THIS TAB is in ────────────────────────────────────
-// In memory only (per tab, per page load). Set by every successful sign-in
-// path: 'ticket' (deep-link ticket / waitlist login that stored a resume
-// record — see markTicketSignIn for one that did not — or a resume of one),
-// 'oidc' (bridge / callback / refresh-token login), 'legacy' (tokenLogin).
-// socketReauth uses it so a TICKET tab re-authenticates only with its own
-// resume record — never by falling through to OIDC credentials the device
-// may hold for some other account.
-let _tabSession = null; // { kind, userId }
+// The marker itself lives in services/tabSession.js (setTabSession /
+// getTabSession, re-exported above): 'ticket' (deep-link ticket / waitlist
+// login that stored a resume record — see markTicketSignIn for one that did
+// not — or a resume of one), 'oidc' (bridge / callback / refresh-token
+// login), 'legacy' (tokenLogin). socketReauth uses it so a TICKET tab
+// re-authenticates only with its own resume record — never by falling through
+// to OIDC credentials the device may hold for some other account — and
+// tokenStorage / authScheduler use it so a ticket tab never sends or adopts
+// another account's stored OIDC tokens (F5).
 
-export function setTabSession(kind, userId) {
-  const id = idString(userId);
-  _tabSession = kind && id ? { kind: String(kind), userId: id } : null;
+/** The master user id a resume token names (its masterUserId claim), or null. */
+function resumeTokenMasterId(token) {
+  const claims = decodeJwtPayload(token);
+  return idString(claims && claims.masterUserId);
 }
 
-export function resetTabSession() {
-  _tabSession = null;
+/** The master user id a stored resume record belongs to, or null. */
+export function resumeRecordMasterId(rec) {
+  return rec && typeof rec.token === 'string' ? resumeTokenMasterId(rec.token) : null;
 }
 
-/** This tab's session marker — `{ kind, userId }` (a copy) — or null. */
-export function getTabSession() {
-  return _tabSession ? { kind: _tabSession.kind, userId: _tabSession.userId } : null;
+/**
+ * The master user id a SUCCESSFUL ticket / waitlist / resume loginResult
+ * belongs to, read from the server-signed resumeToken it carried (only when
+ * that token names the result's own local user), else null. Never from the
+ * profile payload: identity for F5 comes only from the server-signed token.
+ */
+export function masterIdFromLoginResult(result) {
+  if (!result || result.success !== true) return null;
+  const token = typeof result.resumeToken === 'string' && result.resumeToken ? result.resumeToken : null;
+  if (!token) return null;
+  const claims = decodeJwtPayload(token);
+  if (!claims) return null;
+  const claimUser = idString(claims.localUserId);
+  const dataUser = idString(result.userData && result.userData.id);
+  if (claimUser && dataUser && claimUser !== dataUser) return null;
+  return idString(claims.masterUserId);
+}
+
+/**
+ * F5 — true when the device holds a stored OIDC sign-in that is NOT provably
+ * the account `masterUserId` (a different account, an unreadable one, or no
+ * master id to compare with). False when there is no stored OIDC sign-in, or
+ * it is that same account.
+ */
+export function deviceOidcSignInIsOtherAccount(masterUserId) {
+  let oidc = null;
+  try { oidc = getStoredOidcAccount(); } catch { oidc = null; }
+  if (!oidc || !oidc.signedIn) return false;
+  const mine = idString(masterUserId);
+  return !(mine && oidc.masterUserId === mine);
 }
 
 /**
@@ -135,25 +192,39 @@ export function getTabSession() {
  *     'ticket' anyway: a ticket tab presents only its own record and so stays
  *     signed out on a reconnect, instead of re-authenticating with the other
  *     account's credentials (never switch the socket's account);
+ *   - no record, and the DEVICE holds a stored OIDC sign-in that is not
+ *     provably this account (F5, 2026-10-10 — a shared browser where another
+ *     account is signed in) → 'ticket' too, for the same reason: the pre-R1
+ *     path below would re-authenticate a reconnect with that OTHER account's
+ *     tokens and switch the socket to it;
  *   - no record and no session on this tab yet (an admin row, a server
- *     without R1)                                        → 'legacy': the
+ *     without R1), and no other account's OIDC sign-in on the device
+ *                                                        → 'legacy': the
  *     pre-R1 re-auth path, exactly as before resume tokens existed.
- * Returns the kind now set.
+ * `masterUserId` — the master user id of this sign-in (masterIdFromLoginResult);
+ * kept on a ticket tab's marker so the HTTP bearer / token refresh can tell
+ * this account's OIDC tokens from another account's (F5). Returns the kind
+ * now set.
  */
-export function markTicketSignIn(userId, recordStored) {
+export function markTicketSignIn(userId, recordStored, { masterUserId = null } = {}) {
   const id = idString(userId);
   if (!id) return null;
-  const cur = _tabSession;
+  const cur = getTabSession();
   if (cur && cur.userId === id && cur.kind === 'oidc') {
     if (recordStored) clearResumeRecord();
     return 'oidc';
   }
+  const mid = idString(masterUserId);
   if (recordStored) {
-    setTabSession(VIA_TICKET, id);
+    setTabSession(VIA_TICKET, id, { masterUserId: mid });
     return VIA_TICKET;
   }
   if (cur && cur.userId !== id) {
-    setTabSession(VIA_TICKET, id);
+    setTabSession(VIA_TICKET, id, { masterUserId: mid });
+    return VIA_TICKET;
+  }
+  if (deviceOidcSignInIsOtherAccount(mid)) {
+    setTabSession(VIA_TICKET, id, { masterUserId: mid });
     return VIA_TICKET;
   }
   setTabSession('legacy', id);
@@ -163,7 +234,8 @@ export function markTicketSignIn(userId, recordStored) {
 /** True when this tab's current sign-in is a ticket session for `userId`. */
 export function isTicketSessionTab(userId) {
   const id = idString(userId);
-  return !!(_tabSession && id && _tabSession.kind === VIA_TICKET && _tabSession.userId === id);
+  const tab = getTabSession();
+  return !!(tab && id && tab.kind === VIA_TICKET && tab.userId === id);
 }
 
 /**
@@ -226,23 +298,28 @@ export function saveTicketResume(result, { keepIfMissing = false, expectUserId =
   if (claims && Object.prototype.hasOwnProperty.call(claims, 'masterUserId')) {
     record.account = !!claims.masterUserId;
   }
-  const { local, session } = stores();
-  const keep = isKeepSignedIn();
-  const stored = safeSet(keep ? local : session, RESUME_STORAGE_KEY, JSON.stringify(record));
-  safeRemove(keep ? session : local, RESUME_STORAGE_KEY);
+  // F5 — THIS TAB's sessionStorage only (never localStorage, whatever "keep
+  // me signed in" says): a reload of this tab resumes, a new tab or the next
+  // person on the browser never does.
+  const { session } = stores();
+  dropDeviceWideRecord();
+  const stored = safeSet(session, RESUME_STORAGE_KEY, JSON.stringify(record));
   // Read back through the same rules a reconnect uses (account:false records
   // are never presented), so "stored" means "a reconnect can use it".
   return stored && !!readResumeRecordForUser(userId);
 }
 
 /**
- * The stored resume record if it is still usable — `{ token, expiresAt, via,
- * userId, account? }` — else null. An expired, unreadable, unbound or
- * non-ticket record is removed (nothing else is ever presented).
+ * This tab's stored resume record if it is still usable — `{ token,
+ * expiresAt, via, userId, account? }` — else null. An expired, unreadable,
+ * unbound or non-ticket record is removed (nothing else is ever presented).
+ * sessionStorage only (F5); a device-wide localStorage record is removed,
+ * never read.
  */
 function readResumeRecord() {
-  const { local, session } = stores();
-  const raw = safeGet(local, RESUME_STORAGE_KEY) || safeGet(session, RESUME_STORAGE_KEY);
+  const { session } = stores();
+  dropDeviceWideRecord();
+  const raw = safeGet(session, RESUME_STORAGE_KEY);
   if (!raw) return null;
   try {
     const rec = JSON.parse(raw);
@@ -272,9 +349,24 @@ export function readResumeRecordForUser(userId) {
 
 /**
  * For the BOOT path only (the tab is not signed in yet, so there is no user to
- * bind against): the device's stored ticket-session record, if any. Its
- * answer is then stored with expectUserId = rec.userId.
+ * bind against): this tab's stored ticket-session record, if any. Its answer
+ * is then stored with expectUserId = rec.userId.
+ *
+ * F5 — NEVER when the device holds a stored OIDC sign-in that is not provably
+ * the record's own account (another account signed in on this browser, or
+ * one whose owner cannot be read): resuming would sign the socket in as A
+ * while HTTP calls and the token refresh run as B. The boot then takes the
+ * refresh-token path exactly as before resume tokens existed, and the record
+ * is forgotten (this tab becomes that sign-in's tab, or signs out). A device
+ * signed in to the SAME account resumes as before.
  */
 export function readResumeRecordForBoot() {
-  return readResumeRecord();
+  const rec = readResumeRecord();
+  if (!rec) return null;
+  if (deviceOidcSignInIsOtherAccount(resumeRecordMasterId(rec))) {
+    clearResumeRecord();
+    try { console.warn('[session-resume] boot skipped the resume record: this browser is signed in to a different account'); } catch { /* ignore */ }
+    return null;
+  }
+  return rec;
 }
