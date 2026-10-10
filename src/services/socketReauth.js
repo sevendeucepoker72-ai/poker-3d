@@ -45,16 +45,86 @@
  *   - any other session (OIDC, legacy) → the OIDC path exactly as before. An
  *     OIDC session never presents a resume token (D1).
  * `resume_invalid` deletes the record.
+ *
+ * SAME-ACCOUNT FALLBACK (2026-10-10). A ticket tab whose resume chain has
+ * ENDED (no usable record, or `resume_invalid`) re-authenticates through the
+ * browser's own stored OIDC sign-in — but ONLY when that sign-in is provably
+ * the SAME account (its OIDC `sub` = the tab's master id from the
+ * server-signed resume token): refresh with it, oauthLogin, and the tab
+ * becomes that OIDC session ('oidc'), which outlives the 24h resume cap. On a
+ * browser holding another (or an unprovable) account's sign-in nothing
+ * changes: the ticket tab stays signed out rather than switch accounts.
+ *
+ * DROPPED SIGN-IN FENCE (2026-10-10). When the boot's stored-credential
+ * sign-in of ANOTHER account answered while this tab was already signed in
+ * (App.jsx dropStoredSignInForOtherUser), the browser's stored keys may BE
+ * that account's credentials. fenceDroppedSignIn() records them; from then on
+ * this tab's OIDC re-auth never presents (or refreshes with) a fenced
+ * credential — only the tab's own store tokens — and settles `no_token`
+ * instead of signing the socket in as the other account.
  */
-import { getAuthToken } from './tokenStorage';
+import { getAuthToken, getStoredOidcAccount, oidcSubject } from './tokenStorage';
 import { runSocketLogin, isCredentialDead } from './socketAuth';
 import { isTokenExpiringSoon, refreshNowAndApply, hasRefreshToken } from './authScheduler';
 import { getSocket } from './socketService';
 import { useGameStore } from '../store/gameStore';
 import {
   readResumeRecordForUser, isTicketSessionTab, saveTicketResume, clearResumeRecord,
-  RESUME_INVALID, RESUME_EVENT,
+  setTabSession, getTabSession, RESUME_INVALID, RESUME_EVENT,
 } from './sessionResume';
+
+function idString(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  return s ? s : null;
+}
+
+// ── Dropped sign-in fence ───────────────────────────────────────────────────
+let _fence = null; // { userId, tokens: Set, subjects: Set }
+
+/**
+ * App.jsx — the stored sign-in of another account (`tokens` = its raw
+ * credentials, `subjects` = its OIDC subjects) was dropped while this tab is
+ * signed in as `tabUserId`. Bound to that user: a later sign-in as someone
+ * else on this page load is not fenced by it.
+ */
+export function fenceDroppedSignIn(tabUserId, { tokens = [], subjects = [] } = {}) {
+  const uid = idString(tabUserId);
+  if (!uid) return;
+  if (!_fence || _fence.userId !== uid) _fence = { userId: uid, tokens: new Set(), subjects: new Set() };
+  for (const t of tokens) if (typeof t === 'string' && t) _fence.tokens.add(t);
+  for (const s of subjects) { const v = idString(s); if (v) _fence.subjects.add(v); }
+  try { console.warn('[socket-reauth] another account\'s dropped sign-in is fenced off for this tab'); } catch { /* ignore */ }
+}
+
+function fenceFor(st) {
+  return _fence && st && _fence.userId === idString(st.userId) ? _fence : null;
+}
+
+function isFenced(fence, token) {
+  if (!fence || typeof token !== 'string' || !token) return false;
+  if (fence.tokens.has(token)) return true;
+  const sub = oidcSubject(token);
+  return !!(sub && fence.subjects.has(sub));
+}
+
+// ── Same-account fallback ───────────────────────────────────────────────────
+
+/**
+ * True when THIS tab is a ticket tab and the browser's stored OIDC sign-in
+ * (a refresh token, every readable OIDC JWT naming one account) is provably
+ * the tab's OWN account (its master id). Never on a guess.
+ */
+export function ticketTabOwnsDeviceSignIn() {
+  try {
+    const tab = getTabSession();
+    if (!tab || tab.kind !== 'ticket' || !tab.masterUserId) return false;
+    const dev = getStoredOidcAccount();
+    return !!(dev.signedIn && dev.masterUserId && dev.masterUserId === tab.masterUserId);
+  } catch {
+    return false;
+  }
+}
 
 // Refresh before re-auth when the access token has less than this left. Covers
 // clock skew and the time oauthLogin itself takes.
@@ -81,7 +151,7 @@ export function hasSignedInAccountSession() {
   try {
     const st = useGameStore.getState();
     if (!st.isLoggedIn) return false;
-    if (isTicketSessionTab(st.userId)) return !!readResumeRecordForUser(st.userId);
+    if (isTicketSessionTab(st.userId)) return !!readResumeRecordForUser(st.userId) || ticketTabOwnsDeviceSignIn();
     if (getAuthToken() && (hasRefreshToken() || !!st.oauthAccessToken)) return true;
     return false;
   } catch {
@@ -97,18 +167,63 @@ export function hasSignedInAccountSession() {
  *                is also written to storage, but a session-only tab that took
  *                a peer tab's refresh result can lag), else the stored one.
  */
-async function ensureFreshAccessToken(force) {
-  const stored = () => ({ accessToken: getAuthToken() });
-  if (!hasRefreshToken()) return { status: 'no_refresh_token', ...stored() };
+async function ensureFreshAccessToken(force, fence = null) {
+  // Without a fence: exactly as before. With one (a dropped sign-in of
+  // another account): only the tab's OWN credentials — the stored access
+  // token unless it is fenced, else the store's own; the store's own refresh
+  // token, never the browser's (fenced) one.
+  const stored = () => {
+    if (!fence) return { accessToken: getAuthToken() };
+    const st = useGameStore.getState();
+    const own = [getAuthToken(), st.oauthAccessToken, st.authToken].find((t) => t && !isFenced(fence, t));
+    return { accessToken: own || null };
+  };
+  const canRefresh = fence
+    ? (() => { const r = useGameStore.getState().oauthRefreshToken; return !!r && !isFenced(fence, r); })()
+    : hasRefreshToken();
+  if (!canRefresh) return { status: 'no_refresh_token', ...stored() };
   if (!force && !isTokenExpiringSoon(NEAR_EXPIRY_MS)) return { status: 'fresh', ...stored() };
   try {
     const tokens = await refreshNowAndApply();
     if (!tokens) return { status: 'no_refresh_token', ...stored() };
     const fresh = typeof tokens.access_token === 'string' && tokens.access_token ? tokens.access_token : null;
-    return { status: 'refreshed', accessToken: fresh || getAuthToken() };
+    if (fence && (isFenced(fence, fresh) || isFenced(fence, tokens.id_token))) {
+      return { status: 'refresh_failed', ...stored() };
+    }
+    return { status: 'refreshed', accessToken: fresh || stored().accessToken };
   } catch (e) {
     return { status: e?.name === 'RefreshTokenRevokedError' ? 'revoked' : 'refresh_failed', ...stored() };
   }
+}
+
+/**
+ * Same-account fallback (see the header): sign `socket` in through the
+ * browser's own stored OIDC sign-in, which ticketTabOwnsDeviceSignIn proved
+ * to be this tab's account. A FRESH token only (forced refresh — the stored
+ * poker_auth_token of a ticket tab can be its burned ticket); on success for
+ * this same local user the tab becomes that OIDC session.
+ */
+async function runOwnOidcFallback(socket, entry, st, why) {
+  const fresh = await ensureFreshAccessToken(true);
+  if (entry.done) return { done: true };
+  if (fresh.status !== 'refreshed' || !fresh.accessToken) {
+    return { result: { success: false, code: `own_oidc_${fresh.status}` } };
+  }
+  // The refreshed token must still be this tab's own account.
+  const tab = getTabSession();
+  const sub = oidcSubject(fresh.accessToken);
+  if (sub && tab && tab.masterUserId && sub !== tab.masterUserId) {
+    return { result: { success: false, code: 'own_oidc_account_changed' } };
+  }
+  const result = await oauthLoginOnce(socket, fresh.accessToken, entry);
+  if (entry.done) return { done: true };
+  if (result?.success && result.userData && idString(result.userData.id) === idString(st.userId)) {
+    clearResumeRecord();
+    setTabSession('oidc', st.userId);
+    try { console.warn('[socket-reauth] Play Online tab re-signed-in with this account\'s own browser sign-in', { why }); } catch { /* ignore */ }
+    return { result, ok: true };
+  }
+  return { result: result?.success ? { success: false, code: 'own_oidc_user_mismatch' } : result };
 }
 
 function oauthLoginOnce(socket, accessToken, entry) {
@@ -215,30 +330,47 @@ export function reauthSocket(socket = getSocket(), { reason = 'connect' } = {}) 
     if (isTicketSessionTab(st.userId)) {
       const rec = readResumeRecordForUser(st.userId);
       if (!rec) {
+        // 2026-10-10 — the resume chain has ended: fall back to the browser's
+        // own sign-in only when it is provably THIS account.
+        if (ticketTabOwnsDeviceSignIn()) {
+          const fb = await runOwnOidcFallback(socket, entry, st, 'no_resume_record');
+          if (fb.done || entry.done) return undefined;
+          if (fb.ok) return settle({ ok: true, reason, result: fb.result, via: 'own_oidc' });
+        }
         try { console.warn('[socket-reauth] failed', { reason, code: 'no_resume_record' }); } catch { /* ignore */ }
         return settle({ ok: false, reason: 'no_resume_record' });
       }
       const result = await runResume(socket, rec, entry);
       if (entry.done) return undefined;
       if (result?.success) return settle({ ok: true, reason, result, via: 'resume' });
+      if (result?.code === RESUME_INVALID && ticketTabOwnsDeviceSignIn()) {
+        const fb = await runOwnOidcFallback(socket, entry, st, RESUME_INVALID);
+        if (fb.done || entry.done) return undefined;
+        if (fb.ok) return settle({ ok: true, reason, result: fb.result, via: 'own_oidc' });
+      }
       try { console.warn('[socket-reauth] failed', { reason, code: result?.code || 'unlabelled' }); } catch { /* ignore */ }
       return settle({ ok: false, reason: String(result?.code || 'login_failed'), result });
     }
 
-    // Every other session: the pre-2026-10-09 OIDC re-auth, unchanged.
-    const first = await ensureFreshAccessToken(false);
+    // Every other session: the pre-2026-10-09 OIDC re-auth — with the
+    // dropped-sign-in fence (2026-10-10) when this tab has one.
+    const fence = fenceFor(st);
+    const first = await ensureFreshAccessToken(false, fence);
     if (entry.done) return undefined;
     if (first.status === 'revoked') return settle({ ok: false, reason: 'revoked' });
 
     let token = first.accessToken;
-    if (!token) return settle({ ok: false, reason: 'no_token' });
+    if (!token) {
+      if (fence) { try { console.warn('[socket-reauth] failed', { reason, code: 'no_own_token' }); } catch { /* ignore */ } }
+      return settle({ ok: false, reason: 'no_token' });
+    }
     let result = await oauthLoginOnce(socket, token, entry);
     if (entry.done) return undefined;
 
     // The server rejected the token itself (expired / invalid): refresh once
     // — unless we just did — and try again.
     if (!result?.success && isCredentialDead(result) && first.status !== 'refreshed') {
-      const forced = await ensureFreshAccessToken(true);
+      const forced = await ensureFreshAccessToken(true, fence);
       if (entry.done) return undefined;
       if (forced.status === 'refreshed') {
         token = forced.accessToken;

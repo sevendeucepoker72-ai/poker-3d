@@ -468,3 +468,62 @@ has no sign-in of its own account on this browser
 needs_account_sign_in
 Push notifications need your American Pub Poker sign-in on this device.
 To upload a photo, sign in with your American Pub Poker account on this device.
+# (I) 2026-10-10 P4 + P7 - shared browser: a Play Online deep link never races
+#     the browser's stored sign-in, and a ticket tab neither follows nor causes
+#     another account's sign-out (contract C5; services/deepLinkBootGate.js,
+#     services/crossTabSignOut.js).
+#     P4: while a deep-link ticket (Play Online / waitlist) is unanswered, the
+#     stored-credential boot sign-in (resume / refresh / legacy - also the
+#     bridge fallback) is deferred; it runs only when the ticket FAILS, never
+#     after a success, and never on its own after a play refusal (the refusal
+#     screen stays; Continue reloads). A timeout is not an answer.
+stored sign-in deferred until the Play Online ticket is answered
+running the stored sign-in
+stored sign-in not started: the Play Online ticket
+#     P4: a stored-credential boot sign-in that answers while the tab is already
+#     signed in as a DIFFERENT user is dropped; the tab re-signs its socket in
+#     with its own session (reauthSocket).
+boot sign-in of another account dropped: this tab is already signed in
+#     P7: a ticket tab follows only a sign-out naming its OWN account (the
+#     BroadcastChannel logout and the poker_logout_broadcast marker, which now
+#     carries {at, userId}); another account's sign-out / session expiry never
+#     logs it out or clears its record.
+this Play Online tab stays signed in
+#     P7: Sign Out in a ticket tab whose browser sign-in is ANOTHER (or an
+#     unprovable) account's leaves that sign-in alone - no stored-key wipe, no
+#     marker, no /session/end - and announces ticket-tab-sign-out, which only
+#     tabs of the same account follow (older bundles ignore the event type).
+ticket-tab-sign-out
+a Play Online tab of another account signed out
+other sign-in was left alone
+# (J) 2026-10-10 review fixes for (I) - a Play Online tab and the browser's
+#     OTHER sign-in leave each other alone end to end (AGENT.md rule 13).
+#     Q4: once the deep link is consumed, the deep-link screen never renders
+#     again (Sign Out -> LoginScreen, never an endless spinner, never a reload);
+#     an ANSWERED failure shows its real text, not "Connection timed out".
+This Play Online link was already used
+This Play Online link has expired or is not valid
+We could not check your Play Online link just now
+We could not sign you in with this Play Online link
+#     Q5: authScheduler holds while the ticket is unanswered, re-checks after
+#     a refresh settles (another account's revoked refresh never dispatches
+#     session-expired over a ticket tab), and main.jsx never tears down a
+#     ticket tab whose stored sign-in is not provably its own.
+token refresh held until the Play Online ticket is answered
+token refresh resumed
+stored sign-in on this browser was refused (revoked)
+sign-in on this browser expired
+#     keep-me-signed-in OFF: a ticket tab's Sign Out asks the other tabs (sign-in
+#     census) and leaves another account signed in there alone; a tab whose
+#     sign-in lives only in its sessionStorage follows only its own sign-out.
+sign-in-census
+sign-in-census-reply
+in another tab (keep me signed in off)
+keep me signed in is off
+#     A leave-alone Sign Out still removes the tab's own credentials.
+removedOwn
+#     Same-account fallback when the resume chain ends; dropped other-account
+#     sign-in fenced off, socket cycled rather than left bound to it.
+Play Online tab re-signed-in with this account
+dropped sign-in is fenced off for this tab
+could not be re-signed-in as this tab

@@ -48,7 +48,15 @@
  * in as A while the device's OIDC sign-in is B. Cleared on sign-out
  * (gameStore.logout), on resume_invalid, on a refresh-token revocation wipe /
  * session-expired teardown / peer-tab sign-out, and when an OIDC or legacy
- * sign-in replaces the session. The player's own Sign Out also revokes it on
+ * sign-in replaces the session. (P7, 2026-10-10: a ticket tab follows a
+ * peer tab's sign-out only when it names the ticket tab's OWN account —
+ * services/crossTabSignOut.js; another account's sign-out on a shared browser
+ * never clears it, and neither does that account's stored sign-in expiring:
+ * main.jsx's session-expired teardown skips a ticket tab whose stored sign-in
+ * is not provably its own — authScheduler.ticketTabOutlivesDeviceSignIn.)
+ * When the chain ENDS (no record / resume_invalid), socketReauth falls back to
+ * the browser's stored sign-in only when it is provably the SAME account.
+ * The player's own Sign Out also revokes it on
  * the server first — socket 'revokeSignInTokens' with an acknowledgement,
  * which bumps the row's users.token_version — so a copied record stops
  * working everywhere.

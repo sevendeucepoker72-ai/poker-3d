@@ -26,6 +26,7 @@ import { refreshAccessToken, RefreshTokenRevokedError, REFRESH_DONE_KEY } from '
 import { useGameStore } from '../store/gameStore';
 import { setOAuthItem, getOAuthItem, getStoredOidcAccount, oidcSubject } from './tokenStorage';
 import { getTabSession } from './tabSession';
+import { deepLinkTicketPending, onDeepLinkTicketSettled } from './deepLinkBootGate';
 
 const REFRESH_LEAD_MS = 5 * 60 * 1000;
 const MIN_DELAY_MS = 1000;
@@ -84,6 +85,110 @@ function _warnForeignSkipOnce() {
   if (_warnedForeignSkip) return;
   _warnedForeignSkip = true;
   try { console.warn('[auth-scheduler] Play Online tab: not refreshing another account\'s stored sign-in'); } catch { /* ignore */ }
+}
+
+/**
+ * Q5 (2026-10-10) — the 'poker:session-expired' teardown (main.jsx) asks this
+ * before ending the tab's session: true when THIS tab is a "Play Online"
+ * TICKET tab and the browser's stored OIDC sign-in — the only thing a revoked
+ * refresh token can say is dead — is not provably the tab's own account
+ * (another account's, an unreadable one, or none at all). Such a tab runs on
+ * its own ticket / resume record, which that expiry says nothing about.
+ * Unlike _ticketTabForeignToDeviceOidc, a ticket tab whose device sign-in
+ * cannot be read counts as "not its own" (never tear it down on a guess).
+ */
+export function ticketTabOutlivesDeviceSignIn() {
+  let tab = null;
+  try { tab = getTabSession(); } catch { return false; }
+  if (!tab || tab.kind !== 'ticket') return false;
+  try {
+    const dev = getStoredOidcAccount();
+    return !(tab.masterUserId && dev.masterUserId === tab.masterUserId);
+  } catch {
+    return true;
+  }
+}
+
+// Q5 — hold every proactive refresh while this page load's deep-link ticket
+// is unanswered and the tab has no session yet (deepLinkBootGate): the
+// browser's stored sign-in can be ANOTHER account's, and its answer must not
+// land on the tab the ticket is about to sign in. A tab that is already
+// signed in (e.g. a bridge hand-off succeeded) is not held.
+let _heldForDeepLink = false;
+let _unsubDeepLink = null;
+function _deepLinkHold() {
+  try {
+    if (!deepLinkTicketPending()) return false;
+    return !getTabSession();
+  } catch {
+    return false;
+  }
+}
+function _onDeepLinkSettled() {
+  const wasHeld = _heldForDeepLink;
+  _heldForDeepLink = false;
+  if (!_started) return;
+  if (wasHeld) {
+    try { console.warn('[auth-scheduler] Play Online ticket answered — token refresh resumed'); } catch { /* ignore */ }
+  }
+  // Never synchronously: the tab's session marker is set by the deep-link
+  // flow right after the gate settles (_computeDelay is >= MIN_DELAY_MS).
+  _scheduleNext();
+}
+
+/**
+ * Q5 — a refresh that the auth-server REFUSED (RefreshTokenRevokedError) in a
+ * tab that, by the time it settled, is a ticket tab whose browser sign-in is
+ * another account's: that dead sign-in is the other account's, never this
+ * tab's — no session-expired. Only the dead credential itself is dropped from
+ * the browser, and only while the browser still holds the very refresh token
+ * that was refused (a peer tab may have rotated it meanwhile) — exactly what
+ * the boot's refresh path would have wiped on the same answer. Never this
+ * tab's own ticket in poker_auth_token, never another live credential.
+ */
+function _dropDeadDeviceSignIn(deadRefresh) {
+  try {
+    if (!deadRefresh || getOAuthItem('poker_oauth_refresh') !== deadRefresh) return false;
+    const tab = getTabSession();
+    const mine = tab && tab.masterUserId ? tab.masterUserId : null;
+    // An OIDC JWT naming another (or no provable) account than this tab's.
+    const othersJwt = (t) => { const s = oidcSubject(t); return !!(s && s !== mine); };
+    // The dead sign-in's access-token copies (from every store that holds
+    // the refused refresh token), read before anything is removed.
+    const deadAccess = new Set();
+    for (const store of [localStorage, sessionStorage]) {
+      try { if (store.getItem('poker_oauth_refresh') === deadRefresh) { const a = store.getItem('poker_oauth_access'); if (a) deadAccess.add(a); } } catch { /* ignore */ }
+    }
+    try { if (localStorage.getItem('poker_oauth_refresh') === deadRefresh || sessionStorage.getItem('poker_oauth_refresh') === deadRefresh) { const a = localStorage.getItem('poker_oauth_access'); if (a) deadAccess.add(a); } } catch { /* ignore */ }
+    for (const store of [localStorage, sessionStorage]) {
+      try {
+        const holdsDead = store.getItem('poker_oauth_refresh') === deadRefresh;
+        if (holdsDead) {
+          store.removeItem('poker_oauth_refresh');
+          store.removeItem('poker_token_expiry');
+        }
+        for (const k of ['poker_oauth_access', 'poker_oauth_id_token']) {
+          const v = store.getItem(k);
+          if (v && (holdsDead || deadAccess.has(v) || othersJwt(v))) store.removeItem(k);
+        }
+        const at = store.getItem('poker_auth_token');
+        if (at && (deadAccess.has(at) || othersJwt(at))) store.removeItem('poker_auth_token');
+      } catch { /* ignore */ }
+    }
+    try { console.warn('[auth-scheduler] another account\'s stored sign-in on this browser was refused (revoked) — dropped; this Play Online tab stays signed in'); } catch { /* ignore */ }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// After a RefreshTokenRevokedError: true when the teardown must NOT run here
+// (the tab became a ticket tab of another account while the refresh was in
+// flight — or already was one). Drops the dead device sign-in (see above).
+function _revokedBelongsToAnotherAccount(refreshToken) {
+  if (!_ticketTabForeignToDeviceOidc()) return false;
+  _dropDeadDeviceSignIn(refreshToken);
+  return true;
 }
 
 // May THIS tab's store hold `tokens`? Always, except in a ticket tab, where
@@ -157,6 +262,16 @@ async function _doRefresh() {
   }
   _pendingRefreshOnVisible = false;
 
+  // Q5 — a Play Online ticket is being answered on this page load and the
+  // tab has no session yet: hold (no timer); _onDeepLinkSettled resumes.
+  if (_deepLinkHold()) {
+    if (!_heldForDeepLink) {
+      _heldForDeepLink = true;
+      try { console.warn('[auth-scheduler] token refresh held until the Play Online ticket is answered'); } catch { /* ignore */ }
+    }
+    return;
+  }
+
   // F5 — a ticket tab whose device sign-in is another account's: skip, and
   // look again later (the tab may sign in to an OIDC session of its own).
   // A fixed delay — B's stored expiry may be in the past, which would make
@@ -175,10 +290,26 @@ async function _doRefresh() {
   _refreshing = true;
   try {
     const tokens = await refreshAccessToken(refreshToken);
+    // (Q5) If the tab became a ticket tab of another account meanwhile, the
+    // store write below is refused by _storeMayHold; the rotated tokens still
+    // go to the browser (they are that account's sign-in), and the next fire
+    // skips (F5).
     _applyRefreshedTokens(tokens, refreshToken);
     _scheduleNext();
   } catch (e) {
     if (e instanceof RefreshTokenRevokedError || e?.name === 'RefreshTokenRevokedError') {
+      // Q5 — re-checked AFTER the refresh settled: while it was in flight the
+      // tab may have become a "Play Online" ticket tab of ANOTHER account (the
+      // deep-link ticket answered). The dead sign-in is the browser's other
+      // account's: no session-expired here (it would sign THIS tab out and
+      // broadcast a logout naming it). Keep looking later, as the F5 skip does.
+      if (_revokedBelongsToAnotherAccount(refreshToken)) {
+        if (_started) {
+          if (_timerId) { clearTimeout(_timerId); _timerId = null; }
+          _timerId = setTimeout(_doRefresh, MAX_DELAY_MS);
+        }
+        return;
+      }
       _started = false;
       // 2026-07-06 P2 auth fix — dispatch ONLY. The single teardown lives in
       // main.jsx's 'poker:session-expired' listener, which calls
@@ -248,13 +379,16 @@ export function start() {
   _started = true;
   try { window.addEventListener('storage', _onStorageEvent); } catch {}
   try { document.addEventListener('visibilitychange', _onVisibilityChange); } catch {}
+  if (!_unsubDeepLink) _unsubDeepLink = onDeepLinkTicketSettled(_onDeepLinkSettled);
   _scheduleNext();
 }
 
 export function stop() {
   _started = false;
   _pendingRefreshOnVisible = false;
+  _heldForDeepLink = false;
   if (_timerId) { clearTimeout(_timerId); _timerId = null; }
+  if (_unsubDeepLink) { try { _unsubDeepLink(); } catch { /* ignore */ } _unsubDeepLink = null; }
   try { window.removeEventListener('storage', _onStorageEvent); } catch {}
   try { document.removeEventListener('visibilitychange', _onVisibilityChange); } catch {}
 }
@@ -263,6 +397,9 @@ export async function refreshNow() {
   // F5 — the tab-resume refresh (sessionLifecycle) never touches another
   // account's stored sign-in from a ticket tab either.
   if (_ticketTabForeignToDeviceOidc()) return null;
+  // Q5 — nor the browser's stored sign-in while a deep-link ticket is being
+  // answered on this page load (no session yet).
+  if (_deepLinkHold()) return null;
   const refreshToken = _readRefreshToken();
   if (!refreshToken) return null;
   return await refreshAccessToken(refreshToken);
@@ -298,7 +435,10 @@ export async function refreshNowAndApply() {
     return tokens;
   } catch (e) {
     if (e instanceof RefreshTokenRevokedError || e?.name === 'RefreshTokenRevokedError') {
-      _dispatchSessionExpired('refresh-revoked-on-socket-reauth');
+      // Q5 — same re-check as the scheduled refresh, after the refresh settled.
+      if (!_revokedBelongsToAnotherAccount(refreshToken)) {
+        _dispatchSessionExpired('refresh-revoked-on-socket-reauth');
+      }
     }
     throw e;
   }

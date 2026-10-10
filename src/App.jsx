@@ -9,7 +9,7 @@ import {
   startAccountSignIn, GUEST_DISABLED,
 } from './services/playRefusal';
 import PlayRefusalNotice from './components/ui/PlayRefusalNotice';
-import { reauthSocket } from './services/socketReauth';
+import { reauthSocket, fenceDroppedSignIn } from './services/socketReauth';
 // 2026-10-09 — resumable ticket sessions (R1), guest carry-over (R2) and
 // "Create a free account" (R3).
 import {
@@ -17,7 +17,11 @@ import {
   setTabSession, markTicketSignIn, RESUME_INVALID, RESUME_EVENT,
   masterIdFromLoginResult, resumeRecordMasterId,
 } from './services/sessionResume';
-import { stashGuestCredential } from './services/tokenStorage';
+import { stashGuestCredential, oidcSubject, deviceHoldsOtherOidcSignIn } from './services/tokenStorage';
+// 2026-10-10 — P4: the stored-credential boot sign-in waits for a deep-link
+// ticket; P7: a ticket tab follows only its own account's sign-out.
+import { createDeepLinkBootGate, storedSignInWouldSwitchUser, deepLinkFailureText } from './services/deepLinkBootGate';
+import { shouldApplyRemoteSignOut, noteIgnoredRemoteSignOut } from './services/crossTabSignOut';
 import { maybeOfferGuestCarryOver, resetGuestCarryOver } from './services/guestCarryOver';
 import GuestCarryOverPrompt from './components/ui/GuestCarryOverPrompt';
 import CreateAccountLink from './components/ui/CreateAccountLink';
@@ -291,12 +295,31 @@ function App() {
   // (auto-seat at Beginner's + banner) or a general play ticket (auth-only).
   const [deepLinkContext] = useState(() => parseDeepLinkContext());
   const waitlistContext = deepLinkContext?.source === 'waitlist' ? deepLinkContext : null;
+  // 2026-10-10 (P4) — the deep link's ticket is this boot's authoritative
+  // credential: the stored-credential sign-in (resume / refresh / legacy)
+  // waits for its answer and runs only if it FAILS (never after a success,
+  // never on its own after a refusal). services/deepLinkBootGate.js.
+  const deepLinkBootGateRef = useRef(null);
+  if (!deepLinkBootGateRef.current) deepLinkBootGateRef.current = createDeepLinkBootGate(!!deepLinkContext);
   const [deepLinkTimedOut, setDeepLinkTimedOut] = useState(false);
   // 2026-10-07 — the deep-link ticket was REFUSED as a play refusal
   // ({code, message}: player_suspended / login_required / guest_disabled).
   // Shown verbatim instead of the generic "Connection timed out" screen.
   const [deepLinkRefusal, setDeepLinkRefusal] = useState(null);
   const [deepLinkSignInError, setDeepLinkSignInError] = useState(null);
+  // 2026-10-10 (Q4) — the deep link has been CONSUMED: its ticket signed this
+  // tab in, or the server answered it with a final failure, or the tab got
+  // signed in some other way. From then on the deep-link screen is never
+  // rendered again on this page load: a later Sign Out (which on a shared
+  // browser no longer navigates to /session/end) lands on LoginScreen, not on
+  // an endless "Signing you in…" spinner. Never a reload instead — a reload
+  // would boot the browser's stored sign-in (possibly ANOTHER account). A
+  // play REFUSAL is not consumed (its own screen stays up), nor is a timeout
+  // (no answer yet: Retry / Sign in manually stay).
+  const [deepLinkConsumed, setDeepLinkConsumed] = useState(false);
+  useEffect(() => {
+    if (deepLinkContext && isLoggedIn && !deepLinkConsumed) setDeepLinkConsumed(true);
+  }, [deepLinkContext, isLoggedIn, deepLinkConsumed]);
   // 2026-07-06 audit P2 — a #bridge_id_token in the URL at mount means we
   // arrived via cross-site SSO and the bridge consumer (below) is about to
   // exchange it + socket-auth. Show a spinner instead of a LoginScreen flash
@@ -1394,6 +1417,12 @@ function App() {
     // deferred until the bridge handoff resolves without a session.
     function startLocalAutoLogin() {
       if (cancelled || localAutoLoginStarted) return;
+      // 2026-10-10 (P4) — a "Play Online" / waitlist deep link is being
+      // answered on this socket: the browser's STORED sign-in (on a shared
+      // browser, possibly ANOTHER account's) must not race it. It waits; the
+      // deep-link flow runs it only if the ticket fails (deepLinkBootGate).
+      // Covers both callers — the plain boot and the bridge fallback.
+      if (deepLinkBootGateRef.current.requestStoredSignIn(startLocalAutoLogin) !== 'run') return;
       localAutoLoginStarted = true;
 
       // Attempt OAuth refresh token flow — check localStorage first
@@ -1484,6 +1513,48 @@ function App() {
       });
     }
 
+    // 2026-10-10 (P4) — a STORED-credential sign-in (refresh token / legacy
+    // token: on a shared browser possibly ANOTHER account's) answered while
+    // this tab is already signed in as a DIFFERENT user. Not adopted — no
+    // record clear, no tab marker, no store login, so one tab never shows two
+    // accounts. The server has just bound THIS socket to that other account,
+    // so the tab signs its socket back in with its OWN session (reauthSocket:
+    // a ticket tab presents its resume record). Returns true when dropped.
+    // 2026-10-10 — `dropped` names the credentials that just signed the
+    // socket in as the OTHER account (its access / refresh / id token, or its
+    // legacy token). In a tab that is not a ticket tab the browser's stored
+    // keys may now BE those credentials (the refresh path wrote them before
+    // its oauthLogin), so they are fenced off for this tab's re-auth
+    // (socketReauth.fenceDroppedSignIn): it presents only the tab's own
+    // credentials. If the tab cannot re-sign its socket in with its own
+    // session, the socket is cycled — the server ends the other account's
+    // binding (its seat, if one was restored, goes to that account's reserve
+    // path) and the fresh connection stays signed out rather than being the
+    // other account. Never left bound to the other account.
+    function dropStoredSignInForOtherUser(result, label, dropped = {}) {
+      const st = useGameStore.getState();
+      if (!storedSignInWouldSwitchUser(st, result?.userData)) return false;
+      try { console.warn('[auth] boot sign-in of another account dropped: this tab is already signed in', { via: label }); } catch { /* ignore */ }
+      try {
+        const tokens = [
+          dropped.accessToken, dropped.refreshToken, dropped.rotatedRefreshToken, dropped.idToken, dropped.legacyToken,
+        ].filter(Boolean);
+        const subjects = [oidcSubject(dropped.idToken), oidcSubject(dropped.accessToken)].filter(Boolean);
+        fenceDroppedSignIn(st.userId, { tokens, subjects });
+      } catch { /* the re-auth still runs */ }
+      try {
+        const live = getSocket() || socket;
+        if (live) {
+          reauthSocket(live, { reason: 'stored_sign_in_dropped' }).then((r) => {
+            if (r?.ok || r?.reason === 'superseded' || !live.connected) return;
+            try { console.warn('[auth] socket cycled: it could not be re-signed-in as this tab after another account\'s sign-in was dropped', { reason: r?.reason }); } catch { /* ignore */ }
+            try { live.disconnect(); live.connect(); } catch { /* ignore */ }
+          });
+        }
+      } catch { /* the next reconnect re-authenticates the tab's own session */ }
+      return true;
+    }
+
     // The refresh-token path, then the legacy token (both unchanged; split
     // out of startLocalAutoLogin 2026-10-09 so the resume path can fall
     // through to them).
@@ -1554,6 +1625,13 @@ function App() {
             isCancelled: () => cancelled,
             onResult: (result) => {
               if (result?.success && result.userData) {
+                // 2026-10-10 (P4) — never adopted while this tab is already
+                // signed in as a DIFFERENT user (one tab = one account).
+                if (dropStoredSignInForOtherUser(result, 'boot-refresh', {
+                  // the refresh response itself (never the merged existing id_token)
+                  accessToken: rawTokens.access_token, refreshToken: oauthRefresh,
+                  rotatedRefreshToken: rawTokens.refresh_token, idToken: rawTokens.id_token,
+                })) return;
                 // 2026-10-09 (R1 / D1) — the tab is now in this OIDC session:
                 // a ticket session's resume record must not resume over it.
                 clearResumeRecord();
@@ -1677,6 +1755,9 @@ function App() {
         isCancelled: () => cancelled,
         onResult: (result) => {
           if (result?.success && result.userData) {
+            // 2026-10-10 (P4) — same rule as the refresh path: never adopted
+            // while this tab is already signed in as a different user.
+            if (dropStoredSignInForOtherUser(result, 'legacy', { legacyToken: savedToken, accessToken: result.token })) return;
             // Re-persist the refreshed token using the user's stored
             // keep-signed-in preference. Preserves localStorage placement.
             setAuthToken(result.token);
@@ -1709,11 +1790,14 @@ function App() {
 
     // On a bridged arrival the local paths are deferred — the bridge IIFE
     // above calls startLocalAutoLogin() only if the handoff fails to produce a
-    // session, so the two never race on the same socket.
+    // session, so the two never race on the same socket. 2026-10-10 (P4): on a
+    // deep-linked arrival startLocalAutoLogin itself defers to the ticket
+    // (deepLinkBootGate) — whichever of these two calls it.
     if (!hasBridgeHandoff) startLocalAutoLogin();
 
     return () => {
       cancelled = true;
+      deepLinkBootGateRef.current.withdraw(startLocalAutoLogin);
       if (cancelBridgeLogin) cancelBridgeLogin();
       if (cancelResumeLogin) cancelResumeLogin();
       if (cancelRefreshLogin) cancelRefreshLogin();
@@ -1772,9 +1856,25 @@ function App() {
     const expiry = useGameStore.getState().oauthTokenExpiry;
     if (!expiry) return;
 
-    const stopCrossTab = startAuthCrossTabListener(() => {
+    const stopCrossTab = startAuthCrossTabListener((info) => {
       try {
         const s = useGameStore.getState();
+        // 2026-10-10 (P7) — a "Play Online" ticket tab whose store keeps its
+        // own account's OIDC tokens (so this listener runs there) follows
+        // only a sign-out that names ITS account; a stored-token key being
+        // removed or an older bundle's marker names nobody. Every other tab:
+        // unchanged.
+        // 2026-10-10 — a "keep me signed in" OFF tab (credentials only in its
+        // own sessionStorage) follows only its own account's sign-out, and
+        // never a localStorage token-key removal (crossTabSignOut).
+        const remote = { type: 'logout', userId: info?.userId ?? null };
+        if (!shouldApplyRemoteSignOut(remote, s.userId, {
+          ownCredentials: [s.oauthRefreshToken, s.authToken],
+          deviceKeyRemoved: info?.source === 'token-key',
+        })) {
+          noteIgnoredRemoteSignOut(remote, info?.source || 'storage');
+          return;
+        }
         // 2026-07-02 Finding #4 — peer-tab logout: clear LOCAL state only. The
         // tab that initiated the logout already redirected to /session/end and
         // performed the global logout, so this peer must NOT redirect too
@@ -1883,8 +1983,27 @@ function App() {
         isCancelled: () => cancelled,
         onResult: (result) => {
           if (result?.success && result.userData) {
+            // 2026-10-10 (P4) — the ticket signed this tab in: the browser's
+            // stored sign-in (deferred behind it) never runs on this load.
+            // First, so nothing below can leave it waiting to run.
+            deepLinkBootGateRef.current.ticketSignedIn();
+            // 2026-10-10 (Q4) — consumed: never the deep-link screen again on
+            // this page load (a later Sign Out shows LoginScreen).
+            setDeepLinkConsumed(true);
             try {
-              if (result.token) setAuthToken(result.token);
+              if (result.token) {
+                // 2026-10-10 — the (burned) Play Online ticket is THIS tab's
+                // credential. On a browser whose stored sign-in is another (or
+                // an unprovable) account's it goes in this tab's sessionStorage
+                // only — never over that account's device-wide
+                // poker_auth_token (and so this tab's Sign Out can remove it
+                // without touching that sign-in). Otherwise unchanged.
+                if (deviceHoldsOtherOidcSignIn(masterIdFromLoginResult(result))) {
+                  sessionStorage.setItem('poker_auth_token', result.token);
+                } else {
+                  setAuthToken(result.token);
+                }
+              }
               sessionStorage.setItem('poker_keep_signed_in', '1');
             } catch {}
             if (timeoutReported) {
@@ -1942,9 +2061,32 @@ function App() {
           if (refusalCode) {
             setDeepLinkRefusal({ code: refusalCode, message: playRefusalText(result) });
             setDeepLinkTimedOut(false);
+            // 2026-10-10 (P4) — refused: the refusal screen stays up; its
+            // Continue reloads into the normal boot (stored sign-in) on the
+            // player's own tap, never automatically.
+            deepLinkBootGateRef.current.ticketRefused();
             return;
           }
-          setDeepLinkTimedOut(true);
+          // 2026-10-10 — an ANSWERED failure is not a timeout: show what the
+          // server said (e.g. account_mismatch's "Sign out, then open the link
+          // again") on the login screen instead of "Connection timed out" — a
+          // Retry could only come back ticket_replayed. The deep link is
+          // consumed (Q4); the login screen carries the notice until a sign-in
+          // clears it.
+          setDeepLinkTimedOut(false);
+          try {
+            // (Not over a tab that is already signed in — e.g. a bridge
+            // hand-off that succeeded first: the notice would linger for its
+            // next login screen.)
+            if (!useGameStore.getState().isLoggedIn) {
+              useGameStore.setState({ sessionExpiredNotice: deepLinkFailureText(result) });
+            }
+          } catch { /* notice is best-effort */ }
+          setDeepLinkConsumed(true);
+          // 2026-10-10 (P4) — any other answer is final (the server burned the
+          // ticket on receipt): now, and only now, the browser's stored
+          // sign-in runs, as it would have on a load without a deep link.
+          deepLinkBootGateRef.current.ticketFailed();
         },
         onTimeout: (info) => {
           const phase = info?.phase === 'connect' ? 'connect' : 'result';
@@ -2076,7 +2218,10 @@ function App() {
     // and are actively authenticating via authWithTicket. Show a spinner
     // instead of the login screen — making users "sign in again" here is
     // exactly the bug we're avoiding.
-    if (deepLinkContext) {
+    // 2026-10-10 (Q4) — only until the deep link is consumed (see
+    // deepLinkConsumed): after that this tab is an ordinary one, and a
+    // signed-out tab shows LoginScreen.
+    if (deepLinkContext && !deepLinkConsumed) {
       // Only consulted when a refusal offers Sign In (see the button below).
       const deepLinkInApp = deepLinkRefusal ? detectInAppBrowser() : { inApp: false, app: null };
       return (

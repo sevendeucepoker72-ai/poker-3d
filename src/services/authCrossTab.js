@@ -17,6 +17,8 @@
  * closes the complementary problem on the logout side.
  */
 
+import { LOGOUT_MARKER_KEY, logoutMarkerUserId } from './crossTabSignOut';
+
 const TOKEN_KEYS = ['poker_auth_token', 'poker_oauth_refresh'];
 // 2026-07-02 OAuth audit (Finding #6) — explicit cross-tab logout marker. The
 // TOKEN_KEYS storage-event path only fires for LOCALSTORAGE clears; a
@@ -25,13 +27,19 @@ const TOKEN_KEYS = ['poker_auth_token', 'poker_oauth_refresh'];
 // (Safari <15.4) the peer tab would then keep a stale authed UI until its own
 // next 401. gameStore.logout() now ALWAYS writes a fresh timestamp to this
 // localStorage key (no token material), guaranteeing a storage event fires.
-const LOGOUT_MARKER_KEY = 'poker_logout_broadcast';
+// 2026-10-10 (P7) — the marker key lives in services/crossTabSignOut.js and
+// its value also names the account that signed out ({at, userId}; an older
+// bundle's plain timestamp names none). A "Play Online" ticket tab follows
+// only its own account's sign-out (crossTabSignOut.shouldApplyRemoteSignOut).
 
 /**
  * Subscribe to cross-tab auth-token clears.
  *
- * @param {() => void} onRemoteLogout — invoked when another tab clears or
- *   nulls one of the auth-token keys. Called at most once per clear event.
+ * @param {(info: {source: 'marker'|'token-key', userId: string|null, key: string}) => void} onRemoteLogout
+ *   — invoked when another tab clears or nulls one of the auth-token keys, or
+ *   writes the logout marker. `userId` = the account the marker names (null
+ *   when unknown — always for a token-key clear). Called at most once per
+ *   event.
  * @returns {() => void} unsubscribe — removes the storage listener.
  */
 export function startAuthCrossTabListener(onRemoteLogout) {
@@ -51,7 +59,7 @@ export function startAuthCrossTabListener(onRemoteLogout) {
     if (event.key === LOGOUT_MARKER_KEY) {
       if (event.newValue) {
         try {
-          onRemoteLogout();
+          onRemoteLogout({ source: 'marker', userId: logoutMarkerUserId(event.newValue), key: event.key });
         } catch (err) {
           console.error('[authCrossTab] onRemoteLogout threw:', err);
         }
@@ -69,7 +77,7 @@ export function startAuthCrossTabListener(onRemoteLogout) {
     // tab no longer considers us authed" — propagate.
     if (event.newValue === null || event.newValue === '') {
       try {
-        onRemoteLogout();
+        onRemoteLogout({ source: 'token-key', userId: null, key: event.key });
       } catch (err) {
         // Never let a consumer error break the listener; log and move on.
         console.error('[authCrossTab] onRemoteLogout threw:', err);

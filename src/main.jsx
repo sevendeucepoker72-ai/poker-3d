@@ -50,6 +50,13 @@ sessionLifecycle.start()
 // sits on a stale token. Cooperates with sessionLifecycle (which calls
 // refreshNow on tab resume).
 import * as authScheduler from './services/authScheduler.js'
+// 2026-10-10 (Q5) — a "Play Online" / waitlist deep link's ticket (`?token=`)
+// is this load's sign-in: the scheduler must not refresh the browser's stored
+// sign-in (on a shared browser, ANOTHER account's) until that ticket is
+// answered. Noted BEFORE start() — App scrubs the URL at mount, and its
+// deepLinkBootGate then owns the flag (services/deepLinkBootGate.js).
+import { noteDeepLinkTicketInUrl } from './services/deepLinkBootGate.js'
+noteDeepLinkTicketInUrl()
 authScheduler.start()
 
 // 2026-05-05 Phase 3 — cross-tab logout sync. When ANY same-origin .online
@@ -63,8 +70,31 @@ import { useGameStore } from './store/gameStore.js'
 // 2026-10-10 — always, tab-scoped) and survives a reload of the tab, so
 // leaving it would sign the tab straight back in on the next boot.
 import { clearResumeRecord, resetTabSession } from './services/sessionResume.js'
+// 2026-10-10 (P7) — a "Play Online" ticket tab follows only a sign-out of its
+// OWN account (another account's sign-out / session expiry on this shared
+// browser never logs it out or clears its record), and a ticket tab's own
+// sign-out that left the browser's other sign-in alone arrives as
+// TICKET_TAB_SIGN_OUT_EVENT, followed only by tabs of that same account.
+// 2026-10-10 — and a tab signed in with "keep me signed in" OFF (credentials
+// only in its own sessionStorage) follows only its own account's sign-out;
+// every tab answers a signing-out ticket tab's sign-in census
+// (crossTabSignOut.requestSignInCensus) so that tab can see such a sign-in.
+import {
+  shouldApplyRemoteSignOut, noteIgnoredRemoteSignOut, TICKET_TAB_SIGN_OUT_EVENT,
+  installSignInCensusResponder,
+} from './services/crossTabSignOut.js'
+installSignInCensusResponder(() => useGameStore.getState())
 onAuthEvent((evt) => {
-  if (evt.type === 'logout') {
+  if (evt.type === 'logout' || evt.type === TICKET_TAB_SIGN_OUT_EVENT) {
+    let apply = true
+    try {
+      const st = useGameStore.getState()
+      apply = shouldApplyRemoteSignOut(evt, st.userId, { ownCredentials: [st.oauthRefreshToken, st.authToken] })
+    } catch { apply = evt.type === 'logout' }
+    if (!apply) {
+      noteIgnoredRemoteSignOut(evt, 'broadcast')
+      return
+    }
     try { clearResumeRecord(); resetTabSession() } catch { /* never block the teardown */ }
     try {
       // Skip the redirect-to-auth-server side-effect (originating tab
@@ -103,6 +133,19 @@ onAuthEvent((evt) => {
 // (gameStore.sessionExpiredNotice → LoginScreen). Registered at module level
 // so it exists before first render and never unmounts.
 window.addEventListener('poker:session-expired', (e) => {
+  // 2026-10-10 (Q5) — a revoked refresh token says the browser's STORED OIDC
+  // sign-in is dead. A "Play Online" ticket tab whose stored sign-in is not
+  // provably its own account (on a shared browser, ANOTHER account's) does
+  // not run on it: its own ticket / resume record is untouched by that
+  // expiry. Never torn down here (no record clear, no logout, no 'logout'
+  // broadcast naming it, no notice). A ticket tab whose stored sign-in IS its
+  // own account, and every other tab: unchanged.
+  let keepTicketTab = false
+  try { keepTicketTab = authScheduler.ticketTabOutlivesDeviceSignIn() } catch { keepTicketTab = false }
+  if (keepTicketTab) {
+    console.warn('[session-expired] another account\'s sign-in on this browser expired — this Play Online tab stays signed in:', e?.detail?.reason || 'unknown')
+    return
+  }
   // 2026-10-09 (R1) — the session is dead: forget the resume record whether or
   // not this tab still shows a signed-in user (logout() below also clears it,
   // but only runs when isLoggedIn).

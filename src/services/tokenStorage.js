@@ -142,6 +142,28 @@ export function getStoredOidcAccount() {
   };
 }
 
+/**
+ * 2026-10-10 — true when this browser holds ANY stored OIDC credential (a
+ * refresh token, an id / access token) that is not provably the account
+ * `masterUserId` (another account's, an unreadable one, or no master id to
+ * compare with). The same test a ticket tab's Sign Out uses to leave such a
+ * sign-in alone (gameStore.ticketTabLeavesDeviceSignIn); App.jsx uses it to
+ * keep a Play Online ticket out of that sign-in's device-wide
+ * poker_auth_token.
+ */
+export function deviceHoldsOtherOidcSignIn(masterUserId) {
+  try {
+    const dev = getStoredOidcAccount();
+    const holds = dev.signedIn || !!dev.masterUserId
+      || !!getOAuthItem('poker_oauth_id_token') || !!getOAuthItem('poker_oauth_access');
+    if (!holds) return false;
+    const mine = masterUserId === null || masterUserId === undefined ? '' : String(masterUserId).trim();
+    return !(mine && dev.masterUserId === mine);
+  } catch {
+    return true;
+  }
+}
+
 /** True when THIS TAB is a "Play Online" ticket session (tabSession kind). */
 export function isTicketTabSession() {
   return isTicketTab();
