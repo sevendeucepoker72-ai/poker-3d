@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usePlayRefusalStore } from '../../store/playRefusalStore';
 import { refusalNeedsSignIn, startAccountSignIn } from '../../services/playRefusal';
 import { detectInAppBrowser } from '../../services/authService';
+import CreateAccountLink from './CreateAccountLink';
 
 /**
  * Shared notice for a server play refusal (2026-10-07 owner decisions: game
@@ -10,7 +11,9 @@ import { detectInAppBrowser } from '../../services/authService';
  *
  * Shows the server's text verbatim. Blue + gold, never red (owner preference).
  * For login_required / guest_disabled it offers the normal sign-in action, the
- * same OIDC redirect as the login screen's button.
+ * same OIDC redirect as the login screen's button, and (2026-10-09, contract
+ * R3) "Create a free account" for a player who has none yet — in-app-browser
+ * guarded the same way.
  */
 export default function PlayRefusalNotice() {
   const refusal = usePlayRefusalStore((s) => s.refusal);
@@ -95,6 +98,7 @@ function RefusalCard({ refusal, onDismiss }) {
             {signingIn ? 'Opening sign-in…' : 'Sign In with American Pub Poker'}
           </button>
         )}
+        {needsSignIn && <CreateAccountLink inApp={inApp.inApp} />}
         <button
           type="button"
           onClick={onDismiss}

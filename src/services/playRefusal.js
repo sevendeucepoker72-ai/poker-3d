@@ -51,6 +51,11 @@ export const GUEST_DISABLED = 'guest_disabled';
 export const SUSPENDED_TEXT = 'You are suspended from playing any games with American Pub Poker.';
 export const SIGN_IN_TO_PLAY_TEXT = 'Sign in with your American Pub Poker account to play.';
 
+// 2026-10-09 (contract R3) — players without an account (former guests) are
+// offered account creation next to Sign In on every login_required /
+// guest_disabled refusal. Account creation lives on the marketing site.
+export const ACCOUNT_SIGNUP_URL = 'https://americanpubpoker.com/signup';
+
 // Shown when a registration emit (tournament / qualifier) gets no answer at
 // all. The text is the old guest-play watchdog's (retired with guest play on
 // 2026-10-07); canonical-features.txt still locks it, now for these watchdogs.

@@ -41,8 +41,32 @@ function pickActiveQuestions(handId) {
   return indices.map(i => MARKET_QUESTIONS[i]);
 }
 
-export default function PredictionMarket({ gameState: gameStateRaw, socket, visible, onClose }) {
+// Fallbacks when rendered without GameHUD's refusal props.
+const NO_REFUSAL_HANDLER = () => false;
+const NO_ATTEMPT_RECORDER = () => {};
+
+/**
+ * 2026-10-09 — play refusals. A prediction bet is a wager, so poker-server's
+ * play gate refuses it for a suspended player or a session with no American
+ * Pub Poker account (C5 `code` on predictionError). GameHUD passes the shared
+ * handling in as props — onPlayRefusal = playRefusal.reportPlayRefusal (the
+ * blue/gold PlayRefusalNotice: verbatim text, stays until dismissed, Sign In /
+ * silent re-auth), notePlayAttempt = playRefusal.notePlayAttempt (so that
+ * re-auth can replay the bet once) — rather than this file importing
+ * services/playRefusal: it is bundled in the manual 'game-overlays' chunk,
+ * and a static import would pull the auth modules into that chunk.
+ */
+export default function PredictionMarket({
+  gameState: gameStateRaw, socket, visible, onClose,
+  onPlayRefusal = NO_REFUSAL_HANDLER,
+  notePlayAttempt = NO_ATTEMPT_RECORDER,
+}) {
   const gameState = useThrottle(gameStateRaw, 500);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const [expanded, setExpanded]     = useState(false);
   const [balance, setBalance]       = useState(null);   // null until wallet loads
   const [activeMarkets, setActiveMarkets] = useState([]);
@@ -98,6 +122,10 @@ export default function PredictionMarket({ gameState: gameStateRaw, socket, visi
       }
     };
     const onErr = (d) => {
+      // 2026-10-09 — a C5 play refusal (suspended / no account) goes to the
+      // shared PlayRefusalNotice, not this 3s one-line toast that cut the
+      // owner's sentence off.
+      if (onPlayRefusal(d)) return;
       const id = `err-${Date.now()}-${Math.round(performance.now())}`;
       setToasts(t => [...t, { id, type: 'loss', text: d?.message || 'Bet rejected' }]);
       setTimeout(() => setToasts(t => t.filter((x) => x.id !== id)), 3000);
@@ -114,7 +142,7 @@ export default function PredictionMarket({ gameState: gameStateRaw, socket, visi
       socket.off('predictionError', onErr);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket]);
+  }, [socket, onPlayRefusal]);
 
   // ─── Spin up markets on a new hand ──────────────────────────────────────
   useEffect(() => {
@@ -143,16 +171,23 @@ export default function PredictionMarket({ gameState: gameStateRaw, socket, visi
     const outcome = stakeInput[market.id]?.outcome;
     if (!outcome || balance == null || amount > balance) return;
     if (socket?.connected) {
-      socket.emit('placePredictionBet', {
+      const bet = {
         tableId,
         handId: currentHandId,
         marketId: market.id,
         outcome,
         amount,
+      };
+      // 2026-10-09 — a login_required refusal on a still-signed-in tab is
+      // recovered silently and this exact bet re-sent ONCE (same hand; the
+      // server refuses it if that hand is over).
+      notePlayAttempt(() => {
+        if (mountedRef.current && socket.connected) socket.emit('placePredictionBet', bet);
       });
+      socket.emit('placePredictionBet', bet);
     }
     // Position is set when the server confirms via predictionBetPlaced.
-  }, [socket, tableId, currentHandId, stakeInput, balance]);
+  }, [socket, tableId, currentHandId, stakeInput, balance, notePlayAttempt]);
 
   if (!visible) return null;
 

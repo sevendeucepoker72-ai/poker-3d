@@ -45,7 +45,8 @@ import ScratchCards from './ScratchCards';
 import MultiTableView from './MultiTableView';
 import PlayerProfile from './PlayerProfile';
 import { getSocket } from '../../services/socketService';
-import { reportPlayRefusal, runPlayFlow } from '../../services/playRefusal';
+import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
+import { openLiveTableOverlay } from '../../store/liveTableOverlayStore';
 import { PlayerAvatar } from '../../hooks/useAvatar';
 import './Lobby.css';
 
@@ -972,6 +973,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
   const logout = useGameStore((s) => s.logout);
   const isLoggedIn = useGameStore((s) => s.isLoggedIn);
+  // 2026-10-09 (D1 / T2) — the explicit Sign Out waits (≤2s) for
+  // poker-server's 'revokeSignInTokens' acknowledgement before the session is
+  // torn down.
+  const signingOut = useGameStore((s) => s.signingOut);
 
   const connected = useTableStore((s) => s.connected);
   const tables = useTableStore((s) => s.tables);
@@ -1320,6 +1325,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   }, []);
   const [showHandHistoryImporter, setShowHandHistoryImporter] = useState(false);
   const [showMultiTable, setShowMultiTable] = useState(false);
+  // 2026-10-09 (R2) — the multi-table overlay puts live tables on screen: the
+  // (lobby-only) guest carry-over prompt waits until it closes, never covers
+  // play (store/liveTableOverlayStore.js).
+  useEffect(() => (showMultiTable ? openLiveTableOverlay() : undefined), [showMultiTable]);
   const [showSocialBracket, setShowSocialBracket] = useState(
     () => { try { return !!new URLSearchParams(window.location.search).get('bracket'); } catch { return false; } }
   );
@@ -3078,10 +3087,14 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
             <button
               className="lobby-top-bar-settings"
               onClick={logout}
+              disabled={signingOut}
               title="Logout"
-              style={{ fontSize: '0.75rem', color: '#F87171' }}
+              style={signingOut
+                /* T9 — "Signing out…" is blue, never red (owner preference); the idle Logout keeps its HEAD colour. */
+                ? { fontSize: '0.75rem', color: '#cfe0ff', opacity: 0.75, cursor: 'default' }
+                : { fontSize: '0.75rem', color: '#F87171' }}
             >
-              Logout
+              {signingOut ? 'Signing out…' : 'Logout'}
             </button>
           )}
         </div>
@@ -3153,11 +3166,29 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {replayHand && <HandReplayViewer history={replayHand} onClose={() => setReplayHand(null)} />}
         {showHandQuiz && <HandQuiz onClose={() => setShowHandQuiz(false)} />}
         {showAdvancedAnalytics && <AdvancedAnalytics progress={progress} handHistories={handHistories || []} onClose={() => setShowAdvancedAnalytics(false)} />}
-        {showStakingMarketplace && <StakingMarketplace playerName={playerName} chips={progress?.chips ?? chipCount ?? 0} onClose={() => setShowStakingMarketplace(false)} />}
+        {/* 2026-10-09 (D3) — refusal handling passed in (see StakingMarketplace). */}
+        {showStakingMarketplace && (
+          <StakingMarketplace
+            playerName={playerName}
+            chips={progress?.chips ?? chipCount ?? 0}
+            onClose={() => setShowStakingMarketplace(false)}
+            onPlayRefusal={reportPlayRefusal}
+            runPlayFlow={runPlayFlow}
+            unreachableText={GAME_SERVER_UNREACHABLE_TEXT}
+          />
+        )}
         {showTournamentBracket && <TournamentBracket tournament={bracketTournament} onClose={() => setShowTournamentBracket(false)} />}
         {showTournamentDirector && <TournamentDirector onClose={() => setShowTournamentDirector(false)} onCreateTournament={handleCreateCustomTournament} playerName={playerName} />}
         {showHandHistoryImporter && <HandHistoryImporter onClose={() => setShowHandHistoryImporter(false)} />}
-        {showSocialBracket && <SocialBracket socket={getSocket()} onClose={() => setShowSocialBracket(false)} />}
+        {/* 2026-10-09 — side-bet refusals: handling passed in (see SocialBracket). */}
+        {showSocialBracket && (
+          <SocialBracket
+            socket={getSocket()}
+            onClose={() => setShowSocialBracket(false)}
+            onPlayRefusal={reportPlayRefusal}
+            runPlayFlow={runPlayFlow}
+          />
+        )}
         {showBankrollAI && <BankrollAI currentChips={chipCount} onClose={() => setShowBankrollAI(false)} />}
         {showNFTBadges && <NFTBadges socket={getSocket()} unlockedAchievementIds={progress?.achievements || []} onClose={() => setShowNFTBadges(false)} />}
       </Suspense>

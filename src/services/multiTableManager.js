@@ -1,6 +1,28 @@
 import { io } from 'socket.io-client';
 import { getAuthToken } from './tokenStorage';
 import { SERVER_URL } from '../config';
+import {
+  readResumeRecordForUser, isTicketSessionTab, saveTicketResume, clearResumeRecord,
+  RESUME_EVENT, RESUME_INVALID,
+} from './sessionResume';
+import { useGameStore } from '../store/gameStore';
+import { guardNeverEmittedEvents } from './socketService';
+
+// 2026-10-09 (contract R1 / D1) — how an extra socket signs in. A TICKET tab
+// ("Play Online": no OIDC access token to present) uses its resume record —
+// only one bound to this tab's own user — and nothing else, so an extra
+// socket can never be signed in as another account through a token another
+// tab left in storage. Every other tab: oauthLogin with the stored token, as
+// before. Returns { ticketTab, rec }.
+function extraSocketCredential() {
+  try {
+    const { userId } = useGameStore.getState();
+    if (!isTicketSessionTab(userId)) return { ticketTab: false, rec: null };
+    return { ticketTab: true, rec: readResumeRecordForUser(userId) };
+  } catch {
+    return { ticketTab: false, rec: null };
+  }
+}
 
 // 2026-06-18 — Phase 3f: REAL multi-tabling. poker-server is one-seat-per-
 // socket (playerSessions keyed by socket.id) and its `spectate` handler kicks
@@ -82,7 +104,8 @@ export function joinMultiTable(tableId, { playerName, buyIn, avatar, expectedVar
   if (_slots.length >= MAX_SECONDARY_TABLES) return { ok: false, error: 'Max tables reached' };
   if (_slots.some((s) => s.tableId === tableId)) return { ok: false, error: 'Already at this table' };
   const token = getAuthToken();
-  if (!token) return { ok: false, error: 'Not signed in' };
+  const cred = extraSocketCredential();
+  if (cred.ticketTab ? !cred.rec : !token) return { ok: false, error: 'Not signed in' };
 
   const socket = io(SERVER_URL, {
     transports: ['websocket', 'polling'],
@@ -94,6 +117,7 @@ export function joinMultiTable(tableId, { playerName, buyIn, avatar, expectedVar
     timeout: 20_000,
     auth: { token },
   });
+  guardNeverEmittedEvents(socket); // U7 — an extra table never emits 'logout' either
 
   const slot = {
     id: ++_counter, socket, tableId, tableName: '', status: 'connecting',
@@ -104,18 +128,45 @@ export function joinMultiTable(tableId, { playerName, buyIn, avatar, expectedVar
   const doAuthAndJoin = () => {
     slot.status = 'authing';
     notify();
+    // 2026-10-09 (contract R1) — a "Play Online" ticket session has no OIDC
+    // access token to present; its resume token signs this extra socket in
+    // as the same account (same rule as services/socketReauth.js). An OIDC
+    // tab sends oauthLogin exactly as before. skipSeatRecovery rides along so
+    // the server can never move the primary socket's seat here.
+    const { ticketTab, rec } = extraSocketCredential();
+    if (ticketTab) {
+      if (!rec) {
+        slot.status = 'error';
+        slot.error = 'Not signed in';
+        notify();
+        return;
+      }
+      slot.resumedFor = rec.userId;
+      socket.emit(RESUME_EVENT, { resumeToken: rec.token, skipSeatRecovery: true });
+      return;
+    }
+    slot.resumedFor = null;
     socket.emit('oauthLogin', { accessToken: getAuthToken(), skipSeatRecovery: true });
   };
 
   socket.on('connect', doAuthAndJoin);
   socket.on('loginResult', (res) => {
     if (res?.success) {
+      // A resume answers with a fresh token: keep the record current (bound
+      // to the same user; anything else is ignored by saveTicketResume).
+      if (slot.resumedFor) {
+        try { saveTicketResume(res, { keepIfMissing: true, expectUserId: slot.resumedFor }); } catch { /* ignore */ }
+      }
       if (!slot.joined) {
         slot.joined = true;
         slot.status = 'joining';
         socket.emit('joinTable', { tableId, playerName: playerName || 'Player', seatIndex: -1, buyIn: buyIn || 0, avatar, expectedVariant });
       }
     } else {
+      // A definitively refused resume token is dead for every socket.
+      if (slot.resumedFor && res?.code === RESUME_INVALID) {
+        try { clearResumeRecord(); } catch { /* ignore */ }
+      }
       slot.status = 'error';
       slot.error = res?.error || 'Auth failed';
     }

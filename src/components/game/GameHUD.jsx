@@ -4673,11 +4673,15 @@ export default function GameHUD() {
             setShowReplay(true);
           }}
         />
+        {/* 2026-10-09 — refusal handling passed in (PredictionMarket is in
+            the manual 'game-overlays' chunk; see its header). */}
         <PredictionMarket
           gameState={gameState}
           socket={getSocket()}
           visible={showPredictionMarket}
           onClose={() => setShowPredictionMarket(false)}
+          onPlayRefusal={reportPlayRefusal}
+          notePlayAttempt={notePlayAttempt}
         />
         <HandHeatmap
           seats={gameState?.seats || []}

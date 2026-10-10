@@ -50,6 +50,12 @@ export default function QualifierLobby({ onSpectate }) {
     if (!socket) return;
     const onResult = (res) => {
       setRedeeming(false);
+      // 2026-10-09 — a C5 play refusal (suspended / no account: a redeemed
+      // code is a qualifier entry, so the server's play gate refuses it) goes
+      // to the shared PlayRefusalNotice — blue/gold, stays until dismissed,
+      // Sign In / silent re-auth — not this 4s red line. The code stays in
+      // the box (the gate runs before the code is claimed).
+      if (reportPlayRefusal(res)) { setRedeemMsg(null); return; }
       if (res?.success) {
         setRedeemMsg({ ok: true, text: `Code redeemed — ${res.tier || 'weekly'} qualifier credit added!` });
         setRedeemCode('');
@@ -62,13 +68,6 @@ export default function QualifierLobby({ onSpectate }) {
     socket.on('redeemEntryCodeResult', onResult);
     return () => socket.off('redeemEntryCodeResult', onResult);
   }, []);
-
-  const handleRedeem = () => {
-    const code = redeemCode.trim().toUpperCase();
-    if (!code || redeeming) return;
-    setRedeeming(true);
-    getSocket()?.emit('redeemEntryCode', { code });
-  };
 
   // Fetch qualification status + tournament registrations
   useEffect(() => {
@@ -228,6 +227,24 @@ export default function QualifierLobby({ onSpectate }) {
     }));
   }, [playerName, phone]);
   useEffect(() => { handleRegisterRef.current = handleRegister; }, [handleRegister]);
+
+  // Batch 5b: redeem an entry code. 2026-10-09 — re-runnable: a
+  // login_required refusal on a still-signed-in tab re-authenticates the
+  // socket and sends this code again ONCE, unless the lobby has unmounted.
+  const sendRedeem = useCallback(function sendRedeemOnce(code) {
+    if (!mountedRef.current) return;
+    const socket = getSocket();
+    if (!socket) return;
+    setRedeemMsg(null);
+    setRedeeming(true);
+    runPlayFlow(() => sendRedeemOnce(code), () => socket.emit('redeemEntryCode', { code }));
+  }, []);
+
+  const handleRedeem = () => {
+    const code = redeemCode.trim().toUpperCase();
+    if (!code || redeeming) return;
+    sendRedeem(code);
+  };
 
   // No pending/watchdog here: poker-server's unregister handler returns
   // silently on some branches (no session, tournament no longer registering),

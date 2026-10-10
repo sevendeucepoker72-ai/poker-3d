@@ -30,12 +30,31 @@
  * The answer is not used to change screens or the stored profile (that is
  * what the boot / callback flows do); success only means the server-side
  * socket is signed in again.
+ *
+ * RESUMABLE TICKET SESSIONS (2026-10-09, contract R1 / decision D1). A player
+ * who came in through the player app's "Play Online" ticket has no OIDC
+ * refresh token, so step 1–3 above had nothing to present and every reconnect
+ * left the socket signed out. poker-server now hands such a session (and ONLY
+ * such a session) a 12h `resumeToken` (services/sessionResume.js); a reconnect
+ * presents it with `resumeSession` before any play attempt. Per (re)connect,
+ * by the kind of session THIS TAB is in:
+ *   - ticket session → resumeSession with the stored record, and only when
+ *     that record is bound to this tab's user. Nothing else: a ticket tab
+ *     never falls through to OIDC credentials the device may hold for some
+ *     other account, so a reconnect can never switch its socket's account.
+ *   - any other session (OIDC, legacy) → the OIDC path exactly as before. An
+ *     OIDC session never presents a resume token (D1).
+ * `resume_invalid` deletes the record.
  */
 import { getAuthToken } from './tokenStorage';
 import { runSocketLogin, isCredentialDead } from './socketAuth';
 import { isTokenExpiringSoon, refreshNowAndApply, hasRefreshToken } from './authScheduler';
 import { getSocket } from './socketService';
 import { useGameStore } from '../store/gameStore';
+import {
+  readResumeRecordForUser, isTicketSessionTab, saveTicketResume, clearResumeRecord,
+  RESUME_INVALID, RESUME_EVENT,
+} from './sessionResume';
 
 // Refresh before re-auth when the access token has less than this left. Covers
 // clock skew and the time oauthLogin itself takes.
@@ -43,23 +62,28 @@ const NEAR_EXPIRY_MS = 2 * 60_000;
 // Watchdog for one oauthLogin answer (introspection + upsert + loadProgress,
 // plus a Railway cold start).
 const OAUTH_LOGIN_TIMEOUT_MS = 15_000;
+// Watchdog for one resumeSession answer (signature + DB row + master link
+// check, plus a Railway cold start).
+const RESUME_TIMEOUT_MS = 15_000;
 
 let _seq = 0;
 // The re-auth for the CURRENT connection: { id, socketId, done, promise, supersede }.
 let _current = null;
 
 /**
- * True when this tab holds a signed-in American Pub Poker account session
- * (an OIDC session: a refresh token or an OAuth access token), as opposed to
- * no session or a legacy/guest token. Only such a session can be recovered
- * silently.
+ * True when this tab holds a signed-in American Pub Poker account session —
+ * an OIDC session (a refresh token or an OAuth access token) or, since
+ * 2026-10-09, a resumable ticket session whose record is bound to this tab's
+ * user (services/sessionResume.js) — as opposed to no session or a
+ * legacy/guest token. Only such a session can be recovered silently.
  */
 export function hasSignedInAccountSession() {
   try {
     const st = useGameStore.getState();
     if (!st.isLoggedIn) return false;
-    if (!getAuthToken()) return false;
-    return hasRefreshToken() || !!st.oauthAccessToken;
+    if (isTicketSessionTab(st.userId)) return !!readResumeRecordForUser(st.userId);
+    if (getAuthToken() && (hasRefreshToken() || !!st.oauthAccessToken)) return true;
+    return false;
   } catch {
     return false;
   }
@@ -110,6 +134,47 @@ function oauthLoginOnce(socket, accessToken, entry) {
   });
 }
 
+function resumeSessionOnce(socket, resumeToken, entry) {
+  return new Promise((resolve) => {
+    const cancel = runSocketLogin({
+      socket,
+      event: RESUME_EVENT,
+      payload: { resumeToken },
+      label: 'resume',
+      timeoutMs: RESUME_TIMEOUT_MS,
+      // One emit per connection (a reconnect starts a new re-auth), and never
+      // a blind re-send: the server may treat a resume token as single-use.
+      reemitOnReconnect: false,
+      armWatchdogOnEmit: true,
+      keepListeningAfterTimeout: false,
+      onResult: (r) => resolve(r || { success: false, code: 'empty_result' }),
+      onTimeout: () => resolve({ success: false, code: 'timeout' }),
+    });
+    entry.cancelLogin = () => {
+      try { cancel(); } catch { /* ignore */ }
+      resolve({ success: false, code: 'superseded' });
+    };
+  });
+}
+
+/**
+ * Present the stored resume record. Resolves the server's loginResult (or a
+ * local failure) and keeps the record in step with the answer: a fresh token
+ * replaces it, `resume_invalid` deletes it.
+ */
+async function runResume(socket, rec, entry) {
+  const result = await resumeSessionOnce(socket, rec.token, entry);
+  if (entry.done) return result;
+  if (result?.success) {
+    saveTicketResume(result, { keepIfMissing: true, expectUserId: rec.userId });
+    try { console.warn('[session-resume] socket re-authenticated with the resume token'); } catch { /* ignore */ }
+  } else if (result?.code === RESUME_INVALID) {
+    clearResumeRecord();
+    try { console.warn('[session-resume] resume token refused (resume_invalid) — cleared'); } catch { /* ignore */ }
+  }
+  return result;
+}
+
 /**
  * Re-authenticate `socket` (default: the app socket). Resolves to
  * `{ ok, reason, result? }` and never rejects. While a re-auth for the same
@@ -141,7 +206,26 @@ export function reauthSocket(socket = getSocket(), { reason = 'connect' } = {}) 
   _current = entry;
 
   (async () => {
-    if (!useGameStore.getState().isLoggedIn) return settle({ ok: false, reason: 'not_signed_in' });
+    const st = useGameStore.getState();
+    if (!st.isLoggedIn) return settle({ ok: false, reason: 'not_signed_in' });
+
+    // 2026-10-09 (R1 / D1) — a TICKET session re-authenticates with its own
+    // resume record only (bound to this tab's user), never through OIDC
+    // credentials the device may hold for another account.
+    if (isTicketSessionTab(st.userId)) {
+      const rec = readResumeRecordForUser(st.userId);
+      if (!rec) {
+        try { console.warn('[socket-reauth] failed', { reason, code: 'no_resume_record' }); } catch { /* ignore */ }
+        return settle({ ok: false, reason: 'no_resume_record' });
+      }
+      const result = await runResume(socket, rec, entry);
+      if (entry.done) return undefined;
+      if (result?.success) return settle({ ok: true, reason, result, via: 'resume' });
+      try { console.warn('[socket-reauth] failed', { reason, code: result?.code || 'unlabelled' }); } catch { /* ignore */ }
+      return settle({ ok: false, reason: String(result?.code || 'login_failed'), result });
+    }
+
+    // Every other session: the pre-2026-10-09 OIDC re-auth, unchanged.
     const first = await ensureFreshAccessToken(false);
     if (entry.done) return undefined;
     if (first.status === 'revoked') return settle({ ok: false, reason: 'revoked' });

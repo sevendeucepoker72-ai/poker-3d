@@ -10,6 +10,16 @@ import {
 } from './services/playRefusal';
 import PlayRefusalNotice from './components/ui/PlayRefusalNotice';
 import { reauthSocket } from './services/socketReauth';
+// 2026-10-09 — resumable ticket sessions (R1), guest carry-over (R2) and
+// "Create a free account" (R3).
+import {
+  saveTicketResume, readResumeRecordForBoot, readResumeRecordForUser, clearResumeRecord,
+  setTabSession, markTicketSignIn, RESUME_INVALID, RESUME_EVENT,
+} from './services/sessionResume';
+import { stashGuestCredential } from './services/tokenStorage';
+import { maybeOfferGuestCarryOver, resetGuestCarryOver } from './services/guestCarryOver';
+import GuestCarryOverPrompt from './components/ui/GuestCarryOverPrompt';
+import CreateAccountLink from './components/ui/CreateAccountLink';
 // 2026-08-17 P2 — STATIC, deliberately. This was `await import('./services/
 // bridge')` inside the boot-auth IIFE, and the comment there claimed the
 // Promise.race below covered "a dynamic-import stall". It could not: the import
@@ -539,6 +549,18 @@ function App() {
     return unsubscribe;
   }, []);
 
+  // 2026-10-09 — guest carry-over (contract R2). After any successful sign-in
+  // (and on reconnect), if this device still holds a retired guest account's
+  // token, ask the server what it holds and offer ONE "Bring over your guest
+  // progress?" prompt. services/guestCarryOver.js decides whether to show
+  // anything (it never claims without the player's tap). Signing out hides it.
+  const carryUserId = useGameStore((s) => s.userId);
+  useEffect(() => {
+    if (!isLoggedIn) { resetGuestCarryOver(); return; }
+    if (connStatus !== 'connected') return;
+    maybeOfferGuestCarryOver().catch(() => {});
+  }, [isLoggedIn, carryUserId, connStatus]);
+
   // Connect to server on mount and wire up event listeners
   useEffect(() => {
     const socket = connectToServer();
@@ -568,9 +590,11 @@ function App() {
       //
       // Use tokenStorage so both localStorage (keep-signed-in) and
       // sessionStorage (tab-only) variants are checked on reconnect.
-      const token = getAuthToken();
-      if (!token) return;
+      // 2026-10-09 — a ticket session may hold only its resume token
+      // (services/sessionResume.js; bound to this tab's user); reauthSocket
+      // presents it.
       const st = useGameStore.getState();
+      if (!getAuthToken() && !readResumeRecordForUser(st.userId)) return;
       if (!st.isLoggedIn) return;
       // 2026-10-07 review fix — this used to be a fire-and-forget
       // `socket.emit('oauthLogin', { accessToken: token })`: no refresh first
@@ -1163,6 +1187,7 @@ function App() {
 
     let cancelled = false;
     let cancelBridgeLogin = null;
+    let cancelResumeLogin = null;
     let cancelRefreshLogin = null;
     let cancelLegacyLogin = null;
     let localAutoLoginStarted = false;
@@ -1321,6 +1346,11 @@ function App() {
           onResult: (r) => {
             if (r?.success && r.userData) {
               try { logAuthEvent('login_success', { via: 'bridge' }); } catch {}
+              // 2026-10-09 (R1 / D1) — the tab is now in this OIDC session,
+              // which re-authenticates with its own refresh flow: a ticket
+              // session's resume record must not resume over it next boot.
+              clearResumeRecord();
+              setTabSession('oidc', r.userData.id);
               useGameStore.getState().oauthLogin(tokens, r.userData);
               return;
             }
@@ -1371,6 +1401,81 @@ function App() {
         try { return localStorage.getItem('poker_oauth_refresh') || sessionStorage.getItem('poker_oauth_refresh'); }
         catch { return null; }
       })();
+
+      // 2026-10-09 (contract R1) — resumable ticket session. A player who came
+      // in through the player app's "Play Online" ticket holds no refresh
+      // token; the ticket itself was burned on first use, so a reload (iOS
+      // PWA resume is often one) used to land them on the login screen. The
+      // resume token poker-server issued with that login signs them back in.
+      // Only ticket sessions have one (D1). It goes FIRST — the device's
+      // latest sign-in was that ticket session (any OIDC / legacy sign-in
+      // since then clears the record) — but only when no fresh deep-link
+      // ticket is being presented right now (that ticket is the authoritative
+      // credential, like the bridge). A non-definitive failure falls through
+      // to the refresh-token / legacy paths exactly as before.
+      const resumeRec = deepLinkContext ? null : readResumeRecordForBoot();
+      if (resumeRec) {
+        tryResumeAutoLogin(resumeRec, () => runRefreshOrLegacy(oauthRefresh));
+        return;
+      }
+      runRefreshOrLegacy(oauthRefresh);
+    }
+
+    // 2026-10-09 — resumeSession at boot (see startLocalAutoLogin). Answers
+    // on loginResult in authWithTicket's success shape, with a fresh token.
+    function tryResumeAutoLogin(rec, fallback) {
+      let fellBack = false;
+      const fallBack = () => {
+        if (fellBack || cancelled) return;
+        fellBack = true;
+        fallback();
+      };
+      cancelResumeLogin = runSocketLogin({
+        socket,
+        event: RESUME_EVENT,
+        payload: { resumeToken: rec.token },
+        label: 'boot-resume',
+        timeoutMs: 15000,
+        // Never blind re-send (the server may treat the token as single-use);
+        // a timeout falls back to the other boot paths instead of waiting.
+        reemitOnReconnect: false,
+        armWatchdogOnEmit: true,
+        keepListeningAfterTimeout: false,
+        isCancelled: () => cancelled,
+        onResult: (r) => {
+          if (r?.success && r.userData) {
+            saveTicketResume(r, { keepIfMissing: true, expectUserId: rec.userId });
+            setTabSession('ticket', r.userData.id);
+            useGameStore.getState().login(r.userData, getAuthToken() || null);
+            return;
+          }
+          if (r?.code === RESUME_INVALID) clearResumeRecord();
+          try {
+            logAuthEvent('login_failed', {
+              reason: 'boot_resume_failed',
+              code: String(r?.code || 'unlabelled').slice(0, 64),
+              error: String(r?.error || '').slice(0, 200),
+            });
+          } catch { /* telemetry is best-effort */ }
+          if (isDefinitiveLoginFailure(r)) {
+            const notice = playRefusalText(r) || 'This account could not be matched securely. Please contact support.';
+            try { useGameStore.setState({ sessionExpiredNotice: notice }); } catch { /* notice is best-effort */ }
+            return;
+          }
+          fallBack();
+        },
+        onTimeout: () => {
+          try { logAuthEvent('login_failed', { reason: 'boot_resume_timeout' }); } catch { /* telemetry is best-effort */ }
+          fallBack();
+        },
+      });
+    }
+
+    // The refresh-token path, then the legacy token (both unchanged; split
+    // out of startLocalAutoLogin 2026-10-09 so the resume path can fall
+    // through to them).
+    function runRefreshOrLegacy(oauthRefresh) {
+      if (cancelled) return;
       if (!oauthRefresh) {
         // 2026-05-07 — iframe-based silent SSO retired (broken in modern Chrome
         // CHIPS semantics). Cross-site SSO now flows through LoginScreen + a
@@ -1436,6 +1541,10 @@ function App() {
             isCancelled: () => cancelled,
             onResult: (result) => {
               if (result?.success && result.userData) {
+                // 2026-10-09 (R1 / D1) — the tab is now in this OIDC session:
+                // a ticket session's resume record must not resume over it.
+                clearResumeRecord();
+                setTabSession('oidc', result.userData.id);
                 useGameStore.getState().oauthLogin(tokens, result.userData);
                 return;
               }
@@ -1489,6 +1598,9 @@ function App() {
             try { localStorage.removeItem(k);   } catch {}
             try { sessionStorage.removeItem(k); } catch {}
           }
+          // 2026-10-09 (R1) — the session was revoked (signed out elsewhere,
+          // admin-revoked): a resume record must not sign this device back in.
+          try { clearResumeRecord(); } catch { /* never block the wipe */ }
           tryLegacyAutoLogin();
         });
     }
@@ -1522,7 +1634,18 @@ function App() {
       // here threw the token away on `maintenance`, `rate_limited`,
       // `user_upsert_failed` (a Railway Postgres blip) and `handler_exception`
       // — none of which the server even evaluated the token for.
-      const dropLegacyTokenOnly = () => { try { clearAuthToken(); } catch {} };
+      // 2026-10-09 — a legacy token is usually a retired "Play as Guest"
+      // credential: the only key to that guest's chips + progress. Set it
+      // aside before discarding it (tokenStorage.stashGuestCredential keeps
+      // ONLY a GuestNNNN token — a pre-OIDC account's legacy token is simply
+      // dropped) so the American Pub Poker account the player signs in with
+      // can be offered the one-time carry-over. poker-server verifies it then:
+      // an EXPIRED but correctly signed guest token is still accepted for the
+      // carry-over (contract R2 — expiry is waived there, never for login).
+      const dropLegacyTokenOnly = () => {
+        try { stashGuestCredential(savedToken); } catch { /* never block the drop */ }
+        try { clearAuthToken(); } catch { /* ignore */ }
+      };
 
       cancelLegacyLogin = runSocketLogin({
         socket,
@@ -1544,6 +1667,10 @@ function App() {
             // Re-persist the refreshed token using the user's stored
             // keep-signed-in preference. Preserves localStorage placement.
             setAuthToken(result.token);
+            // 2026-10-09 (R1 / D1) — the tab is now in this legacy session
+            // (never resumable): drop any ticket session's resume record.
+            clearResumeRecord();
+            setTabSession('legacy', result.userData.id);
             useGameStore.getState().login(result.userData, result.token);
             return;
           }
@@ -1575,6 +1702,7 @@ function App() {
     return () => {
       cancelled = true;
       if (cancelBridgeLogin) cancelBridgeLogin();
+      if (cancelResumeLogin) cancelResumeLogin();
       if (cancelRefreshLogin) cancelRefreshLogin();
       if (cancelLegacyLogin) cancelLegacyLogin();
     };
@@ -1758,6 +1886,18 @@ function App() {
             }
             setDeepLinkTimedOut(false);
             setDeepLinkRefusal(null);
+            // 2026-10-09 (contract R1) — the ticket is one-shot; poker-server
+            // now also returns a 12h resumeToken so a socket reconnect (and a
+            // reload) can re-authenticate this session silently instead of
+            // telling the player to sign in. See services/sessionResume.js.
+            // The tab is marked a TICKET session only when a record was
+            // actually stored for this user; a result without one (a waitlist
+            // link riding this tab's own OIDC sign-in, an admin row) keeps the
+            // tab's same-user OIDC marker or takes the pre-R1 re-auth path —
+            // never another account's (markTicketSignIn). A tab that is
+            // already the same user's OIDC session stays 'oidc' (T6).
+            const resumeStored = saveTicketResume(result);
+            markTicketSignIn(result.userData.id, resumeStored);
             useGameStore.getState().login(result.userData, result.token);
             return;
           }
@@ -1971,6 +2111,11 @@ function App() {
                     >
                       Sign In with American Pub Poker
                     </button>
+                  )}
+                  {/* 2026-10-09 (contract R3) — no account yet: create one.
+                      Same in-app-browser guard as Sign In. */}
+                  {refusalNeedsSignIn(deepLinkRefusal.code) && (
+                    <CreateAccountLink inApp={deepLinkInApp.inApp} style={{ borderRadius: 8, padding: '10px 18px' }} />
                   )}
                   <button
                     onClick={() => {
@@ -2230,6 +2375,12 @@ function App() {
       {/* 2026-10-07 — server play refusals (suspended / no account) from any
           lobby path, shown verbatim with the sign-in action when needed. */}
       <PlayRefusalNotice />
+      {/* 2026-10-09 — one-time guest progress carry-over offer (after an
+          account sign-in on a device that still holds a guest session).
+          LOBBY ONLY: never drawn over a live table (the table / career
+          screens don't render it; the multi-table overlay hides it). An
+          offer that arrives while seated waits here for the lobby. */}
+      <GuestCarryOverPrompt />
       <AchievementPopup />
       <LevelUpPopup />
       <BottomNav activeTab={activeNavTab} onTabChange={handleNavTabChange} />

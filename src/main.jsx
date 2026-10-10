@@ -58,8 +58,14 @@ authScheduler.start()
 // socket disconnect.
 import { onAuthEvent } from './services/authBroadcast.js'
 import { useGameStore } from './store/gameStore.js'
+// 2026-10-09 (R1) — the resumable "Play Online" session record. Every teardown
+// below forgets it too: this tab's sessionStorage copy (session-only mode)
+// survives a reload of the tab, so leaving it would sign the tab straight back
+// in on the next boot.
+import { clearResumeRecord, resetTabSession } from './services/sessionResume.js'
 onAuthEvent((evt) => {
   if (evt.type === 'logout') {
+    try { clearResumeRecord(); resetTabSession() } catch { /* never block the teardown */ }
     try {
       // Skip the redirect-to-auth-server side-effect (originating tab
       // already did it). Just clear local state by setting isLoggedIn=false
@@ -97,6 +103,10 @@ onAuthEvent((evt) => {
 // (gameStore.sessionExpiredNotice → LoginScreen). Registered at module level
 // so it exists before first render and never unmounts.
 window.addEventListener('poker:session-expired', (e) => {
+  // 2026-10-09 (R1) — the session is dead: forget the resume record whether or
+  // not this tab still shows a signed-in user (logout() below also clears it,
+  // but only runs when isLoggedIn).
+  try { clearResumeRecord(); resetTabSession() } catch { /* never block the teardown */ }
   try {
     const s = useGameStore.getState()
     if (s.isLoggedIn && typeof s.logout === 'function') {

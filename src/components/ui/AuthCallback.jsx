@@ -6,6 +6,7 @@ import { setAuthToken, setOAuthItem } from '../../services/tokenStorage';
 import { logAuthEvent } from '../../services/authEvents';
 import { runSocketLogin, isDefinitiveLoginFailure } from '../../services/socketAuth';
 import { playRefusalText } from '../../services/playRefusal';
+import { clearResumeRecord, setTabSession } from '../../services/sessionResume';
 
 /**
  * @param {object}   props
@@ -184,6 +185,11 @@ export default function AuthCallback({ onExit } = {}) {
             resolved = true;
             if (result?.success && result.userData) {
               try { logAuthEvent('login_success'); } catch {}
+              // 2026-10-09 (R1 / D1) — the tab is now in this OIDC session,
+              // which re-authenticates with its own refresh flow: drop a resume
+              // record from an earlier "Play Online" ticket session.
+              clearResumeRecord();
+              setTabSession('oidc', result.userData.id);
               useGameStore.getState().oauthLogin(tokens, result.userData);
               // 2026-10-06 — LEAVE the callback view. runSocketLogin clears its
               // watchdog on success, and HEAD's only exit was that watchdog's

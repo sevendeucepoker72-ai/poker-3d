@@ -15,6 +15,44 @@ let _socket = null;
 // working. Kept in sync in connectToServer / disconnectFromServer.
 let socket = null;
 
+// 2026-10-09 (CONTRACTS.md C5, U7) — this client NEVER emits the socket
+// 'logout' event. poker-server up to 5ea0f80 (and any rollback past S1)
+// handles 'logout' by deleting the socket's auth session BEFORE the
+// disconnect, and that disconnect then stands a seated player up WITHOUT
+// crediting his stack; the server keeps its 'logout' handler for
+// compatibility only. The explicit Sign Out's revocation is
+// 'revokeSignInTokens' (gameStore REVOKE_SIGN_IN_TOKENS_EVENT). Every socket
+// this client opens (primary here, extra tables in multiTableManager) goes
+// through this guard: an emit of 'logout' never leaves the client — it is
+// logged, any ack is answered as a refusal, and the call returns like a
+// normal emit. The log text is locked in canonical-features.txt, so the guard
+// cannot be dropped silently.
+const NEVER_EMITTED_SOCKET_EVENT = 'logout';
+export function guardNeverEmittedEvents(sock) {
+  if (!sock || typeof sock.emit !== 'function' || sock.__neverEmitLogoutGuard) return sock;
+  const emitOriginal = sock.emit;
+  sock.emit = function emitExceptLogout(ev, ...args) {
+    const self = this || sock;
+    if (ev !== NEVER_EMITTED_SOCKET_EVENT) return emitOriginal.call(self, ev, ...args);
+    try { console.error('[sign-out] blocked a socket logout emit: this client never sends it (C5)'); } catch { /* ignore */ }
+    // What a real emit leaves behind: flags (.timeout() / .volatile) consumed.
+    const errorFirst = !!(self.flags && self.flags.timeout !== undefined);
+    self.flags = {};
+    const ack = args.length ? args[args.length - 1] : null;
+    if (typeof ack === 'function') {
+      setTimeout(() => {
+        try {
+          if (errorFirst || ack.withError) ack(new Error('socket logout is never emitted'));
+          else ack({ success: false, code: 'not_emitted' });
+        } catch { /* ignore */ }
+      }, 0);
+    }
+    return self;
+  };
+  sock.__neverEmitLogoutGuard = true;
+  return sock;
+}
+
 // Pending-action queue. A single slot: only one turn-action can be pending
 // at a time (you can't act twice on the same turn). If the socket drops
 // right as the user taps, we hold the action here and flush it on the
@@ -141,6 +179,7 @@ export const connectToServer = () => {
     timeout: 20_000,
     auth: token ? { token } : undefined,
   });
+  guardNeverEmittedEvents(socket); // U7 — never 'logout' (see above)
   _socket = socket;
 
   socket.on('connect', () => {

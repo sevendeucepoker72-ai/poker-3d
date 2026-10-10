@@ -80,16 +80,216 @@ export function getHttpBearer() {
   return at || id || null;    // last resort
 }
 
+// ── Legacy guest credential (2026-10-09, guest carry-over) ──────────────────
+// Before 2026-10-07 "Play as Guest" registered a local poker-server account
+// (GuestNNNN, random password the player never saw) and stored the server's
+// legacy token in poker_auth_token via setAuthToken. That token — an HS256 JWT
+// `{ userId: <local int>, username, tokenVersion }` (poker-server
+// authManager.generateToken) — is the ONLY key to that guest's chips and
+// progress. Signing in with an American Pub Poker account overwrites
+// poker_auth_token, so the guest token is set aside here first and offered for
+// a one-time carry-over (services/guestCarryOver.js → socket
+// peekGuestProgress / claimGuestProgress). poker-server decides whether it
+// really is an unclaimed guest; this only keeps the key from being thrown away.
+// Only a token whose `username` claim is GuestNNNN is ever kept: pre-OIDC
+// phone/password ACCOUNTS hold the very same token shape (isGuestLegacyToken).
+//
+// Never confused with the other things poker_auth_token can hold:
+//   - OIDC access tokens: opaque, or RS256/ES256 JWTs (alg is not HS256);
+//   - deep-link tickets: TWO-part `payload.sig` (master onlineLinkToken);
+//   - resume tokens never go in poker_auth_token (services/sessionResume.js).
+const GUEST_CLAIM_KEY = 'poker_guest_claim';
+
+function decodeJwtSegment(segment) {
+  try {
+    const b64 = String(segment).replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice((b64.length + 3) % 4);
+    const json = typeof atob === 'function' ? atob(padded) : '';
+    const parsed = JSON.parse(json);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Decoded payload of a JWT-shaped (3-part) token, or null. Never verifies. */
+export function decodeJwtPayload(token) {
+  if (typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  return decodeJwtSegment(parts[1]);
+}
+
+/**
+ * True when `token` is poker-server's legacy local-account token (the
+ * credential the retired guest flow stored). Shape check only — the server is
+ * the judge of whether it is valid, a guest, or already claimed.
+ */
+export function isLegacyLocalToken(token) {
+  if (typeof token !== 'string') return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  const header = decodeJwtSegment(parts[0]);
+  if (!header || header.alg !== 'HS256') return false;
+  const payload = decodeJwtSegment(parts[1]);
+  if (!payload) return false;
+  if (!Number.isInteger(payload.userId)) return false;
+  // OIDC / resume / other server tokens carry these; the legacy token never does.
+  if (payload.kind || payload.iss || payload.sub || payload.localUserId) return false;
+  return true;
+}
+
+// The retired guest flow's generated username (GuestNNNN — the display name may
+// have been changed since, the username never is). Same pattern poker-server
+// uses to decide what a guest row is (contract R2, guestClaim.ts).
+const GUEST_USERNAME_RE = /^Guest\d+$/i;
+
+/**
+ * True when `token` is a legacy local token whose `username` claim is a
+ * retired-guest username (GuestNNNN). poker-server's generateToken makes the
+ * SAME token shape for accounts that signed in with phone + password before
+ * OIDC, so the shape alone is not enough: only a GuestNNNN token is ever set
+ * aside as a guest credential. An account's legacy token is never kept for
+ * the carry-over (and never offered to whoever signs in next on the device).
+ */
+export function isGuestLegacyToken(token) {
+  if (!isLegacyLocalToken(token)) return false;
+  const payload = decodeJwtPayload(token);
+  const username = payload && typeof payload.username === 'string' ? payload.username.trim() : '';
+  return GUEST_USERNAME_RE.test(username);
+}
+
+/**
+ * Set a legacy guest credential aside for the one-time carry-over offer.
+ * Stored where the keep-signed-in flag says (same rule as every credential
+ * here: a session-only device keeps it for this tab only), the other store
+ * swept. Ignores anything that is not a GUEST legacy token (isGuestLegacyToken).
+ */
+export function stashGuestCredential(token) {
+  if (!isGuestLegacyToken(token)) return false;
+  const win = typeof window !== 'undefined' ? window : null;
+  if (!win) return false;
+  const keep = isKeepSignedIn();
+  // T7 — re-stashing the SAME token keeps the account it was deferred to; a
+  // different token (another guest) starts unbound.
+  const prev = readStashedGuestRecord();
+  const deferredBy = prev && prev.token === token && prev.deferredBy ? prev.deferredBy : undefined;
+  const value = JSON.stringify({ token, savedAt: Date.now(), ...(deferredBy ? { deferredBy } : {}) });
+  const ok = safeSet(keep ? win.localStorage : win.sessionStorage, GUEST_CLAIM_KEY, value);
+  safeRemove(keep ? win.sessionStorage : win.localStorage, GUEST_CLAIM_KEY);
+  if (ok) {
+    try { console.warn('[guest-carry] guest credential set aside for a one-time carry-over offer'); } catch { /* ignore */ }
+  }
+  return ok;
+}
+
+// The stored stash record `{ token, savedAt, deferredBy? }` and the store it
+// lives in, or null (nothing stored, unreadable, or not a GUEST token — those
+// are dropped).
+function readStashedGuestRecord() {
+  const win = typeof window !== 'undefined' ? window : null;
+  if (!win) return null;
+  let store = win.localStorage;
+  let raw = safeGet(store, GUEST_CLAIM_KEY);
+  if (!raw) { store = win.sessionStorage; raw = safeGet(store, GUEST_CLAIM_KEY); }
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    const token = parsed && typeof parsed.token === 'string' ? parsed.token : null;
+    if (isGuestLegacyToken(token)) {
+      const deferredBy = typeof parsed.deferredBy === 'string' && parsed.deferredBy.trim()
+        ? parsed.deferredBy.trim()
+        : null;
+      return { token, savedAt: parsed.savedAt, deferredBy, store };
+    }
+  } catch { /* fall through: unreadable → drop it */ }
+  clearStashedGuestCredential();
+  return null;
+}
+
+/** The set-aside legacy guest token, or null. */
+export function getStashedGuestCredential() {
+  const rec = readStashedGuestRecord();
+  return rec ? rec.token : null;
+}
+
+/**
+ * T7 (2026-10-09) — the account (local user id, string) that put the
+ * carry-over offer for the set-aside guest token off with "Not now", or null
+ * when the token is not bound to anyone yet. A bound token is offered again
+ * ONLY to that account (guestCarryOver.maybeOfferGuestCarryOver), and only
+ * THAT account's explicit Sign Out forgets it
+ * (clearStashedGuestCredentialOnSignOut, from gameStore.tearDownSession).
+ */
+export function getStashedGuestDeferredBy() {
+  const rec = readStashedGuestRecord();
+  return rec ? rec.deferredBy : null;
+}
+
+/**
+ * T7 — bind the set-aside guest token to `userId`, the account that just put
+ * the offer off ("Not now"). Only when the stash still holds `expectToken`
+ * (when given) — never re-binds a token the offer was not about. Written back
+ * to the store it already lives in. Returns true when bound.
+ */
+export function deferGuestCredentialFor(userId, expectToken) {
+  const id = userId === null || userId === undefined ? '' : String(userId).trim();
+  if (!id) return false;
+  const rec = readStashedGuestRecord();
+  if (!rec) return false;
+  if (expectToken && rec.token !== expectToken) return false;
+  return safeSet(rec.store, GUEST_CLAIM_KEY, JSON.stringify({ token: rec.token, savedAt: rec.savedAt, deferredBy: id }));
+}
+
+/** Forget the set-aside guest token (answered, claimed, or not a guest). */
+export function clearStashedGuestCredential() {
+  const win = typeof window !== 'undefined' ? window : null;
+  if (!win) return;
+  safeRemove(win.localStorage, GUEST_CLAIM_KEY);
+  safeRemove(win.sessionStorage, GUEST_CLAIM_KEY);
+}
+
+/**
+ * T7 / U6 (2026-10-09) — the explicit Sign Out of the account `userId` (local
+ * user id): forget the set-aside guest token ONLY when it is unbound or bound
+ * to `userId` itself. A token another account put off with "Not now" is KEPT
+ * for that account — it is the only key to that guest's chips, it is never
+ * offered to anyone else (guestCarryOver), and that account's own Sign Out
+ * forgets it. Returns true when the token was forgotten.
+ */
+export function clearStashedGuestCredentialOnSignOut(userId) {
+  const rec = readStashedGuestRecord();
+  if (!rec) return false; // nothing set aside (an unreadable entry is dropped by the read)
+  const id = userId === null || userId === undefined ? '' : String(userId).trim();
+  if (rec.deferredBy && rec.deferredBy !== id) {
+    try { console.warn('[guest-carry] sign-out kept a guest key bound to another account on this device'); } catch { /* ignore */ }
+    return false;
+  }
+  clearStashedGuestCredential();
+  return true;
+}
+
 /**
  * Persist the auth token. If keep-signed-in is on (default), writes to
  * localStorage so the token survives tab close; otherwise writes to
  * sessionStorage only (dies with the tab).
+ *
+ * 2026-10-09 — when an account credential (OIDC access token, deep-link
+ * ticket) replaces a legacy GUEST token (GuestNNNN username claim), the guest
+ * token is set aside first (stashGuestCredential) so its progress can still be
+ * carried over. A legacy ACCOUNT token is simply replaced, never kept.
  *
  * @param {string} token
  * @param {boolean} [remember] — explicit override of the stored flag
  */
 export function setAuthToken(token, remember) {
   if (!token) return;
+  try {
+    const prev = getAuthToken();
+    if (prev && prev !== token && isGuestLegacyToken(prev) && !isLegacyLocalToken(token)) {
+      stashGuestCredential(prev);
+    }
+  } catch { /* never block the write */ }
   const keep = remember === undefined ? isKeepSignedIn() : !!remember;
   if (keep) {
     safeSet(typeof window !== 'undefined' ? window.localStorage : null, TOKEN_KEY, token);

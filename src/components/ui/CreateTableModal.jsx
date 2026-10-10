@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { getSocket } from '../../services/socketService';
-import { reportPlayRefusal, runPlayFlow } from '../../services/playRefusal';
+import { reportPlayRefusal, runPlayFlow, isPlayRefusal } from '../../services/playRefusal';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
@@ -165,6 +165,19 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
 
   function handleCreate() {
     if (creating) return;
+    createTable();
+  }
+
+  // 2026-10-09 (decision D3) — createPrivateTable is play-gated server-side
+  // and, having no failure event of its own, refuses on 'error' {message,
+  // code}. This used to wait for privateTableCreated only, so a refused
+  // (suspended / no account) host sat on "Creating…" forever. Now a C5
+  // refusal ends "Creating…" and goes to the shared PlayRefusalNotice (with
+  // Sign In / the silent re-auth + one replay of THIS flow for login_required
+  // on a signed-in tab), and a watchdog ends it if nothing answers.
+  // Re-runnable for that replay.
+  function createTable() {
+    if (!mountedRef.current) return;
     setCreating(true);
     setError(null);
 
@@ -175,17 +188,42 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
       return;
     }
 
-    const onCreated = ({ tableId, inviteCode: code }) => {
+    let settled = false;
+    let timeoutId = null;
+    const finish = () => {
+      settled = true;
       detach(socket, 'privateTableCreated', onCreated);
+      detach(socket, 'error', onCreateRefused);
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+    };
+    function onCreated({ tableId, inviteCode: code }) {
+      if (settled) return;
+      finish();
       if (!mountedRef.current) return;
       setInviteCode(code);
       // Auto-join as creator (seat 0, host) — the table screen opens only
       // once the server confirms the seat (joinAndConfirm).
       joinCreatedTable(tableId);
-    };
+    }
+    // The handler emits nothing on 'error' but its play refusal, so only a
+    // C5 frame is taken as this request's answer.
+    function onCreateRefused(payload) {
+      if (settled || !isPlayRefusal(payload)) return;
+      finish();
+      reportPlayRefusal(payload);
+      if (mountedRef.current) setCreating(false);
+    }
     attach(socket, 'privateTableCreated', onCreated);
+    attach(socket, 'error', onCreateRefused);
+    timeoutId = setTimeout(() => {
+      if (settled) return;
+      finish();
+      if (!mountedRef.current) return;
+      setCreating(false);
+      setError('Server didn\'t respond in time. Check your connection and try again.');
+    }, 15000);
 
-    socket.emit('createPrivateTable', {
+    runPlayFlow(() => createTable(), () => socket.emit('createPrivateTable', {
       tableName,
       variant,
       smallBlind: sb,
@@ -195,7 +233,7 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
       maxSeats,
       straddle,
       bombPot,
-    });
+    }));
   }
 
   function handleJoinByCode() {

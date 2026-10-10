@@ -3,6 +3,7 @@ import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
 import { startLogin, detectInAppBrowser } from '../../services/authService';
 import { isKeepSignedIn, setKeepSignedIn } from '../../services/tokenStorage';
+import CreateAccountLink from './CreateAccountLink';
 import './LoginScreen.css';
 
 // 2026-10-07 — GUEST PLAY RETIRED (owner decision: nobody plays .online without
@@ -127,6 +128,13 @@ export default function LoginScreen() {
               {loading && <span className="login-spinner" />}
               Sign In with American Pub Poker
             </button>
+
+            {/* 2026-10-09 (contract R3) — no account yet (e.g. a former guest):
+                create one on americanpubpoker.com, then come back and Sign In.
+                Same in-app-browser guard as the button above. */}
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+              <CreateAccountLink inApp={inApp.inApp} style={{ width: '100%' }} />
+            </div>
 
             {/* Remember me */}
             <label style={{

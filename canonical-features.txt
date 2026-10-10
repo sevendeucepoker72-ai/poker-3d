@@ -339,3 +339,112 @@ re-authenticating the socket
 career-start-error
 create-table-error
 deeplink-inapp-notice
+
+# ─── 2026-10-09 — owner "Fix all of it": former guests + ticket sessions ──
+# (A) Former GUEST players (local .online rows with no master link) must now
+#     use an American Pub Poker account. Painless + progress kept:
+#     R3: every login_required / guest_disabled refusal (PlayRefusalNotice,
+#     the deep-link refusal screen) and the login screen offer "Create a free
+#     account" (americanpubpoker.com/signup, new tab, in-app-browser guarded
+#     like Sign In) next to Sign In.
+#     R2: when an account sign-in replaces a legacy guest token, the token is
+#     set aside (tokenStorage `poker_guest_claim`); after the sign-in the
+#     client asks poker-server peekGuestProgress and shows ONE blue/gold
+#     prompt, LOBBY ONLY, "Bring over your guest progress? (N chips, level
+#     L)" — Yes / Not now (keeps the token for next time) + a CONFIRMED
+#     "Don't bring it over". Yes emits claimGuestProgress (server: additive
+#     chips + auditLog, ratcheted level, achievements union, guest row
+#     retired, one claim per row). Never claimed without the tap. Only a
+#     GuestNNNN token is ever set aside (never an account's legacy token).
+Create a free account
+americanpubpoker.com/signup
+play-refusal-signup
+poker_guest_claim
+peekGuestProgress
+claimGuestProgress
+guest-carry-prompt
+Bring over your guest progress?
+[guest-carry]
+# (B) R1: "Play Online" ticket sessions are resumable. The one-shot ticket
+#     login now returns a 12h resumeToken (stored as `poker_online_resume`,
+#     keep-signed-in aware, cleared on sign-out and on resume_invalid); every
+#     socket (re)connect presents it via resumeSession through socketReauth
+#     before any play attempt (also the login_required silent recovery, the
+#     boot path after a reload, and extra multi-table sockets).
+resumeSession
+poker_online_resume
+resume_invalid
+[session-resume]
+boot_resume_failed
+# (B2, D1) Resume tokens come from ticket / waitlist logins ONLY (never OIDC /
+#     tokenLogin / admin rows); the record is BOUND to the local user it was
+#     issued for and only a TICKET tab presents it (never another account's,
+#     never falling through to OIDC credentials); capped at orig_iat + 24h;
+#     forgotten on revoked-refresh wipe, session-expired and peer-tab sign-out.
+#     The player's own Sign Out emits socket 'revokeSignInTokens' (acknowledged, see (E)/(F))
+#     so poker-server revokes it everywhere.
+orig_iat
+no_resume_record
+# (A2) Carry-over prompt: "Not now" keeps the key; discarding takes an
+#     explicit, confirmed "Don't bring it over"; hidden while live tables are
+#     on screen (multi-table overlay). Result events spelled out (shared).
+peekGuestProgressResult
+claimGuestProgressResult
+guest-carry-later
+guest-carry-decline-confirm
+Yes, leave it behind
+verify that guest session
+# (C/D3) Staking + private-table refusals end "Buying…" / "Creating…" and are
+#     shown by the shared PlayRefusalNotice (buyStakeResult with or without
+#     offerId; createStake / createPrivateTable on 'error').
+Could not list your offer.
+# (E) 2026-10-09 review fixes (S2/S3/S4, contract C5).
+#     S2: ONLY the explicit Sign Out (Lobby Logout; never the session-expired /
+#     skipRedirect / peer-tab teardowns, never a retired guest session) emits
+#     socket 'revokeSignInTokens' (was 'logout' — see (F) T2) WITH an ack and waits for it (<= 2s, then proceeds)
+#     BEFORE the teardown + socket cycle. poker-server only bumps
+#     users.token_version and acks {success}; the 'disconnect' that follows
+#     still runs the seat reserve / cash-out. Lock = the ack outcome log tag.
+[sign-out] game server logout ack
+#     S3: a ticket / waitlist sign-in marks the tab 'ticket' only when a resume
+#     record was stored for that user; otherwise it keeps a same-user 'oidc'
+#     marker or takes the pre-R1 'legacy' re-auth path (never another account).
+#     S4: prediction-bet / side-bet / entry-code refusals go to the shared
+#     PlayRefusalNotice; a silent teardown keeps a "Not now" guest token; one
+#     guest carry-over per account (code already_claimed_by_account).
+already_claimed_by_account
+only one guest account can be carried over per account
+# (F) 2026-10-09 round-5 fixes (T2/T4/T5/T7, contract C5; T8 was reverted in
+#     round 6 — see (G) U5).
+#     T2: the explicit Sign Out's revocation is socket 'revokeSignInTokens'
+#     (ack only, no payload; <= 2s, then the teardown) — NEVER 'logout': a
+#     poker-server without S1 (HEAD 5ea0f80 / any rollback) deletes the auth
+#     session on 'logout' before the disconnect's seat reserve / cash-out, and
+#     ignores 'revokeSignInTokens', so no deploy/rollback order loses chips.
+revokeSignInTokens
+#     T4: createStake failures on 'error' are matched by their stable CODE
+#     (poker-server sends them; texts are free to change).
+stake_sign_in_required
+stake_invalid_offer
+stake_invalid_price
+stake_create_failed
+#     T5: already_claimed_by_account at peek/claim KEEPS the guest token.
+guest key kept on this device
+#     T7: a "Not now" guest token is bound to the account that put it off and
+#     offered again only to that account (only THAT account's explicit Sign
+#     Out, or any account's for an unbound token, forgets it — (G) U6).
+deferred by another account on this device
+# (G) 2026-10-09 round-6 fixes (U5/U6/U7, contract C5).
+#     U5: T8 (a ticket / resume sign-in forgetting another account's stored
+#     OIDC tokens) is REVERTED — it signed the other account's tabs out and
+#     authScheduler undid it. Its token 'one-identity check' was removed with
+#     it (never committed); T6 (same-user 'oidc' tab stays 'oidc') is kept.
+#     U6: an explicit Sign Out forgets a deferred guest token ONLY when it is
+#     unbound or bound to the signing-out account; one bound to another
+#     account is kept for it.
+sign-out kept a guest key bound to another account
+#     U7: this client NEVER emits socket 'logout' (the server keeps its handler
+#     for compatibility only). Every socket (primary + multi-table) is wrapped
+#     by socketService.guardNeverEmittedEvents, which drops such an emit and
+#     logs this line; the lock keeps the guard in the bundle.
+blocked a socket logout emit

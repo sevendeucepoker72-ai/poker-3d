@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSocket } from '../../services/socketService';
 import { useGameStore } from '../../store/gameStore';
 import './SocialBracket.css';
@@ -70,8 +70,32 @@ function SideBetModal({ players, accent, available, onClose, onPlace }) {
 
 const DEFAULT_ROSTER = 'Player 1\nPlayer 2\nPlayer 3\nPlayer 4\nPlayer 5\nPlayer 6';
 
-export default function SocialBracket({ socket: socketProp, onClose }) {
+// Fallbacks when rendered without Lobby's refusal props.
+const NO_REFUSAL_HANDLER = () => false;
+const RUN_DIRECT = (_replay, run) => run();
+
+/**
+ * 2026-10-09 — play refusals. A chip side bet is a wager, so poker-server's
+ * play gate refuses it for a suspended player or a session with no American
+ * Pub Poker account (C5 `code` on socialBracketError). Lobby passes the shared
+ * handling in as props — onPlayRefusal = playRefusal.reportPlayRefusal (the
+ * blue/gold PlayRefusalNotice: verbatim text, stays until dismissed, Sign In /
+ * silent re-auth), runPlayFlow = playRefusal.runPlayFlow (so that re-auth can
+ * replay the bet once) — rather than this file importing services/playRefusal:
+ * it is bundled in the manual 'lobby-features' chunk, and a static import
+ * would pull the auth modules into that chunk.
+ */
+export default function SocialBracket({
+  socket: socketProp, onClose,
+  onPlayRefusal = NO_REFUSAL_HANDLER,
+  runPlayFlow = RUN_DIRECT,
+}) {
   const socket = socketProp || getSocket();
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Real play-chip balance + sign-in status (GAP 24). Side bets now move real
   // play-money: the server deducts on placement and settles parimutuel on
@@ -102,7 +126,13 @@ export default function SocialBracket({ socket: socketProp, onClose }) {
     if (!socket) return undefined;
     const onState = (state) => { setServerState(state); setLoading(false); };
     const onRole = (d) => { if (d?.isOrganizer != null) setIsOrganizer(!!d.isOrganizer); };
-    const onErr = (d) => { setNotice(d?.message || 'Something went wrong'); setLoading(false); };
+    const onErr = (d) => {
+      setLoading(false);
+      // 2026-10-09 — a C5 play refusal (suspended / no account) goes to the
+      // shared PlayRefusalNotice, not this 2.8s notice.
+      if (onPlayRefusal(d)) return;
+      setNotice(d?.message || 'Something went wrong');
+    };
     // GAP 24 — placement confirmation: server escrowed the chips atomically.
     const onPlaced = (d) => {
       setNotice(`Bet placed: ${(d?.amount || 0).toLocaleString()} chips escrowed`);
@@ -143,7 +173,7 @@ export default function SocialBracket({ socket: socketProp, onClose }) {
       socket.off('socialSideBetSettled', onSettled);
       if (onConnectLoad) socket.off('connect', onConnectLoad);
     };
-  }, [socket, setChips]);
+  }, [socket, setChips, onPlayRefusal]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -167,8 +197,14 @@ export default function SocialBracket({ socket: socketProp, onClose }) {
 
   const handleSideBet = useCallback(({ target, amount }) => {
     if (!serverState || !socket?.connected) return;
-    socket.emit('placeSocialSideBet', { bracketId: serverState.bracketId, target, amount });
-  }, [serverState, socket]);
+    const bet = { bracketId: serverState.bracketId, target, amount };
+    // 2026-10-09 — a login_required refusal on a still-signed-in tab is
+    // recovered silently and this exact bet re-sent ONCE (the refused one was
+    // never escrowed: the server gates before the deduct).
+    runPlayFlow(() => {
+      if (mountedRef.current && socket.connected) socket.emit('placeSocialSideBet', bet);
+    }, () => socket.emit('placeSocialSideBet', bet));
+  }, [serverState, socket, runPlayFlow]);
 
   const shareLink = serverState ? `${window.location.origin}?bracket=${serverState.bracketId}` : '';
   const handleCopyLink = () => {
