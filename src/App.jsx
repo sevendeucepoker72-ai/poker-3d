@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, Component, lazy, Suspense } from 'react';
 import { useGameStore, clearOtherAccountOidcFromTicketTab } from './store/gameStore';
-import { useTableStore } from './store/tableStore';
+import { useTableStore, forgetSitOutPreference } from './store/tableStore';
 import { getAuthToken, setAuthToken, clearAuthToken, setOAuthItem, bearerForThisTab } from './services/tokenStorage';
 import { runSocketLogin, isCredentialDead, isDefinitiveLoginFailure } from './services/socketAuth';
 // 2026-10-07 — game suspension + guest play OFF: server play refusals (C5).
@@ -46,7 +46,7 @@ import {
   noteTournamentSeatReturned, noteTournamentOver, noteTournamentSeatKept,
   noteAwaySeatMoved, hasAwaySeatAt, noteSeatRestoredInBackground, clearSeatRestored,
   useTournamentSeatStore, eliminationShownElsewhere, awaySeatOfTournament,
-  tournamentFinishedText,
+  tournamentFinishedText, noteSeatProtocolServer,
 } from './store/tournamentSeatStore';
 import { TournamentReturnBanner, SeatRestoredBanner } from './components/ui/TournamentSeatNotice';
 import {
@@ -646,6 +646,23 @@ function App() {
       finishedToasts.set(tid, now);
       return true;
     };
+    // Round 7 (Z9) — HIS tournament ending is ONE event, one toast: the
+    // finished toast (P-h' 'tournamentFinishedForEntrant', or the room's
+    // 'tournamentFinished' off screen) and his OWN elimination notice for the
+    // same tournament within the dedupe window (an away runner-up gets both,
+    // the finished one first) are not toasted twice.
+    const ownEndToasts = new Map(); // tournamentId -> at
+    const claimOwnEndToast = (tid) => {
+      if (!tid) return true;
+      const now = Date.now();
+      for (const [k, at] of ownEndToasts) { if (now - at > ELIMINATION_TOAST_DEDUPE_MS) ownEndToasts.delete(k); }
+      if (ownEndToasts.has(tid)) {
+        try { console.warn('[tournament-seat] one toast per event: his tournament end was already toasted', { tournamentId: tid }); } catch { /* ignore */ }
+        return false;
+      }
+      ownEndToasts.set(tid, now);
+      return true;
+    };
 
     // SINGLE 'connect' handler — previously we registered two separate
     // listeners for this event (one setting connected state, one doing
@@ -804,6 +821,22 @@ function App() {
       // 2026-10-10 (S2) — a server that marks tournament tables
       // (isTournament / tournamentId) keeps the tournament-seat memory exact.
       try { noteGameStateForTournament(state); } catch { /* best-effort */ }
+      // Round 7 (Z12) — the Sit Out button follows the server's per-session
+      // `sittingOut` (broadcastGameState stamps it on every frame of this
+      // socket's seat). A DELTA carries it only when it changed: authoritative.
+      // A FULL frame's `true` is too; its `false` is not (the forced resyncs —
+      // requestState, syncTableState — send getGameStateForPlayer's default
+      // false), so a restore's false comes from 'reconnectedToTable' instead.
+      // Single-table mode only (the flag is the main seat's).
+      try {
+        if (!ts.currentTableId && state && Number(state.yourSeat) >= 0 && !state.isSpectator) {
+          const isDelta = !!data && typeof data === 'object' && 'full' in data && !data.full;
+          let v;
+          if (isDelta) { if (data.delta && typeof data.delta.sittingOut === 'boolean') v = data.delta.sittingOut; }
+          else if (state.sittingOut === true) v = true;
+          if (typeof v === 'boolean' && useTableStore.getState().sittingOut !== v) useTableStore.getState().setSittingOut(v);
+        }
+      } catch { /* best-effort */ }
 
       // Handle spectator mode.
       // 2026-04-22 audit fix: unconditionally mirror the server flag so
@@ -1286,26 +1319,58 @@ function App() {
       // Round 6 — one elimination, one toast: an away entrant watching his
       // own table can get the room's broadcast AND the direct notice for the
       // same bust (same player, same place); the second copy is not toasted.
+      // Round 7 (Z9) — an away runner-up: the P-h' finished toast came first
+      // (the final bust finishes the tournament inside the elimination), so
+      // his own notice is not toasted again (claimOwnEndToast); and a notice
+      // about HIMSELF is never the third-person "<name> eliminated" line.
       const elimKey = `${data?.playerId ?? data?.playerName ?? ''}|${data?.position ?? ''}`;
       const now = Date.now();
       for (const [k, at] of recentEliminationToasts) { if (now - at > ELIMINATION_TOAST_DEDUPE_MS) recentEliminationToasts.delete(k); }
       const repeat = recentEliminationToasts.has(elimKey);
       recentEliminationToasts.set(elimKey, now);
-      const awayOf = data && data.tournamentId != null ? awaySeatOfTournament(data.tournamentId) : null;
+      const tid = data && data.tournamentId != null ? String(data.tournamentId) : null;
+      const awayOf = tid ? awaySeatOfTournament(tid) : null;
+      const pos = Number(data?.position);
+      const ownLine = (name) => (Number.isFinite(pos) && pos > 0
+        ? `${name || 'Your tournament'}: you finished in position ${pos}.`
+        : `${name || 'Your tournament'}: your tournament has ended.`);
       if (awayOf) {
         try { noteTournamentOver({ tournamentId: data.tournamentId, position: data.position }); } catch { /* best-effort */ }
-        if (repeat) return;
-        const pos = Number(data.position);
+        if (repeat || !claimOwnEndToast(tid)) return;
+        useProgressStore.getState().addNotification({ type: 'achievement', message: ownLine(awayOf.name), reward: { chips: 0, xp: 0 } });
+        return;
+      }
+      if (repeat) return;
+      // Z9 — the DIRECT notice (it carries tournamentId; the room's copy never
+      // does) goes only to this account's sockets: it is about HIM, with no
+      // away seat left on this tab (the finished notice just ended it, or
+      // another tab held it).
+      if (tid) {
+        if (!claimOwnEndToast(tid)) return;
+        useProgressStore.getState().addNotification({ type: 'achievement', message: ownLine(null), reward: { chips: 0, xp: 0 } });
+        return;
+      }
+      // Z9 — the room's copy about HIS busted seat at the table on screen.
+      let ownSeated = false;
+      let ownTid = null;
+      try {
+        const gsNow = useTableStore.getState().gameState;
+        const mine = gsNow && !gsNow.isSpectator && Number(gsNow.yourSeat) >= 0 && Array.isArray(gsNow.seats) ? gsNow.seats[gsNow.yourSeat] : null;
+        const sameIdentity = mine && mine.playerId != null && data?.playerId != null
+          ? String(mine.playerId) === String(data.playerId)
+          : !!mine && !!mine.playerName && mine.playerName === data?.playerName;
+        ownSeated = !!mine && sameIdentity && (mine.eliminated === true || mine.chipCount === 0);
+        ownTid = ownSeated && gsNow.tournamentId != null ? String(gsNow.tournamentId) : null;
+      } catch { /* best-effort */ }
+      if (ownSeated) {
+        if (!claimOwnEndToast(ownTid)) return;
         useProgressStore.getState().addNotification({
           type: 'achievement',
-          message: Number.isFinite(pos) && pos > 0
-            ? `${awayOf.name || 'Your tournament'}: you finished in position ${pos}.`
-            : `${awayOf.name || 'Your tournament'}: your tournament has ended.`,
+          message: Number.isFinite(pos) && pos > 0 ? `You were eliminated (${pos}${getOrdinal(pos)})` : 'You were eliminated',
           reward: { chips: 0, xp: 0 },
         });
         return;
       }
-      if (repeat) return;
       useProgressStore.getState().addNotification({
         type: 'achievement',
         message: `${data.playerName} eliminated (${data.position}${getOrdinal(data.position)})`,
@@ -1318,6 +1383,7 @@ function App() {
     // full-screen Game Over overlay (that is the room's 'tournamentFinished',
     // for the table on screen). One toast per tournament.
     const handleTournamentFinishedForEntrant = (data) => {
+      try { noteSeatProtocolServer(); } catch { /* ignore */ } // Z10 — a server that keeps seats
       const tid = data && data.tournamentId != null ? String(data.tournamentId) : null;
       const awayOf = tid ? awaySeatOfTournament(tid) : null;
       const pos = Number(data?.position);
@@ -1325,6 +1391,10 @@ function App() {
       try { noteTournamentOver({ tournamentId: tid, finished: true, position: place }); } catch { /* best-effort */ }
       if (!claimFinishedToast(tid)) return;
       const prize = Number(data?.prize);
+      const hasPrize = Number.isFinite(prize) && prize > 0;
+      // Z9 — his own end was already toasted (his elimination came first): only
+      // a PRIZE is still news, so a notice with a prize is always shown (review).
+      if (!claimOwnEndToast(tid) && !hasPrize) return;
       const name = awayOf ? awayOf.name : (typeof data?.tournamentName === 'string' ? data.tournamentName : null);
       useProgressStore.getState().addNotification({
         type: 'achievement',
@@ -1346,7 +1416,8 @@ function App() {
           ? data.results.find((r) => r && r.userId != null && String(r.userId) === String(uid)) : null;
         if (mine && Number.isInteger(Number(mine.position)) && Number(mine.position) > 0) myPlace = Number(mine.position);
       } catch { /* best-effort */ }
-      try { noteTournamentOver({ tournamentId: data?.tournamentId, finished: true, position: myPlace }); } catch { /* best-effort */ }
+      // (Z8: `room` — it may end the LIVE seat on screen; an away seat only by its tournament.)
+      try { noteTournamentOver({ tournamentId: data?.tournamentId, finished: true, position: myPlace, room: true }); } catch { /* best-effort */ }
       // The overlay is for the table on screen. A table the server marks
       // (P-d) as NOT this tournament's (another table this socket also plays)
       // gets a toast instead (an older server's gameState has no such marks:
@@ -1356,7 +1427,7 @@ function App() {
       const shownIsThis = !!gsNow && (!marked || (gsNow.isTournament === true
         && (gsNow.tournamentId == null || !tid || String(gsNow.tournamentId) === tid)));
       if (!shownIsThis) {
-        if ((awayOf || myPlace) && claimFinishedToast(tid)) {
+        if ((awayOf || myPlace) && claimFinishedToast(tid) && claimOwnEndToast(tid)) {
           useProgressStore.getState().addNotification({
             type: 'achievement',
             message: tournamentFinishedText(awayOf ? awayOf.name : (data?.tournamentName || null), myPlace),
@@ -2108,6 +2179,19 @@ function App() {
       // rebalance may have moved the seat to another table while he was away).
       let wasReturning = false;
       try { wasReturning = !!useTournamentSeatStore.getState().returning; } catch { /* ignore */ }
+      // Round 7 (Z12) — every seat restore (a reconnect / sign-in reservation,
+      // a Return) starts the server's session NOT sitting out: the Sit Out
+      // button says so (a stale "Sitting Out" tapped would sit him OUT). An
+      // explicit Return also forgets the remembered Sit Out, so GameHUD does
+      // not replay it — he came back to play.
+      try {
+        const tsNow = useTableStore.getState();
+        if (tsNow.sittingOut) {
+          tsNow.setSittingOut(false);
+          try { console.warn('[sit-out] seat restored: Sit Out follows the server (not sitting out)', { returning: wasReturning }); } catch { /* ignore */ }
+        }
+        if (wasReturning) forgetSitOutPreference();
+      } catch { /* best-effort */ }
       try { noteTournamentSeatReturned(data); } catch { /* best-effort */ }
       try {
         const store = useGameStore.getState();

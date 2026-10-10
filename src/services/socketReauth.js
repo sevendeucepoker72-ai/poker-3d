@@ -190,7 +190,7 @@ async function ensureFreshAccessToken(force, fence = null) {
     if (fence && (isFenced(fence, fresh) || isFenced(fence, tokens.id_token))) {
       return { status: 'refresh_failed', ...stored() };
     }
-    return { status: 'refreshed', accessToken: fresh || stored().accessToken };
+    return { status: 'refreshed', accessToken: fresh || stored().accessToken, idToken: typeof tokens.id_token === 'string' ? tokens.id_token : null };
   } catch (e) {
     return { status: e?.name === 'RefreshTokenRevokedError' ? 'revoked' : 'refresh_failed', ...stored() };
   }
@@ -211,17 +211,41 @@ async function runOwnOidcFallback(socket, entry, st, why) {
   }
   // The refreshed token must still be this tab's own account.
   const tab = getTabSession();
-  const sub = oidcSubject(fresh.accessToken);
+  // An opaque access token has no subject: the refreshed id_token's proves the
+  // same account (review, round 7 — bridged sign-ins get opaque access tokens).
+  const sub = oidcSubject(fresh.accessToken) || oidcSubject(fresh.idToken);
   if (sub && tab && tab.masterUserId && sub !== tab.masterUserId) {
     return { result: { success: false, code: 'own_oidc_account_changed' } };
   }
   const result = await oauthLoginOnce(socket, fresh.accessToken, entry);
   if (entry.done) return { done: true };
-  if (result?.success && result.userData && idString(result.userData.id) === idString(st.userId)) {
-    clearResumeRecord();
-    setTabSession('oidc', st.userId);
-    try { console.warn('[socket-reauth] Play Online tab re-signed-in with this account\'s own browser sign-in', { why }); } catch { /* ignore */ }
-    return { result, ok: true };
+  if (result?.success && result.userData) {
+    const sameLocal = idString(result.userData.id) === idString(st.userId);
+    // 2026-10-10 — ONE PERSON, ONE ACCOUNT: poker-server's one-time merge
+    // folded this account's split rows into ONE row with a different local id
+    // (the tab may still hold a retired row's id). The refreshed token's
+    // subject was proven to be THIS tab's master account above, and the server
+    // resolves that master to its one row — so a different local id under the
+    // SAME master is this same person: adopt it (store user id / name / chips)
+    // instead of refusing and leaving the UI on the retired row.
+    const sameMaster = !sameLocal && !!sub && !!tab && !!tab.masterUserId && sub === tab.masterUserId;
+    if (sameLocal || sameMaster) {
+      clearResumeRecord();
+      setTabSession('oidc', result.userData.id, { masterUserId: tab?.masterUserId || null });
+      if (sameMaster) {
+        try {
+          useGameStore.setState({
+            userId: result.userData.id,
+            playerName: result.userData.displayName || result.userData.username,
+            chips: result.userData.chips,
+            isAdmin: !!result.userData.isAdmin,
+          });
+        } catch { /* best-effort: the next boot reads it fresh */ }
+        try { console.warn('[socket-reauth] same master account, merged local row adopted', { why }); } catch { /* ignore */ }
+      }
+      try { console.warn('[socket-reauth] Play Online tab re-signed-in with this account\'s own browser sign-in', { why }); } catch { /* ignore */ }
+      return { result, ok: true };
+    }
   }
   return { result: result?.success ? { success: false, code: 'own_oidc_user_mismatch' } : result };
 }

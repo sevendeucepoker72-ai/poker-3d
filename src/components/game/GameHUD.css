@@ -3766,6 +3766,17 @@
   border: 1px solid rgba(99,102,241,0.35);
   color: #A5B4FC;
 }
+/* Round 7 (Z11) — at a tournament seat the away / Sit Out line is a full
+   sentence (stays dealt in, checked or folded): it wraps on a phone. Blue,
+   never red. */
+.afk-away-banner--tournament {
+  white-space: normal;
+  width: max-content;
+  max-width: min(92vw, 520px);
+  box-sizing: border-box;
+  line-height: 1.4;
+  text-align: left;
+}
 .afk-warning-icon { font-size: 1rem; }
 .afk-warning-dismiss,
 .afk-back-btn {

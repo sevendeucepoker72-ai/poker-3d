@@ -44,9 +44,16 @@
  * then the Return is emitted ONCE more. When that is not answered either (an
  * older server has no such event; its leave stood the seat up) the banner and
  * its Return button STAY with a neutral "Could not reach the game — tap
- * Return to tournament again." line plus a Dismiss button (the only way the
- * player forgets the seat himself) — never "could not find" / "ended"
- * without the server saying so.
+ * Return to tournament again." line — never "could not find" / "ended"
+ * without the server saying so. Round 7 (Z10): plus a Dismiss button (the
+ * only way the player forgets the seat himself) ONLY when the server is
+ * provably old: nothing of the seat protocol was heard on this page
+ * (tournamentSeatStore.seatServerProvablyOld) — never after a transport flip
+ * on a server that keeps seats.
+ * Round 7 (Z8): an answer is matched by tournamentId — one that names
+ * another tournament is not the Return in flight's, and a no_tournament_seat
+ * answer forgets only the seat of the tournament it names (or, naming none,
+ * the Return's own seat): never the only / first / another away seat.
  */
 import { getSocket } from './socketService';
 import { reauthSocket, awaitCurrentReauth } from './socketReauth';
@@ -57,6 +64,7 @@ import { useGameStore } from '../store/gameStore';
 import {
   useTournamentSeatStore, setTournamentReturning, tournamentSeatNotFound,
   setTournamentNotice, noteTournamentSeatReturned, tournamentFinishedText, awaySeatByKey,
+  awaySeatOfRef, noteSeatProtocolServer, seatServerProvablyOld,
 } from '../store/tournamentSeatStore';
 
 export const RETURN_TO_TOURNAMENT_EVENT = 'returnToTournamentSeat';
@@ -90,31 +98,54 @@ function idString(v) {
   return s ? s : null;
 }
 
-// The Return in flight: { id, key, tournamentId, connId, emits, settled, result, wake }.
+// The Return in flight: { id, key, tournamentId, tableId, connId, emits, settled, result, wake }.
 let _attempt = null;
 let _attemptSeq = 0;
 // The same answer arrives twice (ack + event): handle it once.
 let _lastAnswerSig = null;
 let _lastAnswerAt = 0;
-// The away seat of the most recent Return (kept after it ends: an answer can
-// arrive after the Return gave up — P-c').
-let _lastAttemptKey = null;
+// The away seat of the most recent Return, as {key, tournamentId, tableId}
+// (kept after it ends: an answer can arrive after the Return gave up — P-c').
+let _lastAttempt = null;
 
 function answerSignature(r) {
   try { return JSON.stringify(r); } catch { return String(r && r.code); }
 }
 
-/** Which away seat an answer is about (null = cannot tell: none is forgotten). */
-function keyForAnswer(result, attempt) {
-  const s = useTournamentSeatStore.getState();
-  // The store's `returning` follows a re-key (tournamentId learned).
-  if (s.returning) return s.returning;
-  if (attempt && s.awaySeats.some((a) => a.key === attempt.key)) return attempt.key;
+/**
+ * Z8 (round 7) — is `result` the answer to the Return in flight? poker-server
+ * names the tournament on a no_tournament_seat answer only when the Return
+ * named it, and on every success; a refusal names none. So an answer that
+ * names ANOTHER tournament than the one this Return named is a late answer to
+ * an earlier Return, never this one's.
+ */
+function answerIsForAttempt(result, attempt) {
+  if (!attempt) return false;
   const t = idString(result && result.tournamentId);
-  if (t) { const e = s.awaySeats.find((a) => a.tournamentId === t); if (e) return e.key; }
-  if (_lastAttemptKey && s.awaySeats.some((a) => a.key === _lastAttemptKey)) return _lastAttemptKey;
-  if (s.awaySeats.length === 1) return s.awaySeats[0].key;
-  return null;
+  if (!t) return true;
+  if (attempt.tournamentId) return attempt.tournamentId === t;
+  // Sent without a tournamentId: only a success can name (teach) it.
+  return !!result.success;
+}
+
+/**
+ * Z8 (round 7) — the away seat a no_tournament_seat answer is about, or null
+ * (then NO seat is forgotten and no line is written). An answer that names
+ * its tournament: that tournament's away seat only — never the only / first
+ * seat, never the Return's own seat of another tournament. One that names
+ * none: the Return's own seat while it is still offered (the only away seat
+ * only when this page never sent a Return at all).
+ */
+function seatForNoSeatAnswer(result, attempt) {
+  const s = useTournamentSeatStore.getState();
+  const t = idString(result && result.tournamentId);
+  if (t) return s.awaySeats.find((a) => a.tournamentId === t) || null;
+  // (The store's `returning` follows a re-key: tournamentId learned.)
+  if (attempt && s.returning) { const e = awaySeatByKey(s.returning); if (e) return e; }
+  const ref = attempt || _lastAttempt;
+  if (ref) return awaySeatOfRef(ref);
+  // No Return was ever sent from this page: the only away seat, if one.
+  return s.awaySeats.length === 1 ? s.awaySeats[0] : null;
 }
 
 /**
@@ -126,15 +157,22 @@ function keyForAnswer(result, attempt) {
  */
 export function handleReturnToTournamentResult(result, via = 'event') {
   if (!result || typeof result !== 'object') return;
+  // Z10 — any answer at all: this server keeps seats (never "provably old").
+  noteSeatProtocolServer();
   const sig = answerSignature(result);
   const now = Date.now();
-  const attempt = _attempt && !_attempt.settled ? _attempt : null;
+  const inFlight = _attempt && !_attempt.settled ? _attempt : null;
   // The second copy of an answer already applied (no Return waiting for it).
-  if (!attempt && sig === _lastAnswerSig && now - _lastAnswerAt < 5000) return;
+  if (!inFlight && sig === _lastAnswerSig && now - _lastAnswerAt < 5000) return;
   _lastAnswerSig = sig;
   _lastAnswerAt = now;
+  // Z8 — a late answer naming another tournament neither settles nor ends
+  // the Return in flight (nor clears its `returning`).
+  const attempt = answerIsForAttempt(result, inFlight) ? inFlight : null;
+  if (inFlight && !attempt) {
+    try { console.warn('[tournament-seat] a Return answer for another tournament left the Return in flight alone', { code: result.code || null }); } catch { /* ignore */ }
+  }
   if (attempt) { attempt.settled = true; attempt.result = result; }
-  const key = keyForAnswer(result, attempt);
   try { console.warn('[tournament-seat] return answered', { via, success: !!result.success, code: result.code || null }); } catch { /* ignore */ }
 
   if (result.success) {
@@ -148,10 +186,17 @@ export function handleReturnToTournamentResult(result, via = 'event') {
   } else {
     const code = typeof result.code === 'string' ? result.code : '';
     if (code === 'no_tournament_seat') {
-      const entry = awaySeatByKey(key);
+      const entry = seatForNoSeatAnswer(result, attempt);
+      const key = entry ? entry.key : null;
       const name = entry ? entry.name : null;
       const pos = Number(result.position);
-      if (result.tournamentFinished === true) {
+      if (!entry) {
+        // Z8 — about a seat this tab no longer offers (its tournament ended
+        // for him meanwhile and its closing line is already shown, or it is
+        // another tournament's): nothing is forgotten, no line is written.
+        if (attempt) setTournamentReturning(null);
+        try { console.warn('[tournament-seat] no_tournament_seat for a seat this tab no longer offers: no away seat forgotten'); } catch { /* ignore */ }
+      } else if (result.tournamentFinished === true) {
         // P-h: the tournament is over — say so, and where he placed.
         tournamentSeatNotFound(tournamentFinishedText(name, result.position), key, 'finished');
       } else if (result.eliminated === true) {
@@ -183,11 +228,16 @@ export function handleReturnToTournamentResult(result, via = 'event') {
   if (attempt && attempt.wake) attempt.wake();
 }
 
-/** The away seat a Return is for: by key, else the banner's head. */
+/**
+ * The away seat a Return is for: the seat `key` names (Z8: also after a
+ * re-key; when it is gone — the replay of a Return whose tournament ended —
+ * NONE, never another tournament's seat), else the banner's head.
+ */
 function awayEntry(key) {
   const { awaySeats } = useTournamentSeatStore.getState();
   if (!awaySeats.length) return null;
-  return (key && awaySeats.find((a) => a.key === key)) || awaySeats[0];
+  if (key) return awaySeatOfRef(String(key));
+  return awaySeats[0];
 }
 
 /**
@@ -268,11 +318,11 @@ export async function returnToTournament(key = null) {
   }
 
   const attempt = {
-    id: ++_attemptSeq, key: entry.key, tournamentId: idString(entry.tournamentId), connId: null, emits: 0,
-    settled: false, result: null, wake: null,
+    id: ++_attemptSeq, key: entry.key, tournamentId: idString(entry.tournamentId), tableId: idString(entry.tableId),
+    connId: null, emits: 0, settled: false, result: null, wake: null,
   };
   _attempt = attempt;
-  _lastAttemptKey = attempt.key;
+  _lastAttempt = { key: attempt.key, tournamentId: attempt.tournamentId, tableId: attempt.tableId };
   const payload = attempt.tournamentId ? { tournamentId: attempt.tournamentId } : {};
   const replayKey = entry.key;
   const end = (out) => { if (_attempt === attempt) _attempt = null; return out; };
@@ -317,10 +367,18 @@ export async function returnToTournament(key = null) {
   if (why === 'cleared') return end({ ok: true, via: 'restored' });
 
   // Neither emit answered (an older server, or no network): the seat and its
-  // Return stay, with the neutral line and a Dismiss button on that seat.
+  // Return stay, with the neutral line. Z10 (round 7): a Dismiss button on
+  // that seat ONLY when the server is provably old — nothing of the seat
+  // protocol (tournamentSeatKept / a Return answer / ...) was ever heard on
+  // this page. On a server that keeps seats (a transport flip during the
+  // retry's wait) the seat is still his: no Dismiss, tap Return again.
   try { console.warn('[tournament-seat] no answer to the Return; the seat stays offered (P-c\')', { via: why }); } catch { /* ignore */ }
   const k = useTournamentSeatStore.getState().returning || attempt.key;
+  const provablyOld = seatServerProvablyOld();
+  if (!provablyOld) {
+    try { console.warn('[tournament-seat] no answer to the Return from a server that keeps seats; no Dismiss offered'); } catch { /* ignore */ }
+  }
   setTournamentReturning(null);
-  setTournamentNotice(TOURNAMENT_RETURN_NO_ANSWER_TEXT, 'no_answer', k);
+  setTournamentNotice(TOURNAMENT_RETURN_NO_ANSWER_TEXT, 'no_answer', provablyOld ? k : null);
   return end({ ok: false, via: 'returnToTournamentSeat', code: 'no_answer' });
 }

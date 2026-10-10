@@ -646,3 +646,23 @@ tournament-return-dismiss
 away seat dismissed after a Return with no answer
 tournamentFinishedForEntrant
 we may check or limp the blind for you
+# (O) 2026-10-10 s-round 7 (polish) - client Z8-Z12 (CONTRACTS C5, AGENT.md
+#     rule 15). Z8: a Return answer / finish / bust notice is matched by
+#     tournamentId everywhere - it never forgets or rewrites ANOTHER
+#     tournament's away seat (no "only / first away seat" fallback). Z9: an
+#     away runner-up gets ONE toast (the finished toast vs his own
+#     elimination notice) and never a third-person line about himself. Z10:
+#     Dismiss only on a provably OLD server (nothing of the seat protocol
+#     heard on this page). Z11: at a tournament seat the AFK banner and a
+#     visible Sit Out note say the seat stays dealt in and is checked or
+#     folded. Z12: the Sit Out button follows the server after a restore /
+#     Return (reconnectedToTable + gameState sittingOut).
+a Return answer for another tournament left the Return in flight alone
+no_tournament_seat for a seat this tab no longer offers
+one toast per event: his tournament end was already toasted
+You were eliminated (
+no answer to the Return from a server that keeps seats; no Dismiss offered
+hands are checked or folded for you
+tournament-sitout-note
+afk-away-banner--tournament
+Sit Out follows the server

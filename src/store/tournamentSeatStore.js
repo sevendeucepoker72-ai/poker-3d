@@ -43,7 +43,11 @@
  *                  eliminatedToSpectator), the server answers
  *                  no_tournament_seat (P-c': the only ANSWER that forgets it),
  *                  or the player taps Dismiss after a Return got no answer at
- *                  all (an older server);
+ *                  all (an older server — round 7, Z10: only one that never
+ *                  spoke this protocol on this page, seatServerProvablyOld).
+ *                  Round 7 (Z8): every one of these is matched by
+ *                  tournamentId — a notice / answer for one tournament never
+ *                  ends or rewrites another tournament's away seat;
  *   - `away`       awaySeats[0] (or null) — kept for readers of one seat;
  *   - `returning`  the key of the away seat a Return is in flight for;
  *   - `notice`     the blue/gold line the lobby banner shows (`noticeKind`:
@@ -76,6 +80,27 @@ const DEFAULT_NAME = 'your tournament';
  * too. Every "folded for you" line says so with this phrase.
  */
 export const TOURNAMENT_ABSENT_LIMP_NOTE = 'we may check or limp the blind for you';
+
+/**
+ * Z11 (round 7) — what a sitting-out / AFK tournament seat gets (P-i / P-j):
+ * it stays dealt in and is CHECKED when a check is free, else folded (plus
+ * the limp note). Shown as visible text at the table (GameHUD), never only
+ * as a hover title.
+ */
+export const TOURNAMENT_SEAT_AWAY_ACTS_TEXT = `your hands are checked or folded for you (${TOURNAMENT_ABSENT_LIMP_NOTE})`;
+
+/**
+ * Z10 (round 7) — has THIS page ever heard the S2 seat protocol from the
+ * server ('tournamentSeatKept', 'tournamentSeatTakenOver', an answer to
+ * 'returnToTournamentSeat', 'tournamentFinishedForEntrant')? Only a server
+ * that never did is provably OLD (its leave stood the seat up, nothing will
+ * ever answer a Return) — the only case the Return banner offers Dismiss.
+ * Page lifetime: a transport flip (a new socket id on the same server) never
+ * makes the server "old" again.
+ */
+let seatProtocolServerSeen = false;
+export function noteSeatProtocolServer() { seatProtocolServerSeen = true; }
+export function seatServerProvablyOld() { return !seatProtocolServerSeen; }
 
 /** The identity of an away seat: its tournament, else its table. */
 export function awaySeatKey(entry) {
@@ -286,7 +311,9 @@ export function noteGameStateForTournament(state) {
   const { seat } = st();
   const tournamentId = idString(state.tournamentId) || (seat ? seat.tournamentId : null);
   if (seat && seat.tableId === tId && seat.tournamentId === tournamentId) return;
-  const away = st().awaySeats.find((a) => (tournamentId && a.tournamentId === tournamentId) || a.tableId === tId);
+  // (Z8: only this tournament's away seat lends its name — by table only when its tournament is unknown.)
+  const away = st().awaySeats.find((a) => (tournamentId && a.tournamentId
+    ? a.tournamentId === tournamentId : a.tableId === tId));
   put({ seat: { tournamentId, tableId: tId, name: (seat && seat.name) || (away && away.name) || (typeof state.tournamentName === 'string' && state.tournamentName) || DEFAULT_NAME } });
 }
 
@@ -331,10 +358,13 @@ export function leaveTournamentSeatToLobby(via, gameState) {
 export function noteTournamentSeatKept(data, via = 'server') {
   const tId = idString(data && data.tableId);
   if (!tId) return null;
+  noteSeatProtocolServer(); // Z10 — only a server that keeps seats sends these
   const tournamentId = idString(data && data.tournamentId);
   const name = data && typeof data.tournamentName === 'string' && data.tournamentName.trim() ? data.tournamentName.trim() : null;
   const { seat } = st();
-  const wasLive = !!seat && ((tournamentId && seat.tournamentId === tournamentId) || seat.tableId === tId);
+  // Z8 — the live seat is this one only when it is the SAME tournament (by
+  // table only while either side's tournament is unknown).
+  const wasLive = !!seat && (tournamentId && seat.tournamentId ? seat.tournamentId === tournamentId : seat.tableId === tId);
   const list = upsertAway({
     tournamentId, tableId: tId,
     seatIndex: Number.isInteger(data && data.seatIndex) ? data.seatIndex : null,
@@ -365,22 +395,31 @@ export function noteTournamentSeatReturned(data) {
   const tournamentId = idString(data && data.tournamentId);
   const { awaySeats, seat, returning } = st();
   const wasReturning = !!returning;
-  let idx = awaySeats.findIndex((a) => (tournamentId && a.tournamentId === tournamentId) || (tId && a.tableId === tId));
-  if (idx < 0 && returning) idx = awaySeats.findIndex((a) => a.key === returning);
+  // Z8 (round 7) — matched by tournamentId: a restore that names its
+  // tournament never takes (or renames) the away seat of ANOTHER one. By
+  // table only while the away seat's tournament is unknown.
+  const otherTournament = (a) => !!tournamentId && !!a.tournamentId && a.tournamentId !== tournamentId;
+  let idx = tournamentId ? awaySeats.findIndex((a) => a.tournamentId === tournamentId) : -1;
+  if (idx < 0 && tId) idx = awaySeats.findIndex((a) => a.tableId === tId && !otherTournament(a));
+  // V4 — while a Return is in flight a restore is that return (a rebalance
+  // may have moved the seat) — unless it names another tournament.
+  if (idx < 0 && returning) idx = awaySeats.findIndex((a) => a.key === returning && !otherTournament(a));
   const knownSeat = !!seat && !!tId && seat.tableId === tId;
+  // The Return in flight is for ANOTHER tournament's seat, still offered: it goes on.
+  const returningElsewhere = !!returning && awaySeats.some((a, i) => i !== idx && a.key === returning && otherTournament(a));
   if (!tId || (idx < 0 && !knownSeat && !tournamentId && !wasReturning)) {
     if (returning) put({ returning: null });
     return { returned: false, wasReturning };
   }
-  const base = idx >= 0 ? awaySeats[idx] : (seat || {});
+  const base = idx >= 0 ? awaySeats[idx] : (seat && !otherTournament(seat) ? seat : {});
   const rest = idx >= 0 ? awaySeats.filter((_, i) => i !== idx) : awaySeats;
   putAway(rest, {
     seat: { tournamentId: tournamentId || base.tournamentId || null, tableId: tId, name: base.name || DEFAULT_NAME },
-    returning: null,
+    returning: returningElsewhere ? returning : null,
     notice: null,
     noticeKind: null,
   });
-  return { returned: idx >= 0 || wasReturning, wasReturning };
+  return { returned: idx >= 0 || (wasReturning && !returningElsewhere), wasReturning };
 }
 
 /**
@@ -391,18 +430,25 @@ export function noteTournamentSeatReturned(data) {
  * per-entrant 'tournamentFinishedForEntrant'; `position` = his place when
  * known). An away seat gets a closing line on the lobby banner. Returns true
  * when it concerned a seat this tab knew.
+ * Z8 (round 7) — matched by tournamentId everywhere: a notice for one
+ * tournament never ends (or writes its line over) the away seat of ANOTHER.
+ * A seat whose tournament is unknown matches only by its table. `room`: the
+ * notice is the room broadcast of the table on screen (the room's
+ * 'tournamentFinished'), which may also end the LIVE seat by itself.
  */
-export function noteTournamentOver({ tournamentId, tableId, position, finished } = {}) {
+export function noteTournamentOver({ tournamentId, tableId, position, finished, room = false } = {}) {
   const tId = idString(tournamentId);
   const tbl = idString(tableId);
-  const matches = (x) => {
+  const matches = (x, live) => {
     if (!x) return false;
-    if (tId) return x.tournamentId ? x.tournamentId === tId : (!tbl || x.tableId === tbl);
-    return tbl ? x.tableId === tbl : true;
+    if (tId && x.tournamentId) return x.tournamentId === tId;
+    if (tbl) return x.tableId === tbl;
+    return live && room;
   };
   const { awaySeats, seat } = st();
-  const ended = awaySeats.filter(matches);
-  if (!ended.length && !matches(seat)) return false;
+  const ended = awaySeats.filter((a) => matches(a, false));
+  const seatEnded = matches(seat, true);
+  if (!ended.length && !seatEnded) return false;
   let notice = st().notice;
   let noticeKind = st().noticeKind;
   if (ended.length) {
@@ -418,8 +464,8 @@ export function noteTournamentOver({ tournamentId, tableId, position, finished }
     noticeKind = 'finished';
   }
   const returningEnded = ended.some((a) => a.key === st().returning);
-  putAway(awaySeats.filter((a) => !matches(a)), {
-    seat: matches(seat) ? null : seat,
+  putAway(awaySeats.filter((a) => !ended.includes(a)), {
+    seat: seatEnded ? null : seat,
     returning: returningEnded ? null : st().returning,
     notice,
     noticeKind,
@@ -436,12 +482,14 @@ export function setTournamentReturning(key) {
 /**
  * The server answered no_tournament_seat (P-c': the only ANSWER that forgets
  * an away seat): forget seat `key`, say why (`kind`: 'not_found' |
- * 'finished'). Without a key (the answer cannot be tied to one of several
- * away seats) none is forgotten; each can be tapped again.
+ * 'finished'). Without a key none is forgotten (round 7, Z8: the Return
+ * never calls this without the seat its answer names).
  */
 export function tournamentSeatNotFound(text, key = null, kind = 'not_found') {
   const list = key ? st().awaySeats.filter((a) => a.key !== key) : st().awaySeats;
-  putAway(list, { returning: null, notice: text || null, noticeKind: text ? kind : null });
+  // Z8 — a Return in flight for ANOTHER seat goes on.
+  const { returning } = st();
+  putAway(list, { returning: returning && key && returning !== key ? returning : null, notice: text || null, noticeKind: text ? kind : null });
 }
 
 /** `key`: the away seat the line is about (a 'no_answer' line offers Dismiss on it). */
@@ -474,6 +522,29 @@ export function dismissAwaySeat(key) {
 /** The away seat whose key is `key` (or null). */
 export function awaySeatByKey(key) {
   return key ? (st().awaySeats.find((a) => a.key === key) || null) : null;
+}
+
+/**
+ * Z8 (round 7) — the away seat a Return (or its answer) is about, from what
+ * was known when it started (`ref` {key, tournamentId, tableId}, or a bare
+ * key): by key, else — it was re-keyed (its tournamentId learned) or moved
+ * meanwhile — by its tournament, else (tournament unknown) by its table.
+ * Never ANOTHER tournament's seat, never "the first one" (null instead).
+ */
+export function awaySeatOfRef(ref) {
+  if (!ref) return null;
+  const r = typeof ref === 'string' ? {
+    key: ref,
+    tournamentId: ref.startsWith('t:') ? ref.slice(2) : null,
+    tableId: ref.startsWith('table:') ? ref.slice(6) : null,
+  } : ref;
+  const list = st().awaySeats;
+  const byKey = r.key ? list.find((a) => a.key === r.key) : null;
+  if (byKey) return byKey;
+  const t = idString(r.tournamentId);
+  if (t) return list.find((a) => a.tournamentId === t) || null;
+  const tb = idString(r.tableId);
+  return tb ? (list.find((a) => a.tableId === tb) || null) : null;
 }
 
 /** A seat restored in the background while the player is in the avatar customizer. */

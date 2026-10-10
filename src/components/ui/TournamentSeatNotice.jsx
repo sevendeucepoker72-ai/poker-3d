@@ -24,8 +24,9 @@ export { TOURNAMENT_SEAT_NOT_FOUND_TEXT, TOURNAMENT_RETURN_OFFLINE_TEXT, TOURNAM
  * before he leaves (GameHUD), and TournamentReturnBanner offers "Return to
  * tournament" in the lobby (services/tournamentReturn: socket
  * 'returnToTournamentSeat' with an ack — protocol P-c / P-c''; after a Return
- * that got no answer at all — an older server — that seat's row also offers
- * Dismiss). SeatRestoredBanner: a seat the server restored in the background
+ * that got no answer at all from a provably older server — round 7, Z10 —
+ * that seat's row also offers Dismiss). SeatRestoredBanner: a seat the
+ * server restored in the background
  * (a reconnect) while the player was in the avatar customizer — the screen is
  * not switched; the banner offers the table.
  * Blue + gold, never red (owner preference).
@@ -171,7 +172,10 @@ export function TournamentReturnBanner() {
               </div>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 12 }}>
                 {/* Round 6 — a Return that got NO answer at all (an older
-                    server: nothing will ever answer) can be dismissed. */}
+                    server: nothing will ever answer) can be dismissed.
+                    Round 7 (Z10): services/tournamentReturn names the seat
+                    (noticeKey) only when the server is provably old — never
+                    after a transport flip on a server that keeps seats. */}
                 {noticeKind === 'no_answer' && noticeKey === a.key && !returning && (
                   <button
                     type="button"

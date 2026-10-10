@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense, lazy } from 'react';
 import { createPortal } from 'react-dom';
 import { useGameStore } from '../../store/gameStore';
-import { useTableStore } from '../../store/tableStore';
+import { useTableStore, SIT_OUT_PREF_KEY } from '../../store/tableStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SUIT_INDEX_TO_SYMBOL, SUIT_INDEX_TO_COLOR, serverRankDisplay, getCardColor } from '../../utils/cardUtils';
 import { evaluateHandStrength, getWinningCardIndices } from '../../utils/handStrength';
@@ -31,7 +31,7 @@ import { useTimerStore } from '../../store/timerStore';
 // player leaves the table screen; he is told so first and returns from the lobby.
 import {
   useTournamentSeatStore, isTournamentSeatView, leaveTournamentSeatToLobby, eliminationShownElsewhere,
-  TOURNAMENT_ABSENT_LIMP_NOTE,
+  TOURNAMENT_SEAT_AWAY_ACTS_TEXT,
 } from '../../store/tournamentSeatStore';
 import { TournamentLeaveDialog } from '../ui/TournamentSeatNotice';
 import { loadHotkeys } from '../ui/HotkeySettings';
@@ -614,13 +614,13 @@ export default function GameHUD() {
     if (sittingOutPersistDidRestore.current || !isSeated) return;
     sittingOutPersistDidRestore.current = true;
     try {
-      if (sessionStorage.getItem('app_poker_sittingOut') === '1' && !sittingOut) {
+      if (sessionStorage.getItem(SIT_OUT_PREF_KEY) === '1' && !sittingOut) {
         toggleSitOut && toggleSitOut();
       }
     } catch { /* ignore */ }
   }, [isSeated, sittingOut, toggleSitOut]);
   useEffect(() => {
-    try { sessionStorage.setItem('app_poker_sittingOut', sittingOut ? '1' : '0'); }
+    try { sessionStorage.setItem(SIT_OUT_PREF_KEY, sittingOut ? '1' : '0'); }
     catch { /* ignore */ }
   }, [sittingOut]);
 
@@ -2832,11 +2832,12 @@ export default function GameHUD() {
             className={`sit-out-quick-btn ${sittingOut ? 'sit-out-quick-btn--active' : ''}`}
             onClick={toggleSitOut}
             /* Round 6 (P-j) — at a TOURNAMENT table sitting out = absent: the
-               seat stays dealt in, posts its blinds and is auto-acted (P-i). */
+               seat stays dealt in, posts its blinds and is auto-acted (P-i).
+               Round 7 (Z11): said in visible text too (tournament-sitout-note). */
             title={onTournamentSeat
               ? (sittingOut
-                ? `Sitting Out — you are still dealt in: your blinds are posted and your hand is folded for you (${TOURNAMENT_ABSENT_LIMP_NOTE}). Click to return`
-                : `Sit Out (you stay dealt in: your blinds are posted and your hand is folded for you; ${TOURNAMENT_ABSENT_LIMP_NOTE})`)
+                ? `Sitting Out — you are still dealt in: your blinds are posted and ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT}. Click to return`
+                : `Sit Out (you stay dealt in: your blinds are posted and ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT})`)
               : (sittingOut ? 'Sitting Out — click to return' : 'Sit Out (auto-fold each hand)')}
           >
             {sittingOut ? '🪑 Sitting Out' : '🪑 Sit Out'}
@@ -3261,15 +3262,34 @@ export default function GameHUD() {
         </div>
       )}
 
-      {/* AFK "You're Away" indicator */}
+      {/* AFK "You're Away" indicator. Round 7 (Z11): at a TOURNAMENT seat
+          the seat stays dealt in and is checked when a check is free, else
+          folded (P-i / P-j) — never "auto-folded". Cash tables unchanged. */}
       {isAFK && (
-        <div className="afk-away-banner">
+        <div className={`afk-away-banner${onTournamentSeat ? ' afk-away-banner--tournament' : ''}`}>
           <span>🌙</span>
-          <span>You're away — hands will be auto-folded</span>
+          <span>{onTournamentSeat ? `You're away — you stay dealt in: ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT}.` : "You're away — hands will be auto-folded"}</span>
           <button className="afk-back-btn" onClick={() => {
             const socket = getSocket();
             socket?.emit('playerBack');
             setAfkWarning(false);
+          }}>I'm back</button>
+        </div>
+      )}
+
+      {/* Round 7 (Z11) — Sit Out at a TOURNAMENT seat, said in VISIBLE text
+          (the button's title is hover-only, never seen on a phone): the seat
+          stays dealt in, posts its blinds and is checked or folded (P-j /
+          P-i). Blue, never red. Cash tables keep the plain button. */}
+      {onTournamentSeat && sittingOut && !isAFK && (
+        <div className="afk-away-banner afk-away-banner--tournament tournament-sitout-note" role="status">
+          <span>🪑</span>
+          <span>{`Sitting out — you stay dealt in: your blinds are posted and ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT}.`}</span>
+          {/* Review (round 7): 'playerBack' ALWAYS means "not sitting out" (safe
+              to repeat) — a toggle could sit him OUT when the local flag was stale. */}
+          <button className="afk-back-btn" onClick={() => {
+            getSocket()?.emit('playerBack');
+            try { useTableStore.getState().setSittingOut(false); } catch { /* ignore */ }
           }}>I'm back</button>
         </div>
       )}

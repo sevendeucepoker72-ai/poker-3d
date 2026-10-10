@@ -15,6 +15,15 @@ function emitPlay(socket, event, payload) {
   socket.emit(event, payload);
 }
 
+// GameHUD remembers a Sit Out across a reload in this tab's sessionStorage and
+// replays it when a seat first shows. Round 7 (Z12): an explicit Return to a
+// tournament seat forgets it — the server restores the seat NOT sitting out,
+// and he came back to play.
+export const SIT_OUT_PREF_KEY = 'app_poker_sittingOut';
+export function forgetSitOutPreference() {
+  try { sessionStorage.setItem(SIT_OUT_PREF_KEY, '0'); } catch { /* ignore */ }
+}
+
 export const useTableStore = create((set, get) => ({
   // Game state from server
   gameState: null,
@@ -204,6 +213,10 @@ export const useTableStore = create((set, get) => ({
     const heldSeat = !!leftTableId && (Number(shown.yourSeat) >= 0 || before.mySeat >= 0);
     if (socket) socket.emit('leaveTable');
     set({
+      // Review (round 7): a Sit Out never carries over to the NEXT seat — every
+      // new server session starts not sitting out (a stale flag showed the
+      // tournament sit-out note at a seat the server has him playing).
+      sittingOut: false,
       gameState: null, mySeat: -1, chatMessages: [], handHistories: [],
       trainingEnabled: false, trainingData: null, spinMultiplier: null,
       quickGameResult: null, isSpectating: false, emotes: [],
@@ -258,7 +271,8 @@ export const useTableStore = create((set, get) => ({
       || isTableLeft(id);
     if (!seatedHere) return false;
     markTableLeft(id, (cached && cached.gameState) || shown, { ignore: false });
-    const updates = {};
+    // Review (round 7): the seat he was sitting out at is gone from this tab.
+    const updates = { sittingOut: false };
     if (activeTables && activeTables.has(id)) {
       const newTables = new Map(activeTables);
       newTables.delete(id);
