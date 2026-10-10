@@ -527,3 +527,122 @@ removedOwn
 Play Online tab re-signed-in with this account
 dropped sign-in is fenced off for this tab
 could not be re-signed-in as this tab
+# (K) 2026-10-10 s-round - a bridged link never overwrites another account's
+#     sign-in, a tournament seat is never stood up by leaving the table screen,
+#     and the remaining shared-browser minors (AGENT.md rules 13-15).
+#     S3: a #bridge_id_token hand-off on a browser holding ANOTHER (or an
+#     unprovable) account's stored sign-in - or, with nothing stored, another
+#     account signed in in another tab (census by master id) - keeps the
+#     bridged tokens in THIS tab's sessionStorage only and marks the tab
+#     tab-scoped (services/bridge.js decideBridgePlacement, tabSession marker
+#     poker_tab_scoped_signin). tokenStorage then reads / writes / refreshes /
+#     clears only the tab's own copies (getAuthToken, getOAuthItem,
+#     setAuthToken, setOAuthItem, authService's tab-scoped refresh without the
+#     cross-tab lock), crossTabSignOut follows only its own account's sign-out,
+#     and its Sign Out leaves the browser's sign-in alone (no marker, no
+#     logout broadcast, no /session/end) and revokes its own grant. A reload
+#     of the tab boots on its own refresh token.
+poker_tab_scoped_signin
+sign-in kept to this tab: this browser holds another account
+tab-scoped sign-in ended; this browser
+this tab keeps its own tab-scoped sign-in
+tabScopedSignIn
+#     Q4 lock: the deep-link screen renders only while deepLinkScreenState is
+#     PENDING (these two literals exist only through that guard).
+deep-link-screen-pending
+deep-link-screen-retired
+#     Minors: a same-account follower drops its own credentials and cycles its
+#     socket; no "Your session ended" after a leave-alone Sign Out; answered
+#     deep-link failures in player sentences that never say "try again".
+sign-out from another tab: own credentials removed, socket cycled
+expired after this tab signed out
+We could not load your American Pub Poker account just now
+The game server is being updated
+We could not seat you from this waitlist link
+so it was cancelled and any chips taken were returned. Open Play Online again
+#     S2: leaving a LIVE tournament seat (Back to Lobby / Customize Avatar)
+#     first says the player stays registered and is auto-folded until he
+#     returns (blue + gold, no red); the seat stays in play (absent, server);
+#     the lobby offers Return to tournament (socket returnToTournamentSeat
+#     with an ack - section (L); no sign-in restores a voluntarily left
+#     seat). No client auto-deal startHand at a tournament table.
+tournament-leave-dialog
+tournament-return-banner
+Return to tournament
+You stay registered. While you are away your hand is folded for you
+We could not find your tournament seat
+left the tournament table; the seat stays in play
+returning to the tournament seat (sign-in restore)
+return_to_tournament
+# (L) 2026-10-10 s-round 2 - the FIXED S2 protocol (CONTRACTS C5 P-a..P-e),
+#     client side (AGENT.md rule 15). poker-server announces a kept-absent
+#     tournament seat with socket 'tournamentSeatKept' (a leave, a server-side
+#     leave by a join / quick play / spectate, and after every sign-in that
+#     does not restore a VOLUNTARY seat): the lobby's away list + Return
+#     banner. Return = 'returnToTournamentSeat' {tournamentId} with an ack,
+#     answered on the ack and 'returnToTournamentResult'; reauthSocket only
+#     when no answer comes within 5s (older server). Any restore while a
+#     Return is in flight is the return (rebalance moves). Late gameState
+#     frames of a table this socket left are ignored until it is at that
+#     table again (services/leftTables; no sticky marks since round 6). An
+#     elimination at a tournament table while seated elsewhere never switches
+#     that table to the spectator view.
+tournamentSeatKept
+returnToTournamentSeat
+returnToTournamentResult
+the server kept a tournament seat in play for this account
+ignored a gameState frame for a table this socket left
+no answer to returnToTournamentSeat, older server fallback
+eliminated while seated at another table: notice only, no spectator switch
+Your sign-in changed. Your seat is still yours
+You are not signed in to the game server just now
+#     Minors: a background seat restore never pulls the player out of the
+#     avatar customizer (banner instead); the waitlist cancellation label
+#     (cancelCode buy_in_cancelled) maps first; a tab-scoped Sign Out whose
+#     browser sign-in became its own account is a full sign-out.
+seat-restored-banner
+seat restored in the background; the avatar customizer stays on screen
+buy_in_cancelled
+stored sign-in is now this same account
+# (M) 2026-10-10 s-round 3 - protocol amendments P-c', P-e', P-g, P-h, client
+#     side. P-c': only an explicit no_tournament_seat answer forgets an away
+#     seat; a Return with no answer signs the socket in again and emits the
+#     Return ONCE more (round 6: unconditionally - P-c''), and otherwise
+#     keeps the banner + Return with a neutral line. P-h: tournamentFinished
+#     to an away entrant = a "has finished: you placed" line, never "may
+#     have ended". (Round 6 retired the two-tab BroadcastChannel with its
+#     "taken back in another tab" line, and the sticky marks - see (N).)
+#     W2: tournamentSeatKept forgets only a table this socket was SEATED at
+#     (never one it watches). Minors: the join-error toast stacks below the
+#     Return banner; the avatar customizer offers Return to
+#     tournament; auto-rebuy never fires for a spectator.
+Could not reach the game
+no answer to the Return; the seat stays offered
+There is no seat waiting for you to return to
+has finished: you placed
+bannerBottom
+lobby-join-error-toast
+customizer-return-to-tournament
+# (N) 2026-10-10 s-round 6 (simplify) - client side of P-c'', P-h', P-i, P-j
+#     (CONTRACTS C5, AGENT.md rule 15). P-c'': the latest connection wins a
+#     Return; the socket that loses the seat is told tournamentSeatTakenOver
+#     (a neutral toast + the seat back on the Return banner); an unanswered
+#     Return is retried once (no re-announce trigger, no two-tab
+#     BroadcastChannel, no "taken back" failure line - retired with their
+#     (M) tokens); when the retry also goes unanswered (an older server)
+#     the seat row offers Dismiss. P-h': the per-entrant finished notice is
+#     tournamentFinishedForEntrant (toast + banner line, never the overlay).
+#     P-i / P-j: every "folded for you" line adds the check / one-big-blind
+#     limp note; at a tournament table the Sit Out button says the seat
+#     stays dealt in. Minors: tournamentSeatKept never IGNORES a table (no
+#     sticky marks), so Android back + Watch / Watch Live shows his table;
+#     the avatar customizer shows a Return refused by the play gate; one
+#     toast per elimination.
+tournamentSeatTakenOver
+Your tournament seat is open on another tab or device
+the tournament seat now plays on another tab or device of this account
+returnToTournamentSeat sent once more
+tournament-return-dismiss
+away seat dismissed after a Return with no answer
+tournamentFinishedForEntrant
+we may check or limp the blind for you

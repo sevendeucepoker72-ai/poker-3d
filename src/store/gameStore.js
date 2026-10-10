@@ -3,8 +3,10 @@ import { getSocket, disconnect as disconnectSocket } from '../services/socketSer
 import { clearAllProgressionStorage, resetSyncState } from '../services/persistenceService';
 import {
   getAuthToken, isGuestLegacyToken, stashGuestCredential, clearStashedGuestCredentialOnSignOut,
-  oidcSubject, getStoredOidcAccount, getOAuthItem,
+  oidcSubject, getStoredOidcAccount, getOAuthItem, getDeviceOAuthItem,
+  isTabScopedSignIn, tabScopedMasterUserId, dropThisTabsOwnSignIn, endTabScopedSignIn,
 } from '../services/tokenStorage';
+import { resetTournamentSeat } from './tournamentSeatStore';
 import { clearResumeRecord, resetTabSession, getTabSession } from '../services/sessionResume';
 import {
   TICKET_TAB_SIGN_OUT_EVENT, LOGOUT_MARKER_KEY, logoutMarkerValue,
@@ -173,13 +175,31 @@ export function clearOtherAccountOidcFromTicketTab() {
  * and /session/end (or a 'logout' it follows) would sign it out.
  */
 function ticketTabLeavesDeviceSignIn(census, myUserId) {
+  // S3 (2026-10-10) — a TAB-SCOPED sign-in (a bridged link kept to this tab
+  // because the browser holds another account's sign-in) never ran on the
+  // browser's stored sign-in: its Sign Out leaves that alone — re-checked at
+  // every Sign Out (round 2): if the browser's stored sign-in has since
+  // become THIS tab's own account (the other one signed out, this one signed
+  // in normally elsewhere), it is a full Sign Out like any other (stored keys,
+  // marker, 'logout', /session/end) — the same rule as a ticket tab's.
+  if (isTabScopedSignIn()) {
+    try {
+      const mine = tabScopedMasterUserId();
+      const dev = getStoredOidcAccount();
+      if (mine && dev.masterUserId === mine) {
+        try { console.warn('[sign-out] tab-scoped sign-in: the browser\'s stored sign-in is now this same account — full sign-out'); } catch { /* ignore */ }
+        return false;
+      }
+    } catch { /* cannot tell: leave it alone */ }
+    return true;
+  }
   let tab = null;
   try { tab = getTabSession(); } catch { tab = null; }
   if (!tab || tab.kind !== 'ticket') return false;
   try {
     const dev = getStoredOidcAccount();
     const holdsOidc = dev.signedIn || !!dev.masterUserId
-      || !!getOAuthItem('poker_oauth_id_token') || !!getOAuthItem('poker_oauth_access');
+      || !!getDeviceOAuthItem('poker_oauth_id_token') || !!getDeviceOAuthItem('poker_oauth_access');
     if (!holdsOidc) {
       if (censusFindsOtherAccount(census, myUserId)) {
         try { console.warn('[sign-out] another account is signed in on this browser in another tab (keep me signed in off) — left alone'); } catch { /* ignore */ }
@@ -194,51 +214,12 @@ function ticketTabLeavesDeviceSignIn(census, myUserId) {
   }
 }
 
-/**
- * 2026-10-10 — a ticket tab's Sign Out that leaves the browser's other
- * sign-in alone still removes what is THIS tab's own (A's), and nothing of
- * the other account's:
- *   - poker_auth_token, in either store, wherever it still holds this tab's
- *     own credential (`ownCredential` = the store's authToken: its Play
- *     Online ticket — never an OIDC token, never another account's). On such
- *     a browser App.jsx writes the ticket to this tab's sessionStorage only,
- *     so normally nothing device-wide is touched (a localStorage removal is
- *     a cross-tab signal);
- *   - this tab's sessionStorage "keep me signed in" copy (the deep link
- *     wrote it; the device-wide flag is the other account's preference);
- *   - this tab's sessionStorage OIDC keys, ONLY when they provably name this
- *     tab's own account (`ownMasterUserId`) — a "keep me signed in" OFF
- *     sign-in of ANOTHER account that lived in this same tab is left alone.
- * Returns the keys removed (for the log line).
- */
-function dropThisTabsOwnCredentials(ownCredential, ownMasterUserId) {
-  const removed = [];
-  for (const [label, store] of [['session', sessionStorage], ['local', localStorage]]) {
-    try {
-      const v = store.getItem('poker_auth_token');
-      if (ownCredential && v === ownCredential && !oidcSubject(v)) {
-        store.removeItem('poker_auth_token');
-        removed.push(`${label}:poker_auth_token`);
-      }
-    } catch { /* ignore */ }
-  }
-  try {
-    if (sessionStorage.getItem('poker_keep_signed_in') !== null) {
-      sessionStorage.removeItem('poker_keep_signed_in');
-      removed.push('session:poker_keep_signed_in');
-    }
-  } catch { /* ignore */ }
-  try {
-    const sub = oidcSubject(sessionStorage.getItem('poker_oauth_id_token'))
-      || oidcSubject(sessionStorage.getItem('poker_oauth_access'));
-    if (ownMasterUserId && sub && sub === String(ownMasterUserId)) {
-      for (const k of ['poker_oauth_access', 'poker_oauth_refresh', 'poker_oauth_id_token', 'poker_token_expiry']) {
-        if (sessionStorage.getItem(k) !== null) { sessionStorage.removeItem(k); removed.push(`session:${k}`); }
-      }
-    }
-  } catch { /* ignore */ }
-  return removed;
-}
+// 2026-10-10 — the "remove only THIS tab's own credentials" rule used by a
+// Sign Out that leaves the browser's other sign-in alone moved to
+// tokenStorage.dropThisTabsOwnSignIn (main.jsx's cross-tab follower uses it
+// too). Since this round it also matches the tab's own Play Online ticket by
+// its shape after a reload (the store's authToken is then null) and removes a
+// tab-scoped sign-in's copies (S3).
 
 /**
  * The local sign-out teardown — tokens, profile caches, store state, the
@@ -264,7 +245,12 @@ function tearDownSession(set, get, skipRedirect, census = null) {
   const previousUserId = get().userId;
   const ownCredential = get().authToken;
   let ownMasterUserId = null;
-  try { ownMasterUserId = getTabSession()?.masterUserId || null; } catch { ownMasterUserId = null; }
+  try { ownMasterUserId = getTabSession()?.masterUserId || tabScopedMasterUserId() || null; } catch { ownMasterUserId = null; }
+  // S3 — decided (and the tab's own refresh token read) BEFORE anything is
+  // cleared: a tab-scoped sign-in's Sign Out revokes its own grant below.
+  const tabScoped = isTabScopedSignIn();
+  let ownRefreshToken = null;
+  if (tabScoped) { try { ownRefreshToken = get().oauthRefreshToken || getOAuthItem('poker_oauth_refresh') || null; } catch { ownRefreshToken = null; } }
   const leaveDeviceSignIn = ticketTabLeavesDeviceSignIn(census, previousUserId);
   // 2026-05-05 Phase 3 — broadcast logout to other same-origin tabs
   // BEFORE clearing local state, so peer tabs tear down their UI
@@ -318,14 +304,27 @@ function tearDownSession(set, get, skipRedirect, census = null) {
   // that sign its tabs out).
   if (leaveDeviceSignIn) {
     // ...but this tab's OWN credentials still go (its Play Online ticket, its
-    // tab-scoped copies) — dropThisTabsOwnCredentials.
-    const removed = dropThisTabsOwnCredentials(ownCredential, ownMasterUserId);
+    // tab-scoped copies) — tokenStorage.dropThisTabsOwnSignIn.
+    const removed = dropThisTabsOwnSignIn({
+      ownCredentials: [ownCredential, get().oauthAccessToken, get().oauthRefreshToken],
+      ownMasterUserId,
+    });
     try { console.warn('[sign-out] Play Online tab signed out; this browser\'s other sign-in was left alone', { removedOwn: removed }); } catch { /* ignore */ }
+    // S3 — the explicit Sign Out of a tab-scoped sign-in ends its own grant at
+    // the auth-server (no /session/end follows: that would end the SSO
+    // cookie's account — on this browser, the other one).
+    if (tabScoped && !skipRedirect && ownRefreshToken) {
+      import('../services/authService').then(({ revokeTabScopedRefreshToken }) => revokeTabScopedRefreshToken(ownRefreshToken)).catch(() => {});
+    }
   } else {
     for (const k of ['poker_auth_token','poker_keep_signed_in','poker_oauth_access','poker_oauth_refresh','poker_oauth_id_token','poker_token_expiry']) {
       try { localStorage.removeItem(k); } catch {}
       try { sessionStorage.removeItem(k); } catch {}
     }
+    // Round 2 — a tab-scoped tab whose stored sign-in became its own account
+    // (ticketTabLeavesDeviceSignIn re-check): the full sign-out also ends the
+    // tab-scoped marker.
+    if (tabScoped) { try { endTabScopedSignIn('sign_out_full'); } catch { /* ignore */ } }
   }
   try { clearResumeRecord(); resetTabSession(); } catch { /* never block logout */ }
   // 2026-07-02 OAuth audit (Finding #6) — always emit a cross-tab logout
@@ -380,7 +379,15 @@ function tearDownSession(set, get, skipRedirect, census = null) {
     vipLevel: null,
     vipExpiration: null,
     signingOut: false,
+    // 2026-10-10 — this sign-out left the browser's OTHER sign-in alone: a
+    // later revoked refresh of THAT sign-in (main.jsx 'poker:session-expired')
+    // is not this signed-out player's session ending, so no "Your session
+    // ended" notice is shown for it. Cleared by the next sign-in.
+    deviceSignInLeftAlone: !!leaveDeviceSignIn,
   });
+  // S2 (2026-10-10) — the signed-out account's tournament seat memory (lobby
+  // "Return to tournament") never carries over to whoever signs in next.
+  try { resetTournamentSeat(); } catch { /* never block logout */ }
   // 2026-07-06 P2 auth fix — kill the authenticated SOCKET session too.
   // Pre-fix, logout wiped tokens and flipped screen→'login' but never
   // touched the socket: the server-side authSession (keyed by socket.id)
@@ -434,6 +441,9 @@ export const useGameStore = create((set, get) => ({
   // notice instead of silently yanking the user. Cleared on the next
   // successful login/oauthLogin.
   sessionExpiredNotice: null,
+  // 2026-10-10 — set by a sign-out that left the browser's other sign-in
+  // alone (tearDownSession); cleared on the next login / oauthLogin.
+  deviceSignInLeftAlone: false,
 
   // OAuth2 token state
   oauthAccessToken: null,
@@ -490,6 +500,7 @@ export const useGameStore = create((set, get) => ({
       userId: userData.id,
       authToken: token,
       sessionExpiredNotice: null,
+      deviceSignInLeftAlone: false,
       playerName: userData.displayName || userData.username,
       phone: userData.phone || '',
       needsUsername: userData.needsUsername || false,
@@ -512,6 +523,7 @@ export const useGameStore = create((set, get) => ({
       userId: userData.id,
       authToken: tokens.access_token,
       sessionExpiredNotice: null,
+      deviceSignInLeftAlone: false,
       oauthAccessToken: tokens.access_token,
       oauthRefreshToken: tokens.refresh_token,
       oauthIdToken: tokens.id_token || null,

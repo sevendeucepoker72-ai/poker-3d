@@ -55,8 +55,12 @@ import * as authScheduler from './services/authScheduler.js'
 // sign-in (on a shared browser, ANOTHER account's) until that ticket is
 // answered. Noted BEFORE start() — App scrubs the URL at mount, and its
 // deepLinkBootGate then owns the flag (services/deepLinkBootGate.js).
-import { noteDeepLinkTicketInUrl } from './services/deepLinkBootGate.js'
+import { noteDeepLinkTicketInUrl, noteBridgeHandoffInUrl } from './services/deepLinkBootGate.js'
 noteDeepLinkTicketInUrl()
+// 2026-10-10 (S3) — same for a #bridge_id_token hand-off: the bridge decides
+// whether this tab's sign-in is kept to the tab (the browser holds another
+// account's sign-in); the scheduler holds until it has answered.
+noteBridgeHandoffInUrl()
 authScheduler.start()
 
 // 2026-05-05 Phase 3 — cross-tab logout sync. When ANY same-origin .online
@@ -83,6 +87,13 @@ import {
   shouldApplyRemoteSignOut, noteIgnoredRemoteSignOut, TICKET_TAB_SIGN_OUT_EVENT,
   installSignInCensusResponder,
 } from './services/crossTabSignOut.js'
+// 2026-10-10 — a followed sign-out of this tab's OWN account also removes the
+// tab's own credentials (its Play Online ticket, its tab-scoped copies) and
+// cycles its socket, exactly as that account's own Sign Out did in its tab.
+import { dropThisTabsOwnSignIn, oidcSubject } from './services/tokenStorage.js'
+import { getTabSession } from './services/tabSession.js'
+import { disconnect as cycleSocket } from './services/socketService.js'
+import { resetTournamentSeat } from './store/tournamentSeatStore.js'
 installSignInCensusResponder(() => useGameStore.getState())
 onAuthEvent((evt) => {
   if (evt.type === 'logout' || evt.type === TICKET_TAB_SIGN_OUT_EVENT) {
@@ -95,7 +106,27 @@ onAuthEvent((evt) => {
       noteIgnoredRemoteSignOut(evt, 'broadcast')
       return
     }
+    // 2026-10-10 — read BEFORE anything is cleared: was this tab signed in,
+    // and which credentials / account are its own.
+    let wasSignedIn = false
+    let own = null
+    try {
+      const st = useGameStore.getState()
+      const tab = getTabSession()
+      wasSignedIn = !!st.isLoggedIn
+      own = {
+        ownCredentials: [st.authToken, st.oauthAccessToken, st.oauthRefreshToken],
+        ownMasterUserId: (tab && tab.masterUserId) || oidcSubject(st.oauthIdToken) || oidcSubject(st.oauthAccessToken) || null,
+      }
+    } catch { own = null }
+    if (wasSignedIn && own) {
+      try {
+        const removed = dropThisTabsOwnSignIn(own)
+        console.warn('[cross-tab] followed this account\'s sign-out from another tab: own credentials removed, socket cycled', { removedOwn: removed })
+      } catch { /* never block the teardown */ }
+    }
     try { clearResumeRecord(); resetTabSession() } catch { /* never block the teardown */ }
+    try { resetTournamentSeat() } catch { /* never block the teardown */ }
     try {
       // Skip the redirect-to-auth-server side-effect (originating tab
       // already did it). Just clear local state by setting isLoggedIn=false
@@ -116,6 +147,13 @@ onAuthEvent((evt) => {
       // If state shape changes, fall back to a hard reload so we don't
       // leave the tab in a half-logged-out state.
       try { window.location.reload() } catch {}
+    }
+    // 2026-10-10 — the server still had THIS tab's socket signed in as the
+    // account that signed out: cycle it (the server's disconnect path reserves
+    // a seat / cashes a cash stack out to that account, exactly as for the
+    // signing-out tab's own socket). The fresh connection is signed out.
+    if (wasSignedIn) {
+      try { cycleSocket() } catch { /* the next reconnect is unauthenticated anyway */ }
     }
   }
 })
@@ -146,6 +184,18 @@ window.addEventListener('poker:session-expired', (e) => {
     console.warn('[session-expired] another account\'s sign-in on this browser expired — this Play Online tab stays signed in:', e?.detail?.reason || 'unknown')
     return
   }
+  // 2026-10-10 — this tab is SIGNED OUT and its last sign-out left the
+  // browser's other sign-in alone (a Play Online / tab-scoped tab on a shared
+  // browser): the refresh token that died is that other account's, not this
+  // player's session. No "Your session ended" notice for him (the other
+  // account's own tabs handle their expiry).
+  try {
+    const s0 = useGameStore.getState()
+    if (!s0.isLoggedIn && s0.deviceSignInLeftAlone) {
+      console.warn('[session-expired] another account\'s sign-in on this browser expired after this tab signed out — no notice:', e?.detail?.reason || 'unknown')
+      return
+    }
+  } catch { /* fall through to the normal teardown */ }
   // 2026-10-09 (R1) — the session is dead: forget the resume record whether or
   // not this tab still shows a signed-in user (logout() below also clears it,
   // but only runs when isLoggedIn).

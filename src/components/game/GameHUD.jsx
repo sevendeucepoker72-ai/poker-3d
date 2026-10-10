@@ -27,6 +27,13 @@ import { useEquityWorker } from '../../hooks/useEquityWorker';
 import { getSocket, subscribeConnectionStatus } from '../../services/socketService';
 import { reportPlayRefusal, notePlayAttempt } from '../../services/playRefusal';
 import { useTimerStore } from '../../store/timerStore';
+// 2026-10-10 (S2) — a LIVE tournament seat is kept in play (absent) when the
+// player leaves the table screen; he is told so first and returns from the lobby.
+import {
+  useTournamentSeatStore, isTournamentSeatView, leaveTournamentSeatToLobby, eliminationShownElsewhere,
+  TOURNAMENT_ABSENT_LIMP_NOTE,
+} from '../../store/tournamentSeatStore';
+import { TournamentLeaveDialog } from '../ui/TournamentSeatNotice';
 import { loadHotkeys } from '../ui/HotkeySettings';
 import { useAFKTracker } from '../../hooks/useAFKTracker';
 import { notify } from '../../hooks/usePushNotifications';
@@ -212,6 +219,12 @@ export default function GameHUD() {
     if (!socket) return;
     const specHandler = (data) => setTournamentSpectator(data);
     const elimHandler = (data) => {
+      // S2 round 2 (P-e) — busted at a tournament table the player is NOT
+      // playing on screen (his absent seat blinded out while he sits at a cash
+      // table): his own table stays; App.jsx shows a notice. Only the table he
+      // is watching / was seated at switches to the spectator view.
+      // Round 3 (P-e'): a cash table he only WATCHES (P-d marks it) stays too.
+      if (eliminationShownElsewhere(useTableStore.getState().gameState, data)) return;
       setEliminatedPosition({ position: data.position, totalPlayers: data.totalPlayers });
       setTournamentSpectator({
         tournamentId: data.tournamentId,
@@ -584,6 +597,12 @@ export default function GameHUD() {
   const seats = gameState?.seats || [];
   const myPlayer = yourSeat >= 0 && seats[yourSeat] ? seats[yourSeat] : null;
   const isSeated = myPlayer != null;
+  // 2026-10-10 (S2) — is the table on screen this socket's LIVE tournament
+  // seat? Leaving it keeps it in play (absent), so the player is told first
+  // (TournamentLeaveDialog); `tournamentLeaveVia` = what he tapped.
+  const tournamentSeat = useTournamentSeatStore((s) => s.seat);
+  const onTournamentSeat = isTournamentSeatView(gameState, yourSeat, tournamentSeat);
+  const [tournamentLeaveVia, setTournamentLeaveVia] = useState(null);
 
   // Persist sit-out preference across a refresh or reconnect. Without this,
   // an intentionally sat-out player gets re-seated on every reload because
@@ -1754,8 +1773,14 @@ export default function GameHUD() {
   // up any under-min stack every hand — that's free chips every time you
   // lose a pot, not real poker. Now matches PokerStars / GG: rebuy on bust
   // to the starting stack; short-stacked players play out of it or leave.
+  // 2026-10-10 (round 3) — only for a player SEATED here (a spectator has no
+  // seat: myChips read 0 and every HandComplete sent a refused 'rebuy' plus a
+  // false "Auto-rebuying" toast), and never at a tournament table (the server
+  // refuses tournament rebuys).
+  const rebuySeatHere = !isSpectating && !gameState?.isSpectator && !!myPlayer && yourSeat >= 0
+    && gameState?.isTournament !== true && gameState?.tournamentId == null && !onTournamentSeat;
   useEffect(() => {
-    if (autoRebuy && phase === 'HandComplete' && prevPhaseForRebuyRef.current !== 'HandComplete') {
+    if (autoRebuy && rebuySeatHere && phase === 'HandComplete' && prevPhaseForRebuyRef.current !== 'HandComplete') {
       if (myChips <= 0) {
         const minBuyIn = gameState?.minBuyIn || 5000;
         const socket = getSocket();
@@ -1769,7 +1794,7 @@ export default function GameHUD() {
       }
     }
     prevPhaseForRebuyRef.current = phase;
-  }, [phase, autoRebuy, myChips, gameState]);
+  }, [phase, autoRebuy, myChips, gameState, rebuySeatHere]);
 
   // Record opponent stats from each completed hand's full action log. Phase 5:
   // driven by the handHistory record (which now carries the street-tagged
@@ -1869,8 +1894,12 @@ export default function GameHUD() {
   }, [autoDeal]);
 
   // Auto Deal: auto-start next hand after HandComplete (#11)
+  // 2026-10-10 (S1/S2) — never at a tournament table: poker-server deals
+  // tournament hands itself, behind its tournament guards (pause, waiting for
+  // players, a table break, a pending bust check), and a client 'startHand'
+  // must not race them.
   useEffect(() => {
-    if (autoDeal && phase === 'HandComplete' && !isSpectating) {
+    if (autoDeal && phase === 'HandComplete' && !isSpectating && !onTournamentSeat) {
       if (autoDealTimerRef.current) clearTimeout(autoDealTimerRef.current);
       autoDealTimerRef.current = setTimeout(() => {
         startHand();
@@ -1879,7 +1908,7 @@ export default function GameHUD() {
     return () => {
       if (autoDealTimerRef.current) clearTimeout(autoDealTimerRef.current);
     };
-  }, [autoDeal, phase, isSpectating, startHand]);
+  }, [autoDeal, phase, isSpectating, startHand, onTournamentSeat]);
 
   // Fast Mode: emit to server when toggled (#12)
   useEffect(() => {
@@ -2551,6 +2580,12 @@ export default function GameHUD() {
   }[phase] || phase;
 
   const handleBackToLobby = useCallback(() => {
+    // 2026-10-10 (S2) — a LIVE tournament seat: say what leaving means (the
+    // seat stays in play, auto-folded, until he returns) before leaving.
+    if (onTournamentSeat) {
+      setTournamentLeaveVia('lobby');
+      return;
+    }
     // Audit fix #10: require confirmation mid-hand so a misclick doesn't
     // abandon a live decision and auto-fold at the server. Waiting /
     // complete / showdown states leave without asking (nothing at stake).
@@ -2566,7 +2601,18 @@ export default function GameHUD() {
     }
     leaveTable();
     setScreen('lobby');
-  }, [leaveTable, setScreen, phase, gameState?.seats, yourSeat, isMyTurn]);
+  }, [leaveTable, setScreen, phase, gameState?.seats, yourSeat, isMyTurn, onTournamentSeat]);
+
+  // S2 — the player confirmed leaving his LIVE tournament seat: the lobby
+  // remembers it ("Return to tournament"), then the socket leaves the table
+  // (poker-server keeps the seat in play, absent — never stood up or cashed).
+  const confirmTournamentLeave = useCallback(() => {
+    const via = tournamentLeaveVia === 'customizer' ? 'customizer' : 'lobby';
+    setTournamentLeaveVia(null);
+    leaveTournamentSeatToLobby(via, gameState);
+    leaveTable();
+    setScreen(via);
+  }, [tournamentLeaveVia, gameState, leaveTable, setScreen]);
 
   const isWaiting = phase === 'WaitingForPlayers' || phase === 'HandComplete';
   const isShowdown = phase === 'Showdown';
@@ -2632,6 +2678,15 @@ export default function GameHUD() {
 
   return (
     <div className="hud">
+      {/* 2026-10-10 (S2) — leaving a LIVE tournament seat keeps it in play. */}
+      {tournamentLeaveVia && (
+        <TournamentLeaveDialog
+          name={tournamentSeat?.name}
+          via={tournamentLeaveVia}
+          onStay={() => setTournamentLeaveVia(null)}
+          onLeave={confirmTournamentLeave}
+        />
+      )}
       {/* ── Winner Banner ── */}
       {winnerBanner && (
         <div className={`winner-banner${winnerBannerFading ? ' winner-banner-out' : ''}`}>
@@ -2776,7 +2831,13 @@ export default function GameHUD() {
           <button
             className={`sit-out-quick-btn ${sittingOut ? 'sit-out-quick-btn--active' : ''}`}
             onClick={toggleSitOut}
-            title={sittingOut ? 'Sitting Out — click to return' : 'Sit Out (auto-fold each hand)'}
+            /* Round 6 (P-j) — at a TOURNAMENT table sitting out = absent: the
+               seat stays dealt in, posts its blinds and is auto-acted (P-i). */
+            title={onTournamentSeat
+              ? (sittingOut
+                ? `Sitting Out — you are still dealt in: your blinds are posted and your hand is folded for you (${TOURNAMENT_ABSENT_LIMP_NOTE}). Click to return`
+                : `Sit Out (you stay dealt in: your blinds are posted and your hand is folded for you; ${TOURNAMENT_ABSENT_LIMP_NOTE})`)
+              : (sittingOut ? 'Sitting Out — click to return' : 'Sit Out (auto-fold each hand)')}
           >
             {sittingOut ? '🪑 Sitting Out' : '🪑 Sit Out'}
           </button>
@@ -2983,6 +3044,13 @@ export default function GameHUD() {
                 <button
                   className="options-action-btn"
                   onClick={() => {
+                    // S2 — a LIVE tournament seat: the same explanation as
+                    // Back to Lobby before the table screen is left.
+                    if (onTournamentSeat) {
+                      setShowOptions(false);
+                      setTournamentLeaveVia('customizer');
+                      return;
+                    }
                     const inLiveHand = phase && phase !== 'WaitingForPlayers'
                       && phase !== 'HandComplete' && phase !== 'Showdown';
                     const mySeatObj = gameState?.seats?.[yourSeat];

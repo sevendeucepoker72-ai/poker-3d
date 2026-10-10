@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { getSocket, emitPlayerAction } from '../services/socketService';
 import { notePlayAttempt } from '../services/playAttempt';
+import { markTableLeft, isTableLeft } from '../services/leftTables';
 
 // 2026-10-07 — every gated play emit records how to replay itself, so a
 // login_required refusal that lands on a signed-out socket (reconnect race) can
@@ -194,6 +195,13 @@ export const useTableStore = create((set, get) => ({
 
   leaveTable: () => {
     const socket = getSocket();
+    // S2 round 2 (V3) — the seat this socket is leaving (single-table mode:
+    // currentTableId is null and the displayed gameState is the primary
+    // seat 'leaveTable' ends server-side). Read BEFORE the state is cleared.
+    const before = get();
+    const shown = before.gameState;
+    const leftTableId = !before.currentTableId && shown && shown.tableId != null ? String(shown.tableId) : null;
+    const heldSeat = !!leftTableId && (Number(shown.yourSeat) >= 0 || before.mySeat >= 0);
     if (socket) socket.emit('leaveTable');
     set({
       gameState: null, mySeat: -1, chatMessages: [], handHistories: [],
@@ -207,7 +215,67 @@ export const useTableStore = create((set, get) => ({
       const newTables = new Map(activeTables);
       newTables.delete(currentTableId);
       set({ activeTables: newTables, currentTableId: newTables.size > 0 ? newTables.keys().next().value : null });
+    } else if (heldSeat) {
+      // Single table: its activeTables entry goes too (it was the merge base
+      // a late delta used to bring the stale seat back), and late frames for
+      // it are ignored until the socket is at it again (services/leftTables).
+      const cached = activeTables && activeTables.get(leftTableId);
+      markTableLeft(leftTableId, (cached && cached.gameState) || shown);
+      if (activeTables && activeTables.has(leftTableId)) {
+        const newTables = new Map(activeTables);
+        newTables.delete(leftTableId);
+        set({ activeTables: newTables });
+      }
     }
+  },
+
+  // S2 round 2 — the server ended this socket's session at `tableId` without
+  // the client leaving it on screen ('tournamentSeatKept' after a server-side
+  // leave: joinTable / quickPlay / spectate from the lobby, Android back;
+  // round 6: 'tournamentSeatTakenOver', another connection of the account
+  // took the seat). Its activeTables entry is dropped and, if it is the
+  // table the store shows, the store forgets it.
+  // Round 3 (W2): ONLY a table this socket was SEATED at (and left). A table
+  // it WATCHES as a spectator (a rebalance moved the absent seat INTO the
+  // table he is watching) or one it never showed is left alone — never
+  // blanked. Returns true when it forgot the table.
+  // Round 6: its frames are NOT ignored from here on (only its merge base is
+  // kept): the server sent this AFTER it ended the session, so no stale
+  // frame follows it — and a Watch / Watch Live the server answers right
+  // after (Android back, then Watch on his own table) must be shown.
+  forgetTableSession: (tableId) => {
+    const id = tableId != null ? String(tableId) : null;
+    if (!id) return false;
+    const { activeTables, currentTableId, gameState, isSpectating, mySeat } = get();
+    const cached = activeTables && activeTables.get(id);
+    const shown = gameState && String(gameState.tableId) === id ? gameState : null;
+    const seatedIn = (gs, seatHint) => !!gs && !gs.isSpectator
+      && (Number(gs.yourSeat) >= 0 || Number(seatHint) >= 0);
+    // (A mark this socket's own leaveTable set — it was seated there — counts:
+    // the announcement ends its ignore window; the merge base stays.)
+    const seatedHere = (shown && !isSpectating && seatedIn(shown, mySeat))
+      || (!!cached && seatedIn(cached.gameState, -1))
+      || isTableLeft(id);
+    if (!seatedHere) return false;
+    markTableLeft(id, (cached && cached.gameState) || shown, { ignore: false });
+    const updates = {};
+    if (activeTables && activeTables.has(id)) {
+      const newTables = new Map(activeTables);
+      newTables.delete(id);
+      updates.activeTables = newTables;
+      if (currentTableId === id) {
+        const nextId = newTables.size > 0 ? newTables.keys().next().value : null;
+        updates.currentTableId = nextId;
+        if (nextId) {
+          const next = newTables.get(nextId);
+          updates.gameState = (next && next.gameState) || null;
+          updates.mySeat = next && next.gameState && next.gameState.yourSeat != null ? next.gameState.yourSeat : -1;
+        }
+      }
+    }
+    if (shown && !('gameState' in updates)) { updates.gameState = null; updates.mySeat = -1; updates.isSpectating = false; }
+    if (Object.keys(updates).length) set(updates);
+    return true;
   },
 
   requestTableList: () => {

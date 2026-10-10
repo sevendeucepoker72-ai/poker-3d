@@ -13,7 +13,7 @@
  * The flag itself ("poker_keep_signed_in") also lives in localStorage
  * so the next visit can know which storage to read from.
  */
-import { getTabSession } from './tabSession';
+import { getTabSession, getTabScopedSignIn, clearTabScopedSignIn } from './tabSession';
 
 const TOKEN_KEY = 'poker_auth_token';
 const FLAG_KEY  = 'poker_keep_signed_in';
@@ -27,6 +27,145 @@ function safeSet(store, key, val) {
 }
 function safeRemove(store, key) {
   try { store?.removeItem?.(key); } catch { /* ignore */ }
+}
+function localStore() {
+  return typeof window !== 'undefined' ? window.localStorage : null;
+}
+function sessionStore() {
+  return typeof window !== 'undefined' ? window.sessionStorage : null;
+}
+
+// ── Tab-scoped sign-in (2026-10-10, S3) ─────────────────────────────────────
+// A bridged link (#bridge_id_token) for account A on a browser that holds
+// ANOTHER (or an unprovable) account's stored .online sign-in keeps A's tokens
+// in THIS tab's sessionStorage only (services/bridge.js; the marker lives in
+// services/tabSession.js). While the marker is set, every reader / writer
+// below that serves THIS TAB's credentials (getAuthToken, getOAuthItem,
+// setAuthToken, setOAuthItem, setOAuthAccessItem, setTokenExpiryItem,
+// clearAuthToken) uses this tab's sessionStorage only and never touches
+// localStorage — so the socket handshake / re-auth, the HTTP bearer, the
+// token refresh and the boot of a reload all run on A's own tokens, and the
+// browser's stored sign-in (B's: other tabs, the next boot) is never read,
+// overwritten or removed from here. The DEVICE readers (getDeviceAuthToken,
+// getDeviceOAuthItem — what getStoredOidcAccount / deviceHoldsOtherOidcSignIn
+// judge) then read localStorage only: "the browser's stored sign-in" never
+// includes this tab's own tab-scoped one. No marker → every function below
+// behaves exactly as before.
+
+/** True while THIS tab runs on a tab-scoped sign-in (S3). */
+export function isTabScopedSignIn() {
+  try { return !!getTabScopedSignIn(); } catch { return false; }
+}
+
+/** The master user id THIS tab's tab-scoped sign-in belongs to, or null. */
+export function tabScopedMasterUserId() {
+  try { const t = getTabScopedSignIn(); return t ? t.masterUserId : null; } catch { return null; }
+}
+
+// Every key a sign-in can leave in a tab's sessionStorage (the tab-scoped
+// sign-in's own copies; the keep flag copy the deep link / bridge wrote).
+const TAB_SIGN_IN_KEYS = [
+  'poker_auth_token', 'poker_oauth_access', 'poker_oauth_refresh',
+  'poker_oauth_id_token', 'poker_token_expiry', 'poker_keep_signed_in',
+];
+
+/**
+ * End THIS tab's tab-scoped sign-in: its own sessionStorage token copies and
+ * the marker go; localStorage (the browser's stored sign-in) is never
+ * touched. No-op without the marker. Returns the keys removed.
+ */
+export function endTabScopedSignIn(reason = 'unspecified') {
+  if (!isTabScopedSignIn()) return [];
+  const removed = [];
+  const session = sessionStore();
+  for (const k of TAB_SIGN_IN_KEYS) {
+    if (safeGet(session, k) !== null && safeGet(session, k) !== undefined) {
+      safeRemove(session, k);
+      removed.push(`session:${k}`);
+    }
+  }
+  try { clearTabScopedSignIn(); } catch { /* ignore */ }
+  try { console.warn('[tab-sign-in] tab-scoped sign-in ended; this browser\'s stored sign-in was not touched', { reason }); } catch { /* ignore */ }
+  return removed;
+}
+
+/**
+ * The boot's revoked-refresh wipe (App.jsx). In a tab-scoped tab only the
+ * tab's own copies go (endTabScopedSignIn); otherwise exactly the old wipe of
+ * both stores. Returns `{ tabScoped }`.
+ */
+export function wipeStoredSignInAfterRevokedRefresh() {
+  if (isTabScopedSignIn()) {
+    endTabScopedSignIn('refresh_revoked');
+    return { tabScoped: true };
+  }
+  for (const k of ['poker_oauth_refresh', 'poker_oauth_id_token', 'poker_token_expiry', 'poker_auth_token']) {
+    safeRemove(localStore(), k);
+    safeRemove(sessionStore(), k);
+  }
+  return { tabScoped: false };
+}
+
+/** A "Play Online" deep-link ticket: TWO-part `payload.sig` (master onlineLinkToken). */
+export function isDeepLinkTicketShape(token) {
+  return typeof token === 'string' && token.split('.').length === 2;
+}
+
+function idStr(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  return s ? s : null;
+}
+
+/**
+ * 2026-10-10 — remove what is THIS TAB's own sign-in, and nothing of another
+ * account's (moved here from gameStore so the cross-tab follower in main.jsx
+ * uses the same rule). Used by a Sign Out that leaves the browser's other
+ * sign-in alone (gameStore.tearDownSession) and by a tab that follows its OWN
+ * account's sign-out made in another tab (main.jsx):
+ *   - a tab-scoped sign-in (S3): all of its sessionStorage copies + the marker
+ *     (endTabScopedSignIn) — localStorage is never touched;
+ *   - poker_auth_token holding this tab's own NON-OIDC credential — its Play
+ *     Online ticket: in localStorage only an exact copy of `ownCredentials`
+ *     (a removal there is a cross-tab signal); in this tab's sessionStorage
+ *     also any Play Online ticket (two-part `payload.sig`, burned on first
+ *     use — after a reload the store holds none, so match the tab's own copy
+ *     by its shape, not only by the store's authToken);
+ *   - this tab's sessionStorage "keep me signed in" copy;
+ *   - this tab's sessionStorage OIDC copies, ONLY when they provably name
+ *     `ownMasterUserId` — a "keep me signed in" OFF sign-in of ANOTHER account
+ *     held in this same tab is left alone.
+ * Returns the keys removed (for the log line).
+ */
+export function dropThisTabsOwnSignIn({ ownCredentials = [], ownMasterUserId = null } = {}) {
+  const removed = [];
+  const own = new Set((Array.isArray(ownCredentials) ? ownCredentials : []).filter((c) => typeof c === 'string' && c));
+  const mine = idStr(ownMasterUserId) || tabScopedMasterUserId();
+  if (isTabScopedSignIn()) removed.push(...endTabScopedSignIn('sign_out'));
+  const session = sessionStore();
+  for (const [label, store] of [['session', session], ['local', localStore()]]) {
+    const v = safeGet(store, TOKEN_KEY);
+    if (!v || oidcSubject(v)) continue;
+    if (own.has(v) || (label === 'session' && isDeepLinkTicketShape(v))) {
+      safeRemove(store, TOKEN_KEY);
+      removed.push(`${label}:${TOKEN_KEY}`);
+    }
+  }
+  if (safeGet(session, FLAG_KEY) != null) {
+    safeRemove(session, FLAG_KEY);
+    removed.push(`session:${FLAG_KEY}`);
+  }
+  const sub = oidcSubject(safeGet(session, 'poker_oauth_id_token')) || oidcSubject(safeGet(session, 'poker_oauth_access'));
+  if (mine && sub && sub === mine) {
+    for (const k of ['poker_oauth_access', 'poker_oauth_refresh', 'poker_oauth_id_token', 'poker_token_expiry']) {
+      if (safeGet(session, k) != null) { safeRemove(session, k); removed.push(`session:${k}`); }
+    }
+  }
+  // This tab's sessionStorage copy of its own account's OIDC access token
+  // (setAuthToken mirrors it there) — never another account's.
+  const at = safeGet(session, TOKEN_KEY);
+  if (mine && at && oidcSubject(at) === mine) { safeRemove(session, TOKEN_KEY); removed.push(`session:${TOKEN_KEY}`); }
+  return removed;
 }
 
 /** Read the "Keep me signed in" flag — defaults ON if never set. */
@@ -45,13 +184,27 @@ export function setKeepSignedIn(enabled) {
   safeSet(typeof window !== 'undefined' ? window.sessionStorage : null, FLAG_KEY, bool);
 }
 
-/** Read the auth token — localStorage first, then sessionStorage fallback. */
+/**
+ * Read THIS TAB's auth token — localStorage first, then sessionStorage
+ * fallback. In a tab-scoped tab (S3): this tab's sessionStorage only.
+ */
 export function getAuthToken() {
+  if (isTabScopedSignIn()) return safeGet(sessionStore(), TOKEN_KEY) || null;
   return (
     safeGet(typeof window !== 'undefined' ? window.localStorage   : null, TOKEN_KEY) ||
     safeGet(typeof window !== 'undefined' ? window.sessionStorage : null, TOKEN_KEY) ||
     null
   );
+}
+
+/**
+ * The auth token of the BROWSER's stored sign-in (S3): what getAuthToken read
+ * before tab-scoped sign-ins existed — except that a tab-scoped tab's own
+ * sessionStorage copy is never counted as the browser's (localStorage only).
+ */
+export function getDeviceAuthToken() {
+  if (isTabScopedSignIn()) return safeGet(localStore(), TOKEN_KEY) || null;
+  return safeGet(localStore(), TOKEN_KEY) || safeGet(sessionStore(), TOKEN_KEY) || null;
 }
 
 /**
@@ -131,15 +284,28 @@ export function oidcSubject(token) {
  *                 disagree (then it is not provably anyone's).
  */
 export function getStoredOidcAccount() {
+  // S3 — the DEVICE readers: in a tab-scoped tab the browser's stored sign-in
+  // is localStorage's, never this tab's own tab-scoped copy (no-op otherwise).
   const subjects = new Set();
-  for (const t of [getOAuthItem('poker_oauth_id_token'), getOAuthItem('poker_oauth_access'), getAuthToken()]) {
+  for (const t of [getDeviceOAuthItem('poker_oauth_id_token'), getDeviceOAuthItem('poker_oauth_access'), getDeviceAuthToken()]) {
     const s = oidcSubject(t);
     if (s) subjects.add(s);
   }
   return {
-    signedIn: !!getOAuthItem('poker_oauth_refresh'),
+    signedIn: !!getDeviceOAuthItem('poker_oauth_refresh'),
     masterUserId: subjects.size === 1 ? [...subjects][0] : null,
   };
+}
+
+/** True when the browser holds ANY stored OIDC credential (S3 device readers). */
+export function deviceHoldsAnyOidcSignIn() {
+  try {
+    const dev = getStoredOidcAccount();
+    return dev.signedIn || !!dev.masterUserId
+      || !!getDeviceOAuthItem('poker_oauth_id_token') || !!getDeviceOAuthItem('poker_oauth_access');
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -155,7 +321,7 @@ export function deviceHoldsOtherOidcSignIn(masterUserId) {
   try {
     const dev = getStoredOidcAccount();
     const holds = dev.signedIn || !!dev.masterUserId
-      || !!getOAuthItem('poker_oauth_id_token') || !!getOAuthItem('poker_oauth_access');
+      || !!getDeviceOAuthItem('poker_oauth_id_token') || !!getDeviceOAuthItem('poker_oauth_access');
     if (!holds) return false;
     const mine = masterUserId === null || masterUserId === undefined ? '' : String(masterUserId).trim();
     return !(mine && dev.masterUserId === mine);
@@ -189,9 +355,23 @@ export function bearerForThisTab(token) {
   if (!token) return null;
   let tab = null;
   try { tab = getTabSession(); } catch { tab = null; }
-  if (!tab || tab.kind !== 'ticket') return token;
-  const mine = tab.masterUserId;
-  return mine && oidcSubject(token) === mine ? token : null;
+  if (tab && tab.kind === 'ticket') {
+    const mine = tab.masterUserId;
+    return mine && oidcSubject(token) === mine ? token : null;
+  }
+  // S3 — a tab-scoped tab sends only its OWN account's token: an OIDC JWT
+  // naming its master id, or (an opaque token) one of this tab's own copies.
+  if (isTabScopedSignIn()) {
+    const sub = oidcSubject(token);
+    if (sub) {
+      const mine = tabScopedMasterUserId();
+      return mine && sub === mine ? token : null;
+    }
+    const session = sessionStore();
+    const own = ['poker_auth_token', 'poker_oauth_access', 'poker_oauth_id_token'].some((k) => safeGet(session, k) === token);
+    return own ? token : null;
+  }
+  return token;
 }
 
 /**
@@ -414,6 +594,12 @@ export function clearStashedGuestCredentialOnSignOut(userId) {
  */
 export function setAuthToken(token, remember) {
   if (!token) return;
+  // S3 — a tab-scoped tab writes ITS OWN copy only (sessionStorage); the
+  // browser's stored sign-in (localStorage) is never overwritten or swept.
+  if (isTabScopedSignIn()) {
+    safeSet(sessionStore(), TOKEN_KEY, token);
+    return;
+  }
   try {
     const prev = getAuthToken();
     if (prev && prev !== token && isGuestLegacyToken(prev) && !isLegacyLocalToken(token)) {
@@ -456,15 +642,51 @@ const OAUTH_KEYS = [
 export function setOAuthItem(key, value) {
   const win = typeof window !== 'undefined' ? window : null;
   if (!win || value == null) return;
+  // S3 — a tab-scoped tab: this tab's sessionStorage only, nothing swept.
+  if (isTabScopedSignIn()) {
+    safeSet(win.sessionStorage, key, String(value));
+    return;
+  }
   const keep = isKeepSignedIn();
   safeSet(keep ? win.localStorage : win.sessionStorage, key, String(value));
   safeRemove(keep ? win.sessionStorage : win.localStorage, key);
 }
 
-/** Read an OAuth token from whichever store currently holds it. */
+/**
+ * The OAuth ACCESS token's cross-tab copy (`poker_oauth_access`) and the
+ * expiry (`poker_token_expiry`): written to localStorage always (the cross-tab
+ * refresh waiter reads them), as before — except in a tab-scoped tab (S3),
+ * where they are this tab's own and go to its sessionStorage.
+ */
+export function setOAuthAccessItem(value) {
+  if (value == null) return;
+  safeSet(isTabScopedSignIn() ? sessionStore() : localStore(), 'poker_oauth_access', String(value));
+}
+export function setTokenExpiryItem(expiresAtMs) {
+  if (expiresAtMs == null) return;
+  safeSet(isTabScopedSignIn() ? sessionStore() : localStore(), 'poker_token_expiry', String(expiresAtMs));
+}
+
+/**
+ * Read THIS TAB's OAuth token from whichever store currently holds it. In a
+ * tab-scoped tab (S3): this tab's sessionStorage only.
+ */
 export function getOAuthItem(key) {
   const win = typeof window !== 'undefined' ? window : null;
   if (!win) return null;
+  if (isTabScopedSignIn()) return safeGet(win.sessionStorage, key) || null;
+  return safeGet(win.localStorage, key) || safeGet(win.sessionStorage, key) || null;
+}
+
+/**
+ * The BROWSER's stored OAuth token (S3): getOAuthItem's old read — except
+ * that a tab-scoped tab's own sessionStorage copy is never counted
+ * (localStorage only there).
+ */
+export function getDeviceOAuthItem(key) {
+  const win = typeof window !== 'undefined' ? window : null;
+  if (!win) return null;
+  if (isTabScopedSignIn()) return safeGet(win.localStorage, key) || null;
   return safeGet(win.localStorage, key) || safeGet(win.sessionStorage, key) || null;
 }
 
@@ -473,15 +695,17 @@ export function getOAuthItem(key) {
 export function clearOAuthTokens() {
   const win = typeof window !== 'undefined' ? window : null;
   if (!win) return;
+  const tabScoped = isTabScopedSignIn(); // S3 — never the browser's stored sign-in
   for (const k of OAUTH_KEYS) {
-    safeRemove(win.localStorage, k);
+    if (!tabScoped) safeRemove(win.localStorage, k);
     safeRemove(win.sessionStorage, k);
   }
 }
 
 /** Clear the auth token from both stores — used on explicit logout. */
 export function clearAuthToken() {
-  safeRemove(typeof window !== 'undefined' ? window.localStorage   : null, TOKEN_KEY);
+  // S3 — a tab-scoped tab only ever clears its own copy.
+  if (!isTabScopedSignIn()) safeRemove(typeof window !== 'undefined' ? window.localStorage : null, TOKEN_KEY);
   safeRemove(typeof window !== 'undefined' ? window.sessionStorage : null, TOKEN_KEY);
   // Also clear the persisted username so shared-device accounts don't
   // leak across users (see getAuthUsername rationale below).

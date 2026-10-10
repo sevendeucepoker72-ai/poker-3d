@@ -1,7 +1,9 @@
 // OAuth2 Authorization Code + PKCE flow for American Pub Poker SSO
 
 import { logAuthEvent } from './authEvents';
-import { setOAuthItem, getOAuthItem, setAuthToken } from './tokenStorage';
+import {
+  setOAuthItem, getOAuthItem, setAuthToken, isTabScopedSignIn, setOAuthAccessItem, setTokenExpiryItem,
+} from './tokenStorage';
 
 const AUTH_SERVER = import.meta.env.VITE_AUTH_SERVER_URL || 'https://auth.americanpubpoker.online';
 const CLIENT_ID = 'poker-3d';
@@ -526,8 +528,15 @@ export async function refreshAccessToken(refreshToken) {
   // gives real cross-tab exclusion; only one tab refreshes at a time and late
   // waiters read the freshly-rotated token. Falls back to the bare flow (which
   // keeps its own localStorage lock) where the API is unavailable.
-  const runFlow = () => _refreshAccessTokenFlow(refreshToken);
-  _inflightRefresh = (typeof navigator !== 'undefined' && navigator.locks && navigator.locks.request)
+  // 2026-10-10 (S3) — a TAB-SCOPED sign-in (a bridged link on a browser
+  // holding another account's sign-in) refreshes its OWN grant: no cross-tab
+  // mutex / single-flight (the browser's other tabs refresh a different
+  // grant, whose rotated tokens this tab must never read), and its result is
+  // written to this tab's sessionStorage only. The in-tab singleton above
+  // still dedupes this tab's own callers.
+  const tabScoped = isTabScopedSignIn();
+  const runFlow = () => (tabScoped ? _refreshTabScopedFlow(refreshToken) : _refreshAccessTokenFlow(refreshToken));
+  _inflightRefresh = (!tabScoped && typeof navigator !== 'undefined' && navigator.locks && navigator.locks.request)
     ? navigator.locks.request('oauth_token_refresh', runFlow)
     : runFlow();
   try {
@@ -776,6 +785,74 @@ async function _refreshAccessTokenFlow(refreshToken) {
     // own finally, which wraps this whole flow.)
     clearInterval(heartbeat);
   }
+}
+
+/**
+ * 2026-10-10 (S3) — the refresh of a TAB-SCOPED sign-in (see
+ * refreshAccessToken). Same request, same failure classification
+ * (RefreshTokenRevokedError for invalid_grant / 400 / 401,
+ * RefreshTokenTransientError otherwise) as _refreshAccessTokenFlow, but no
+ * cross-tab lock, no peer read, no completion stamp, and the result goes to
+ * this tab's sessionStorage only (tokenStorage writes follow the tab-scoped
+ * marker) — never over the browser's stored sign-in.
+ */
+async function _refreshTabScopedFlow(refreshToken) {
+  let response;
+  try {
+    response = await fetchWithTimeout(`${AUTH_SERVER}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: CLIENT_ID,
+        refresh_token: refreshToken,
+      }),
+    });
+  } catch (err) {
+    try { logAuthEvent('refresh_transient', { reason: 'network', path: '/token', tabScoped: true }); } catch { /* telemetry / persistence are best-effort */ }
+    throw new RefreshTokenTransientError(`Refresh network error: ${err?.message || err}`, { cause: err });
+  }
+  if (response.ok) {
+    const data = await response.json();
+    try {
+      if (data.access_token) {
+        setOAuthAccessItem(data.access_token);
+        setAuthToken(data.access_token);
+      }
+      if (data.expires_in) setTokenExpiryItem(Date.now() + Number(data.expires_in) * 1000);
+      if (data.refresh_token) setOAuthItem('poker_oauth_refresh', data.refresh_token);
+      if (data.id_token) setOAuthItem('poker_oauth_id_token', data.id_token);
+    } catch { /* telemetry / persistence are best-effort */ }
+    return data;
+  }
+  let errBody = null;
+  try { errBody = await response.json(); } catch { /* non-JSON */ }
+  const oauthError = errBody && typeof errBody.error === 'string' ? errBody.error : null;
+  if (oauthError === 'invalid_grant' || response.status === 400 || response.status === 401) {
+    throw new RefreshTokenRevokedError(
+      `Refresh token revoked (${response.status}${oauthError ? `: ${oauthError}` : ''})`,
+      { status: response.status, oauthError, body: errBody },
+    );
+  }
+  try { logAuthEvent('refresh_transient', { status: response.status, path: '/token', tabScoped: true }); } catch { /* telemetry / persistence are best-effort */ }
+  throw new RefreshTokenTransientError(
+    `Refresh failed (${response.status}${oauthError ? `: ${oauthError}` : ''})`,
+    { status: response.status, oauthError, body: errBody },
+  );
+}
+
+/**
+ * 2026-10-10 (S3) — revoke THIS tab's own refresh token (its grant) at the
+ * auth-server, fire-and-forget. Used by the Sign Out of a tab-scoped sign-in,
+ * which leaves the browser's other sign-in alone and therefore never goes to
+ * /session/end (that would end the SSO cookie's account — on a shared
+ * browser, the OTHER one). The bridge minted a grant of its own, so this ends
+ * only that grant (and with it every token of the tab's .online sign-in).
+ * No /session/end follows, so the 2026-05-07 revocation-vs-logout race does
+ * not apply here (see startLogout).
+ */
+export function revokeTabScopedRefreshToken(refreshToken) {
+  try { revokeRefreshTokenFireAndForget(refreshToken); } catch { /* best-effort */ }
 }
 
 /**

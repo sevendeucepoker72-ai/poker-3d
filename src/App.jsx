@@ -15,12 +15,48 @@ import { reauthSocket, fenceDroppedSignIn } from './services/socketReauth';
 import {
   saveTicketResume, readResumeRecordForBoot, readResumeRecordForUser, clearResumeRecord,
   setTabSession, markTicketSignIn, RESUME_INVALID, RESUME_EVENT,
-  masterIdFromLoginResult, resumeRecordMasterId,
+  masterIdFromLoginResult, resumeRecordMasterId, getTabSession,
 } from './services/sessionResume';
 import { stashGuestCredential, oidcSubject, deviceHoldsOtherOidcSignIn } from './services/tokenStorage';
+// 2026-10-10 (S3) — a bridged link kept to THIS tab (the browser holds
+// another account's sign-in): the boot reads / wipes only the tab's own copies.
+import {
+  getOAuthItem, isTabScopedSignIn, tabScopedMasterUserId, endTabScopedSignIn,
+  wipeStoredSignInAfterRevokedRefresh,
+} from './services/tokenStorage';
 // 2026-10-10 — P4: the stored-credential boot sign-in waits for a deep-link
 // ticket; P7: a ticket tab follows only its own account's sign-out.
-import { createDeepLinkBootGate, storedSignInWouldSwitchUser, deepLinkFailureText } from './services/deepLinkBootGate';
+import {
+  createDeepLinkBootGate, storedSignInWouldSwitchUser, deepLinkFailureText,
+  settleBridgeHandoff, deepLinkScreenState, DEEP_LINK_SCREEN_PENDING,
+} from './services/deepLinkBootGate';
+// 2026-10-10 (S2) — a LIVE tournament seat the player left stays in play
+// (absent); the lobby offers "Return to tournament".
+// Round 2 (the fixed S2 protocol P-a..P-e): 'tournamentSeatKept' feeds the
+// away list, Return = 'returnToTournamentSeat' (services/tournamentReturn),
+// late frames of a left table are ignored (services/leftTables).
+// Round 3 (P-c' / P-e'): an unanswered Return keeps the seat offered; an away
+// seat's bust is a toast + banner line, never a switch or a blanked table.
+// Round 6 (P-c'' / P-h'): the latest connection wins a Return — the tab that
+// loses the seat is told 'tournamentSeatTakenOver' (toast + Return banner);
+// an entrant outside the tournament's rooms is told it finished with
+// 'tournamentFinishedForEntrant' (toast + banner line, never the overlay).
+import {
+  noteTournamentSeat, noteTournamentTableMove, noteGameStateForTournament,
+  noteTournamentSeatReturned, noteTournamentOver, noteTournamentSeatKept,
+  noteAwaySeatMoved, hasAwaySeatAt, noteSeatRestoredInBackground, clearSeatRestored,
+  useTournamentSeatStore, eliminationShownElsewhere, awaySeatOfTournament,
+  tournamentFinishedText,
+} from './store/tournamentSeatStore';
+import { TournamentReturnBanner, SeatRestoredBanner } from './components/ui/TournamentSeatNotice';
+import {
+  handleReturnToTournamentResult, RETURN_TO_TOURNAMENT_RESULT_EVENT,
+  TOURNAMENT_SEAT_TAKEN_OVER_EVENT, TOURNAMENT_SEAT_TAKEN_OVER_TEXT,
+} from './services/tournamentReturn';
+import {
+  isTableLeft, noteIgnoredLeftTableFrame, leftTableMergeBase, clearTableLeft,
+  forgetLeftTable, resetLeftTables,
+} from './services/leftTables';
 import { shouldApplyRemoteSignOut, noteIgnoredRemoteSignOut } from './services/crossTabSignOut';
 import { maybeOfferGuestCarryOver, resetGuestCarryOver } from './services/guestCarryOver';
 import GuestCarryOverPrompt from './components/ui/GuestCarryOverPrompt';
@@ -395,6 +431,12 @@ function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, [screen]);
 
+  // S2 round 2 — the "back in your seat" banner belongs to the avatar
+  // customizer visit it was shown in; leaving the customizer ends it.
+  useEffect(() => {
+    if (screen !== 'customizer') { try { clearSeatRestored(); } catch { /* ignore */ } }
+  }, [screen]);
+
   // Handle screen transitions
   useEffect(() => {
     const prevScreen = prevScreenRef.current;
@@ -591,6 +633,19 @@ function App() {
     const emoteTimeouts = new Set();
     const quickGameTimeouts = new Set();
     const tournamentTimeouts = new Set();
+    // Round 6 — one toast per elimination (player + place) and per finished
+    // tournament, whichever copy (room broadcast / direct notice) comes first.
+    const ELIMINATION_TOAST_DEDUPE_MS = 10_000;
+    const recentEliminationToasts = new Map(); // `${playerId}|${position}` -> at
+    const finishedToasts = new Map(); // tournamentId -> at
+    const claimFinishedToast = (tid) => {
+      if (!tid) return true;
+      const now = Date.now();
+      for (const [k, at] of finishedToasts) { if (now - at > 60_000) finishedToasts.delete(k); }
+      if (finishedToasts.has(tid)) return false;
+      finishedToasts.set(tid, now);
+      return true;
+    };
 
     // SINGLE 'connect' handler — previously we registered two separate
     // listeners for this event (one setting connected state, one doing
@@ -652,7 +707,12 @@ function App() {
         });
       }
     };
-    const handleDisconnect = () => useTableStore.getState().setConnected(false);
+    const handleDisconnect = () => {
+      useTableStore.getState().setConnected(false);
+      // S2 round 2 — the server-side socket is gone: no late frame of a table
+      // it left can follow, and the next socket starts a fresh delta baseline.
+      try { resetLeftTables(); } catch { /* ignore */ }
+    };
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
 
@@ -686,8 +746,12 @@ function App() {
           // activeTables map. Fall back to the top-level gameState only when
           // the delta carries no tableId (legacy single-table path).
           const deltaTableId = data.delta?.tableId;
+          // S2 round 2 (V3) — a table this socket left has no activeTables
+          // entry any more; its last merged state is kept as the merge base
+          // (the server's delta baseline is per socket, so a rejoin of the
+          // same table arrives as a delta against what it last sent).
           const prev = deltaTableId
-            ? (ts.activeTables.get(deltaTableId)?.gameState ?? null)
+            ? (ts.activeTables.get(deltaTableId)?.gameState ?? leftTableMergeBase(deltaTableId) ?? null)
             : ts.gameState;
           state = prev ? { ...prev, ...data.delta } : { ...data.delta };
           // Clear stale per-hand state whenever the hand changes, regardless of
@@ -721,6 +785,15 @@ function App() {
       // point the action bar at the wrong seat. currentTableId is null for a
       // normal single-table player, so this guard is a no-op for them.
       const stId = state?.tableId;
+      // S2 round 2 (V3) — a late frame for a table this socket LEFT (queued
+      // by the server before it processed the leave) never puts the player
+      // back there: kept only as that table's merge base, until a
+      // reconnectedToTable / join for it arrives (services/leftTables).
+      if (stId && isTableLeft(stId)) {
+        noteIgnoredLeftTableFrame(stId, state);
+        return;
+      }
+      if (stId) forgetLeftTable(stId);
       if (stId && ts.currentTableId && stId !== ts.currentTableId) {
         ts.updateActiveTable(stId, state);
         return;
@@ -728,6 +801,9 @@ function App() {
 
       ts.setGameState(state);
       ts.setMySeat(state?.yourSeat ?? -1);
+      // 2026-10-10 (S2) — a server that marks tournament tables
+      // (isTournament / tournamentId) keeps the tournament-seat memory exact.
+      try { noteGameStateForTournament(state); } catch { /* best-effort */ }
 
       // Handle spectator mode.
       // 2026-04-22 audit fix: unconditionally mirror the server flag so
@@ -956,6 +1032,23 @@ function App() {
     });
     socket.on('playerMoved', (data) => {
       const toTable = data?.toTable || data?.tableId;
+      const fromTable = data?.fromTable;
+      // S2 round 2 (V4) — a 'playerMoved' naming a seat the player is AWAY
+      // from (defensive: poker-server announces a moved ABSENT seat with an
+      // updated 'tournamentSeatKept', and sends 'playerMoved' only to a
+      // session at the old seat): only the Return target changes; this
+      // socket has no session at either table, so nothing switches.
+      const tsNow = useTableStore.getState();
+      const liveAtFrom = !!fromTable && (
+        (tsNow.gameState && String(tsNow.gameState.tableId) === String(fromTable) && tsNow.mySeat >= 0)
+        || ((tsNow.activeTables.get(fromTable)?.gameState?.yourSeat ?? -1) >= 0 && !isTableLeft(fromTable))
+      );
+      if (fromTable && !liveAtFrom && hasAwaySeatAt(fromTable)) {
+        try { noteAwaySeatMoved({ fromTable, toTable, toSeat: data?.toSeat }); } catch { /* best-effort */ }
+        return;
+      }
+      try { noteTournamentTableMove(toTable, fromTable); } catch { /* best-effort */ }
+      if (toTable) { try { clearTableLeft(toTable); } catch { /* ignore */ } }
       if (toTable) { try { useTableStore.getState().switchActiveTable(toTable); } catch { /* new table state arrives via broadcast */ } }
       useProgressStore.getState().addNotification({
         type: 'mission',
@@ -1095,8 +1188,86 @@ function App() {
 
     // Tournament events
     socket.on('tournamentStarted', (data) => {
+      // 2026-10-10 (S2) — remember this socket's tournament seat (leaving it
+      // keeps it in play; GameHUD + the lobby's "Return to tournament").
+      try { noteTournamentSeat({ tournamentId: data?.tournamentId, tableId: data?.tableId, name: data?.name }); } catch { /* best-effort */ }
+      if (data?.tableId) { try { clearTableLeft(data.tableId); } catch { /* ignore */ } }
       useGameStore.getState().setScreen('table');
     });
+    // Qualifier tournaments start on their own event (QualifierLobby has its
+    // own listener — specific handler refs on both sides).
+    const handleQualifierTournamentStarted = (data) => {
+      try { noteTournamentSeat({ tournamentId: data?.tournamentId, tableId: data?.tableId, name: 'Qualifier Tournament' }); } catch { /* best-effort */ }
+      if (data?.tableId) { try { clearTableLeft(data.tableId); } catch { /* ignore */ } }
+    };
+    socket.on('qualifierTournamentStarted', handleQualifierTournamentStarted);
+    // Busted (also while away — an absent seat can blind out): the seat is gone.
+    // GameHUD registers its own 'eliminatedToSpectator' handler (specific refs).
+    // S2 round 2 (P-e) — a player who sits at ANOTHER table (cash) is never
+    // made a spectator of the tournament table: here it is a toast only (and
+    // GameHUD keeps his table on screen). Round 3 (P-e'): nor one who WATCHES
+    // a table that is provably not this tournament's (a fixed server sends
+    // such a socket only the plain 'playerEliminated' notice below).
+    const handleEliminatedToSpectator = (data) => {
+      // Decided BEFORE the away seat is forgotten below.
+      let seatedElsewhere = false;
+      try { seatedElsewhere = eliminationShownElsewhere(useTableStore.getState().gameState, data); } catch { /* best-effort */ }
+      let known = false;
+      try { known = noteTournamentOver({ tournamentId: data?.tournamentId, tableId: data?.tableId, position: data?.position }); } catch { /* best-effort */ }
+      try {
+        if (seatedElsewhere) {
+          const pos = Number(data?.position);
+          useProgressStore.getState().addNotification({
+            type: 'mission',
+            message: Number.isFinite(pos) && pos > 0
+              ? `Your tournament has ended: you finished in position ${pos}.`
+              : 'Your tournament has ended.',
+          });
+          try { console.warn('[tournament-seat] eliminated while seated at another table: notice only, no spectator switch', { known }); } catch { /* ignore */ }
+        }
+      } catch { /* best-effort */ }
+    };
+    socket.on('eliminatedToSpectator', handleEliminatedToSpectator);
+    // S2 round 2 (P-a / P-b) — the server holds this account's tournament seat
+    // in play, absent, and this socket has no session at it (a leave from
+    // this tab, a server-side leave by a join / quick play / spectate from the
+    // lobby, or a sign-in that does not restore a voluntarily left seat): the
+    // lobby offers Return to tournament.
+    // Round 3: the table is forgotten ONLY if this socket was seated there —
+    // a table it WATCHES is never blanked (W2). Round 6: and never ignored
+    // (a Watch of his own table right after an Android back is shown).
+    const handleTournamentSeatKept = (data) => {
+      if (!data || data.tableId == null) return;
+      try { noteTournamentSeatKept(data); } catch { /* best-effort */ }
+      try { useTableStore.getState().forgetTableSession(data.tableId); } catch { /* best-effort */ }
+    };
+    socket.on('tournamentSeatKept', handleTournamentSeatKept);
+    // Round 6 (P-c'') — another tab / device of this account returned to the
+    // tournament seat this socket held (the latest connection wins): this
+    // socket's session there ended and it left the table's room. A neutral
+    // toast, and the seat becomes an away seat here with the lobby's Return
+    // banner (so he can take it back) — never a failure line.
+    const handleTournamentSeatTakenOver = (data) => {
+      if (!data || data.tableId == null) return;
+      const shown = useTableStore.getState().gameState;
+      const wasShown = !!shown && String(shown.tableId) === String(data.tableId);
+      try { noteTournamentSeatKept(data, 'taken_over'); } catch { /* best-effort */ }
+      try { useTableStore.getState().forgetTableSession(data.tableId); } catch { /* best-effort */ }
+      useProgressStore.getState().addNotification({ type: 'mission', message: TOURNAMENT_SEAT_TAKEN_OVER_TEXT });
+      try {
+        // The table screen showed that seat (and nothing else is left to
+        // show): to the lobby, where the Return banner is.
+        const gs = useGameStore.getState();
+        if (wasShown && gs.screen === 'table' && !useTableStore.getState().gameState) gs.setScreen('lobby');
+      } catch { /* ignore */ }
+    };
+    socket.on(TOURNAMENT_SEAT_TAKEN_OVER_EVENT, handleTournamentSeatTakenOver);
+    // P-c — the event copy of the returnToTournamentSeat answer (the ack is
+    // the other; services/tournamentReturn applies whichever comes first).
+    const handleReturnToTournamentResultEvent = (result) => {
+      try { handleReturnToTournamentResult(result, 'event'); } catch { /* best-effort */ }
+    };
+    socket.on(RETURN_TO_TOURNAMENT_RESULT_EVENT, handleReturnToTournamentResultEvent);
     socket.on('blindLevelUp', (data) => {
       useProgressStore.getState().addNotification({
         type: 'mission',
@@ -1105,13 +1276,96 @@ function App() {
       });
     });
     socket.on('playerEliminated', (data) => {
+      // S2 round 2 (P-e) — the PLAIN elimination notice the server sends this
+      // account's sockets when its kept-absent seat busts while the socket is
+      // elsewhere carries tournamentId (the table room's broadcast does not):
+      // for a seat this tab is away from, it ends that seat (banner line).
+      // Round 3 (P-e'): a fixed server sends an away entrant ONLY this — no
+      // spectator switch, no room. A toast + the away state cleared; no table
+      // is switched, marked, ignored or blanked here.
+      // Round 6 — one elimination, one toast: an away entrant watching his
+      // own table can get the room's broadcast AND the direct notice for the
+      // same bust (same player, same place); the second copy is not toasted.
+      const elimKey = `${data?.playerId ?? data?.playerName ?? ''}|${data?.position ?? ''}`;
+      const now = Date.now();
+      for (const [k, at] of recentEliminationToasts) { if (now - at > ELIMINATION_TOAST_DEDUPE_MS) recentEliminationToasts.delete(k); }
+      const repeat = recentEliminationToasts.has(elimKey);
+      recentEliminationToasts.set(elimKey, now);
+      const awayOf = data && data.tournamentId != null ? awaySeatOfTournament(data.tournamentId) : null;
+      if (awayOf) {
+        try { noteTournamentOver({ tournamentId: data.tournamentId, position: data.position }); } catch { /* best-effort */ }
+        if (repeat) return;
+        const pos = Number(data.position);
+        useProgressStore.getState().addNotification({
+          type: 'achievement',
+          message: Number.isFinite(pos) && pos > 0
+            ? `${awayOf.name || 'Your tournament'}: you finished in position ${pos}.`
+            : `${awayOf.name || 'Your tournament'}: your tournament has ended.`,
+          reward: { chips: 0, xp: 0 },
+        });
+        return;
+      }
+      if (repeat) return;
       useProgressStore.getState().addNotification({
         type: 'achievement',
         message: `${data.playerName} eliminated (${data.position}${getOrdinal(data.position)})`,
         reward: { chips: 0, xp: 0 },
       });
     });
+    // Round 6 (P-h') — the finished notice for ONE entrant, sent to his
+    // sockets outside the tournament's table rooms {tournamentId, position,
+    // prize?, tournamentName}: a toast + the lobby banner line, never the
+    // full-screen Game Over overlay (that is the room's 'tournamentFinished',
+    // for the table on screen). One toast per tournament.
+    const handleTournamentFinishedForEntrant = (data) => {
+      const tid = data && data.tournamentId != null ? String(data.tournamentId) : null;
+      const awayOf = tid ? awaySeatOfTournament(tid) : null;
+      const pos = Number(data?.position);
+      const place = Number.isInteger(pos) && pos > 0 ? pos : null;
+      try { noteTournamentOver({ tournamentId: tid, finished: true, position: place }); } catch { /* best-effort */ }
+      if (!claimFinishedToast(tid)) return;
+      const prize = Number(data?.prize);
+      const name = awayOf ? awayOf.name : (typeof data?.tournamentName === 'string' ? data.tournamentName : null);
+      useProgressStore.getState().addNotification({
+        type: 'achievement',
+        message: tournamentFinishedText(name, place) + (Number.isFinite(prize) && prize > 0 ? ` Prize: ${prize.toLocaleString()} chips.` : ''),
+        reward: { chips: 0, xp: 0 },
+      });
+    };
+    socket.on('tournamentFinishedForEntrant', handleTournamentFinishedForEntrant);
     socket.on('tournamentFinished', (data) => {
+      // The ROOM broadcast (unchanged on the server; P-h' moved the
+      // per-entrant copy to 'tournamentFinishedForEntrant').
+      const tid = data && data.tournamentId != null ? String(data.tournamentId) : null;
+      const awayOf = tid ? awaySeatOfTournament(tid) : null;
+      // His place: his row in results (TournamentManager sends userId).
+      let myPlace = null;
+      try {
+        const uid = useGameStore.getState().userId;
+        const mine = uid != null && Array.isArray(data?.results)
+          ? data.results.find((r) => r && r.userId != null && String(r.userId) === String(uid)) : null;
+        if (mine && Number.isInteger(Number(mine.position)) && Number(mine.position) > 0) myPlace = Number(mine.position);
+      } catch { /* best-effort */ }
+      try { noteTournamentOver({ tournamentId: data?.tournamentId, finished: true, position: myPlace }); } catch { /* best-effort */ }
+      // The overlay is for the table on screen. A table the server marks
+      // (P-d) as NOT this tournament's (another table this socket also plays)
+      // gets a toast instead (an older server's gameState has no such marks:
+      // overlay as before).
+      const gsNow = useTableStore.getState().gameState;
+      const marked = !!gsNow && ('isTournament' in gsNow || 'tournamentId' in gsNow);
+      const shownIsThis = !!gsNow && (!marked || (gsNow.isTournament === true
+        && (gsNow.tournamentId == null || !tid || String(gsNow.tournamentId) === tid)));
+      if (!shownIsThis) {
+        if ((awayOf || myPlace) && claimFinishedToast(tid)) {
+          useProgressStore.getState().addNotification({
+            type: 'achievement',
+            message: tournamentFinishedText(awayOf ? awayOf.name : (data?.tournamentName || null), myPlace),
+            reward: { chips: 0, xp: 0 },
+          });
+        }
+        return;
+      }
+      claimFinishedToast(tid);
       // Show results via quick game result overlay
       if (data.results && data.results.length > 0) {
         const winner = data.results.find((r) => r.position === 1);
@@ -1130,6 +1384,7 @@ function App() {
 
     // Multi-table events
     socket.on('additionalTableJoined', (data) => {
+      if (data?.tableId) { try { clearTableLeft(data.tableId); } catch { /* ignore */ } }
       const store = useTableStore.getState();
       store.updateActiveTable(data.tableId, data.gameState);
       if (!store.currentTableId) {
@@ -1190,8 +1445,14 @@ function App() {
       socket.off('themePurchased');
       socket.off('themeEquipped');
       socket.off('tournamentStarted');
+      socket.off('qualifierTournamentStarted', handleQualifierTournamentStarted);
+      socket.off('eliminatedToSpectator', handleEliminatedToSpectator);
+      socket.off('tournamentSeatKept', handleTournamentSeatKept);
+      socket.off(TOURNAMENT_SEAT_TAKEN_OVER_EVENT, handleTournamentSeatTakenOver);
+      socket.off(RETURN_TO_TOURNAMENT_RESULT_EVENT, handleReturnToTournamentResultEvent);
       socket.off('blindLevelUp');
       socket.off('playerEliminated');
+      socket.off('tournamentFinishedForEntrant', handleTournamentFinishedForEntrant);
       socket.off('tournamentFinished');
       socket.off('additionalTableJoined');
       // Clear any pending timeouts from inside listeners to prevent leaks
@@ -1279,6 +1540,10 @@ function App() {
             raceTimer = setTimeout(() => resolve(TIMEOUT), (BRIDGE_EXCHANGE_TIMEOUT_MS || 20000) + 1500);
           }),
         ]).finally(() => { if (raceTimer) clearTimeout(raceTimer); });
+        // 2026-10-10 (S3) — the hand-off answered (its tokens are placed —
+        // tab-scoped or not — or it failed / timed out): authScheduler's
+        // bridge hold ends (main.jsx noteBridgeHandoffInUrl).
+        try { settleBridgeHandoff(); } catch { /* ignore */ }
         if (cancelled) return;
         if (result === TIMEOUT) {
           try { logAuthEvent('login_failed', { reason: 'bridge_exchange_timeout' }); } catch {}
@@ -1374,7 +1639,9 @@ function App() {
               // which re-authenticates with its own refresh flow: a ticket
               // session's resume record must not resume over it next boot.
               clearResumeRecord();
-              setTabSession('oidc', r.userData.id);
+              // 2026-10-10 (S3) — the bridged account's master id rides on the
+              // tab marker (a tab-scoped sign-in is told apart by it).
+              setTabSession('oidc', r.userData.id, { masterUserId: result.masterUserId || null });
               useGameStore.getState().oauthLogin(tokens, r.userData);
               return;
             }
@@ -1407,6 +1674,7 @@ function App() {
         });
       } catch {
         // Silent failure — fall through to the normal boot path.
+        try { settleBridgeHandoff(); } catch { /* ignore */ }
         setBridgePending(false);
         startLocalAutoLogin();
       }
@@ -1427,8 +1695,11 @@ function App() {
 
       // Attempt OAuth refresh token flow — check localStorage first
       // (keep-signed-in) then sessionStorage fallback.
+      // 2026-10-10 (S3) — through getOAuthItem (same localStorage-first read):
+      // a reloaded tab-scoped tab boots on ITS OWN refresh token, never the
+      // browser's stored one (another account's).
       const oauthRefresh = (() => {
-        try { return localStorage.getItem('poker_oauth_refresh') || sessionStorage.getItem('poker_oauth_refresh'); }
+        try { return getOAuthItem('poker_oauth_refresh'); }
         catch { return null; }
       })();
 
@@ -1566,6 +1837,10 @@ function App() {
         // top-level redirect to /authorize when the user clicks "Sign In". If
         // the auth-server SSO cookie is alive, the redirect auto-bounces back
         // with a code; otherwise the password form shows.
+        // (S3 — a tab-scoped marker without its refresh token is a dead
+        // tab-scoped sign-in: it ends; the browser's stored sign-in — another
+        // account's — is never booted into this tab from here.)
+        if (isTabScopedSignIn()) { endTabScopedSignIn('no_refresh_token'); return; }
         tryLegacyAutoLogin();
         return;
       }
@@ -1581,7 +1856,7 @@ function App() {
           // object handed to oauthLogin (mirrors authScheduler's `|| existing`).
           // Belt-and-suspenders to the source fix in _readPeerRefreshedTokens.
           const existingId = (() => {
-            try { return localStorage.getItem('poker_oauth_id_token') || sessionStorage.getItem('poker_oauth_id_token') || ''; }
+            try { return getOAuthItem('poker_oauth_id_token') || ''; } // S3: this tab's own copy in a tab-scoped tab
             catch { return ''; }
           })();
           const tokens = {
@@ -1635,7 +1910,8 @@ function App() {
                 // 2026-10-09 (R1 / D1) — the tab is now in this OIDC session:
                 // a ticket session's resume record must not resume over it.
                 clearResumeRecord();
-                setTabSession('oidc', result.userData.id);
+                // S3 — a reloaded tab-scoped tab keeps its account's master id.
+                setTabSession('oidc', result.userData.id, { masterUserId: isTabScopedSignIn() ? tabScopedMasterUserId() : null });
                 useGameStore.getState().oauthLogin(tokens, result.userData);
                 return;
               }
@@ -1682,16 +1958,21 @@ function App() {
             // Leave every token in place and fall through to the legacy path,
             // which will simply do nothing if there is no legacy token. The
             // next boot (or authScheduler's retry) picks the session back up.
-            tryLegacyAutoLogin();
+            // (S3 — a tab-scoped sign-in has no legacy token: skipped.)
+            if (!isTabScopedSignIn()) tryLegacyAutoLogin();
             return;
           }
-          for (const k of ['poker_oauth_refresh','poker_oauth_id_token','poker_token_expiry','poker_auth_token']) {
-            try { localStorage.removeItem(k);   } catch {}
-            try { sessionStorage.removeItem(k); } catch {}
-          }
+          // 2026-10-10 (S3) — in a tab-scoped tab only the tab's own copies go
+          // (the browser's stored sign-in is another account's); otherwise
+          // exactly the old wipe of both stores.
+          let wiped = { tabScoped: false };
+          try { wiped = wipeStoredSignInAfterRevokedRefresh(); } catch { /* ignore */ }
           // 2026-10-09 (R1) — the session was revoked (signed out elsewhere,
           // admin-revoked): a resume record must not sign this device back in.
           try { clearResumeRecord(); } catch { /* never block the wipe */ }
+          // A tab-scoped sign-in has no legacy token: what getAuthToken would
+          // read now is the browser's (another account's) — never presented.
+          if (wiped.tabScoped) return;
           tryLegacyAutoLogin();
         });
     }
@@ -1818,9 +2099,26 @@ function App() {
 
     const handleReconnected = (data) => {
       console.log('[App] Reconnected to reserved seat', data);
+      // S2 round 2 — the socket is at this table again: its frames count
+      // (this event comes BEFORE the server's forced full gameState).
+      if (data?.tableId != null) { try { clearTableLeft(data.tableId); } catch { /* ignore */ } }
+      // 2026-10-10 (S2) — back in a seat: a tournament seat the player had
+      // stepped away from is his live seat again (the lobby banner goes).
+      // V4: while a Return is in flight ANY restore is that return (a
+      // rebalance may have moved the seat to another table while he was away).
+      let wasReturning = false;
+      try { wasReturning = !!useTournamentSeatStore.getState().returning; } catch { /* ignore */ }
+      try { noteTournamentSeatReturned(data); } catch { /* best-effort */ }
       try {
         const store = useGameStore.getState();
         if (store.isLoggedIn) {
+          // Minor (round 2) — a BACKGROUND restore (a reconnect, not the
+          // player's own Return) never pulls him out of the avatar
+          // customizer: a banner there offers the table instead.
+          if (store.screen === 'customizer' && !wasReturning) {
+            noteSeatRestoredInBackground(data);
+            return;
+          }
           store.setScreen('table');
         }
       } catch { /* ignore */ }
@@ -1990,15 +2288,32 @@ function App() {
             // 2026-10-10 (Q4) — consumed: never the deep-link screen again on
             // this page load (a later Sign Out shows LoginScreen).
             setDeepLinkConsumed(true);
+            const ticketMasterId = masterIdFromLoginResult(result);
+            // 2026-10-10 (S3) — this tab's earlier tab-scoped sign-in of a
+            // DIFFERENT account (the same tab opened another account's link)
+            // ends: one tab, one account; its copies never resurrect on a reload.
             try {
-              if (result.token) {
+              if (isTabScopedSignIn() && tabScopedMasterUserId() !== ticketMasterId) endTabScopedSignIn('replaced_by_ticket');
+            } catch { /* ignore */ }
+            // The tab is already this same account's OIDC session (a bridged
+            // hand-off answered first): its access token stays its credential;
+            // the burned ticket is not written over it.
+            const curTab = getTabSession();
+            const sameOidcTab = !!(curTab && curTab.kind === 'oidc' && curTab.userId === String(result.userData.id));
+            // (Also when this tab's tab-scoped sign-in — S3 — is this same
+            // account, even if its oauthLogin has not answered yet: the tab's
+            // own OIDC access token copy is never replaced by the ticket.)
+            let sameAccountTabScoped = false;
+            try { sameAccountTabScoped = !!(ticketMasterId && isTabScopedSignIn() && tabScopedMasterUserId() === ticketMasterId); } catch { sameAccountTabScoped = false; }
+            try {
+              if (result.token && !sameOidcTab && !sameAccountTabScoped) {
                 // 2026-10-10 — the (burned) Play Online ticket is THIS tab's
                 // credential. On a browser whose stored sign-in is another (or
                 // an unprovable) account's it goes in this tab's sessionStorage
                 // only — never over that account's device-wide
                 // poker_auth_token (and so this tab's Sign Out can remove it
                 // without touching that sign-in). Otherwise unchanged.
-                if (deviceHoldsOtherOidcSignIn(masterIdFromLoginResult(result))) {
+                if (deviceHoldsOtherOidcSignIn(ticketMasterId)) {
                   sessionStorage.setItem('poker_auth_token', result.token);
                 } else {
                   setAuthToken(result.token);
@@ -2036,9 +2351,9 @@ function App() {
             // dropped from this tab's state (the device copy is left alone).
             const resumeStored = saveTicketResume(result);
             const tabKind = markTicketSignIn(result.userData.id, resumeStored, {
-              masterUserId: masterIdFromLoginResult(result),
+              masterUserId: ticketMasterId,
             });
-            useGameStore.getState().login(result.userData, result.token);
+            useGameStore.getState().login(result.userData, sameOidcTab ? (useGameStore.getState().authToken || result.token) : result.token);
             if (tabKind === 'ticket') clearOtherAccountOidcFromTicketTab();
             return;
           }
@@ -2221,7 +2536,9 @@ function App() {
     // 2026-10-10 (Q4) — only until the deep link is consumed (see
     // deepLinkConsumed): after that this tab is an ordinary one, and a
     // signed-out tab shows LoginScreen.
-    if (deepLinkContext && !deepLinkConsumed) {
+    // (Lock: deepLinkBootGate.deepLinkScreenState — its two literals are in
+    // canonical-features.txt, so reverting this guard aborts the deploy.)
+    if (deepLinkScreenState(!!deepLinkContext, deepLinkConsumed) === DEEP_LINK_SCREEN_PENDING) {
       // Only consulted when a refusal offers Sign In (see the button below).
       const deepLinkInApp = deepLinkRefusal ? detectInAppBrowser() : { inApp: false, app: null };
       return (
@@ -2350,7 +2667,8 @@ function App() {
               <>
                 <div style={{
                   width: 40, height: 40, margin: '0 auto 16px',
-                  border: '3px solid rgba(233,69,96,0.3)', borderTopColor: '#e94560',
+                  // Gold (was red, 2026-10-10 — no red in the UI).
+                  border: '3px solid rgba(255,210,74,0.3)', borderTopColor: '#ffd24a',
                   borderRadius: '50%', animation: 'dl-spin 0.8s linear infinite',
                 }} />
                 <h2 style={{ color: '#fcd34d', margin: 0, fontSize: 22 }}>Signing you in…</h2>
@@ -2375,6 +2693,11 @@ function App() {
     return (
       <Suspense fallback={<ChunkLoader />}>
         <AvatarCustomizer />
+        {/* S2 round 2 — a seat restored in the background while here. */}
+        <SeatRestoredBanner />
+        {/* Round 6 — the customizer's "Return to tournament" refused by the
+            C5 play gate (player_suspended / login_required) says so HERE. */}
+        <PlayRefusalNotice />
         <AchievementPopup />
         <LevelUpPopup />
         <KeyboardShortcuts />
@@ -2542,6 +2865,9 @@ function App() {
       {/* 2026-10-07 — server play refusals (suspended / no account) from any
           lobby path, shown verbatim with the sign-in action when needed. */}
       <PlayRefusalNotice />
+      {/* 2026-10-10 (S2) — "Return to tournament" while the player is away
+          from a LIVE tournament seat (kept in play, absent). */}
+      <TournamentReturnBanner />
       {/* 2026-10-09 — one-time guest progress carry-over offer (after an
           account sign-in on a device that still holds a guest session).
           LOBBY ONLY: never drawn over a live table (the table / career

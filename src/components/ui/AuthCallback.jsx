@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { getSocket } from '../../services/socketService';
 import { handleCallback, getCallbackParams, clearCallbackParamsCache } from '../../services/authService';
-import { setAuthToken, setOAuthItem } from '../../services/tokenStorage';
+import { setAuthToken, setOAuthItem, endTabScopedSignIn } from '../../services/tokenStorage';
 import { logAuthEvent } from '../../services/authEvents';
 import { runSocketLogin, isDefinitiveLoginFailure } from '../../services/socketAuth';
 import { playRefusalText } from '../../services/playRefusal';
@@ -144,6 +144,10 @@ export default function AuthCallback({ onExit } = {}) {
         // persisted by LoginScreen.handleSSOLogin before startLogin).
         // tokenStorage.setAuthToken uses that flag internally.
         try {
+          // 2026-10-10 (S3) — an explicit sign-in in a tab that ran on a
+          // tab-scoped (bridged) sign-in ends that one first: this sign-in is
+          // stored for the browser exactly as before, never mixed with it.
+          endTabScopedSignIn('explicit_sign_in');
           setAuthToken(tokens.access_token);
           // 2026-08-17 LOGIN-4 — was a raw setItem on the keep-signed-in store,
           // which left the OTHER store's copy untouched. Since the read path

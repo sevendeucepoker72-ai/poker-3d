@@ -9,6 +9,11 @@ import {
   BOTTOM_COLORS, ACCESSORIES, FACE_SLIDERS,
 } from '../../utils/avatarConfig';
 import { getAuthToken, getHttpBearer, isTicketTabSession } from '../../services/tokenStorage';
+// 2026-10-10 (round 3) — "Customize Avatar" from a LIVE tournament seat keeps
+// the seat in play, absent: the customizer offers Return to tournament (the
+// lobby banner's P-c path), never an empty table screen.
+import { useTournamentSeatStore, TOURNAMENT_ABSENT_LIMP_NOTE } from '../../store/tournamentSeatStore';
+import { returnToTournament } from '../../services/tournamentReturn';
 import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
 import { API_BASE as MASTER_API } from '../../config';
 import './AvatarCustomizer.css';
@@ -26,6 +31,10 @@ export default function AvatarCustomizer() {
   const updateFaceShape = useGameStore((s) => s.updateFaceShape);
   const resetAvatar = useGameStore((s) => s.resetAvatar);
   const setScreen = useGameStore((s) => s.setScreen);
+  const awaySeats = useTournamentSeatStore((s) => s.awaySeats);
+  const tournamentReturning = useTournamentSeatStore((s) => s.returning);
+  const tournamentNotice = useTournamentSeatStore((s) => s.notice);
+  const awayTournament = awaySeats && awaySeats.length ? awaySeats[0] : null;
 
   // Photo moderation status: null | 'uploading' | 'pending' | 'error'.
   // A locally-picked photo is held in `pendingPreview` for the customizer's own
@@ -380,10 +389,30 @@ export default function AvatarCustomizer() {
           <button className="btn-secondary" onClick={resetAvatar}>
             Reset
           </button>
-          <button className="btn-primary" onClick={() => setScreen('table')}>
-            Join Table
-          </button>
+          {awayTournament ? (
+            <>
+              <button className="btn-secondary" onClick={() => setScreen('lobby')}>
+                Lobby
+              </button>
+              <button
+                className="btn-primary customizer-return-to-tournament"
+                disabled={!!tournamentReturning}
+                onClick={() => { returnToTournament(awayTournament.key).catch(() => { /* answered in the store */ }); }}
+              >
+                {tournamentReturning ? 'Returning…' : 'Return to tournament'}
+              </button>
+            </>
+          ) : (
+            <button className="btn-primary" onClick={() => setScreen('table')}>
+              Join Table
+            </button>
+          )}
         </div>
+        {(awayTournament || tournamentNotice) && (
+          <div className="customizer-tournament-note" role="status" aria-live="polite" style={{ marginTop: 10, fontSize: 13, lineHeight: 1.45, color: '#cfe0ff', textAlign: 'center' }}>
+            {tournamentNotice || `You are still in ${(awayTournament && awayTournament.name) || 'your tournament'}: your hand is folded for you while you are away (${TOURNAMENT_ABSENT_LIMP_NOTE}).`}
+          </div>
+        )}
       </div>
     </div>
   );

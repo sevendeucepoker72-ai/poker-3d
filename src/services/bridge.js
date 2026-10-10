@@ -9,9 +9,24 @@
  * The persistence path here writes those keys via the same tokenStorage
  * helper the AuthCallback uses, so existing boot logic in App.jsx picks up
  * the bridged session naturally.
+ *
+ * 2026-10-10 (S3) — the player app appends #bridge_id_token to every "Play
+ * Online" link it builds while it holds an id_token (the common case). On a
+ * SHARED browser that already holds ANOTHER account's stored .online sign-in
+ * (or one whose owner cannot be proved), the bridged tokens are never written
+ * over it: they are kept in THIS tab's sessionStorage only and the tab is
+ * marked tab-scoped (tabSession.setTabScopedSignIn) — see decideBridgePlacement.
+ * The tab then reads / refreshes / signs out only its own tokens, and the
+ * other account's sign-in (its other tabs, the next boot) is left alone.
+ * With no other account's sign-in on the browser, nothing changes.
  */
 
-import { setAuthToken, setOAuthItem, bearerForThisTab } from './tokenStorage';
+import {
+  setAuthToken, setOAuthItem, bearerForThisTab, getOAuthItem, oidcSubject,
+  deviceHoldsOtherOidcSignIn, deviceHoldsAnyOidcSignIn, isTabScopedSignIn, endTabScopedSignIn,
+} from './tokenStorage';
+import { setTabScopedSignIn } from './tabSession';
+import { requestSignInCensus, censusFindsOtherMasterAccount } from './crossTabSignOut';
 
 const AUTH_SERVER = import.meta.env.VITE_AUTH_SERVER_URL || 'https://auth.americanpubpoker.online';
 const CLIENT_ID = 'poker-3d';
@@ -48,8 +63,9 @@ export function withBridge(targetUrl) {
     // never hands the player app another account's sign-in stored on this
     // browser (the link then opens without a bridge — the player app's own
     // sign-in applies). Every other tab: unchanged.
-    const idToken = bearerForThisTab(localStorage.getItem('poker_oauth_id_token')
-      || sessionStorage.getItem('poker_oauth_id_token'));
+    // 2026-10-10 (S3) — read through getOAuthItem: a tab-scoped tab hands on
+    // ITS OWN id_token (this tab's copy), never the browser's stored one.
+    const idToken = bearerForThisTab(getOAuthItem('poker_oauth_id_token'));
     if (!idToken || typeof idToken !== 'string') return targetUrl;
     const url = new URL(targetUrl, typeof window !== 'undefined' ? window.location.href : 'https://americanpubpoker.online');
     const existingHash = url.hash.replace(/^#/, '');
@@ -83,10 +99,38 @@ export function clearBridgeFromHash() {
   } catch {}
 }
 
+/**
+ * 2026-10-10 (S3) — where a successful bridge exchange for account
+ * `bridgeSub` (the master user id the minted tokens name) may be kept:
+ *   tabScoped: true  — the browser holds ANOTHER (or an unprovable) account's
+ *                      stored .online OIDC sign-in, or (nothing stored) another
+ *                      open tab answered the sign-in census as signed in to
+ *                      another account through the browser's sign-in ("keep me
+ *                      signed in" OFF — invisible in storage). The bridge
+ *                      tokens then live in THIS tab only (never written over
+ *                      that sign-in), and the tab is marked tab-scoped;
+ *   tabScoped: false — no other account's sign-in (none at all, or the same
+ *                      account's): exactly the old behaviour (stored for the
+ *                      browser under the keep-signed-in flag).
+ * `census` — the census started alongside the exchange (only when the
+ * browser held no stored OIDC credential), or null.
+ */
+export function decideBridgePlacement(bridgeSub, census) {
+  if (deviceHoldsOtherOidcSignIn(bridgeSub)) return { tabScoped: true, why: 'stored_sign_in_of_another_account' };
+  if (census && censusFindsOtherMasterAccount(census, bridgeSub)) return { tabScoped: true, why: 'signed_in_in_another_tab' };
+  return { tabScoped: false, why: deviceHoldsAnyOidcSignIn() ? 'same_account' : 'no_other_sign_in' };
+}
+
 export async function consumeBridgeIfPresent() {
   const subjectToken = readBridgeFromHash();
   if (!subjectToken) return { ok: false, reason: 'no-bridge' };
   clearBridgeFromHash();
+
+  // S3 — a browser with no stored OIDC sign-in can still have another account
+  // signed in in another tab with "keep me signed in" OFF. Asked alongside the
+  // exchange (SIGN_IN_CENSUS_WAIT_MS), so it normally adds no wait.
+  let census = null;
+  try { census = deviceHoldsAnyOidcSignIn() ? null : requestSignInCensus(); } catch { census = null; }
 
   let response;
   // AbortController + hard deadline — see BRIDGE_EXCHANGE_TIMEOUT_MS above.
@@ -131,8 +175,31 @@ export async function consumeBridgeIfPresent() {
     // way to reach LoginScreen having attempted nothing.
     return { ok: false, reason: 'bad-token-response', detail: err && err.message };
   }
+  // 2026-10-10 (S3) — whose tokens these are, and whether this browser holds
+  // ANOTHER account's sign-in that they must not be written over.
+  const bridgeSub = oidcSubject(tokens && tokens.id_token)
+    || oidcSubject(tokens && tokens.access_token)
+    || oidcSubject(subjectToken);
+  let censusResult = null;
+  if (census) { try { censusResult = await census; } catch { censusResult = null; } }
+  const placement = decideBridgePlacement(bridgeSub, censusResult);
+  try {
+    if (placement.tabScoped) {
+      // A previous tab-scoped sign-in of this same tab is replaced, never mixed.
+      endTabScopedSignIn('replaced_by_bridge');
+      setTabScopedSignIn(bridgeSub);
+      // Log tag locked in canonical-features.txt.
+      console.warn('[bridge] sign-in kept to this tab: this browser holds another account\'s sign-in', { why: placement.why });
+    } else if (isTabScopedSignIn()) {
+      // This tab's earlier tab-scoped sign-in ends; the bridge is stored for
+      // the browser as before.
+      endTabScopedSignIn('bridge_stored_for_browser');
+    }
+  } catch { /* the writes below still follow the marker's state */ }
   // poker-3d's storage convention: tokenStorage for the access token, plus
   // keep / session keys for the rest matching what AuthCallback writes.
+  // S3 — with the tab-scoped marker set, these same calls write THIS tab's
+  // sessionStorage only (tokenStorage) and never touch localStorage.
   try {
     if (tokens.access_token) setAuthToken(tokens.access_token);
     // 2026-08-17 LOGIN-4 — these were raw setItem calls on the keep-signed-in
@@ -148,5 +215,5 @@ export async function consumeBridgeIfPresent() {
       setOAuthItem('poker_token_expiry', String(Date.now() + tokens.expires_in * 1000));
     }
   } catch {}
-  return { ok: true, tokens };
+  return { ok: true, tokens, tabScoped: !!placement.tabScoped, masterUserId: bridgeSub || null };
 }

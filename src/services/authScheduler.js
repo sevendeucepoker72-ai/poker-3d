@@ -24,9 +24,12 @@
 
 import { refreshAccessToken, RefreshTokenRevokedError, REFRESH_DONE_KEY } from './authService';
 import { useGameStore } from '../store/gameStore';
-import { setOAuthItem, getOAuthItem, getStoredOidcAccount, oidcSubject } from './tokenStorage';
+import {
+  setOAuthItem, getOAuthItem, getStoredOidcAccount, oidcSubject,
+  isTabScopedSignIn, tabScopedMasterUserId, setTokenExpiryItem,
+} from './tokenStorage';
 import { getTabSession } from './tabSession';
-import { deepLinkTicketPending, onDeepLinkTicketSettled } from './deepLinkBootGate';
+import { deepLinkTicketPending, bridgeHandoffPending, onDeepLinkTicketSettled } from './deepLinkBootGate';
 
 const REFRESH_LEAD_MS = 5 * 60 * 1000;
 const MIN_DELAY_MS = 1000;
@@ -114,11 +117,16 @@ export function ticketTabOutlivesDeviceSignIn() {
 // browser's stored sign-in can be ANOTHER account's, and its answer must not
 // land on the tab the ticket is about to sign in. A tab that is already
 // signed in (e.g. a bridge hand-off succeeded) is not held.
+// S3 (2026-10-10) — the same hold while this page load's #bridge_id_token
+// hand-off is unanswered: the bridge consumer is deciding whether the tab's
+// sign-in is tab-scoped, and a refresh of the browser's stored sign-in (on a
+// shared browser, ANOTHER account's) started now could land its rotated
+// tokens in the tab once it is.
 let _heldForDeepLink = false;
 let _unsubDeepLink = null;
 function _deepLinkHold() {
   try {
-    if (!deepLinkTicketPending()) return false;
+    if (!deepLinkTicketPending() && !bridgeHandoffPending()) return false;
     return !getTabSession();
   } catch {
     return false;
@@ -195,9 +203,18 @@ function _revokedBelongsToAnotherAccount(refreshToken) {
 // only tokens naming the tab's own account (sub === its masterUserId) may.
 function _storeMayHold(tokens) {
   try {
-    const tab = getTabSession();
-    if (!tab || tab.kind !== 'ticket') return true;
     const sub = oidcSubject(tokens && tokens.id_token) || oidcSubject(tokens && tokens.access_token);
+    const tab = getTabSession();
+    if (!tab || tab.kind !== 'ticket') {
+      // S3 — a tab-scoped sign-in's store holds only its own account's
+      // tokens (a token naming another account is refused; an unreadable one
+      // came from this tab's own refresh token).
+      if (isTabScopedSignIn()) {
+        const mine = tabScopedMasterUserId();
+        return !(sub && mine && sub !== mine);
+      }
+      return true;
+    }
     return !!(tab.masterUserId && sub === tab.masterUserId);
   } catch {
     return true;
@@ -222,7 +239,9 @@ function _applyRefreshedTokens(tokens, refreshToken) {
     }
     // F1: refresh + id_token honor keep-signed-in (setOAuthItem); expiry is a
     // short-lived cross-tab-coordination value and stays in localStorage.
-    try { localStorage.setItem('poker_token_expiry', String(expiresAt)); } catch {}
+    // S3 — except in a tab-scoped tab: its own expiry, its own sessionStorage
+    // (setTokenExpiryItem; setOAuthItem follows the same marker).
+    try { setTokenExpiryItem(expiresAt); } catch {}
     try {
       if (tokens.refresh_token) setOAuthItem('poker_oauth_refresh', tokens.refresh_token);
     } catch {}
@@ -370,6 +389,9 @@ function _onStorageEvent(e) {
     _scheduleNext();
   }
   if (e.key === 'poker_oauth_access' && e.newValue == null) {
+    // S3 — a tab-scoped tab's tokens are not in localStorage: another
+    // account signing out there does not end this tab's refresh cycle.
+    if (isTabScopedSignIn()) return;
     stop();
   }
 }

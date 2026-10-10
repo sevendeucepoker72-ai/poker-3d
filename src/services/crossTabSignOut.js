@@ -1,7 +1,8 @@
 /**
  * crossTabSignOut — which tabs follow a sign-out made in ANOTHER tab of this
- * browser (2026-10-10, P7). Imports only tabSession and authBroadcast (neither
- * imports anything), so the store and main.jsx can use it without a cycle.
+ * browser (2026-10-10, P7). Imports only tabSession, authBroadcast (neither
+ * imports anything) and tokenStorage (which imports only tabSession), so the
+ * store and main.jsx can use it without a cycle.
  *
  * Every same-origin tab hears every other tab's sign-out: BroadcastChannel
  * 'poker-auth' (main.jsx) and the localStorage storage events — the
@@ -37,9 +38,22 @@
  *     (or one naming nobody — an older bundle's marker): another account's
  *     sign-out cannot have wiped its credentials, and a stored-token key
  *     removed from localStorage is not its credential either.
+ *
+ * TAB-SCOPED SIGN-IN (2026-10-10, S3). A bridged link opened on a browser
+ * holding another account's sign-in runs on its own tab copies
+ * (tabSession.getTabScopedSignIn): like a ticket tab it follows ONLY a
+ * sign-out naming its own account, its own Sign Out announces itself as
+ * TICKET_TAB_SIGN_OUT_EVENT, and its census reply says so
+ * (`tabScopedSignIn`). The bridge consumer also asks the census — replies now
+ * carry the replying tab's master id (`masterUserId`) so a bridged account
+ * can tell another account's "keep me signed in" OFF sign-in from its own
+ * (censusFindsOtherMasterAccount).
  */
-import { getTabSession } from './tabSession';
+import { getTabSession, getTabScopedSignIn } from './tabSession';
 import { broadcastAuth, onAuthEvent } from './authBroadcast';
+// S3 (2026-10-10) — oidcSubject only (tokenStorage imports tabSession and
+// nothing else, so there is no cycle).
+import { oidcSubject } from './tokenStorage';
 
 export const TICKET_TAB_SIGN_OUT_EVENT = 'ticket-tab-sign-out';
 export const LOGOUT_MARKER_KEY = 'poker_logout_broadcast';
@@ -124,6 +138,11 @@ export function shouldApplyRemoteSignOut(evt, myUserId, opts = {}) {
   if (tab && tab.kind === 'ticket') {
     return !!(theirs && theirs === tab.userId);
   }
+  // S3 — a tab-scoped sign-in runs on its own tab copies, which another
+  // tab's sign-out never touched: only a sign-out naming its own account.
+  let scoped = null;
+  try { scoped = getTabScopedSignIn(); } catch { scoped = null; }
+  if (scoped) return !!(theirs && mine && theirs === mine);
   // A sign-in kept only in this tab's sessionStorage (keep me signed in OFF):
   // another account's sign-out, or a localStorage key removal, cannot have
   // touched it.
@@ -141,11 +160,22 @@ export function describeThisTabSignIn(storeState) {
   let tab = null;
   try { tab = getTabSession(); } catch { tab = null; }
   const userId = storeState && storeState.isLoggedIn ? idString(storeState.userId) : null;
+  let scoped = null;
+  try { scoped = getTabScopedSignIn(); } catch { scoped = null; }
+  // S3 — the master id this tab is signed in as (OIDC `sub` of its own
+  // tokens, else its ticket / tab-scoped marker), so a bridged account can
+  // tell its own sign-in in another tab from another account's.
+  const masterUserId = userId
+    ? (oidcSubject(storeState.oauthIdToken) || oidcSubject(storeState.oauthAccessToken)
+      || (tab && tab.masterUserId) || (scoped && scoped.masterUserId) || null)
+    : null;
   return {
     signedIn: !!userId,
     userId,
     kind: userId ? (tab ? tab.kind : 'unknown') : null,
     tabScoped: userId ? signInLivesInThisTabOnly([storeState.oauthRefreshToken, storeState.authToken]) : false,
+    masterUserId,
+    tabScopedSignIn: !!(userId && scoped),
   };
 }
 
@@ -200,6 +230,24 @@ export function censusFindsOtherAccount(census, myUserId) {
     && idString(r.userId) && idString(r.userId) !== mine);
 }
 
+/**
+ * S3 — the bridge consumer's question, asked BEFORE the tab has a local user
+ * id (so by master id): does another open tab run on the browser's sign-in
+ * as ANOTHER account (one whose master id is not `masterUserId`, or cannot
+ * be told — an older bundle's reply)? Ticket tabs and other tab-scoped
+ * sign-ins run on their own tab copies, not on the browser's sign-in, so
+ * they do not count.
+ */
+export function censusFindsOtherMasterAccount(census, masterUserId) {
+  const mine = idString(masterUserId);
+  const replies = census && Array.isArray(census.replies) ? census.replies : [];
+  return replies.some((r) => {
+    if (!r || !r.signedIn || r.kind === 'ticket' || r.tabScopedSignIn) return false;
+    const theirs = idString(r.masterUserId);
+    return !mine || !theirs || theirs !== mine;
+  });
+}
+
 let _lastIgnored = '';
 /** One console line per distinct ignored sign-out (lock tokens in the manifest). */
 export function noteIgnoredRemoteSignOut(evt, via) {
@@ -209,8 +257,13 @@ export function noteIgnoredRemoteSignOut(evt, via) {
   try {
     let tab = null;
     try { tab = getTabSession(); } catch { tab = null; }
+    let scoped = null;
+    try { scoped = getTabScopedSignIn(); } catch { scoped = null; }
     if (evt && evt.type === TICKET_TAB_SIGN_OUT_EVENT) {
       console.warn('[cross-tab] a Play Online tab of another account signed out — this tab stays signed in', { via });
+    } else if (scoped && (!tab || tab.kind !== 'ticket')) {
+      // S3 — a tab-scoped sign-in (lock token in the manifest).
+      console.warn('[cross-tab] another account signed out on this browser — this tab keeps its own tab-scoped sign-in', { via });
     } else if (!tab || tab.kind !== 'ticket') {
       // A "keep me signed in" OFF tab (signInLivesInThisTabOnly).
       console.warn('[cross-tab] another account signed out on this browser — this tab keeps its own sign-in (keep me signed in is off)', { via });

@@ -47,6 +47,10 @@ import PlayerProfile from './PlayerProfile';
 import { getSocket } from '../../services/socketService';
 import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
 import { openLiveTableOverlay } from '../../store/liveTableOverlayStore';
+// 2026-10-10 (round 3) — the join-error toast stacks below the fixed
+// "Return to tournament" banner (the banner reports its bottom edge in the
+// tournament-seat store field `bannerBottom`; TournamentSeatNotice.jsx).
+import { useTournamentSeatStore } from '../../store/tournamentSeatStore';
 import { PlayerAvatar } from '../../hooks/useAvatar';
 import './Lobby.css';
 
@@ -1009,6 +1013,8 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // and surface an error so the user isn't stranded on a blank spinner.
   const [joining, setJoining] = useState(null); // null | { since: number, label: string }
   const [joinError, setJoinError] = useState(null);
+  const tournamentBannerUp = useTournamentSeatStore((s) => s.awaySeats.length > 0 || !!s.notice);
+  const tournamentBannerBottom = useTournamentSeatStore((s) => s.bannerBottom);
   // "Broke refill" — when the wallet drops below the cheapest cash table's
   // 5,000 min buy-in, the player can claim unlimited +5,000 top-ups to keep
   // playing (server enforces the < 5,000 gate). Drives the banner button.
@@ -2956,13 +2962,19 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       )}
 
       {/* Join error toast — shown briefly if the server didn't seat us in time.
-          2026-10-07: blue + gold, not red (owner preference). */}
+          2026-10-07: blue + gold, not red (owner preference).
+          2026-10-10 (round 3): while the fixed "Return to tournament" banner
+          is up it sits BELOW that banner (the bottom edge it reports; 240px
+          until it has) and above it in z-order — never drawn under it. */}
       {joinError && !joining && (
         <div
           role="alert"
+          className="lobby-join-error-toast"
           style={{
-            position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)',
-            zIndex: 3100, background: 'linear-gradient(135deg, rgba(12,28,72,0.97), rgba(8,18,48,0.97))',
+            position: 'fixed',
+            top: tournamentBannerUp ? Math.max(80, tournamentBannerBottom > 0 ? tournamentBannerBottom + 10 : 240) : 80,
+            left: '50%', transform: 'translateX(-50%)',
+            zIndex: tournamentBannerUp ? 10045 : 3100, background: 'linear-gradient(135deg, rgba(12,28,72,0.97), rgba(8,18,48,0.97))',
             color: '#ffd24a',
             padding: '10px 18px', borderRadius: 10, fontSize: 13, maxWidth: 320,
             boxShadow: '0 4px 20px rgba(0,0,0,0.5)',

@@ -1,5 +1,6 @@
 import { io } from 'socket.io-client';
 import { getAuthToken } from './tokenStorage';
+import { watchOutgoingSeatEmits } from './leftTables';
 import { SERVER_URL } from '../config';
 
 if (!SERVER_URL) {
@@ -180,6 +181,9 @@ export const connectToServer = () => {
     auth: token ? { token } : undefined,
   });
   guardNeverEmittedEvents(socket); // U7 — never 'logout' (see above)
+  // S2 round 2 (V3) — an emit that can seat this socket somewhere ends the
+  // "ignore late frames of a table this socket left" marks (leftTables.js).
+  watchOutgoingSeatEmits(socket);
   _socket = socket;
 
   socket.on('connect', () => {

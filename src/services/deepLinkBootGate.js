@@ -87,6 +87,38 @@ export function deepLinkTicketPending() {
   return _ticketPending;
 }
 
+// ── This page load's #bridge_id_token hand-off, for authScheduler (S3) ───────
+// Same idea as the ticket flag: main.jsx notes a bridge token in the URL
+// BEFORE authScheduler.start(); App.jsx's bridge consumer settles it once the
+// exchange has answered (and the tokens are placed — tab-scoped or not), or
+// failed. While it is pending (and the tab has no session) the scheduler
+// holds: the browser's stored sign-in can be another account's, and the
+// bridge decides whether this tab is tab-scoped.
+let _bridgePending = false;
+
+/** main.jsx, before authScheduler.start(): a #bridge_id_token in the URL. */
+export function noteBridgeHandoffInUrl() {
+  try {
+    const hash = String(window.location.hash || '').replace(/^#/, '');
+    if (hash && new URLSearchParams(hash).has('bridge_id_token')) _bridgePending = true;
+  } catch { /* no bridge */ }
+  return _bridgePending;
+}
+
+/** True while this page load's bridge hand-off is unanswered. */
+export function bridgeHandoffPending() {
+  return _bridgePending;
+}
+
+/** App.jsx — the bridge exchange answered (ok or not) or timed out. */
+export function settleBridgeHandoff() {
+  if (!_bridgePending) return;
+  _bridgePending = false;
+  for (const fn of [..._settledListeners]) {
+    try { fn(); } catch { /* a listener never blocks the others */ }
+  }
+}
+
 /** Called once the deep-link ticket settles (any final answer). Returns an unsubscribe. */
 export function onDeepLinkTicketSettled(fn) {
   if (typeof fn !== 'function') return () => {};
@@ -181,16 +213,76 @@ export const DEEP_LINK_LINK_USED_TEXT = 'This Play Online link was already used.
 export const DEEP_LINK_LINK_INVALID_TEXT = 'This Play Online link has expired or is not valid. Open Play Online again from the American Pub Poker app to get a new one.';
 export const DEEP_LINK_CHECK_FAILED_TEXT = 'We could not check your Play Online link just now. Open Play Online again from the American Pub Poker app, or sign in below.';
 export const DEEP_LINK_GENERIC_FAILED_TEXT = 'We could not sign you in with this Play Online link. Open Play Online again from the American Pub Poker app, or sign in below.';
+// 2026-10-10 — player-friendly sentences for the remaining ANSWERED failures.
+// Every Play Online link is single-use (burned on receipt), so a sentence may
+// never say "try again" / "retry" about the same link: it tells the player to
+// tap Play Online again in the app (a NEW link).
+export const DEEP_LINK_ACCOUNT_LOAD_FAILED_TEXT = 'We could not load your American Pub Poker account just now. Open Play Online again from the American Pub Poker app, or sign in below.';
+export const DEEP_LINK_MAINTENANCE_TEXT = 'The game server is being updated. Open Play Online again from the American Pub Poker app in a few minutes.';
+export const DEEP_LINK_IDENTITY_TEXT = 'This account could not be matched securely. Please contact support.';
+export const DEEP_LINK_SEAT_FAILED_TEXT = 'We could not seat you from this waitlist link. Open Play Online again from the American Pub Poker app to get a new one.';
+export const DEEP_LINK_BUY_IN_CANCELLED_TEXT = 'Your table changed before your buy-in went through, so it was cancelled and any chips taken were returned. Open Play Online again from the American Pub Poker app to get a new link.';
+export const DEEP_LINK_NOT_ENOUGH_CHIPS_TEXT = 'You do not have enough chips for this table\'s buy-in.';
+// The waitlist buy-in cancellation: poker-server's `cancelCode` label
+// (round 2), else its text — the pre-M4 "…before your buy-in went through, so
+// it was cancelled — any chips taken were returned. Please try again." and
+// the M4 "…before your seat was confirmed, so it was cancelled — any chips
+// taken were returned. Tap Play Online…" both match.
+export const BUY_IN_CANCELLED_CODE = 'buy_in_cancelled';
+export const BUY_IN_CANCELLED_TEXT_RE = /buy-in.*cancel|cancel.*buy-in|so it was cancelled\b.*\bchips taken were returned/i;
+
+// Server sentences that are developer text or that ask to retry a link the
+// server has already burned — never shown to a player as-is.
+const UNFRIENDLY_SERVER_TEXT = /try again|retry|request a new link|master api|shape|token|server error|handler|could not load user|authentication could not|auth service|not found|no tables|no seats|could not join|could not deduct/i;
 
 export function deepLinkFailureText(result) {
   const code = result && typeof result.code === 'string' ? result.code : '';
   const serverText = [result && result.error, result && result.message]
     .find((v) => typeof v === 'string' && v.trim());
+  const text = serverText ? serverText.trim() : '';
   if (code === 'ticket_replayed') return DEEP_LINK_LINK_USED_TEXT;
   if (code === 'ticket_invalid' || code === 'ticket_missing' || code === 'ticket_missing_user') return DEEP_LINK_LINK_INVALID_TEXT;
   if (code === 'ticket_verify_failed' || code === 'ticket_verify_unreachable') return DEEP_LINK_CHECK_FAILED_TEXT;
-  if (serverText) return serverText.trim().slice(0, 300);
+  if (code === 'master_user_unreachable' || code === 'master_user_shape' || code === 'user_upsert_failed'
+    || code === 'user_row_missing' || code === 'no_phone_or_username_claim' || code === 'rate_limited'
+    || code === 'client_auth_failed' || code === 'token_invalid' || code === 'no_token') {
+    return DEEP_LINK_ACCOUNT_LOAD_FAILED_TEXT;
+  }
+  if (code === 'maintenance') return DEEP_LINK_MAINTENANCE_TEXT;
+  if (code === 'identity_conflict') return DEEP_LINK_IDENTITY_TEXT;
+  // The waitlist's seat / buy-in stages all answer handler_exception. A
+  // server since round 2 labels the cancelled buy-in with
+  // `cancelCode: 'buy_in_cancelled'` (on the loginResult and the 'error'
+  // frame) — that comes first; an older server is told apart by its text,
+  // whose wording changed (M4): BOTH sentences match BUY_IN_CANCELLED_TEXT_RE.
+  const cancelCode = result && typeof result.cancelCode === 'string'
+    ? result.cancelCode
+    : (result && result.detail && typeof result.detail.cancelCode === 'string' ? result.detail.cancelCode : '');
+  if (cancelCode === BUY_IN_CANCELLED_CODE) return DEEP_LINK_BUY_IN_CANCELLED_TEXT;
+  if (BUY_IN_CANCELLED_TEXT_RE.test(text)) return DEEP_LINK_BUY_IN_CANCELLED_TEXT;
+  if (/insufficient chips/i.test(text)) return DEEP_LINK_NOT_ENOUGH_CHIPS_TEXT;
+  if (code === 'handler_exception') {
+    return /table|seat/i.test(text) ? DEEP_LINK_SEAT_FAILED_TEXT : DEEP_LINK_GENERIC_FAILED_TEXT;
+  }
+  // A sentence written for players (account_mismatch, a future code) is shown
+  // as the server wrote it — unless it is developer text or asks to retry.
+  if (text && !UNFRIENDLY_SERVER_TEXT.test(text)) return text.slice(0, 300);
   return DEEP_LINK_GENERIC_FAILED_TEXT;
+}
+
+// ── Q4 lock (2026-10-10) ────────────────────────────────────────────────────
+// App.jsx renders the deep-link screen ("Signing you in…" / timed out /
+// refusal) ONLY while this returns DEEP_LINK_SCREEN_PENDING: once the link is
+// consumed (ticket success, answered failure, or the tab signed in any other
+// way) the screen is retired for this page load and a signed-out tab shows
+// LoginScreen. The two literals exist in the bundle only through this
+// function, so canonical-features.txt can lock the guard (reverting App.jsx to
+// `if (deepLinkContext)` drops them and the deploy aborts).
+export const DEEP_LINK_SCREEN_PENDING = 'deep-link-screen-pending';
+export const DEEP_LINK_SCREEN_RETIRED = 'deep-link-screen-retired';
+export function deepLinkScreenState(hasDeepLink, consumed) {
+  if (!hasDeepLink) return null;
+  return consumed ? DEEP_LINK_SCREEN_RETIRED : DEEP_LINK_SCREEN_PENDING;
 }
 
 /**
