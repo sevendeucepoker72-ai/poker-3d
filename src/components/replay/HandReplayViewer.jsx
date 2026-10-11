@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SUIT_INDEX_TO_SYMBOL, SUIT_INDEX_TO_COLOR, serverRankDisplay } from '../../utils/cardUtils';
 import { evaluateHandStrength } from '../../utils/handStrength';
+import { buildReplaySteps } from './replaySteps';
 import './HandReplayViewer.css';
 
 /*
@@ -9,239 +10,10 @@ import './HandReplayViewer.css';
  * Each "step" is one of: blinds posted, hole cards dealt, player action, community cards, showdown.
  */
 
-// Variant-aware street layouts. `streets` is an ordered list of
-// { label, phase, afterActions, upToCard } — we advance through them
-// instead of hard-coding flop/turn/river. This handles Omaha (same streets
-// as Hold'em but 4 hole cards — same board timing), Short Deck (same),
-// Stud (no community cards — show per-street up-cards), and Five-Card Draw
-// (no community cards — show discards/draws).
-function streetsForVariant(variant) {
-  const v = (variant || 'texas-holdem').toLowerCase();
-  // Board variants — share Hold'em-style reveal timing.
-  if (v === 'texas-holdem' || v === 'omaha' || v === 'omaha-hi-lo' || v === 'short-deck') {
-    return [
-      { label: 'Flop revealed',  phase: 'Flop',  upToCard: 3 },
-      { label: 'Turn revealed',  phase: 'Turn',  upToCard: 4 },
-      { label: 'River revealed', phase: 'River', upToCard: 5 },
-    ];
-  }
-  // No-board variants — render nothing mid-hand. The action stream already
-  // drives the replay; showdown will reveal hole cards at the end.
-  return [];
-}
-
-function buildReplaySteps(history) {
-  // Defensive: early-return for malformed histories so the viewer renders
-  // `null` (triggering the "no history yet" branch) instead of throwing
-  // inside OverlayBoundary. Old DB-backed records from before the full-
-  // record migration can land here with no players/communityCards.
-  if (!history || !Array.isArray(history.players) || history.players.length === 0) {
-    return [];
-  }
-  if (!Array.isArray(history.communityCards)) {
-    history = { ...history, communityCards: [] };
-  }
-  const steps = [];
-  const streets = streetsForVariant(history.variant);
-
-  // Step 0: Shuffle / setup
-  steps.push({
-    type: 'setup',
-    phase: 'Setup',
-    label: `Hand #${history.handNumber} - Dealer shuffles`,
-    activeSeat: -1,
-    pot: 0,
-    communityCards: [],
-    playerStates: history.players.map((p) => ({
-      ...p,
-      revealed: false,
-      currentAction: null,
-      folded: false,
-      chips: p.startChips,
-    })),
-  });
-
-  // Step 1: Blinds posted
-  const blindStep = {
-    type: 'blinds',
-    phase: 'Blinds',
-    label: 'Blinds posted',
-    activeSeat: -1,
-    pot: 0,
-    communityCards: [],
-    playerStates: history.players.map((p) => ({
-      ...p,
-      revealed: false,
-      currentAction: null,
-      folded: false,
-      chips: p.startChips,
-    })),
-  };
-  // Parse blind amounts from actions
-  let runningPot = 0;
-  for (const p of history.players) {
-    if (p.actions && p.actions.length > 0) {
-      for (const a of p.actions) {
-        if (typeof a === 'string' && a.includes('SB')) {
-          const match = a.match(/\d+/);
-          if (match) runningPot += parseInt(match[0]);
-        }
-        if (typeof a === 'string' && a.includes('BB')) {
-          const match = a.match(/\d+/);
-          if (match) runningPot += parseInt(match[0]);
-        }
-      }
-    }
-  }
-  if (runningPot === 0 && history.pots && history.pots.length > 0) {
-    // Estimate from final pot
-    runningPot = Math.min(history.pots[0].amount, 100);
-  }
-  blindStep.pot = runningPot;
-  steps.push(blindStep);
-
-  // Step 2: Hole cards dealt
-  steps.push({
-    type: 'deal',
-    phase: 'PreFlop',
-    label: 'Hole cards dealt',
-    activeSeat: -1,
-    pot: runningPot,
-    communityCards: [],
-    playerStates: history.players.map((p) => ({
-      ...p,
-      revealed: true,
-      currentAction: null,
-      folded: false,
-      chips: p.startChips,
-    })),
-  });
-
-  // Steps 3+: Player actions
-  // Parse the action strings from each player
-  const allActions = [];
-  for (const p of history.players) {
-    if (p.actions) {
-      for (const a of p.actions) {
-        if (typeof a === 'string') {
-          // Skip blind posting strings for action replay
-          if (a.includes('SB') || a.includes('BB') || a.includes('Ante')) continue;
-          allActions.push({ seatIndex: p.seatIndex, name: p.name, action: a });
-        }
-      }
-    }
-  }
-
-  const foldedPlayers = new Set();
-  let currentPot = runningPot;
-
-  // Determine community card reveal points (board variants only — stud/draw
-  // skip this entirely).
-  const cc = history.communityCards || [];
-  let actionCount = 0;
-  // Street reveal thresholds — roughly one round of actions between streets.
-  // Scaled to the total action count so short all-in hands still reveal the board.
-  const perStreet = Math.max(1, Math.floor(allActions.length / Math.max(streets.length, 1)));
-  const streetState = streets.map((s, i) => ({
-    ...s,
-    added: false,
-    at: Math.min((i + 1) * perStreet, allActions.length),
-  }));
-
-  for (let i = 0; i < allActions.length; i++) {
-    const a = allActions[i];
-    actionCount++;
-
-    // Board reveal — variant-aware (loops over defined streets for this game)
-    for (const street of streetState) {
-      if (street.added) continue;
-      if (actionCount < street.at) continue;
-      if (cc.length < street.upToCard) continue;
-      steps.push({
-        type: 'community',
-        phase: street.phase,
-        label: street.label,
-        activeSeat: -1,
-        pot: currentPot,
-        communityCards: cc.slice(0, street.upToCard),
-        playerStates: steps[steps.length - 1].playerStates.map((p) => ({
-          ...p,
-          currentAction: null,
-        })),
-      });
-      street.added = true;
-    }
-
-    // Parse amount from action string
-    const amountMatch = a.action.match(/(\d[\d,]*)/);
-    const amount = amountMatch ? parseInt(amountMatch[1].replace(/,/g, '')) : 0;
-    if (amount > 0) currentPot += amount;
-
-    if (a.action.toLowerCase().includes('fold')) {
-      foldedPlayers.add(a.seatIndex);
-    }
-
-    const prevStates = steps[steps.length - 1].playerStates;
-    steps.push({
-      type: 'action',
-      phase: steps[steps.length - 1].phase || 'PreFlop',
-      label: `${a.name}: ${a.action}`,
-      activeSeat: a.seatIndex,
-      pot: currentPot,
-      communityCards: steps[steps.length - 1].communityCards,
-      playerStates: prevStates.map((p) => ({
-        ...p,
-        currentAction: p.seatIndex === a.seatIndex ? a.action : p.currentAction,
-        folded: foldedPlayers.has(p.seatIndex),
-      })),
-    });
-  }
-
-  // Add any remaining community cards not shown yet — e.g. short all-in
-  // hands where the action loop ended before a street's reveal threshold,
-  // so the board still runs out before showdown. Drives off the same
-  // variant-aware streetState used in the action loop above.
-  //
-  // 2026-06-11: this block previously referenced flopAdded / turnAdded /
-  // riverAdded, which were removed when the per-street reveal was
-  // generalized into streetState. Those undefined references threw
-  // `ReferenceError: flopAdded is not defined` inside the buildReplaySteps
-  // useMemo on EVERY open, so the "Last Hand" replay always failed with the
-  // generic "Hand Replay couldn't load" overlay. Rewritten to use
-  // street.added / street.upToCard like the in-loop reveal.
-  for (const street of streetState) {
-    if (street.added) continue;
-    if (cc.length < street.upToCard) continue;
-    steps.push({
-      type: 'community', phase: street.phase, label: street.label,
-      activeSeat: -1, pot: currentPot, communityCards: cc.slice(0, street.upToCard),
-      playerStates: steps[steps.length - 1].playerStates.map((p) => ({ ...p, currentAction: null })),
-    });
-    street.added = true;
-  }
-
-  // Showdown step
-  const finalPot = history.pots ? history.pots.reduce((s, p) => s + p.amount, 0) : currentPot;
-  steps.push({
-    type: 'showdown',
-    phase: 'Showdown',
-    label: 'Showdown',
-    activeSeat: -1,
-    pot: finalPot,
-    communityCards: cc,
-    playerStates: history.players.map((p) => ({
-      ...p,
-      revealed: true,
-      currentAction: null,
-      folded: foldedPlayers.has(p.seatIndex),
-      chips: p.endChips,
-    })),
-    winners: history.winners,
-  });
-
-  return steps;
-}
-
+// R2 (TABLEUI-16 / APPUI-16) — the steps come from the record's chronological
+// actionLog (replaySteps.js): the board shows on each street change and the pot
+// follows the real chip movements (it used to replay in seat order, reveal the
+// board after a share of actions and add up every number in the texts).
 function ReplayCard({ card }) {
   if (!card) return null;
   return (
@@ -415,7 +187,7 @@ export default function HandReplayViewer({ history, onClose }) {
   const progressPct = steps.length > 1 ? (currentStep / (steps.length - 1)) * 100 : 0;
 
   return (
-    <div className="replay-overlay">
+    <div className="replay-overlay" role="dialog" aria-label={`Hand replay #${history.handNumber ?? ''}`}>
       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginBottom: '4px' }}>
         <button className="replay-btn" onClick={handleShareHand} style={{ position: 'relative' }}>
           Share Hand
@@ -478,7 +250,7 @@ export default function HandReplayViewer({ history, onClose }) {
                   const hs = evaluateHandStrength(p.holeCards, step.communityCards, { variant: history.variant });
                   if (!hs) return null;
                   const pct = Math.round(hs.strength * 100);
-                  const color = pct >= 60 ? '#4ADE80' : pct >= 30 ? '#FBBF24' : '#EF4444';
+                  const color = pct >= 60 ? '#4ADE80' : pct >= 30 ? '#FBBF24' : '#F59E0B';
                   return (
                     <span className="replay-player-equity" style={{ color }}>
                       {pct}% {hs.name}
@@ -508,7 +280,9 @@ export default function HandReplayViewer({ history, onClose }) {
 
           <div className="replay-action-display">
             {step.type === 'setup' && <span className="replay-action-text">Dealer is shuffling...</span>}
-            {step.type === 'blinds' && <span className="replay-action-text">Blinds posted</span>}
+            {step.type === 'antes' && <span className="replay-action-text">Antes posted</span>}
+            {step.type === 'street' && <span className="replay-action-text">{step.label}</span>}
+            {step.type === 'blinds' && <span className="replay-action-text">{step.label}</span>}
             {step.type === 'deal' && <span className="replay-action-text">Cards dealt to all players</span>}
             {step.type === 'community' && <span className="replay-action-text">{step.label}</span>}
             {step.type === 'action' && (

@@ -1,11 +1,35 @@
+import { useEffect } from 'react';
 import { useTableStore } from '../../store/tableStore';
 import './TrainingOverlay.css';
+
+// R2 (TABLEUI-10, 2026-10-11) — the training panel is DOCKED and collapsible.
+// On a phone it used to sit over the top-left of the table: it covered Back,
+// Sit Out, Options and the Training badge, and the board, with no way to close
+// it. Now the top bar's Training badge is its dock ("🎓 62%": it opens and
+// minimizes the panel — tableStore.trainingPanelOpen, minimized by default on a
+// phone); open on a phone, it sits under the top bar and above the board
+// (portrait) or in a column on the right between the bars (landscape), with
+// its own minimize and close (= turn training off) controls. Desktop keeps the
+// side panel, with the same two controls.
+
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 export default function TrainingOverlay() {
   const trainingData = useTableStore((s) => s.trainingData);
   const gameState = useTableStore((s) => s.gameState);
+  const toggleTraining = useTableStore((s) => s.toggleTraining);
+  const open = useTableStore((s) => s.trainingPanelOpen);
+  const setOpen = useTableStore((s) => s.setTrainingPanelOpen);
 
-  if (!trainingData) return null;
+  // Escape minimizes the open panel.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, setOpen]);
+
+  if (!trainingData || typeof trainingData !== 'object') return null;
 
   const phase = gameState?.phase || 'WaitingForPlayers';
 
@@ -18,15 +42,17 @@ export default function TrainingOverlay() {
   }
 
   const {
-    equity,
-    potOdds,
-    suggestedAction,
+    potOdds: rawPotOdds,
+    suggestedAction: rawAction,
     suggestedRaiseAmount,
     reasoning,
     handStrength,
     outs,
     drawType,
   } = trainingData;
+  const equity = Math.max(0, Math.min(100, num(trainingData.equity) ?? 0));
+  const potOdds = num(rawPotOdds) ?? 0;
+  const suggestedAction = typeof rawAction === 'string' && rawAction ? rawAction : 'check';
 
   // Equity color class
   const equityClass =
@@ -41,15 +67,33 @@ export default function TrainingOverlay() {
 
   // Format suggested action text
   let actionText = suggestedAction.toUpperCase();
-  if (suggestedAction === 'raise' && suggestedRaiseAmount) {
+  if (suggestedAction === 'raise' && num(suggestedRaiseAmount)) {
     actionText = `RAISE ${suggestedRaiseAmount.toLocaleString()}`;
   }
 
+  if (!open) return null;
+
   return (
-    <div className="training-overlay">
+    <div className="training-overlay training-overlay--open" role="region" aria-label="Training panel">
       <div className="training-header">
         <span className="training-title">Training</span>
         <span className="training-badge">LIVE</span>
+        <span className="training-header-actions">
+          <button
+            type="button"
+            className="training-hdr-btn training-minimize"
+            onClick={() => setOpen(false)}
+            aria-label="Minimize the training panel"
+            title="Minimize"
+          >▾</button>
+          <button
+            type="button"
+            className="training-hdr-btn training-close"
+            onClick={() => { setOpen(false); if (toggleTraining) toggleTraining(); }}
+            aria-label="Close training (turn training mode off)"
+            title="Turn training off"
+          >✕</button>
+        </span>
       </div>
 
       {/* Equity gauge */}
@@ -91,17 +135,19 @@ export default function TrainingOverlay() {
       <div className={`training-suggested ${actionClass}`}>
         <div className="suggested-label">Suggested</div>
         <div className={`suggested-action ${actionClass}`}>{actionText}</div>
-        <div className="suggested-reasoning">{reasoning}</div>
+        {typeof reasoning === 'string' && reasoning && <div className="suggested-reasoning">{reasoning}</div>}
       </div>
 
       {/* Hand strength */}
-      <div className="training-hand">
-        <div className="hand-label">Hand Strength</div>
-        <div className="hand-value">{handStrength}</div>
-      </div>
+      {typeof handStrength === 'string' && handStrength && (
+        <div className="training-hand">
+          <div className="hand-label">Hand Strength</div>
+          <div className="hand-value">{handStrength}</div>
+        </div>
+      )}
 
       {/* Outs */}
-      {outs > 0 && (
+      {num(outs) > 0 && (
         <div className="training-outs">
           <span className="outs-label">Outs</span>
           <span className="outs-value">{outs}</span>
@@ -109,7 +155,7 @@ export default function TrainingOverlay() {
       )}
 
       {/* Draw type */}
-      {drawType && (
+      {typeof drawType === 'string' && drawType && (
         <div className="training-draw">{drawType}</div>
       )}
     </div>

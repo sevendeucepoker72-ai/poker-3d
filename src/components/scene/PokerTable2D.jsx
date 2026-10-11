@@ -8,7 +8,7 @@
 import { memo, useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { useTableStore } from '../../store/tableStore';
 import { useGameStore, SEAT_COUNT } from '../../store/gameStore';
-import { useTimerStore } from '../../store/timerStore';
+import { useTimerStore, serverNow } from '../../store/timerStore';
 import { getSocket } from '../../services/socketService';
 import {
   SUIT_SYMBOLS,
@@ -23,6 +23,7 @@ import { useAvatar, PlayerAvatar } from '../../hooks/useAvatar';
 // R1 (AUTH-6, contract #3) — a seat name is shown as text and indexed for the
 // avatar initial; a non-string name used to throw for every viewer.
 import { safeName, nameInitial } from '../../utils/tablePayload';
+import { TABLE_GEOMETRY_EVENT } from '../game/useTableGeometry';
 import './PokerTable2D.css';
 
 /* ── Player-notes callback (App.jsx sets this) ─────────────── */
@@ -115,6 +116,17 @@ function getPositionLabel(seatIndex, dealerButtonSeat, occupiedSeats) {
   return labels[pos] ?? '';
 }
 
+/* R2 (TABLEUI-15) — can a SPECTATOR sit at this table through joinTable? Only
+   a public cash table (C1: joinTable refuses tournament, quick, private and
+   club tables). A missing tableKind (older server) keeps the old behaviour
+   for anything that is not a tournament. */
+function spectatorCanSit(gs) {
+  if (!gs) return false;
+  if (gs.isTournament === true || gs.tournamentId != null) return false;
+  const kind = gs.tableKind;
+  return kind == null || kind === 'cash';
+}
+
 /* ── 2-D seat layout ──────────────────────────────────────────
    Evenly-spaced seats around the ellipse starting at π/2 (bottom).
    9 seats → 40° between each. No per-seat angle tweaks. */
@@ -183,7 +195,7 @@ function CommunityCardsOnFelt({ cards = [] }) {
 /* ============================================================
    ChipStack — visual stacked chips for a bet
    ============================================================ */
-function ChipStack({ amount }) {
+function ChipStack({ amount, side = null }) {
   if (!amount || amount <= 0) return null;
   const label =
     amount >= 10000 ? `${Math.round(amount / 1000)}K`
@@ -192,7 +204,7 @@ function ChipStack({ amount }) {
   const stack = buildChipStack(amount);
   let diskIndex = 0;
   return (
-    <div className="chip-stack">
+    <div className={`chip-stack${side ? ` chip-stack--in-${side}` : ''}`}>
       <div className="chip-stack__tower">
         {stack.map((s) =>
           Array.from({ length: s.count }, (_, ci) => {
@@ -305,7 +317,7 @@ const SeatPod = memo(function SeatPod({
   handResult, phase, onClickNameplate,
   bigBlind, heroEmoji, onSitHere, winStreak,
   isTournament, heroAlreadySeated, isPendingMoveTarget,
-  onBetSlide,
+  onBetSlide, spectatorSits, betSide,
 }) {
   const turnStartedAt = useTimerStore(s => s.turnStartedAt);
   const turnTimeout   = useTimerStore(s => s.turnTimeout);
@@ -397,10 +409,14 @@ const SeatPod = memo(function SeatPod({
     // Disable "Sit Here" for tournament tables — TournamentManager owns
     // seating there. Still show the "Open" placeholder so the oval layout
     // stays 9-wide and spectators can see where the empty seats are.
-    const canInteract = !isTournament;
+    // R2 (TABLEUI-15) — a spectator sits only where joinTable can seat him.
+    const canInteract = heroAlreadySeated ? !isTournament : !!spectatorSits;
     // When the hero is already seated, the action is a seat MOVE (cash
     // tables only). Show a different label so the intent is explicit.
     const btnLabel = heroAlreadySeated ? 'Move here' : 'Sit Here';
+    // A spectator sees "Sit Here" at once (a phone has no hover); a seated
+    // player still taps once to reveal "Move here" (no accidental moves).
+    const showSitBtn = canInteract && (hovered || (!heroAlreadySeated && spectatorSits));
     return (
       <div
         className={`seat-pod seat-pod--empty ${isPendingMoveTarget ? 'seat-pod--pending-move' : ''}`}
@@ -423,10 +439,10 @@ const SeatPod = memo(function SeatPod({
           <div className="seat-pod__label" style={{ color: '#3b82f6', fontWeight: 700 }}>
             Moving here…
           </div>
-        ) : hovered && canInteract ? (
+        ) : showSitBtn ? (
           <button
-            className="seat-pod__sit-btn"
-            onClick={() => onSitHere && onSitHere(seatIndex)}
+            className={`seat-pod__sit-btn${!heroAlreadySeated ? ' seat-pod__sit-btn--spectator' : ''}`}
+            onClick={(e) => { e.stopPropagation(); if (onSitHere) onSitHere(seatIndex); }}
           >
             {btnLabel}
           </button>
@@ -471,7 +487,8 @@ const SeatPod = memo(function SeatPod({
   const timerPct = (() => {
     void timerTick; // used for re-render dependency
     if (!isActive || !turnStartedAt) return 100;
-    const elapsed = Date.now() - turnStartedAt;
+    // R2 (P3) — on the SERVER's clock (_serverTs offset), not the device's.
+    const elapsed = serverNow() - turnStartedAt;
     return Math.max(0, Math.min(100, ((turnTimeout - elapsed) / turnTimeout) * 100));
   })();
 
@@ -683,7 +700,7 @@ const SeatPod = memo(function SeatPod({
       )}
 
       {/* Bet chip stack */}
-      {currentBet > 0 && <ChipStack amount={currentBet} key={currentBet} />}
+      {currentBet > 0 && <ChipStack amount={currentBet} key={currentBet} side={betSide} />}
     </div>
   );
 });
@@ -730,6 +747,9 @@ export default function PokerTable2D() {
   const occupiedSeats = seats
     .map((s, i) => (s?.state === 'occupied' ? i : -1))
     .filter(i => i >= 0);
+
+  // R2 (TABLEUI-15) — a spectator of a joinable table sees "Sit Here" on every open seat.
+  const viewerCanSit = (yourSeat < 0 || gameState?.isSpectator === true) && spectatorCanSit(gameState);
 
   /* ── Win streak computation (last 8 hands) ───────────────── */
   const winStreaks = useMemo(() => {
@@ -788,6 +808,9 @@ export default function PokerTable2D() {
       const cx = (fr.left - sr.left + fr.width  / 2) / sr.width;
       const cy = (fr.top  - sr.top  + fr.height / 2) / sr.height;
       setSeatEllipse({ xR, yR, cx, cy });
+      // R2 (TABLEUI-8/9) — GameHUD's useTableGeometry re-reads the felt rect
+      // (the board, hero cards and pot label are placed from it).
+      try { window.dispatchEvent(new Event(TABLE_GEOMETRY_EVENT)); } catch { /* ignore */ }
     };
     const ro = new ResizeObserver(update);
     if (sceneRef.current) ro.observe(sceneRef.current);
@@ -936,7 +959,7 @@ export default function PokerTable2D() {
   const onSitHere = useCallback((seatIndex) => {
     const socket = getSocket();
     if (!socket?.connected) return;
-    const alreadySeated = yourSeat >= 0;
+    const alreadySeated = yourSeat >= 0 && !gameState?.isSpectator;
     const isTournament =
       gameState?.isTournament === true ||
       gameState?.tournamentId != null ||
@@ -948,8 +971,19 @@ export default function PokerTable2D() {
         return;
       }
       socket.emit('moveSeat', { targetSeatIndex: seatIndex, tableId: gameState?.tableId });
-    } else {
-      socket.emit('takeSeat', { seatIndex });
+    } else if (spectatorCanSit(gameState) && gameState?.tableId) {
+      // R2 (TABLEUI-15) — a spectator takes THIS seat through joinTable (the
+      // server honours seatIndex when it is empty, else picks another); the
+      // old 'takeSeat' had no server handler and did nothing. The buy-in is the
+      // table's minimum (the server clamps it); the account's display name is
+      // used server-side whatever is sent (R1 contract #3). No expectedVariant:
+      // he is joining the table he is looking at.
+      const gs = useGameStore.getState();
+      useTableStore.getState().joinTable(
+        gameState.tableId, gs.playerName, seatIndex,
+        Number(gameState?.minBuyIn) > 0 ? Number(gameState.minBuyIn) : 0,
+        gs.avatar,
+      );
     }
   }, [yourSeat, gameState]);
   const cancelPendingMove = useCallback(() => {
@@ -1129,6 +1163,10 @@ export default function PokerTable2D() {
         const topPct = seatEllipse
           ? (seatEllipse.cy + y * seatEllipse.yR) * 100
           : 50 + y * 28;
+        // R2 (TABLEUI-9) — a SIDE seat's bet chips go toward the felt (left of a
+        // right-hand seat, right of a left-hand one); stacked above it they
+        // covered the nameplate of the seat above.
+        const betSide = Math.abs(y) <= 0.6 ? (x > 0 ? 'left' : 'right') : null;
         const isTournamentTbl =
           gameState?.isTournament === true ||
           gameState?.tournamentId != null ||
@@ -1154,9 +1192,11 @@ export default function PokerTable2D() {
             onSitHere={onSitHere}
             winStreak={winStreaks.get(seatName) ?? 0}
             isTournament={isTournamentTbl}
-            heroAlreadySeated={yourSeat >= 0}
+            heroAlreadySeated={yourSeat >= 0 && !gameState?.isSpectator}
+            spectatorSits={viewerCanSit}
             isPendingMoveTarget={pendingSeat === i}
             onBetSlide={handleBetSlide}
+            betSide={betSide}
           />
         );
       })}

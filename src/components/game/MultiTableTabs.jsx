@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useTableStore } from '../../store/tableStore';
+import { useState, useEffect, useCallback } from 'react';
+import { useTableStore, liveTableIds } from '../../store/tableStore';
 import { useGameStore } from '../../store/gameStore';
 
 const MAX_TABLES = 4;
@@ -15,7 +15,7 @@ const tabBarStyle = {
   top: 'env(safe-area-inset-top, 0px)',
   left: 0,
   right: 0,
-  height: '36px',
+  height: '44px', // R2 — room for 44px tap targets
   display: 'flex',
   alignItems: 'center',
   gap: '2px',
@@ -33,6 +33,8 @@ const tabStyle = {
   alignItems: 'center',
   gap: '6px',
   padding: '6px 14px',
+  minHeight: '40px',
+  boxSizing: 'border-box',
   borderRadius: '6px 6px 0 0',
   fontSize: '0.75rem',
   cursor: 'pointer',
@@ -66,18 +68,22 @@ const closeBtn = {
   marginLeft: '4px',
   background: 'none',
   border: 'none',
-  color: '#666',
+  color: '#888',
   cursor: 'pointer',
-  fontSize: '0.8rem',
-  padding: '0 2px',
+  fontSize: '0.9rem',
+  minWidth: '32px',
+  minHeight: '32px',
+  padding: '0 4px',
 };
 
+// R2 — a 44px tap target (was 28px).
 const addTabBtn = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  width: '28px',
-  height: '28px',
+  width: '44px',
+  height: '40px',
+  minHeight: '40px',
   borderRadius: '6px 6px 0 0',
   fontSize: '1rem',
   fontWeight: 700,
@@ -129,6 +135,28 @@ const pickerPanelStyle = {
   boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
 };
 
+// R2 (TABLEUI-14) — a table-list row in either shape (the server's
+// getTableList: tableId / tableName / playerCount / maxSeats, C1 adds
+// seatsTaken / kind; this picker used to read id / name / maxPlayers, so every
+// row said "Table undefined" and joining sent no table id).
+function pickerRow(t) {
+  const id = t?.tableId ?? t?.id ?? null;
+  const taken = Number(t?.seatsTaken ?? t?.playerCount ?? 0) || 0;
+  const max = Number(t?.maxSeats ?? t?.maxPlayers ?? 9) || 9;
+  return {
+    id,
+    name: (typeof t?.tableName === 'string' && t.tableName) || (typeof t?.name === 'string' && t.name) || 'Table',
+    taken,
+    max,
+    minBuyIn: Number(t?.minBuyIn) > 0 ? Number(t.minBuyIn) : 0,
+    joinable: !!id && taken < max && (t?.kind == null || t.kind === 'cash'),
+  };
+}
+
+// The Options menu's "Open another table" (the tab bar itself shows only while
+// 2+ seats are live) opens the picker through this window event.
+export const OPEN_TABLE_PICKER_EVENT = 'poker:open-table-picker';
+
 export default function MultiTableTabs() {
   const activeTables = useTableStore((s) => s.activeTables);
   const currentTableId = useTableStore((s) => s.currentTableId);
@@ -142,25 +170,43 @@ export default function MultiTableTabs() {
   const [showPicker, setShowPicker] = useState(false);
   const [addBtnHover, setAddBtnHover] = useState(false);
 
-  const tableCount = activeTables ? activeTables.size : 0;
+  // R2 (TABLEUI-14) — tabs are the tables where this socket holds a LIVE seat
+  // (a watched / moved-from / ended table is never a tab), and the bar shows
+  // only while there are 2+ of them: one table needs no tabs (the HUD reclaims
+  // the band — GameHUD's hud--tabs / hud--no-tabs).
+  const liveIds = liveTableIds(activeTables);
+  const tableCount = liveIds.length;
   const canAddMore = tableCount < MAX_TABLES;
+  const showBar = tableCount >= 2;
 
-  const handleOpenPicker = () => {
+  const handleOpenPicker = useCallback(() => {
     if (!canAddMore) return;
     requestTableList();
     setShowPicker(true);
-  };
+  }, [canAddMore, requestTableList]);
 
-  const handleJoinTable = (tableId) => {
-    joinAdditionalTable(tableId, playerName, 5000);
+  useEffect(() => {
+    const open = () => handleOpenPicker();
+    window.addEventListener(OPEN_TABLE_PICKER_EVENT, open);
+    return () => window.removeEventListener(OPEN_TABLE_PICKER_EVENT, open);
+  }, [handleOpenPicker]);
+
+  const handleJoinTable = (row) => {
+    if (!row || !row.joinable) return;
+    joinAdditionalTable(row.id, playerName, row.minBuyIn);
     setShowPicker(false);
   };
 
-  // Always show the tab bar (even with 0-1 tables) so the + button is accessible
+  const pickerRows = (Array.isArray(tables) ? tables : [])
+    .map(pickerRow)
+    .filter((r) => r.joinable && !(activeTables && activeTables.has(r.id)));
+
   return (
     <>
-      <div style={tabBarStyle}>
-        {activeTables && Array.from(activeTables.entries()).map(([tableId, tableData]) => {
+      {showBar && (
+      <div style={tabBarStyle} className="multi-table-tabs-bar">
+        {liveIds.map((tableId) => {
+          const tableData = activeTables.get(tableId);
           const isActive = tableId === currentTableId;
           const isYourTurn = tableData?.gameState?.activeSeatIndex === tableData?.gameState?.yourSeat
             && tableData?.gameState?.yourSeat >= 0;
@@ -176,13 +222,16 @@ export default function MultiTableTabs() {
               <span>{tableName}</span>
               {phase && <span style={{ color: '#555', fontSize: '0.65rem' }}>({phase})</span>}
               {isYourTurn && !isActive && <span style={yourTurnBadge}>YOUR TURN</span>}
-              {tableCount > 1 && (
+              {/* R2 — only an EXTRA table is closed here; the main seat is
+                  left with Back to Lobby (which leaves every table). */}
+              {tableData?.extra && (
                 <button
                   style={closeBtn}
                   onClick={(e) => { e.stopPropagation(); leaveAdditionalTable(tableId); }}
-                  title="Leave table"
+                  title="Leave this table"
+                  aria-label={`Leave ${tableName}`}
                 >
-                  x
+                  ×
                 </button>
               )}
             </div>
@@ -196,17 +245,17 @@ export default function MultiTableTabs() {
           onMouseLeave={() => setAddBtnHover(false)}
           onClick={handleOpenPicker}
           title={canAddMore ? 'Open another table' : `Maximum ${MAX_TABLES} tables`}
+          aria-label="Open another table"
           disabled={!canAddMore}
         >
           +
         </button>
 
-        {tableCount > 0 && (
-          <span style={{ marginLeft: '8px', color: '#555', fontSize: '0.65rem', flexShrink: 0 }}>
-            {tableCount}/{MAX_TABLES}
-          </span>
-        )}
+        <span style={{ marginLeft: '8px', color: '#555', fontSize: '0.65rem', flexShrink: 0 }}>
+          {tableCount}/{MAX_TABLES}
+        </span>
       </div>
+      )}
 
       {/* Table picker overlay */}
       {showPicker && (
@@ -215,18 +264,17 @@ export default function MultiTableTabs() {
             <div style={{ fontSize: '1rem', fontWeight: 700, color: '#ffd24a', marginBottom: '12px', textAlign: 'center' }}>
               Join Another Table
             </div>
-            {tables && tables.length > 0 ? (
+            {Array.isArray(tables) && tables.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {tables
-                  .filter((t) => !activeTables || !activeTables.has(t.id))
-                  .map((t) => (
+                {pickerRows.map((r) => (
                     <button
-                      key={t.id}
-                      onClick={() => handleJoinTable(t.id)}
+                      key={r.id}
+                      onClick={() => handleJoinTable(r)}
                       style={{
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
+                        minHeight: '44px',
                         padding: '8px 12px',
                         background: 'rgba(30,30,60,0.6)',
                         border: '1px solid rgba(60,60,100,0.4)',
@@ -236,22 +284,14 @@ export default function MultiTableTabs() {
                         cursor: 'pointer',
                         transition: 'all 0.15s',
                       }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = '#ffd24a';
-                        e.currentTarget.style.background = 'rgba(255,215,0,0.06)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(60,60,100,0.4)';
-                        e.currentTarget.style.background = 'rgba(30,30,60,0.6)';
-                      }}
                     >
-                      <span style={{ fontWeight: 600 }}>{t.name || `Table ${t.id}`}</span>
+                      <span style={{ fontWeight: 600 }}>{r.name}</span>
                       <span style={{ color: '#6A8AAA', fontSize: '0.7rem' }}>
-                        {t.playerCount || 0}/{t.maxPlayers || 6} players
+                        {r.taken}/{r.max} players
                       </span>
                     </button>
                   ))}
-                {tables.filter((t) => !activeTables || !activeTables.has(t.id)).length === 0 && (
+                {pickerRows.length === 0 && (
                   <div style={{ color: '#6A6A8A', textAlign: 'center', padding: '16px', fontStyle: 'italic' }}>
                     No other tables available
                   </div>

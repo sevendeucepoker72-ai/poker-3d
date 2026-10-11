@@ -755,3 +755,44 @@ declineInsurance
 
 # 2026-10-11 R1 client review (R1C-REV-1): Tap to reconnect reuses the SAME socket so every listener keeps working
 forceReconnectSameInstance
+
+# 2026-10-11 .online R2 K1 (table screen, part 1)
+#     TABLEUI-8 / TABLEUI-9: on phones the table (felt + seats) lives BETWEEN the
+#     top bar and the action bar; the board, the felt pot, the hand-strength pill
+#     and the hero's cards + nameplate are placed from the MEASURED action-bar
+#     height and felt rect (useTableGeometry -> CSS vars, TableLayout.css):
+#     landscape = one-row action bar, portrait = two rows (slider + presets /
+#     buttons), a 44px raise-slider touch row, side seats' bets beside the pod.
+table-geometry
+--hud-bar-h
+--felt-w
+poker:felt-measured
+ab-preset-short
+chip-stack--in-
+#     TABLEUI-14: tabs only for 2+ LIVE seats (watched / moved-from / ended
+#     tables are dropped, currentTableId only in multi mode), the picker opens
+#     from Options; TABLEUI-15: a spectator's Sit Here = joinTable(tableId,
+#     seat), Back = stopSpectating with no forfeit confirm.
+hud--no-tabs
+multi-table-tabs-bar
+poker:open-table-picker
+seat-pod__sit-btn--spectator
+hud-spectator-tag
+#     TABLEUI-10: the training panel docks in the Training badge (equity %),
+#     minimizes and closes, never over the top bar or the board.
+training-overlay--open
+hud-training-badge--open
+app_poker_trainingDock
+#     TABLEUI-16 / APPUI-16: the replay follows the record's actionLog (board on
+#     each street change, the pot from the real chip movements, antes
+#     reconciled, the viewer's own cards kept), stacks on phones; "Last hand
+#     replay" in Options (the rail button is hidden on touch screens).
+Antes posted
+viewerHoleCards
+Last hand replay
+#     TABLEUI-17: no `left` animation, box-shadow pulses are steady glows, the
+#     transform-only motions run on the hero's turn only, decorative loops are
+#     off on phones and for reduced motion.
+allin-shimmer-x
+hud-waiting-dot
+#     P3: pot presets are raise-TO totals that include the hero's own bet.

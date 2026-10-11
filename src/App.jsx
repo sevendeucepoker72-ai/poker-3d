@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback, Component, lazy, Suspense } from 'react';
 import { useGameStore, clearOtherAccountOidcFromTicketTab } from './store/gameStore';
 import { useTableStore, forgetSitOutPreference } from './store/tableStore';
+import { useTimerStore } from './store/timerStore';
 import { getAuthToken, setAuthToken, clearAuthToken, setOAuthItem, bearerForThisTab } from './services/tokenStorage';
 import { runSocketLogin, isCredentialDead, isDefinitiveLoginFailure } from './services/socketAuth';
 // 2026-10-07 — game suspension + guest play OFF: server play refusals (C5).
@@ -810,6 +811,10 @@ function App() {
 
     // Handle both full state and delta patches from the server
     socket.on('gameState', (data) => {
+      // R2 (P3) — the server's clock, for the turn rings + insurance countdown.
+      if (data && typeof data === 'object' && typeof data._serverTs === 'number') {
+        try { useTimerStore.getState().noteServerTs(data._serverTs); } catch { /* ignore */ }
+      }
       const ts = useTableStore.getState();
       let state;
       if (data && typeof data === 'object' && 'full' in data) {
@@ -1161,6 +1166,11 @@ function App() {
       }
       try { noteTournamentTableMove(toTable, fromTable); } catch { /* best-effort */ }
       if (toTable) { try { clearTableLeft(toTable); } catch { /* ignore */ } }
+      // R2 (TABLEUI-14) — the seat left `fromTable`: its cached entry goes (it
+      // stayed as a phantom tab) and a late frame of it never flashes back.
+      if (fromTable && liveAtFrom && String(fromTable) !== String(toTable)) {
+        try { useTableStore.getState().dropActiveTable(fromTable, { ignore: true }); } catch { /* best-effort */ }
+      }
       if (toTable) { try { useTableStore.getState().switchActiveTable(toTable); } catch { /* new table state arrives via broadcast */ } }
       useProgressStore.getState().addNotification({
         type: 'mission',
@@ -1533,7 +1543,10 @@ function App() {
     socket.on('additionalTableJoined', (data) => {
       if (data?.tableId) { try { clearTableLeft(data.tableId); } catch { /* ignore */ } }
       const store = useTableStore.getState();
-      store.updateActiveTable(data.tableId, data.gameState);
+      // R2 (TABLEUI-14) — marked as an EXTRA seat (kept, tabbed, left on Back).
+      store.updateActiveTable(data.tableId, data.gameState, { extra: true });
+      // (`store` is the snapshot from before the join: single-table mode →
+      // the view moves to the new table, as before.)
       if (!store.currentTableId) {
         store.switchActiveTable(data.tableId);
       }

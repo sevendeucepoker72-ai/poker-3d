@@ -5,7 +5,7 @@ import { markTableLeft, isTableLeft } from '../services/leftTables';
 // R1 (AUTH-6, contract #3) — every frame the table renders passes through these
 // setters; a non-string name (number / object / array) is made safe here once,
 // so no seat, winner or showdown row can crash the table for its viewers.
-import { sanitizeTableState, sanitizeHandHistory, sanitizeNamedEvent } from '../utils/tablePayload';
+import { sanitizeTableState, sanitizeHandHistory, sanitizeNamedEvent, sanitizeShownCards } from '../utils/tablePayload';
 
 // 2026-10-07 — every gated play emit records how to replay itself, so a
 // login_required refusal that lands on a signed-out socket (reconnect race) can
@@ -28,10 +28,97 @@ export function forgetSitOutPreference() {
   try { sessionStorage.setItem(SIT_OUT_PREF_KEY, '0'); } catch { /* ignore */ }
 }
 
+// ── R2 (TABLEUI-14, 2026-10-11) — the multi-table map holds only real tables ──
+// `activeTables` used to collect EVERY table whose frame was ever shown (a
+// watched table, a table the player was moved from, an extra table whose seat
+// ended): they stayed as "phantom" tabs, and a tap on one (or a stale
+// `currentTableId`) froze the view on a table that sends nothing — the next
+// join then rendered blank and the lobby said "Server didn't respond".
+// Now: an entry is kept only while this socket holds a LIVE seat there, or it
+// is the table on screen (its state is the delta merge base); `currentTableId`
+// is set only while 2+ seats are live (single-table mode otherwise, where every
+// frame is the table on screen).
+
+// R2 (TABLEUI-10) — the training panel is open or minimized (remembered for
+// this tab; minimized by default on a phone, where it used to cover Back,
+// Sit Out, Options and the board). The top bar's Training badge toggles it.
+const TRAINING_PANEL_KEY = 'app_poker_trainingDock';
+function readTrainingPanelOpen() {
+  try {
+    const v = sessionStorage.getItem(TRAINING_PANEL_KEY);
+    if (v === 'open') return true;
+    if (v === 'collapsed') return false;
+  } catch { /* ignore */ }
+  try { return !(window.matchMedia && window.matchMedia('(max-width: 600px), (max-height: 500px)').matches); } catch { return true; }
+}
+
+/** A table state where this socket holds a live seat (not watching). */
+export function isLiveSeatState(gs) {
+  return !!gs && typeof gs === 'object' && !gs.isSpectator && Number(gs.yourSeat) >= 0;
+}
+
+/** Ids of the activeTables entries where this socket holds a live seat. */
+export function liveTableIds(activeTables) {
+  const out = [];
+  if (!activeTables || typeof activeTables.forEach !== 'function') return out;
+  activeTables.forEach((entry, id) => { if (isLiveSeatState(entry && entry.gameState)) out.push(id); });
+  return out;
+}
+
+/**
+ * The settled multi-table state for `s` (store state), or null when nothing
+ * changes: { updates, dropped:[[id, entry]] }. Kept: the table on screen (its
+ * state is the delta merge base) and live seats — in single-table mode only
+ * EXTRA tables (joinAdditionalTable) besides the shown one, since every other
+ * cached table there is a table the socket already left (a watched table, a
+ * table it was moved from, the previous quick table).
+ */
+function settleTables(s) {
+  const { activeTables, currentTableId, gameState } = s;
+  if (!activeTables || typeof activeTables.forEach !== 'function') return null;
+  const shownId = gameState && gameState.tableId != null ? String(gameState.tableId) : null;
+  const next = new Map();
+  const dropped = [];
+  activeTables.forEach((entry, id) => {
+    const live = isLiveSeatState(entry && entry.gameState);
+    const keep = (shownId !== null && String(id) === shownId)
+      || (live && (!!(entry && entry.extra) || currentTableId != null));
+    if (keep) next.set(id, entry);
+    else dropped.push([id, entry]);
+  });
+  const live = liveTableIds(next);
+  const updates = {};
+  let cur = currentTableId;
+  if (live.length >= 2) {
+    if (!cur || !live.includes(cur)) cur = live[0];
+  } else if (live.length === 1 && shownId !== null && String(live[0]) !== shownId && cur !== null) {
+    // The only live seat is not the table on screen (the shown one ended):
+    // show the live one; the dead one goes at the next settle.
+    cur = live[0];
+  } else {
+    cur = null;
+  }
+  if (cur !== currentTableId) {
+    updates.currentTableId = cur;
+    if (cur && (!shownId || String(cur) !== shownId)) {
+      const entry = next.get(cur);
+      updates.gameState = (entry && entry.gameState) || null;
+      updates.mySeat = entry && entry.gameState && entry.gameState.yourSeat != null ? entry.gameState.yourSeat : -1;
+    }
+  }
+  if (dropped.length) updates.activeTables = next;
+  if (!Object.keys(updates).length) return null;
+  return { updates, dropped };
+}
+
 export const useTableStore = create((set, get) => ({
   // Game state from server
   gameState: null,
-  setGameState: (state) => set({ gameState: sanitizeTableState(state) }),
+  setGameState: (state) => {
+    set({ gameState: sanitizeTableState(state) });
+    // R2 (TABLEUI-14) — the table that was on screen before may now be stale.
+    get().settleActiveTables();
+  },
 
   // Connection
   connected: false,
@@ -217,6 +304,17 @@ export const useTableStore = create((set, get) => ({
     const leftTableId = !before.currentTableId && shown && shown.tableId != null ? String(shown.tableId) : null;
     const heldSeat = !!leftTableId && (Number(shown.yourSeat) >= 0 || before.mySeat >= 0);
     if (socket) socket.emit('leaveTable');
+    // R2 (TABLEUI-14) — 'leaveTable' ends the MAIN seat only; an EXTRA table
+    // (joinAdditionalTable) left behind would keep its seat with no UI and be
+    // auto-folded every hand. Back to Lobby leaves them too (cash tables only —
+    // the server credits each stack), and their late frames are ignored.
+    if (before.activeTables && typeof before.activeTables.forEach === 'function') {
+      before.activeTables.forEach((entry, id) => {
+        if (!entry || !entry.extra) return;
+        try { if (socket) socket.emit('leaveAdditionalTable', { tableId: id }); } catch { /* ignore */ }
+        markTableLeft(id, entry.gameState);
+      });
+    }
     set({
       // Review (round 7): a Sit Out never carries over to the NEXT seat — every
       // new server session starts not sitting out (a stale flag showed the
@@ -230,9 +328,12 @@ export const useTableStore = create((set, get) => ({
     // Clear from multi-table
     const { activeTables, currentTableId } = get();
     if (activeTables && currentTableId) {
-      const newTables = new Map(activeTables);
-      newTables.delete(currentTableId);
-      set({ activeTables: newTables, currentTableId: newTables.size > 0 ? newTables.keys().next().value : null });
+      // R2 — every table this socket was at is left above (main + extras);
+      // the main seat's late frames are ignored like the single-table path.
+      activeTables.forEach((entry, id) => {
+        if (entry && !entry.extra && isLiveSeatState(entry.gameState)) markTableLeft(id, entry.gameState);
+      });
+      set({ activeTables: new Map(), currentTableId: null });
     } else if (heldSeat) {
       // Single table: its activeTables entry goes too (it was the merge base
       // a late delta used to bring the stale seat back), and late frames for
@@ -294,6 +395,7 @@ export const useTableStore = create((set, get) => ({
     }
     if (shown && !('gameState' in updates)) { updates.gameState = null; updates.mySeat = -1; updates.isSpectating = false; }
     if (Object.keys(updates).length) set(updates);
+    get().settleActiveTables();
     return true;
   },
 
@@ -319,12 +421,29 @@ export const useTableStore = create((set, get) => ({
   },
   setTrainingEnabled: (enabled) => set({ trainingEnabled: enabled }),
   setTrainingData: (data) => set({ trainingData: data }),
+  trainingPanelOpen: readTrainingPanelOpen(),
+  setTrainingPanelOpen: (open) => {
+    set({ trainingPanelOpen: !!open });
+    try { sessionStorage.setItem(TRAINING_PANEL_KEY, open ? 'open' : 'collapsed'); } catch { /* ignore */ }
+  },
 
   // Hand history (last 20 hands)
   handHistories: [],
-  addHandHistory: (history) => set((state) => ({
-    handHistories: [...state.handHistories, sanitizeHandHistory(history)].slice(-20),
-  })),
+  addHandHistory: (history) => set((state) => {
+    let rec = sanitizeHandHistory(history);
+    // R2 (APPUI-16) — the record masks every hand that was not shown, the
+    // viewer's OWN included (a fold, an uncontested pot): keep his cards — he
+    // saw them — for his replay. Only from his live seat in that same hand.
+    try {
+      const gs = state.gameState;
+      const seat = gs && !gs.isSpectator && Number(gs.yourSeat) >= 0 ? Number(gs.yourSeat) : null;
+      const mine = seat !== null && rec && gs.handNumber === rec.handNumber ? sanitizeShownCards(gs.yourCards) : null;
+      if (mine && Array.isArray(rec.players) && rec.players.some((p) => p && p.seatIndex === seat)) {
+        rec = { ...rec, viewerSeat: seat, viewerHoleCards: mine };
+      }
+    } catch { /* best-effort */ }
+    return { handHistories: [...state.handHistories, rec].slice(-20) };
+  }),
 
   // Provably fair
   deckCommitment: null,
@@ -384,11 +503,57 @@ export const useTableStore = create((set, get) => ({
     const socket = getSocket();
     if (socket) socket.emit('stopSpectating');
     set({ isSpectating: false, gameState: null });
+    // R2 (TABLEUI-14) — the watched table's cache entry goes (no phantom tab,
+    // no stale currentTableId pointing at it).
+    get().settleActiveTables();
   },
 
   // ========== Multi-Table Support ==========
-  activeTables: new Map(), // tableId -> { gameState, mySeat }
+  activeTables: new Map(), // tableId -> { gameState, extra? }  (extra = joinAdditionalTable seat)
   currentTableId: null,
+
+  // R2 (TABLEUI-14) — drop stale entries + keep currentTableId honest (see
+  // settleTables above). A dropped EXTRA seat is left on the server (its room
+  // would otherwise keep streaming frames) and its late frames are ignored;
+  // any other dropped table keeps only its delta merge base.
+  settleActiveTables: () => {
+    // A settle can move the view off a dead table, which the next pass then
+    // drops: run until stable (at most a few passes).
+    for (let pass = 0; pass < 3; pass++) {
+      const res = settleTables(get());
+      if (!res) return;
+      set(res.updates);
+      for (const [id, entry] of res.dropped) {
+        const gs = entry && entry.gameState;
+        if (entry && entry.extra) {
+          try { const s = getSocket(); if (s && s.connected) s.emit('leaveAdditionalTable', { tableId: id }); } catch { /* ignore */ }
+          markTableLeft(id, gs);
+        } else {
+          markTableLeft(id, gs, { ignore: false });
+        }
+      }
+    }
+  },
+
+  // R2 (TABLEUI-14) — the socket's seat at `tableId` is gone (playerMoved's
+  // fromTable): its entry is dropped (no phantom tab for the old table) and,
+  // with `ignore`, a late frame of it never flashes the old table back.
+  dropActiveTable: (tableId, { ignore = false } = {}) => {
+    const id = tableId != null ? String(tableId) : null;
+    const { activeTables } = get();
+    if (!id || !activeTables) return;
+    let key = null;
+    activeTables.forEach((_e, k) => { if (String(k) === id) key = k; });
+    if (key === null) return;
+    const entry = activeTables.get(key);
+    const next = new Map(activeTables);
+    next.delete(key);
+    markTableLeft(key, entry && entry.gameState, { ignore: !!ignore });
+    const updates = { activeTables: next };
+    if (get().currentTableId === key) updates.currentTableId = null;
+    set(updates);
+    get().settleActiveTables();
+  },
 
   switchActiveTable: (tableId) => {
     const { activeTables } = get();
@@ -404,11 +569,13 @@ export const useTableStore = create((set, get) => ({
     if (socket) socket.emit('switchTable', { tableId });
   },
 
-  updateActiveTable: (tableId, rawGameState) => {
+  updateActiveTable: (tableId, rawGameState, { extra } = {}) => {
     const gameState = sanitizeTableState(rawGameState);
     const { activeTables, currentTableId } = get();
     const newTables = new Map(activeTables);
-    newTables.set(tableId, { gameState });
+    const prevEntry = activeTables.get(tableId);
+    // R2 — an EXTRA seat (joinAdditionalTable) stays marked as one.
+    newTables.set(tableId, { gameState, extra: extra === true || !!(prevEntry && prevEntry.extra) });
     const updates = { activeTables: newTables };
     // If this is the current displayed table, also update the main gameState
     if (tableId === currentTableId) {
@@ -416,6 +583,7 @@ export const useTableStore = create((set, get) => ({
       updates.mySeat = gameState?.yourSeat ?? -1;
     }
     set(updates);
+    get().settleActiveTables();
   },
 
   joinAdditionalTable: (tableId, playerName, buyIn) => {
@@ -428,6 +596,7 @@ export const useTableStore = create((set, get) => ({
     if (socket) socket.emit('leaveAdditionalTable', { tableId });
     const { activeTables, currentTableId } = get();
     const newTables = new Map(activeTables);
+    markTableLeft(tableId, activeTables.get(tableId)?.gameState);
     newTables.delete(tableId);
     const updates = { activeTables: newTables };
     if (tableId === currentTableId) {
@@ -443,5 +612,6 @@ export const useTableStore = create((set, get) => ({
       }
     }
     set(updates);
+    get().settleActiveTables();
   },
 }));

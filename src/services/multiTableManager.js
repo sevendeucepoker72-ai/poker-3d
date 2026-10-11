@@ -184,6 +184,10 @@ export function joinMultiTable(tableId, { playerName, buyIn, avatar, expectedVar
   });
   socket.on('disconnect', () => {
     if (slot.status !== 'error') slot.status = 'disconnected';
+    // R2 (TABLEUI-18 / APPUI-21) — the server forgets this socket's seat with
+    // the connection; the reconnect's loginResult must join the table again
+    // (`joined` stayed true, so an extra table froze for good after any blip).
+    slot.joined = false;
     notify();
   });
 

@@ -1,0 +1,572 @@
+/* ════════════════════════════════════════════════════════════════════════
+   TableLayout.css — .online R2 (2026-10-11) table layout layer for PHONES
+   (TABLEUI-8 landscape, TABLEUI-9 portrait occlusion, tap targets).
+
+   Imported LAST by GameHUD.jsx, so it is the final layer of the table
+   cascade (index.css → … → GameHUD.css → this file). Every placement here
+   reads the MEASURED geometry useTableGeometry.js publishes on <html>:
+     --hud-bar-h   action bar height (its top edge → viewport bottom)
+     --hud-top-h   the top bar's bottom edge
+     --felt-l / --felt-t / --felt-w / --felt-h   the felt oval
+   Rules that need the measurement are gated on html.table-geometry (set
+   with the first measurement), so the old rules apply until then.
+
+   Phones only: portrait (max-width 600px) and landscape (max-height 500px).
+   Tablets / desktop keep their layout.
+
+   The rule of the layout: the table (felt + seats) lives in the space
+   BETWEEN the top bar and the action bar; on the felt, top to bottom: the
+   pot, the board, your hand's strength, then your cards and nameplate
+   sitting on the action bar. Nothing is ever drawn over a control.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── The top reserve ───────────────────────────────────────────────────
+   The multi-table tab bar (44px) is shown only with 2+ live seats
+   (MultiTableTabs); otherwise the HUD no longer reserves a dead band for it. */
+.hud.hud--no-tabs {
+  padding-top: max(6px, calc(env(safe-area-inset-top, 0px) + 6px)) !important;
+}
+.hud.hud--tabs {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 48px) !important;
+}
+
+/* Tap targets (all sizes): an open seat is at least 44x44 (it was 37-39px
+   wide); a spectator's "Sit Here" is a real button in sapphire + gold. */
+.table2d-scene .seat-pod.seat-pod--empty {
+  min-width: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.table2d-scene .seat-pod__sit-btn.seat-pod__sit-btn--spectator {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 0.66rem;
+  color: #ffd24a;
+  background: linear-gradient(180deg, rgba(30, 64, 140, 0.92), rgba(13, 34, 84, 0.95));
+  border: 1px solid rgba(246, 220, 138, 0.55);
+  white-space: nowrap;
+}
+
+/* R2 (TABLEUI-10) — the Training badge is the training panel's dock: sapphire
+   + gold (it was violet), the hand's equity beside it, no pulsing filter loop. */
+.hud .hud-training-badge {
+  background: linear-gradient(180deg, rgba(30, 64, 140, 0.92), rgba(13, 34, 84, 0.95)) !important;
+  border: 1px solid rgba(246, 220, 138, 0.55) !important;
+  color: #ffd24a !important;
+  animation: none !important;
+  min-height: 36px;
+  gap: 6px;
+}
+.hud .hud-training-badge--open { box-shadow: 0 0 0 2px rgba(246, 220, 138, 0.35) !important; }
+.hud .hud-training-badge__eq {
+  color: #e8eefc;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 600px) and (orientation: portrait), (orientation: landscape) and (max-height: 500px) {
+  .hud .hud-top .hud-training-badge { min-height: 44px !important; padding: 0 10px !important; margin-left: 4px !important; }
+  .hud .hud-training-badge .hud-training-badge__label { display: none; }
+}
+
+/* Presets carry a full and a short label; desktop shows the full one. */
+.ab-preset .ab-preset-short { display: none; }
+
+/* The hand-strength pill renders INSIDE the HUD now (it was a <body> portal
+   at z 180), so menus, the all-in confirm, the showdown panel and toasts
+   (z 200-900 inside .hud) always cover it — never the other way round. */
+.hud .hand-strength-portal {
+  z-index: 150 !important;
+}
+
+/* ═══════════════════════ BOTH PHONE ORIENTATIONS ═════════════════════ */
+@media (max-width: 600px) and (orientation: portrait), (orientation: landscape) and (max-height: 500px) {
+  /* The table lives between the two bars: no seat is drawn under either. */
+  html.table-geometry .table2d-scene {
+    top: var(--hud-top-h, 0px) !important;
+    bottom: var(--hud-bar-h, 0px) !important;
+  }
+
+  /* Raise slider: a 44px touch row (the input box IS the touch target) with
+     the same thin track drawn through its middle and a 30px thumb. */
+  .hud .hud-bottom .raise-inline-slider {
+    height: 44px !important;
+    min-height: 44px !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    background: linear-gradient(to bottom,
+      transparent calc(50% - 4px),
+      rgba(255, 255, 255, 0.2) calc(50% - 4px),
+      rgba(255, 255, 255, 0.2) calc(50% + 4px),
+      transparent calc(50% + 4px)) !important;
+    touch-action: none;
+  }
+  .hud .hud-bottom .raise-inline-slider::-webkit-slider-thumb {
+    width: 30px !important;
+    height: 30px !important;
+  }
+  .hud .hud-bottom .raise-inline-slider::-moz-range-thumb {
+    width: 30px !important;
+    height: 30px !important;
+  }
+
+  /* Presets: short labels, 44px squares. */
+  .hud .hud-bottom .ab-preset .ab-preset-full { display: none !important; }
+  .hud .hud-bottom .ab-preset .ab-preset-short { display: inline !important; }
+  .hud .hud-bottom .ab-preset {
+    flex: 0 0 auto !important;
+    min-width: 44px !important;
+    max-width: 56px !important;
+    min-height: 44px !important;
+    height: 44px !important;
+    padding: 0 6px !important;
+    font-size: 0.82rem !important;
+  }
+
+  /* Board: ON the felt, centred (the old `top: 30%` of the SCREEN put it over
+     the top seat, and the <=360px `transform: scale(0.9)` dropped its
+     translate(-50%,-50%) so it slid 63px right). Card size follows the felt. */
+  html.table-geometry .hud {
+    --board-card-w: max(24px, min(42px, calc((var(--felt-w, 220px) * 0.9 - 16px) / 5)));
+    --board-cy: calc(var(--felt-t, 230px) + var(--felt-h, 200px) * 0.5);
+  }
+  html.table-geometry .hud .hud-community {
+    top: var(--board-cy) !important;
+    left: calc(var(--felt-l, 75px) + var(--felt-w, 220px) / 2) !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: translate(-50%, -50%) !important;
+    gap: 4px !important;
+  }
+  html.table-geometry .hud .hud-community .community-card {
+    width: var(--board-card-w) !important;
+    height: calc(var(--board-card-w) * 1.4) !important;
+    border-radius: 6px !important;
+    font-size: calc(var(--board-card-w) * 0.4) !important;
+  }
+  html.table-geometry .hud .hud-community .community-card .card-rank { font-size: calc(var(--board-card-w) * 0.42) !important; }
+  html.table-geometry .hud .hud-community .community-card .card-suit { font-size: calc(var(--board-card-w) * 0.44) !important; }
+  html.table-geometry .hud .hud-community .board-texture-badge { bottom: -21px !important; }
+
+  /* Hero: nameplate sits on the action bar, the cards right above it. */
+  html.table-geometry .hud .hud-nameplate-me {
+    top: auto !important;
+    bottom: calc(var(--hud-bar-h, 180px) + 4px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+  }
+  html.table-geometry .hud .hud-cards.hud-cards-floating {
+    top: auto !important;
+    left: 50% !important;
+    transform-origin: bottom center !important;
+    margin-bottom: 0 !important;
+  }
+
+  /* The hand-strength pill's label gives way (ellipsis) when it is narrow. */
+  .hud .hand-strength-portal .hsp-label {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+  .hud .hand-strength-portal .hsp-bar { flex: 0 0 32px !important; width: 32px !important; }
+
+  /* Rails (Emote / Last Hand) sit just above the measured bar. */
+  html.table-geometry .left-rail-btns,
+  html.table-geometry .right-rail-btns {
+    top: auto !important;
+    bottom: calc(var(--hud-bar-h, 180px) + 8px) !important;
+  }
+
+
+}
+
+/* The session pill is hidden on phones (portrait <=480px and landscape
+   <=900px already hid it; the widest landscape phones showed it over the
+   top-right seat). Tablets / desktop keep it. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .hud .session-tracker { display: none !important; }
+}
+
+/* ══════════════════════════ PORTRAIT PHONES ══════════════════════════ */
+@media (max-width: 600px) and (orientation: portrait) {
+  html.table-geometry .table2d-felt {
+    width: min(
+      calc(100vw - 150px),
+      calc((100dvh - var(--hud-top-h, 110px) - var(--hud-bar-h, 150px) - 156px) * 1.1),
+      340px
+    ) !important;
+  }
+
+  /* Top bar: the pot / phase block shrinks (ellipsis) instead of wrapping to
+     a row of its own when the Training badge sits beside Back — a third top
+     row squeezed the whole table. */
+  .hud .hud-top .hud-center-info {
+    flex: 1 1 150px !important;
+    min-width: 0 !important;
+  }
+  .hud .hud-top .hud-center-info .hud-pot { justify-content: flex-end !important; min-width: 0 !important; overflow: hidden !important; white-space: nowrap !important; }
+  .hud .hud-top .hud-center-info .hud-phase { text-align: right !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+
+  /* Action bar, two rows: [slider ……… ½ ⅔ Pot] / [Call Raise All-In Fold]
+     (it was three — the presets had a row of their own). */
+  .hud .hud-bottom .action-bar-flat { flex-wrap: wrap !important; row-gap: 6px !important; }
+  .hud .hud-bottom .action-bar-flat::before {
+    content: '';
+    order: 2;
+    flex: 0 0 100%;
+    height: 0;
+  }
+  .hud .hud-bottom .action-bar-flat .raise-inline-slider-wrap {
+    order: 0 !important;
+    flex: 1 1 120px !important;
+    min-width: 96px !important;
+    padding: 0 2px !important;
+  }
+  .hud .hud-bottom .action-bar-flat .ab-presets {
+    order: 1 !important;
+    flex: 0 0 auto !important;
+    flex-basis: auto !important;
+    padding: 0 !important;
+    gap: 4px !important;
+  }
+  .hud .hud-bottom .action-bar-flat .ab-call-group { order: 3 !important; }
+  .hud .hud-bottom .action-bar-flat .action-btn.check { order: 3 !important; }
+  .hud .hud-bottom .action-bar-flat > .action-btn.raise,
+  .hud .hud-bottom .action-bar-flat .raise-inline-group .action-btn.raise { order: 4 !important; }
+  .hud .hud-bottom .action-bar-flat .action-btn.allin { order: 5 !important; }
+  .hud .hud-bottom .action-bar-flat .action-btn.fold { order: 6 !important; }
+  .hud .hud-bottom .action-bar-flat .raise-inline-val { min-width: 44px !important; font-size: 0.78rem !important; }
+
+  /* Felt pot (chips + "Pot: N") ABOVE the board: neither the board nor the
+     hero's cards ever cover it. */
+  html.table-geometry .table2d-pot-area {
+    right: auto !important;
+    left: 50% !important;
+    top: 21% !important;
+    transform: translate(-50%, -50%) !important;
+  }
+
+  /* Hero cards above the nameplate (clear of its turn-timer ring). */
+  html.table-geometry .hud .hud-cards.hud-cards-floating {
+    bottom: calc(var(--hud-bar-h, 180px) + 4px + var(--hero-plate-h, 42px) + 6px) !important;
+    transform: translateX(-50%) scale(0.46) !important;
+  }
+
+  /* Hand-strength pill: on the felt, between the board (+ its texture badge)
+     and the hero's cards — never over the pot (above the board) or the top
+     bar's Options. */
+  html.table-geometry .hud .hand-strength-portal {
+    top: calc(var(--board-cy) + var(--board-card-w) * 0.7 + 28px) !important;
+    left: calc(var(--felt-l, 75px) + var(--felt-w, 220px) / 2) !important;
+    transform: translateX(-50%) !important;
+    min-width: 0 !important;
+    /* inside the side seats, which overlap the felt's edges */
+    max-width: calc(var(--felt-w, 220px) - 44px) !important;
+    padding: 2px 9px !important;
+    gap: 6px !important;
+    font-size: 0.82em !important;
+  }
+}
+
+/* Small portrait phones: the felt pot keeps only its label (the chip stack
+   does not fit the narrow top of the oval), and while the hand-strength pill
+   shows, the board texture badge steps aside (both would not fit). */
+@media (max-width: 360px) and (orientation: portrait) {
+  html.table-geometry .table2d-pot-area .pot-chips { display: none !important; }
+  html.table-geometry .table2d-pot-area { top: 24% !important; }
+  html.table-geometry .hud:has(.hand-strength-portal) .board-texture-badge { display: none !important; }
+  html.table-geometry .hud .hand-strength-portal {
+    top: calc(var(--board-cy) + var(--board-card-w) * 0.7 + 5px) !important;
+  }
+  /* the hand's name gets the pill's width */
+  .hud .hand-strength-portal .hsp-bar,
+  .hud .hand-strength-portal .hsp-tier { display: none !important; }
+}
+
+/* ══════════════════════════ LANDSCAPE PHONES ═════════════════════════ */
+@media (orientation: landscape) and (max-height: 500px) {
+  /* Top bar: one row, every control a 44px tap target. */
+  .hud .hud-top {
+    height: auto !important;
+    min-height: 44px !important;
+    overflow: visible !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    padding: 0 calc(8px + env(safe-area-inset-right, 0px)) 0 calc(8px + env(safe-area-inset-left, 0px)) !important;
+  }
+  .hud .hud-top .hud-back,
+  .hud .hud-top .sit-out-quick-btn,
+  .hud .hud-top .hud-icon-btn,
+  .hud .hud-top .hud-training-badge {
+    min-height: 44px !important;
+    min-width: 44px !important;
+    box-sizing: border-box !important;
+  }
+
+  html.table-geometry .table2d-felt {
+    width: min(
+      calc(100vw - 190px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)),
+      calc((100dvh - var(--hud-top-h, 44px) - var(--hud-bar-h, 60px) - 128px) * 2.35),
+      760px
+    ) !important;
+    min-width: 150px !important;
+  }
+
+  /* ── ONE-ROW action bar ──
+     [Call/Check] [½][⅔][Pot][3x] [——slider——] [Raise N] [All-In N] [Fold]
+     (three rows before: 38-49% of the screen height). */
+  .hud .hud-bottom {
+    padding: 5px calc(8px + env(safe-area-inset-right, 0px)) calc(5px + env(safe-area-inset-bottom, 0px)) calc(8px + env(safe-area-inset-left, 0px)) !important;
+    min-height: 0 !important;
+  }
+  .hud .hud-bottom .hud-actions,
+  .hud .hud-bottom .hud-actions-inner {
+    flex-direction: row !important;
+    align-items: stretch !important;
+    gap: 4px !important;
+  }
+  .hud .hud-bottom .action-bar-flat {
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+    gap: 4px !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
+  .hud .hud-bottom .action-bar-flat .action-btn {
+    min-height: 44px !important;
+    height: 46px !important;
+    padding: 2px 6px !important;
+    font-size: 0.76rem !important;
+    line-height: 1.1 !important;
+    border-radius: 10px !important;
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+  }
+  .hud .hud-bottom .action-bar-flat .action-btn::before { display: none !important; }
+  .hud .hud-bottom .action-bar-flat .ab-call-group { order: 1 !important; flex: 0 0 82px !important; min-height: 0 !important; }
+  .hud .hud-bottom .action-bar-flat .ab-call-group .action-btn { width: 100% !important; height: 46px !important; }
+  .hud .hud-bottom .action-bar-flat .action-meta-row { display: none !important; }
+  .hud .hud-bottom .action-bar-flat .ab-presets {
+    order: 2 !important;
+    flex: 0 0 auto !important;
+    flex-basis: auto !important;
+    display: flex !important;
+    gap: 4px !important;
+    padding: 0 !important;
+  }
+  .hud .hud-bottom .action-bar-flat .ab-preset { height: 46px !important; }
+  .hud .hud-bottom .action-bar-flat .raise-inline-slider-wrap {
+    order: 3 !important;
+    flex: 1 1 80px !important;
+    min-width: 64px !important;
+    padding: 0 2px !important;
+    align-self: center !important;
+  }
+  .hud .hud-bottom .action-bar-flat .raise-inline-val { display: none !important; }
+  .hud .hud-bottom .action-bar-flat > .action-btn.raise,
+  .hud .hud-bottom .action-bar-flat .raise-inline-group .action-btn.raise { order: 4 !important; flex: 0 0 74px !important; }
+  .hud .hud-bottom .action-bar-flat .action-btn.allin { order: 5 !important; flex: 0 0 72px !important; }
+  .hud .hud-bottom .action-bar-flat .action-btn.fold { order: 6 !important; flex: 0 0 58px !important; max-width: 58px !important; }
+  .hud .hud-bottom .action-btn.fold .fold-confirm-hint { font-size: 0.56rem !important; }
+
+  /* Not my turn: the queue pills share the row; the disabled sizing
+     controls step aside. */
+  .hud .hud-bottom .pre-action-btns {
+    flex: 0 1 auto !important;
+    width: auto !important;
+    gap: 4px !important;
+  }
+  .hud .hud-bottom .pre-action-btn {
+    flex: 0 0 auto !important;
+    min-height: 44px !important;
+    height: 46px !important;
+    min-width: 52px !important;
+    padding: 2px 6px !important;
+    font-size: 0.62rem !important;
+    border-radius: 10px !important;
+  }
+  .hud .hud-bottom .hud-actions--inactive .raise-inline-slider-wrap,
+  .hud .hud-bottom .hud-actions--inactive .ab-presets { display: none !important; }
+  /* …and while the queue pills show, the dimmed action buttons (which they
+     covered half-way) step aside: one clean row either way. */
+  .hud .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive { display: none !important; }
+  .hud .hud-bottom .pre-action-btns {
+    position: static !important;
+    left: auto !important;
+    transform: none !important;
+    justify-content: center !important;
+    flex: 1 1 auto !important;
+  }
+  .hud .hud-bottom .straddle { align-self: center !important; }
+  .hud .hud-bottom .last-aggressor-badge { display: none !important; }
+
+  /* Hero: a one-line nameplate on the bar, the cards (smaller) above it,
+     clear of its turn-timer ring. */
+  .hud .hud-nameplate-me .hud-np-info {
+    flex-direction: row !important;
+    align-items: baseline !important;
+    gap: 6px !important;
+  }
+  html.table-geometry .hud .hud-cards.hud-cards-floating {
+    bottom: calc(var(--hud-bar-h, 60px) + 4px + var(--hero-plate-h, 32px) + 6px) !important;
+    transform: translateX(-50%) scale(0.36) !important;
+  }
+
+  /* Board: centred on the felt, a little below its middle (the pot label
+     takes the top of the felt), card size from the felt's width AND height. */
+  html.table-geometry .hud {
+    --board-card-w: max(22px, min(40px, calc((var(--felt-w, 320px) * 0.6 - 16px) / 5), calc(var(--felt-h, 140px) * 0.36)));
+    --board-cy: calc(var(--felt-t, 120px) + var(--felt-h, 140px) * 0.52);
+  }
+
+  /* Felt pot: its label above the board (the chip stack has no room). */
+  html.table-geometry .table2d-pot-area {
+    right: auto !important;
+    left: 50% !important;
+    top: 12% !important;
+    transform: translateX(-50%) !important;
+  }
+  html.table-geometry .table2d-pot-area .pot-chips { display: none !important; }
+
+  /* Hand-strength pill: top-left under the top bar (the Emote rail moved
+     down onto the action bar). */
+  html.table-geometry .hud .hand-strength-portal {
+    top: calc(var(--hud-top-h, 44px) + 4px) !important;
+    left: calc(8px + env(safe-area-inset-left, 0px)) !important;
+    transform: none !important;
+    min-width: 0 !important;
+    max-width: min(34vw, 230px) !important;
+    padding: 2px 9px !important;
+    gap: 6px !important;
+    font-size: 0.82em !important;
+  }
+}
+
+/* Narrow landscape phones (iPhone SE 568x320): the 3x preset steps aside so
+   the slider keeps a usable track, and the board texture badge too. */
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 640px) {
+  .hud .hud-bottom .ab-presets .ab-preset--3bb { display: none !important; }
+  .hud .hud-bottom .action-bar-flat .ab-call-group { flex-basis: 74px !important; }
+  .hud .hud-bottom .action-bar-flat > .action-btn.raise,
+  .hud .hud-bottom .action-bar-flat .raise-inline-group .action-btn.raise { flex-basis: 66px !important; }
+  .hud .hud-bottom .action-bar-flat .action-btn.allin { flex-basis: 66px !important; }
+  .hud .hud-bottom .action-bar-flat .action-btn.fold { flex-basis: 52px !important; max-width: 52px !important; }
+  html.table-geometry .hud .hud-community .board-texture-badge { display: none !important; }
+  html.table-geometry .hud .hud-cards.hud-cards-floating { transform: translateX(-50%) scale(0.32) !important; }
+}
+
+/* Very short landscape phones (<= 340px tall): smaller seats so nine fit
+   around the smaller felt without covering each other. */
+@media (orientation: landscape) and (max-height: 340px) {
+  .table2d-scene { --sp: 0.5 !important; }
+  html.table-geometry .table2d-felt {
+    aspect-ratio: 3 / 1 !important;
+    width: min(
+      calc(100vw - 190px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)),
+      calc((100dvh - var(--hud-top-h, 44px) - var(--hud-bar-h, 60px) - 128px) * 3),
+      760px
+    ) !important;
+  }
+  /* the board moves up a little for the hero's cards; the felt's pot label
+     (the top bar shows the pot) has no room left on so short a felt */
+  html.table-geometry .hud { --board-cy: calc(var(--felt-t, 120px) + var(--felt-h, 80px) * 0.46); }
+  html.table-geometry .table2d-pot-area { display: none !important; }
+}
+/* Narrow portrait phones: slightly smaller seats so neighbours never cover
+   each other's nameplate. */
+@media (max-width: 360px) and (orientation: portrait) {
+  .table2d-scene { --sp: 0.56 !important; }
+}
+/* ═══════════════ R2 (TABLEUI-17) — the table's animation budget ═══════════════
+   An idle table ran 15-16 infinite animations, most of them box-shadow pulses
+   that repaint every frame: 65-72% of the main thread at 4x CPU on a phone.
+   Now: nothing animates `left` (the All-In shimmer moves by transform); glow
+   pulses run only while it is the HERO's turn; the other seats' turn / all-in
+   glows are static; winner glows play twice and stop; decorative loops
+   (ambience, motes, halos, sheens, phase glow, badges) are off on phones
+   <= 480px wide and under prefers-reduced-motion. */
+
+/* 1 — the action bar: the box-shadow pulses (turn panel, Call/Check, All-In —
+   a repaint every frame) are steady glows; the compositor-only motions (the
+   Call sheen, the All-In shimmer — transform) run only on the hero's turn,
+   never on a disabled button. */
+.hud .action-btn.allin,
+.hud .action-btn.call::after,
+.hud .action-btn.allin::before,
+.hud .hud-actions-inner .action-btn.call,
+.hud .hud-actions-inner .action-btn.check,
+.hud .hud-bottom--my-turn .hud-bottom-panel,
+.hud .hud-bottom--my-turn { animation: none !important; }
+.hud .hud-bottom--my-turn .hud-actions-inner:not(.hud-actions--inactive) .action-btn.call:not(:disabled)::after {
+  animation: appSheen 3.6s ease-in-out infinite !important;
+}
+.hud .hud-bottom--my-turn .hud-actions-inner:not(.hud-actions--inactive) .action-btn.allin:not(:disabled)::before {
+  animation: allin-shimmer-x 2.2s ease-in-out infinite !important;
+}
+/* left:-100% → left:160% of the button, as a transform of the 60%-wide bar */
+@keyframes allin-shimmer-x {
+  0% { transform: translateX(0); }
+  60%, 100% { transform: translateX(433%); }
+}
+/* the phase label itself pulsed between 15% and 50% opacity (its ::after glow
+   is the intended effect): the label stays readable and still */
+.hud .hud-phase { animation: none !important; }
+/* the queued pre-action: a steady highlight (it pulsed between turns) */
+.hud .pre-action-btn.active { animation: none !important; }
+
+/* 2 — seats: static turn / all-in highlights; winner glows play twice. */
+.table2d-scene .seat-pod--active .seat-pod__avatar {
+  animation: none !important;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.4), 0 0 18px 5px rgba(74, 222, 128, 0.35), 0 2px 12px rgba(0, 0, 0, 0.5) !important;
+}
+.table2d-scene .seat-pod--active::after { animation: none !important; }
+.table2d-scene .seat-pod--allin .seat-pod__avatar,
+.table2d-scene .seat-pod--allin .seat-pod__avatar-wrap::before,
+.table2d-scene .seat-pod__allin-badge { animation: none !important; }
+.table2d-scene .seat-pod--winner,
+.table2d-scene .seat-pod--winner .seat-pod__avatar,
+.table2d-scene .seat-pod--winner .seat-pod__avatar-wrap,
+.table2d-scene .seat-pod--winner .seat-pod__nameplate,
+.table2d-felt__win-glow,
+.hud .winner-banner { animation-iteration-count: 2 !important; }
+
+/* 3 — decorative loops: off on phones (<= 480px wide, and landscape phones)
+   and for reduced motion. */
+@media (max-width: 480px), (orientation: landscape) and (max-height: 500px), (prefers-reduced-motion: reduce) {
+  .table2d-rays,
+  .table2d-mote,
+  .table2d-felt__spot,
+  .table2d-felt::after,
+  .table2d-felt__win-glow,
+  .table2d-scene .thinking-dot,
+  .hud .hud-phase::after,
+  .hud .hand-strength-portal,
+  .hud .sit-out-quick-btn--active,
+  .hud .hud-waiting-dot,
+  .hud .action-btn.deal,
+  .hud .bomb-pot-banner,
+  .hud .rabbit-hunt-btn,
+  .seat-pod__owed-badge,
+  .table2d-scene .seat-pod--winner,
+  .table2d-scene .seat-pod--winner .seat-pod__avatar,
+  .table2d-scene .seat-pod--winner .seat-pod__nameplate,
+  .hud .winner-banner,
+  .hud .action-btn.call::after,
+  .hud .action-btn.allin::before,
+  .hud .hud-bottom--my-turn .hud-actions-inner:not(.hud-actions--inactive) .action-btn.call:not(:disabled)::after,
+  .hud .hud-bottom--my-turn .hud-actions-inner:not(.hud-actions--inactive) .action-btn.allin:not(:disabled)::before { animation: none !important; }
+  .table2d-scene .thinking-dot { opacity: 0.85; }
+  /* the turn rings step once a second instead of a continuous transition */
+  .table2d-scene .seat-pod__timer-ring circle,
+  .hud .hud-nameplate-me__timer-ring rect { transition: none !important; }
+}
+/* the waiting row's live dot (moved out of an inline style) */
+.hud .hud-waiting-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffd24a;
+  animation: livePulse 1.2s ease-in-out infinite;
+}
+@keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }

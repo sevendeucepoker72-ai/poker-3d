@@ -277,3 +277,44 @@
   text-align: center;
   margin-top: 4px;
 }
+
+/* R2 (APPUI-16) — phones: the stage stacks (players over the board) and the
+   overlay scrolls; the players' column + board column used to need 532px and
+   were clipped on every phone. */
+@media (max-width: 600px) {
+  .replay-overlay {
+    justify-content: flex-start;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 10px calc(env(safe-area-inset-bottom, 0px) + 16px);
+    box-sizing: border-box;
+  }
+  .replay-title { font-size: 1.1rem; }
+  .replay-stage {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    width: 100%;
+    min-height: 0;
+  }
+  .replay-players { min-width: 0; width: 100%; }
+  .replay-player-row { flex-wrap: wrap; row-gap: 2px; }
+  .replay-player-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; }
+  .replay-center { min-width: 0; width: 100%; }
+  .replay-community-cards { flex-wrap: wrap; justify-content: center; }
+  .replay-action-display { padding: 8px 12px; flex-wrap: wrap; }
+  .replay-controls { flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .replay-btn { min-height: 44px; padding: 8px 14px; }
+  .replay-speed-btn { min-height: 40px; min-width: 40px; }
+  .replay-timeline { max-width: 100%; }
+  .replay-close { position: static; min-height: 44px; }
+}
+/* Landscape phones: two columns again, but the overlay scrolls. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .replay-overlay { justify-content: flex-start; overflow-y: auto; padding: 8px 12px 12px; box-sizing: border-box; }
+  .replay-stage { gap: 16px; min-height: 0; }
+  .replay-players { min-width: 0; }
+  .replay-center { min-width: 0; }
+  .replay-btn { min-height: 40px; }
+  .replay-close { position: static; }
+}
