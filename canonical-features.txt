@@ -678,3 +678,6 @@ requestUrl.origin !== self.location.origin
 #     APPUI-7: the Daily Rewards panel embedded in the Shop tab is not forced
 #     into the fixed bottom sheet.
 .login-rewards-panel:not(.login-rewards-inline)
+#     APPUI-9: lobby / profile Win % = server handsWon / totalHandsPlayed;
+#     recordHand skips spectated hands and never writes server-owned fields.
+recordHand skipped: not seated in this hand

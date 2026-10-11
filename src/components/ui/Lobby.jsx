@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
-import { useProgressStore } from '../../store/progressStore';
+import { useProgressStore, serverWinRate } from '../../store/progressStore';
 import ProgressBar from './ProgressBar';
 import MissionsPanel from './MissionsPanel';
 import StatsPanel from './StatsPanel';
@@ -1516,7 +1516,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     setScreen('table');
   };
 
-  const winRate = progress?.winRate ?? 0;
+  // 2026-10-11 (APPUI-9) — the server's lifetime handsWon / totalHandsPlayed,
+  // never the local hand count (that showed impossible 300%+ win rates).
+  const winRate = serverWinRate(progress);
   const handsToday = progress?.handsToday ?? 0;
   const currentStreak = progress?.currentStreak ?? 0;
   const bestHand = progress?.bestHand || 'None yet';
