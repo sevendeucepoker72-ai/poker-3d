@@ -17,7 +17,7 @@ import {
   setTabSession, markTicketSignIn, RESUME_INVALID, RESUME_EVENT,
   masterIdFromLoginResult, resumeRecordMasterId, getTabSession,
 } from './services/sessionResume';
-import { stashGuestCredential, oidcSubject, deviceHoldsOtherOidcSignIn } from './services/tokenStorage';
+import { stashGuestCredential, oidcSubject, deviceHoldsOtherOidcSignIn, getHttpBearer } from './services/tokenStorage';
 // 2026-10-10 (S3) — a bridged link kept to THIS tab (the browser holds
 // another account's sign-in): the boot reads / wipes only the tab's own copies.
 import {
@@ -589,13 +589,25 @@ function App() {
 
     const refreshUserRolesFromMe = async () => {
       try {
+        // R2 (APPUI-27) — the master API's `:id` is the MASTER user id: the
+        // OIDC subject of this tab's own bearer. It used to send poker-
+        // server's LOCAL id (useGameStore.userId), which names a different
+        // master account — this tab merged THAT account's roles / VIP. No
+        // provable master id (e.g. a Play Online tab without its own OIDC
+        // sign-in) → no refresh; the server stays the authority either way.
+        let masterId = null;
+        try {
+          const sub = oidcSubject(getHttpBearer());
+          masterId = sub && /^\d+$/.test(sub) ? sub : null;
+        } catch { masterId = null; }
+        if (!masterId) return;
         // /users/:id/me is fetched unauthenticated (Pattern A contract:
         // the public-safe shape always contains `roles`, `isVip`,
         // `vipLevel`, `vipExpiration` for this exact use case). The
         // auth-server's extraTokenClaims uses the same path; we are a
         // peer caller.
         const resp = await fetch(
-          `${API_BASE}/users/${encodeURIComponent(userId)}/me`,
+          `${API_BASE}/users/${encodeURIComponent(masterId)}/me`,
           { method: 'GET', credentials: 'omit' },
         );
         if (cancelled || !resp.ok) return;
