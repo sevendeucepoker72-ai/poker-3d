@@ -40,6 +40,9 @@
 import { getSocket } from './socketService';
 import { useProgressStore } from '../store/progressStore';
 import { useGameStore } from '../store/gameStore';
+import { applyServerPreferences, applySettingsToDocument, loadSettings, SETTINGS_EVENT } from './settingsPrefs';
+
+export { applyServerPreferences };
 
 // Keys stored inside the server's `stats` JSON blob. Exported so the
 // logout path can iterate them when clearing progression cache — keeps
@@ -80,6 +83,22 @@ function restoreClientData(blob) {
       sessionStorage.setItem(key, blob[key]);
     }
   }
+}
+
+/**
+ * 2026-10-11 (R2, APPUI-26) — the account's saved clientData (settings, player
+ * notes, bet sizes, …), read back from the server (loadProgress →
+ * progressLoaded `userData.stats.clientData`, or durableState.clientData).
+ * It used to be written on every change and never read back, so notes and
+ * settings were lost on a new device or after the tab closed. Keys this tab
+ * already holds are kept (they are newer). Same-tab readers are told.
+ */
+export function restoreClientDataFromServer(blob) {
+  if (!blob || typeof blob !== 'object') return;
+  restoreClientData(blob);
+  try { applySettingsToDocument(loadSettings()); } catch { /* ignore */ }
+  try { window.dispatchEvent(new Event(SETTINGS_EVENT)); } catch { /* ignore */ }
+  try { window.dispatchEvent(new Event('poker:client-data-restored')); } catch { /* ignore */ }
 }
 
 /**

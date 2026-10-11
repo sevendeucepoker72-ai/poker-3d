@@ -1,12 +1,51 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useProgressStore } from '../../store/progressStore';
 import { useTableStore } from '../../store/tableStore';
 import { useGameStore } from '../../store/gameStore';
 import './Progression.css';
 
+// 2026-10-11 (R2, APPUI P3) — every toast is titled by what it is. The popup
+// used to title EVERY toast that was not an achievement "Mission Complete!"
+// (purchases, invites, table moves, maintenance…). A toast carries its own
+// `title` (App.jsx); without one it is titled by its type, never as a mission
+// or an achievement it is not.
+const DEFAULT_TITLES = {
+  reward: 'Reward',
+  purchase: 'Shop',
+  friend: 'Friends',
+  tournament: 'Tournament',
+  system: 'Notice',
+};
+const ICONS = {
+  achievement_unlocked: '\u{1F3C6}',
+  mission_complete: '\u{1F3AF}',
+  reward: '\u{1F381}',
+  purchase: '\u{1F6CD}',
+  friend: '\u{1F465}',
+  tournament: '\u{1F3C6}',
+  system: '\u{1F514}',
+};
+
+export function toastTitle(n) {
+  if (!n) return 'Notice';
+  if (typeof n.title === 'string' && n.title.trim()) return n.title.trim();
+  if (n.kind === 'achievement_unlocked') return 'Achievement Unlocked!';
+  if (n.kind === 'mission_complete') return 'Mission Complete!';
+  return DEFAULT_TITLES[n.type] || 'Notice';
+}
+
+function toastIcon(n) {
+  return ICONS[n.kind] || ICONS[n.type] || '\u{1F514}';
+}
+
+const TOAST_MS = 5000;
+
 export default function AchievementPopup() {
   const notifications = useProgressStore((s) => s.notifications);
   const dismissNotification = useProgressStore((s) => s.dismissNotification);
+  // One timer per toast, started when it first shows — a new toast no longer
+  // restarts the others' timers (a burst used to keep them all on screen).
+  const timersRef = useRef(new Map());
 
   // Accept a table invite: join the inviter's table (seat auto-assign, -1).
   // buyIn defaults to 1000 (mirrors Lobby's `table.minBuyIn || 1000` fallback);
@@ -24,16 +63,25 @@ export default function AchievementPopup() {
     dismissNotification(notification.id);
   };
 
-  // Auto-dismiss after 5 seconds
   useEffect(() => {
-    if (notifications.length === 0) return;
-
-    const timers = notifications.map((n) =>
-      setTimeout(() => dismissNotification(n.id), 5000)
-    );
-
-    return () => timers.forEach(clearTimeout);
+    const timers = timersRef.current;
+    const live = new Set(notifications.map((n) => n.id));
+    for (const n of notifications) {
+      if (timers.has(n.id)) continue;
+      timers.set(n.id, setTimeout(() => {
+        timers.delete(n.id);
+        dismissNotification(n.id);
+      }, TOAST_MS));
+    }
+    for (const [id, t] of timers) {
+      if (!live.has(id)) { clearTimeout(t); timers.delete(id); }
+    }
   }, [notifications, dismissNotification]);
+
+  useEffect(() => () => {
+    for (const t of timersRef.current.values()) clearTimeout(t);
+    timersRef.current.clear();
+  }, []);
 
   if (notifications.length === 0) return null;
 
@@ -50,18 +98,14 @@ export default function AchievementPopup() {
       {visible.map((notification) => (
         <div
           key={notification.id}
-          className={`achievement-popup ${notification.type === 'achievement' ? 'achievement-type' : 'mission-type'}`}
+          className={`achievement-popup ${notification.kind === 'achievement_unlocked' ? 'achievement-type' : 'mission-type'} toast-kind-${notification.kind || notification.type || 'notice'}`}
           onClick={() => dismissNotification(notification.id)}
           style={{ pointerEvents: 'auto' }}
         >
-          <div className="achievement-popup-icon">
-            {notification.type === 'achievement' ? '\u{1F3C6}' : '\u{2705}'}
-          </div>
+          <div className="achievement-popup-icon">{toastIcon(notification)}</div>
           <div className="achievement-popup-content">
-            <div className="achievement-popup-title">
-              {notification.type === 'achievement' ? 'Achievement Unlocked!' : 'Mission Complete!'}
-            </div>
-            <div className="achievement-popup-name">{notification.message}</div>
+            <div className="achievement-popup-title">{toastTitle(notification)}</div>
+            <div className="achievement-popup-name">{String(notification.message ?? '')}</div>
             {notification.inviteTableId && (
               <button
                 className="achievement-popup-invite-join"
@@ -73,14 +117,14 @@ export default function AchievementPopup() {
             )}
             {notification.reward && (
               <div className="achievement-popup-reward">
-                {notification.reward.chips > 0 && (
-                  <span className="popup-reward-chips">+{notification.reward.chips.toLocaleString()} chips</span>
+                {Number(notification.reward.chips) > 0 && (
+                  <span className="popup-reward-chips">+{Number(notification.reward.chips).toLocaleString()} chips</span>
                 )}
-                {notification.reward.xp > 0 && (
-                  <span className="popup-reward-xp">+{notification.reward.xp} XP</span>
+                {Number(notification.reward.xp) > 0 && (
+                  <span className="popup-reward-xp">+{Number(notification.reward.xp).toLocaleString()} XP</span>
                 )}
-                {notification.reward.stars > 0 && (
-                  <span className="popup-reward-stars">+{notification.reward.stars} stars</span>
+                {Number(notification.reward.stars) > 0 && (
+                  <span className="popup-reward-stars">+{Number(notification.reward.stars).toLocaleString()} stars</span>
                 )}
               </div>
             )}

@@ -49,6 +49,7 @@ function typeIcon(type) {
     case 'levelup': return '⭐';
     case 'mission': return '🎯';
     case 'reward': return '🎁';
+    case 'purchase': return '🛍';
     case 'friend': return '👤';
     case 'tournament': return '🏟';
     default: return '🔔';
@@ -71,9 +72,10 @@ export default function NotificationCenter() {
       const newEntries = progressNotifs
         .filter(n => !existingIds.has(String(n.id)))
         .map(n => ({
+          // R2 (APPUI-48) — ids are unique across page loads (progressStore).
           id: String(n.id),
-          type: n.type || 'achievement',
-          message: n.message || n.text || String(n.type),
+          type: n.type || 'system',
+          message: [n.title, String(n.message ?? n.text ?? '')].filter(Boolean).join(' — ') || String(n.type || 'Notice'),
           timestamp: n.timestamp || Date.now(),
         }));
       if (!newEntries.length) return prev;

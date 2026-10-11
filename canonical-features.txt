@@ -755,3 +755,15 @@ declineInsurance
 
 # 2026-10-11 R1 client review (R1C-REV-1): Tap to reconnect reuses the SAME socket so every listener keeps working
 forceReconnectSameInstance
+
+# 2026-10-11 .online R2 (K2 economy screens) — C5: the progress store adopts the
+#     server's playerProgress (missions, vip, boosters, equipped, owned, Denver
+#     claim date, winRate); unique notification ids (APPUI-48); titled toasts;
+#     scratch-card earned toast; clientData + preferences restored at sign-in
+#     (APPUI-26); four-colour deck / hand strength / pot odds settings work.
+poker:client-data-restored
+pref-hide-hand-strength
+pref-hide-pot-odds
+pref-four-color-deck
+Mission reward collected:
+You earned a scratch card! Reveal it in the Shop.

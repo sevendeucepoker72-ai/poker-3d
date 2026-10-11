@@ -77,8 +77,12 @@
   position: absolute;
   top: 70px;
   right: 20px;
-  width: 360px;
-  max-height: 480px;
+  /* R2 (APPUI-48) — never wider than the screen (it was a fixed 360px that
+     ran off 320-375px phones). */
+  width: min(360px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: min(480px, calc(100dvh - 90px));
+  box-sizing: border-box;
   background: linear-gradient(135deg, #081434 0%, #0c1a44 100%);
   border: 1px solid rgba(120, 160, 255, 0.6);
   border-radius: 14px;
@@ -263,4 +267,15 @@
 
 .light-theme .notification-empty {
   color: #888;
+}
+
+/* R2 (APPUI-48) — on phones the dropdown spans the screen with an 8px gutter
+   (right:20px + 360px ran off a 320-375px screen). */
+@media (max-width: 420px) {
+  .notification-panel {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    top: calc(env(safe-area-inset-top, 0px) + 60px);
+  }
 }
