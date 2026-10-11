@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { phaseLabel } from '../../utils/tableList';
 import './SeatPicker.css';
 
@@ -16,7 +17,15 @@ import './SeatPicker.css';
  * Responsive: the oval and the seats are laid out in percentages of a 4:3 box
  * that is as wide as the card (min(440px, viewport - margins)) — the old picker
  * was a fixed 440px canvas with 400px of absolute positions, clipped at 320-430px.
+ *
+ * Rendered into <body> like the lobby's other overlays (FriendSystem, ClubsPanel,
+ * CreateTableModal): Lobby.css gives every direct child of .lobby
+ * `position: relative; z-index: 1`, which would pin an in-tree picker to the
+ * bottom of the lobby instead of over the viewport. (Inline when there is no
+ * DOM, e.g. server rendering in tests.)
  */
+const mount = (node) => (typeof document === 'undefined' ? node : createPortal(node, document.body));
+
 export default function SeatPicker({ table, preferredSeat = null, onPick, onClose }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
@@ -25,7 +34,7 @@ export default function SeatPicker({ table, preferredSeat = null, onPick, onClos
   }, [onClose]);
 
   if (!table) {
-    return (
+    return mount(
       <div className="seat-picker-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Choose your seat">
         <div className="seat-picker-card" onClick={(e) => e.stopPropagation()}>
           <h3 className="seat-picker-title">Table closed</h3>
@@ -43,7 +52,7 @@ export default function SeatPicker({ table, preferredSeat = null, onPick, onClos
   const open = seats.filter((s) => !s.occupied).length;
   const phase = phaseLabel(table.phase);
 
-  return (
+  return mount(
     <div className="seat-picker-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Choose your seat">
       <div className="seat-picker-card" onClick={(e) => e.stopPropagation()}>
         <h3 className="seat-picker-title">Choose your seat</h3>

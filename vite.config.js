@@ -42,6 +42,14 @@ export default defineConfig({
           // those two chunks serially. The React.lazy() imports split the app
           // code on their own; a shared module lands in a chunk the entry
           // preloads.
+          // The groups also linked those overlays' CSS in <head>, BEFORE the
+          // lazy Lobby.css, whose `.lobby > * { position: relative; z-index: 1 }`
+          // then beat `.staking-overlay` / `.social-bracket-overlay` /
+          // `.tb-overlay` / `.td-overlay { position: fixed }`: Staking, Social
+          // Bracket, Live Bracket and the TD wizard opened at the BOTTOM of the
+          // lobby, off-screen (top ~705px on a 640-667px phone). As lazy
+          // chunks of Lobby their CSS always lands after Lobby's. Keep lobby
+          // overlays out of manual groups (or portal them to <body>).
         },
       },
     },
