@@ -404,7 +404,7 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
                 {error && <div className="create-table-error" role="alert" style={errorStyle}>{error}</div>}
 
                 <button onClick={handleCreate} disabled={creating || !tableName.trim()} style={{ ...primaryBtn, cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.7 : 1 }}>
-                  {creating ? 'Creating…' : 'Create Table'}
+                  {creating ? 'Creating…' : 'Create Home Game'}
                 </button>
               </>
             ) : (

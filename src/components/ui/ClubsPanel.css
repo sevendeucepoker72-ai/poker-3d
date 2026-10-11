@@ -1260,3 +1260,9 @@
 }
 .club-tourney-status--running { color: #6abaff; }
 .club-challenge-waiting { font-size: 0.72rem; color: #9fb4d8; white-space: nowrap; }
+@media (max-width: 360px) {
+  .club-leaderboard-header,
+  .club-leaderboard-row { padding: 8px 6px; gap: 2px; }
+  .club-lb-rank { width: 22px; }
+  .club-lb-stat { width: 46px; font-size: 0.7rem; }
+}

@@ -2639,6 +2639,10 @@
   .table-card .table-info { flex: 1 1 100%; min-width: 0; }
   .table-card-actions { width: 100%; }
   .table-card-actions > button { flex: 1; min-height: 42px; }
+  /* The older phone rule `.table-card .btn-primary { width: 100% }` pushed
+     Watch off the row: Join shares the row now. */
+  .table-card .table-card-actions > .btn-primary { flex: 1 1 0; width: auto; }
+  .table-card .table-card-actions > .table-watch-btn { flex: 0 0 auto; }
   .table-details { flex-wrap: wrap; gap: 4px 12px; }
   .table-filters-row .table-search-input { flex: 1 1 100%; min-width: 0; }
   .table-filters-row .table-filter-select { flex: 1 1 calc(50% - 5px); min-width: 0; }
