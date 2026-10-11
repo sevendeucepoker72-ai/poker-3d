@@ -86,6 +86,16 @@
   visibility: visible;
 }
 
+/* R1 (TABLEUI-3, 2026-10-11) — on a touch screen there is no hover, so the
+   tooltip can never open; the 60px discs must not take taps meant for the
+   table / action bar under them. */
+@media (hover: none) {
+  .hh-seat-indicator,
+  .hh-tooltip {
+    pointer-events: none;
+  }
+}
+
 /* Small caret pointing down toward the disc */
 .hh-tooltip::after {
   content: '';

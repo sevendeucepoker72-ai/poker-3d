@@ -2,7 +2,12 @@
  *
  * Small persistent banner shown on americanpubpoker.online (the online
  * poker gameplay site) inviting players to install the league's player
- * app for tournament alerts, your-turn pings, and game-day reminders.
+ * app for tournament alerts and game-day reminders.
+ *
+ * R1 (TABLEUI-4 / APPUI-29, 2026-10-11): LOBBY ONLY (App.jsx renders it in the
+ * lobby shell, never on the table screen, where it sat over the action bar),
+ * placed above the bottom nav and the sticky Quick Play bar. The copy no
+ * longer promises "your-turn pings" — those were removed on 2026-08-25.
  *
  * The .online site has no push notifications of its own (audit confirmed)
  * and there's no plan to add a separate push subscription per origin.
@@ -59,12 +64,17 @@ export default function PlayerAppPushBanner() {
     <div
       role="region"
       aria-label="Get tournament alerts"
+      className="player-app-push-banner player-app-push-banner--lobby"
       style={{
         position: 'fixed',
-        bottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
+        // Clear the lobby's bottom nav (56-62px + safe area) AND the sticky
+        // Quick Play bar that sits on top of it on phones (66px + ~64px).
+        bottom: 'calc(140px + env(safe-area-inset-bottom, 0px))',
         right: 12,
+        left: 'auto',
         zIndex: 9000,
-        maxWidth: 360,
+        maxWidth: 'min(360px, calc(100vw - 24px))',
+        boxSizing: 'border-box',
         display: 'flex',
         alignItems: 'center',
         gap: 12,
@@ -82,7 +92,7 @@ export default function PlayerAppPushBanner() {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, color: '#f4c542' }}>Live tournament alerts</div>
         <div style={{ marginTop: 2, color: 'rgba(255,255,255,0.8)' }}>
-          Get game-day reminders, your-turn pings, and weekly digests in our app.
+          Get game-day reminders and weekly digests in our app.
         </div>
       </div>
       <a
@@ -132,6 +142,10 @@ export default function PlayerAppPushBanner() {
           cursor: 'pointer',
           padding: '0 4px',
           lineHeight: 1,
+          // A thumb-sized target for the dismiss (it was ~18px).
+          minWidth: 44,
+          minHeight: 44,
+          flexShrink: 0,
         }}
       >
         ×

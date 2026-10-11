@@ -1,5 +1,33 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import './CoachingRail.css';
+
+// R1 (TABLEUI-3, 2026-10-11) — the rail sits just BELOW the table's top bar
+// (.hud-top), whatever its height: on phones that bar wraps to ~140px, and at
+// the fixed top: 52/60px the rail's controls (pointer-events on, z 900) covered
+// Sit Out / Options / Back. The CSS top stays as the fallback.
+function useBelowTopBar(active) {
+  const [topPx, setTopPx] = useState(null);
+  useLayoutEffect(() => {
+    if (!active) return undefined;
+    const measure = () => {
+      const bar = document.querySelector('.hud-top');
+      if (!bar) return;
+      const b = bar.getBoundingClientRect();
+      if (b.height <= 0) return;
+      const v = Math.round(b.bottom + 6);
+      setTopPx((prev) => (prev === v ? prev : v));
+    };
+    measure();
+    let ro = null;
+    try {
+      const bar = document.querySelector('.hud-top');
+      if (bar && typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(measure); ro.observe(bar); }
+    } catch { /* fallback: CSS top */ }
+    window.addEventListener('resize', measure);
+    return () => { window.removeEventListener('resize', measure); if (ro) ro.disconnect(); };
+  }, [active]);
+  return topPx;
+}
 
 // ─── AI tip generator ────────────────────────────────────────────────────────
 
@@ -147,12 +175,14 @@ export default function CoachingRail({
     return false; // 'off' — nothing shown (but socket still listens above)
   });
 
+  const railTop = useBelowTopBar(visible);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (!visible) return null;
 
   return (
-    <div className="coaching-rail">
+    <div className="coaching-rail" style={railTop != null ? { top: railTop } : undefined}>
       {/* Mode toggle */}
       <div className="coaching-rail__controls">
         <span className="coaching-rail__label">Coach Mode</span>

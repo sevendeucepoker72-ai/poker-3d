@@ -91,6 +91,10 @@ function saveSettings(settings) {
     // Also save to poker3d_settings key for cross-component access
     sessionStorage.setItem(SETTINGS_3D_KEY, JSON.stringify(settings));
   } catch { /* ignore */ }
+  // R1 (TABLEUI-13 / APPUI-8) — tell same-tab readers (the table's sound hook:
+  // volumes, Mute All, ambient) the settings changed; 'storage' only fires in
+  // OTHER tabs.
+  try { window.dispatchEvent(new Event('poker:settings-changed')); } catch { /* ignore */ }
 }
 
 function applyFontScale(fontSizeKey) {

@@ -941,9 +941,13 @@ input, textarea {
 /* ================================================================
    ANALYTICS / OVERLAYS — full-screen on mobile
    ================================================================ */
+/* R1 (TABLEUI-3, 2026-10-11) — .coaching-rail removed from this list: it is a
+   click-through strip of tips (CoachingRail.css: fixed top-centre,
+   translateX(-50%), pointer-events none with its controls opted back in).
+   Forced to inset:0 / 100% here it kept the -50% translate (half the strip off
+   screen) and covered the whole table. */
 .advanced-analytics,
 .bankroll-ai-panel,
-.coaching-rail,
 .gto-solver-panel,
 .leaderboard-panel,
 .bp-panel,                /* 2026-07-05 audit: was .battle-pass-panel (dead selector) */

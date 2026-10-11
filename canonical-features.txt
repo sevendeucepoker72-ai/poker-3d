@@ -666,3 +666,42 @@ hands are checked or folded for you
 tournament-sitout-note
 afk-away-banner--tournament
 Sit Out follows the server
+# (P) 2026-10-11 .online fix round 1 / C1 (poker-3d TABLE screen, branch
+#     r1-table-ui; CONTRACTS R1 #1-#5). TABLEUI-2: touch gestures start only on
+#     bare table felt (document listeners; never a button / input / seat / the
+#     top bar / Options / the raise slider group / a HUD layer over the felt);
+#     swipe-left CHECKS a free street and otherwise goes through the Fold
+#     button's two-step confirm. TABLEUI-3: :where(.hud) > * so overlay roots
+#     keep their own pointer-events:none (Equity Heatmap, AI Coach Rail,
+#     confetti); heatmap filter = occupied && !folded, discs anchored on the
+#     seat pods; coach rail below the top bar, not forced full-screen.
+#     TABLEUI-4: the player-app push banner is lobby only and no longer promises
+#     your-turn pings. AUTH-6 / #3: names made safe at ingestion + render, and a
+#     table-level error boundary. #4: shown / rabbit cards validated. #5:
+#     per-hand keys cleared on a new hand. #1: insurance panel from the
+#     server's quote only. #2: rebuy follows rebuyAllowed + minBuyIn.
+#     TABLEUI-12: a queued action is sent after the seat is restored, a table
+#     reconnect banner, conn-dot error / failed. TABLEUI-13: sound reads the
+#     Settings + table slider keys; Mute All mutes; the hum stops when muted or
+#     hidden.
+Fold? Swipe again
+Fold (swipe twice) · Check when free
+gesture-flash-overlay--foldArm
+:where(.hud)
+.seat-pod[data-seat-index]
+player-app-push-banner--lobby
+Get game-day reminders and weekly digests in our app.
+table-error-fallback
+Table display error — tap to reload table
+[table-error-boundary] the table view failed to render; the rest of the app stays up:
+[table-payload] dropped a shown-hand payload with invalid cards
+isChoppedPot chopDetails trainingData potBreakdown insuranceQuote
+insurance-panel--server-quote
+options-row--auto-rebuy
+table-reconnect-banner__btn
+Reconnecting… your seat is held
+[socketService] queued action held until the seat is restored after re-auth:
+poker:queued-action-dropped
+was not sent — the connection dropped. Please act again.
+Muted in Settings
+conn-dot--failed

@@ -56,10 +56,12 @@ export function guardNeverEmittedEvents(sock) {
 
 // Pending-action queue. A single slot: only one turn-action can be pending
 // at a time (you can't act twice on the same turn). If the socket drops
-// right as the user taps, we hold the action here and flush it on the
-// next 'connect' event. The server dedupes by nonce so a retry after a
-// successful-but-unack'd action is a no-op. Stale actions expire after
-// QUEUE_TTL_MS so a 30s disconnect doesn't replay a fold from two hands ago.
+// right as the user taps, we hold the action here and flush it once the
+// reconnected socket has its SEAT back ('reconnectedToTable' — see R1 below;
+// it used to flush on 'connect', before the re-auth). The server dedupes by
+// nonce so a retry after a successful-but-unack'd action is a no-op. Stale
+// actions expire after QUEUE_TTL_MS so a 30s disconnect doesn't replay a fold
+// from two hands ago.
 const QUEUE_TTL_MS = 10_000;
 let _pendingAction = null; // { type, amount, nonce, stateVersion, queuedAt }
 
@@ -78,15 +80,61 @@ function makeNonce() {
   return Math.random().toString(16).slice(2, 10) + Date.now().toString(16);
 }
 
-function flushPendingAction() {
-  if (!_pendingAction || !socket?.connected) return;
+// R1 (TABLEUI-12, 2026-10-11) — a queued action waits for the SEAT, not for
+// the raw socket. Every reconnect is a NEW server-side socket with no session:
+// the seat comes back only when the re-auth (oauthLogin / resumeSession, run by
+// App.jsx on 'connect') restores the reservation, and the server announces that
+// with 'reconnectedToTable' (always BEFORE that login's loginResult). Flushing
+// on 'connect' reached the server before the seat and was refused
+// "Not at a table". So after a RE-connect:
+//   - new actions queue too (not only while disconnected) until the seat is back;
+//   - 'reconnectedToTable' flushes the queue;
+//   - a successful loginResult with no seat restored before it, or no restore
+//     within SEAT_RESTORE_WAIT_MS, drops the queued action and tells the table
+//     (window event 'poker:queued-action-dropped') so the player can act again.
+const SEAT_RESTORE_WAIT_MS = 15_000;
+const QUEUED_ACTION_DROPPED_EVENT = 'poker:queued-action-dropped';
+let _hadConnection = false;   // a connect after this one is a RE-connect
+let _awaitingSeat = false;    // re-connected; the seat is not restored yet
+let _awaitingSeatTimer = null;
+
+function dropPendingAction(reason) {
+  const p = _pendingAction;
+  _pendingAction = null;
+  if (!p) return;
+  console.warn('[socketService] queued action dropped (' + reason + '):', p.type);
+  try {
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent(QUEUED_ACTION_DROPPED_EVENT, { detail: { type: p.type, reason } }));
+    }
+  } catch { /* ignore */ }
+}
+
+function stopAwaitingSeat() {
+  _awaitingSeat = false;
+  if (_awaitingSeatTimer) { clearTimeout(_awaitingSeatTimer); _awaitingSeatTimer = null; }
+}
+
+function startAwaitingSeat() {
+  stopAwaitingSeat();
+  _awaitingSeat = true;
+  _awaitingSeatTimer = setTimeout(() => {
+    _awaitingSeatTimer = null;
+    if (!_awaitingSeat) return;
+    _awaitingSeat = false;
+    dropPendingAction('seat_not_restored');
+  }, SEAT_RESTORE_WAIT_MS);
+}
+
+function flushPendingAction(reason = 'seat_restored') {
+  if (!_pendingAction || !socket?.connected || _awaitingSeat) return;
   if (Date.now() - _pendingAction.queuedAt > QUEUE_TTL_MS) {
-    console.warn('[socketService] Dropping stale queued action:', _pendingAction.type);
-    _pendingAction = null;
+    dropPendingAction('stale');
     return;
   }
   const p = _pendingAction;
   _pendingAction = null;
+  console.warn('[socketService] queued action sent after the seat was restored (' + reason + '):', p.type);
   // Echo the stateVersion captured at click time (2026-07-05). If the table
   // moved on during the disconnect, the server rejects this as stale and pushes
   // fresh state — exactly the behaviour we want for a queued action that may no
@@ -98,9 +146,10 @@ function flushPendingAction() {
 
 /**
  * Emit a player action with automatic queue-on-disconnect + nonce dedup.
- * If the socket is connected, emit immediately. If not, stash as the single
- * pending action (overwriting any prior queued one — only the user's latest
- * intent is valid) and flush on the next 'connect' event.
+ * If the socket is connected (and, after a reconnect, its seat is restored),
+ * emit immediately. If not, stash as the single pending action (overwriting
+ * any prior queued one — only the user's latest intent is valid) and flush
+ * when the server restores the seat ('reconnectedToTable').
  *
  * `stateVersion` (2026-07-05) is the server's monotonic decision-point version
  * the user acted on, echoed back so the server can reject a stale click (the
@@ -110,7 +159,8 @@ function flushPendingAction() {
  */
 export const emitPlayerAction = (type, amount, stateVersion, tableId) => {
   const payload = { type, amount, nonce: makeNonce(), stateVersion, tableId, queuedAt: Date.now() };
-  if (socket?.connected) {
+  // R1 — connected but the seat is not restored yet (re-auth in flight): queue.
+  if (socket?.connected && !_awaitingSeat) {
     // 2026-07-07 gap-fill [5]: include the active tableId so multi-table players'
     // actions apply to the table they're looking at. Omitting it (single-table
     // callers) keeps the server on the primary-session path exactly as before.
@@ -189,9 +239,32 @@ export const connectToServer = () => {
   socket.on('connect', () => {
     console.log('Connected to server:', socket.id);
     setStatus('connected');
-    flushPendingAction();
+    // R1 (TABLEUI-12) — NOT a flush: the new server-side socket has no seat
+    // until the re-auth restores it ('reconnectedToTable' below). Only a
+    // recovered connection (socket.io state recovery: same session) is ready.
+    if (socket.recovered) {
+      stopAwaitingSeat();
+      flushPendingAction('session_recovered');
+    } else if (_hadConnection) {
+      startAwaitingSeat();
+      if (_pendingAction) console.warn('[socketService] queued action held until the seat is restored after re-auth:', _pendingAction.type);
+    }
+    _hadConnection = true;
+  });
+  // The re-auth put this socket back in its seat: send what was queued.
+  socket.on('reconnectedToTable', () => {
+    stopAwaitingSeat();
+    flushPendingAction('seat_restored');
+  });
+  // A successful sign-in answer with no seat restore before it: no seat to act
+  // in on this connection (a failed one may still be retried, so keep waiting).
+  socket.on('loginResult', (res) => {
+    if (!_awaitingSeat || !(res && res.success)) return;
+    stopAwaitingSeat();
+    dropPendingAction('no_seat_restored');
   });
   socket.on('disconnect', (reason) => {
+    stopAwaitingSeat();
     console.log('Disconnected:', reason);
     // `io server disconnect` means the server explicitly closed the socket
     // (kick, auth rejection, server shutdown). socket.io will NOT auto-
@@ -210,7 +283,9 @@ export const connectToServer = () => {
     setStatus('disconnected');
   });
   socket.on('connect_error', (err) => { console.log('Connection error:', err.message); setStatus('error', err.message); });
-  socket.on('reconnect', () => { setStatus('connected'); flushPendingAction(); });
+  // (socket.io v4 fires 'reconnect' on the Manager, not here; 'connect' above
+  // covers every reconnect. Kept for older clients — status only, no flush.)
+  socket.on('reconnect', () => { setStatus('connected'); });
   socket.on('reconnecting', () => setStatus('disconnected'));
 
   // 2026-05-05 Phase 3 — re-attach the LATEST auth token before each
@@ -320,6 +395,7 @@ export const disconnect = () => {
   // post-logout reconnect (or, worse, after a different user signs in on this
   // tab). Logout must not carry an action across the session boundary.
   _pendingAction = null;
+  stopAwaitingSeat();
   try { if (socket.auth) delete socket.auth.token; } catch { /* ignore */ }
   try { socket.disconnect(); } catch { /* ignore */ }
   try { socket.connect(); } catch { /* ignore */ }

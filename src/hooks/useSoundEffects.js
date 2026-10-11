@@ -1,27 +1,69 @@
 import { useRef, useCallback, useEffect } from 'react';
 
+// R1 (TABLEUI-13 / APPUI-8, 2026-10-11) — the hook read a key nobody writes
+// ('sfxVolume'), so the Settings sliders, Mute All and the in-table Sound
+// slider did nothing, and a 60Hz ambient hum ran for the whole session. It now
+// reads the keys those controls write:
+//   Settings (sessionStorage 'app_poker_settings'): masterVolume, sfxVolume,
+//     musicVolume (0-100), muteAll
+//   in-table Options "Sound" slider (sessionStorage 'app_poker_sfxVol', 0-1)
+// effects = master x sfx x table slider; ambient = master x music x table
+// slider; Mute All (or any of them at 0) is silence — no sound starts, and the
+// ambient hum is stopped. The hum also stops while the page is hidden.
+// Both keys are synced to the account by persistenceService (CLIENT_KEYS).
+export const SOUND_SETTINGS_KEY = 'app_poker_settings';
+export const TABLE_SOUND_KEY = 'app_poker_sfxVol';
+export const SOUND_SETTINGS_EVENT = 'poker:settings-changed';
+
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+function num(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'string' && v.trim() !== '') { const n = Number(v); return Number.isFinite(n) ? n : null; }
+  return null;
+}
+
+/** The player's sound settings, as the Settings panel and the table slider wrote them. */
+export function readSoundPrefs() {
+  let master = 0.8; let sfx = 1; let music = 0.3; let muted = false; let table = 0.8;
+  try {
+    const raw = sessionStorage.getItem(SOUND_SETTINGS_KEY);
+    const s = raw ? JSON.parse(raw) : null;
+    if (s && typeof s === 'object') {
+      const m = num(s.masterVolume); if (m !== null) master = clamp01(m / 100);
+      const f = num(s.sfxVolume); if (f !== null) sfx = clamp01(f / 100);
+      const mu = num(s.musicVolume); if (mu !== null) music = clamp01(mu / 100);
+      muted = s.muteAll === true;
+    }
+  } catch { /* defaults */ }
+  try {
+    const t = num(sessionStorage.getItem(TABLE_SOUND_KEY));
+    if (t !== null) table = clamp01(t);
+  } catch { /* default */ }
+  return {
+    master, sfx, music, table, muted,
+    effects: muted ? 0 : master * sfx * table,
+    ambient: muted ? 0 : master * music * table,
+  };
+}
+
+const pageHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
+
 /**
  * Synthetic sound effects for poker game events using Web Audio API.
  * Premium-quality procedural sounds - no external audio files needed.
  */
 export default function useSoundEffects() {
   const ctxRef = useRef(null);
-  const masterGainRef = useRef(null);
+  const masterGainRef = useRef(null);   // effects bus
+  const ambientGainRef = useRef(null);  // ambient bus (Music / Ambient slider)
   const ambientRef = useRef(null);
   const ambientStartedRef = useRef(false);
-
-  const getVolume = useCallback(() => {
-    try {
-      const v = parseFloat(sessionStorage.getItem('sfxVolume'));
-      return isNaN(v) ? 1 : Math.max(0, Math.min(1, v));
-    } catch {
-      return 1;
-    }
-  }, []);
 
   const getCtx = useCallback(() => {
     if (!ctxRef.current || ctxRef.current.state === 'closed') {
       ctxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      masterGainRef.current = null;
+      ambientGainRef.current = null;
     }
     if (ctxRef.current.state === 'suspended') {
       ctxRef.current.resume();
@@ -30,9 +72,28 @@ export default function useSoundEffects() {
       masterGainRef.current = ctxRef.current.createGain();
       masterGainRef.current.connect(ctxRef.current.destination);
     }
-    masterGainRef.current.gain.value = getVolume();
+    if (!ambientGainRef.current) {
+      ambientGainRef.current = ctxRef.current.createGain();
+      ambientGainRef.current.connect(ctxRef.current.destination);
+    }
+    const prefs = readSoundPrefs();
+    masterGainRef.current.gain.value = prefs.effects;
+    ambientGainRef.current.gain.value = prefs.ambient;
     return ctxRef.current;
-  }, [getVolume]);
+  }, []);
+
+  /** Stop the ambient hum (mute, hidden page, unmount). Restarts with the next sound. */
+  const stopAmbient = useCallback(() => {
+    const amb = ambientRef.current;
+    ambientRef.current = null;
+    ambientStartedRef.current = false;
+    if (!amb) return;
+    try { amb.hum?.stop?.(); } catch { /* already stopped */ }
+    try { amb.lfo?.stop?.(); } catch { /* already stopped */ }
+    try { amb.hum?.disconnect?.(); } catch { /* ignore */ }
+    try { amb.lfo?.disconnect?.(); } catch { /* ignore */ }
+    try { amb.humGain?.disconnect?.(); } catch { /* ignore */ }
+  }, []);
 
   /** Create a white noise buffer */
   const createNoiseBuffer = useCallback((ctx, duration) => {
@@ -408,6 +469,8 @@ export default function useSoundEffects() {
   /** Start ambient casino background (very quiet looping hum) */
   const startAmbient = useCallback(() => {
     if (ambientStartedRef.current) return;
+    // R1 — never while muted (Mute All / Music 0 / table slider 0) or hidden.
+    if (readSoundPrefs().ambient <= 0 || pageHidden()) return;
     ambientStartedRef.current = true;
 
     try {
@@ -433,7 +496,7 @@ export default function useSoundEffects() {
       lfoGain.connect(humGain.gain);
 
       hum.connect(humGain);
-      humGain.connect(masterGainRef.current);
+      humGain.connect(ambientGainRef.current);
 
       hum.start();
       lfo.start();
@@ -441,15 +504,21 @@ export default function useSoundEffects() {
       ambientRef.current = { hum, lfo, humGain };
     } catch (e) {
       // Silently ignore
+      ambientStartedRef.current = false;
     }
   }, [getCtx]);
 
   const playSound = useCallback((type) => {
     try {
+      const prefs = readSoundPrefs();
+      // R1 — muted: no sound starts, and a running hum stops.
+      if (prefs.ambient <= 0) stopAmbient();
+      if (prefs.effects <= 0 && prefs.ambient <= 0) return;
       // Start ambient on first sound
       if (!ambientStartedRef.current) {
         startAmbient();
       }
+      if (prefs.effects <= 0) return;
 
       switch (type) {
         case 'deal':      playDeal();      break;
@@ -467,21 +536,46 @@ export default function useSoundEffects() {
     } catch (e) {
       console.warn('Sound playback failed:', e);
     }
-  }, [playDeal, playBet, playCheck, playFold, playWin, playTimer, playAllIn, playTurn, playShuffle, playCommunity, startAmbient]);
+  }, [playDeal, playBet, playCheck, playFold, playWin, playTimer, playAllIn, playTurn, playShuffle, playCommunity, startAmbient, stopAmbient]);
+
+  // R1 — a settings change applies at once (the in-table slider and the
+  // Settings panel dispatch SOUND_SETTINGS_EVENT; another tab's write fires
+  // 'storage'), and the hum stops while the page is hidden.
+  useEffect(() => {
+    const apply = () => {
+      const prefs = readSoundPrefs();
+      if (masterGainRef.current) masterGainRef.current.gain.value = prefs.effects;
+      if (ambientGainRef.current) ambientGainRef.current.gain.value = prefs.ambient;
+      if (prefs.ambient <= 0 || pageHidden()) stopAmbient();
+    };
+    const onVisibility = () => {
+      if (pageHidden()) {
+        stopAmbient();
+        try { if (ctxRef.current && ctxRef.current.state === 'running') ctxRef.current.suspend(); } catch { /* ignore */ }
+      }
+      // Visible again: the context resumes and the hum restarts with the next sound.
+    };
+    window.addEventListener(SOUND_SETTINGS_EVENT, apply);
+    window.addEventListener('storage', apply);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener(SOUND_SETTINGS_EVENT, apply);
+      window.removeEventListener('storage', apply);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [stopAmbient]);
 
   // Cleanup ambient on unmount
   useEffect(() => {
     return () => {
-      const amb = ambientRef.current;
-      if (amb) {
-        try { amb.hum?.stop?.(); } catch (e) { /* oscillator already stopped */ }
-        try { amb.lfo?.stop?.(); } catch (e) { /* oscillator already stopped */ }
-        try { amb.hum?.disconnect?.(); } catch {}
-        try { amb.lfo?.disconnect?.(); } catch {}
-        ambientRef.current = null;
-      }
+      stopAmbient();
+      // The table screen's AudioContext is released with it.
+      try { if (ctxRef.current && ctxRef.current.state !== 'closed') ctxRef.current.close(); } catch { /* ignore */ }
+      ctxRef.current = null;
+      masterGainRef.current = null;
+      ambientGainRef.current = null;
     };
-  }, []);
+  }, [stopAmbient]);
 
   return { playSound };
 }

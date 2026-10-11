@@ -6,7 +6,13 @@ import { useShallow } from 'zustand/react/shallow';
 import { SUIT_INDEX_TO_SYMBOL, SUIT_INDEX_TO_COLOR, serverRankDisplay, getCardColor } from '../../utils/cardUtils';
 import { evaluateHandStrength, getWinningCardIndices } from '../../utils/handStrength';
 import { calculateOuts, analyzeBoardTexture } from '../../utils/outsCalculator';
-import useSoundEffects from '../../hooks/useSoundEffects';
+// R1 (2026-10-11) — the table's defensive payload readers (names, shown cards,
+// the server's insurance quote, rebuy policy) and the sound settings keys.
+import {
+  safeName, nameInitial, sanitizeShownCards, readInsuranceQuote, readInsuranceAccepted,
+  rebuyAllowedFlag, rebuyAmountFor,
+} from '../../utils/tablePayload';
+import useSoundEffects, { readSoundPrefs, SOUND_SETTINGS_EVENT, TABLE_SOUND_KEY } from '../../hooks/useSoundEffects';
 import TrainingOverlay from './TrainingOverlay';
 import EmoteWheel, { EMOTE_MAP } from './EmoteWheel';
 // PWA audit #9: request Screen Wake Lock while the user has an active
@@ -134,6 +140,42 @@ const ChatPanel = React.memo(function ChatPanel({ chatOpen, setChatOpen, chatUnr
 });
 
 const haptic = (pattern) => { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (_) {} };
+
+// R1 (TABLEUI-2) — the ONLY surface a touch gesture may start on: the table
+// felt (PokerTable2D's oval, drawn under the HUD). Anything interactive, a
+// seat, or any HUD layer drawn over the felt is never a gesture surface.
+const GESTURE_SURFACE_SELECTOR = '.table2d-felt';
+const GESTURE_BLOCKED_SELECTOR = [
+  'button', 'input', 'select', 'textarea', 'a', 'label',
+  '[role="button"]', '[role="dialog"]', '[role="slider"]', '[contenteditable="true"]',
+  '.hud', '.hud-top', '.hud-bottom', '.hud-options-dropdown', '.raise-inline-group',
+  '.seat-pod', '.table2d-emoji-picker', '.table2d-emoji-backdrop',
+].join(', ');
+// Layers drawn OVER the felt that let touches fall through to it
+// (pointer-events: none) — the hero's nameplate and cards, the board, the hand
+// strength pill, pot odds, the action history — plus the seats (a near-miss
+// on a seat): a touch on or right next to them is not a touch on bare felt.
+const GESTURE_KEEP_OUT_SELECTOR = [
+  '.hud-nameplate-me', '.hud-cards', '.hud-community', '.hand-strength-portal',
+  '.table-pot-odds', '.action-history-floating', '.seat-pod',
+].join(', ');
+const GESTURE_KEEP_OUT_PAD = 8;
+function pointInsideAny(x, y, selector, pad) {
+  for (const el of document.querySelectorAll(selector)) {
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) continue;
+    if (x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad) return true;
+  }
+  return false;
+}
+function gestureStartAllowed(target, x, y) {
+  if (!target || typeof target.closest !== 'function') return false;
+  if (!target.closest(GESTURE_SURFACE_SELECTOR)) return false;
+  if (target.closest(GESTURE_BLOCKED_SELECTOR)) return false;
+  if (typeof x === 'number' && typeof y === 'number'
+    && pointInsideAny(x, y, GESTURE_KEEP_OUT_SELECTOR, GESTURE_KEEP_OUT_PAD)) return false;
+  return true;
+}
 
 export default function GameHUD() {
   const { calculateEquity } = useEquityWorker();
@@ -352,6 +394,13 @@ export default function GameHUD() {
   // NOTE: these are declared here but populated after isMyTurn/callAmount are derived below
   const isMyTurnRef = useRef(false);
   const callAmountRef = useRef(0);
+  // R1 (TABLEUI-2) — more gesture guards, read through refs so the document
+  // touch listeners stay stable: the Options menu is open (a tap only closes
+  // it), a legal raise exists (swipe up / hold), and the latest action
+  // handlers (handleAction + the shared two-step fold).
+  const optionsOpenRef = useRef(false);
+  const canRaiseRef = useRef(false);
+  const gestureActRef = useRef({ handleAction: null, requestFold: null });
 
   // Chat state
   const [chatOpen, setChatOpen] = useState(false);
@@ -419,10 +468,18 @@ export default function GameHUD() {
   const [playerFoldedThisHand, setPlayerFoldedThisHand] = useState(false);
 
   // === Sound volume (#8) ===
+  // R1 (TABLEUI-13) — this slider's key is now read by useSoundEffects (it used
+  // to read a key nobody wrote); the write notifies the hook at once.
   const [sfxVolume, setSfxVolume] = useState(() => {
-    try { return parseFloat(sessionStorage.getItem('app_poker_sfxVol') ?? '0.8'); } catch { return 0.8; }
+    try {
+      const v = parseFloat(sessionStorage.getItem(TABLE_SOUND_KEY) ?? '0.8');
+      return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
+    } catch { return 0.8; }
   });
-  useEffect(() => { sessionStorage.setItem('app_poker_sfxVol', sfxVolume); }, [sfxVolume]);
+  useEffect(() => {
+    try { sessionStorage.setItem(TABLE_SOUND_KEY, String(sfxVolume)); } catch { /* ignore */ }
+    try { window.dispatchEvent(new Event(SOUND_SETTINGS_EVENT)); } catch { /* ignore */ }
+  }, [sfxVolume]);
 
   // === Keyboard shortcuts overlay (#9) ===
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -477,7 +534,9 @@ export default function GameHUD() {
 
   // === Insurance state ===
   const [showInsurance, setShowInsurance] = useState(false);
-  const [insuranceDismissed, setInsuranceDismissed] = useState(false);
+  // R1 (contract #1) — the hand whose quote was accepted or declined here (the
+  // panel stays closed for that hand only).
+  const [insuranceClosedHand, setInsuranceClosedHand] = useState(null);
 
   // === Mucked Hand Reveal state ===
   const [showMuckButton, setShowMuckButton] = useState(false);
@@ -694,6 +753,7 @@ export default function GameHUD() {
 
   // Keep refs in sync immediately after derivation (no render lag)
   isMyTurnRef.current = isMyTurn;
+  optionsOpenRef.current = showOptions;
 
   // Auto-fold when the server is waiting on us but we're sitting out (joined mid-hand).
   //
@@ -745,6 +805,7 @@ export default function GameHUD() {
   // myChips could never reach a true all-in when myCurrentBet > 0 (it left
   // myCurrentBet behind). The real max raise-to total is chipCount + currentBet.
   const maxRaise = myChips + myCurrentBet;
+  canRaiseRef.current = maxRaise > 0 && minRaiseTotal <= maxRaise;
 
   // Variant info
   const variantName = gameState?.variantName || "Texas Hold'em";
@@ -905,27 +966,18 @@ export default function GameHUD() {
   // and we check if we are the first actor (UTG position)
   const isUTG = phase === 'PreFlop' && isMyTurn && gameState?.isFirstActor;
 
-  // Insurance: player is all-in and waiting for remaining community cards.
-  // 2026-06-11 audit M6: the server sends `allIn` (never `isAllIn`), so the
-  // old `myPlayer?.isAllIn` was always undefined and this fell through to the
-  // chipCount/currentBet heuristic — which misses an all-in player after a
-  // street reset (chipCount 0 but currentBet back to 0). Read `allIn` directly.
-  const isPlayerAllIn = myPlayer?.allIn || (myPlayer?.chipCount === 0 && myPlayer?.currentBet > 0);
-  const cardsStillToCome = phase === 'PreFlop' ? 5 - communityCards.length :
-    phase === 'Flop' ? 5 - communityCards.length :
-    phase === 'Turn' ? 5 - communityCards.length : 0;
-  const showInsurancePanel = isPlayerAllIn && cardsStillToCome > 0 && !insuranceDismissed &&
-    (phase === 'Flop' || phase === 'Turn' || phase === 'PreFlop');
-  // Insurance equity now discounts by live opponents. Previous math ignored
-  // folded hands, which inflated strength (since their cards are no longer in
-  // the deck) and generously over-offered insurance cashout.
-  const liveOpponents = Math.max(
-    0,
-    ((gameState?.seats || []).filter((s, i) => s?.playerName && !s?.folded && i !== yourSeat).length)
-  );
-  const opponentDiscount = liveOpponents <= 1 ? 1 : Math.max(0.4, 1 - 0.08 * (liveOpponents - 1));
-  const insuranceEquity = handStrength ? Math.round(handStrength.strength * 100 * opponentDiscount) : 50;
-  const insuranceCashout = Math.round(pot * (insuranceEquity / 100) * 0.9); // 90% of equity value
+  // Insurance — R1 (TABLEUI-1 / ECON-1, CONTRACTS R1 #1). The panel is driven
+  // ONLY by the server's quote for this seat and this hand
+  // (`gameState.insuranceQuote` = { handNumber, cashout, equityPct, pot }, null
+  // otherwise). The old client-side pricing (hand-strength heuristic x a guessed
+  // opponent discount) offered numbers the server never paid — wrong equity,
+  // multiway and tournament spots, before a call — and is gone. Accept sends
+  // only { tableId, handNumber }; the server re-checks and settles at exactly
+  // its quoted cashout, and its `insuranceAccepted` numbers are what the toast
+  // shows.
+  const insuranceQuote = readInsuranceQuote(gameState);
+  const showInsurancePanel = !!insuranceQuote && !isSpectating
+    && insuranceClosedHand !== insuranceQuote.handNumber;
 
   // Session stats tracking: initialize start chips, count hands, track biggest pot
   useEffect(() => {
@@ -1082,6 +1134,9 @@ export default function GameHUD() {
       setShowRaiseSlider(false);
       setShowAllInConfirm(false);
       clearTimeout(foldTimerRef.current);
+      // R1 — the REF too: an armed first Fold tap (or swipe) whose turn ended
+      // stayed armed, so the next turn's first tap folded with no confirm.
+      foldPendingRef.current = false;
       setFoldPending(false);
     }
   }, [isMyTurn]);
@@ -1098,6 +1153,8 @@ export default function GameHUD() {
       setRaiseAmount(0);
       lastRaiseRef.current = null;
       setPreAction(null);
+      clearTimeout(foldTimerRef.current);
+      foldPendingRef.current = false;
       setFoldPending(false);
       setShowAllInConfirm(false);
       hasSentActionRef.current = false;
@@ -1145,6 +1202,8 @@ export default function GameHUD() {
       setPreAction(null);
       setAutoAction(null);
       setShowShowdown(false);
+      clearTimeout(foldTimerRef.current);
+      foldPendingRef.current = false;
       setFoldPending(false);
       setRaiseAmount(0);
       setShowRaiseSlider(false);
@@ -1172,7 +1231,8 @@ export default function GameHUD() {
         const action = seat.lastAction;
         if (!action || action === 'None') return;
         if (prevSeat && prevSeat.lastAction === action && prevSeat.currentBet === seat.currentBet) return;
-        const name = seat.playerName || `P${i + 1}`;
+        if (typeof action !== 'string') return;
+        const name = safeName(seat.playerName, '') || `P${i + 1}`;
         let entry = '';
         const act = action.toLowerCase();
         // Disambiguate raises: "raised to X" when we can surface the new total,
@@ -1335,7 +1395,7 @@ export default function GameHUD() {
       // Winner line
       const winners = gameState?.handResult?.winners;
       if (winners && winners.length > 0) {
-        voiceLine = `Winner: ${winners[0].playerName}!`;
+        voiceLine = `Winner: ${safeName(winners[0]?.playerName, 'Player')}!`;
       }
     }
 
@@ -1457,8 +1517,8 @@ export default function GameHUD() {
           (pot.winnerAmounts || []).map(wa => {
             const winnerInfo = handResult.winners.find(w => w.seatIndex === wa.seatIndex);
             return {
-              name: winnerInfo?.playerName || `Seat ${wa.seatIndex + 1}`,
-              amount: wa.amount,
+              name: safeName(winnerInfo?.playerName, '') || `Seat ${wa.seatIndex + 1}`,
+              amount: Number(wa.amount) || 0,
               potName: pot.name,
               potIndex,
               seatIndex: wa.seatIndex,
@@ -1475,8 +1535,8 @@ export default function GameHUD() {
         });
       } else {
         lines = handResult.winners.map(w => ({
-          name: w.playerName,
-          amount: w.chipsWon || 0,
+          name: safeName(w.playerName, 'Player'),
+          amount: Number(w.chipsWon) || 0,
           potName: 'Main Pot',
           handName: w.handName || '',
         }));
@@ -1777,12 +1837,23 @@ export default function GameHUD() {
   // seat: myChips read 0 and every HandComplete sent a refused 'rebuy' plus a
   // false "Auto-rebuying" toast), and never at a tournament table (the server
   // refuses tournament rebuys).
-  const rebuySeatHere = !isSpectating && !gameState?.isSpectator && !!myPlayer && yourSeat >= 0
-    && gameState?.isTournament !== true && gameState?.tournamentId == null && !onTournamentSeat;
+  // R1 (TOURNEY-1, CONTRACTS R1 #2) — the server says per table whether a rebuy
+  // is allowed (`rebuyAllowed`: false at tournaments and the quick tables —
+  // Spin & Go, career, heads-up, all-in-or-fold — which refuse it with
+  // `rebuy_not_allowed`). Auto-rebuy and its Options toggle follow it; a
+  // missing key (an older server) keeps the old client-side rule. The amount is
+  // the table's own `minBuyIn` (5000 only when an older server doesn't say).
+  const rebuyFlag = rebuyAllowedFlag(gameState);
+  const rebuySeated = !isSpectating && !gameState?.isSpectator && !!myPlayer && yourSeat >= 0;
+  const rebuyTableAllows = rebuyFlag === null
+    ? (gameState?.isTournament !== true && gameState?.tournamentId == null && !onTournamentSeat)
+    : (rebuyFlag === true && !onTournamentSeat);
+  const rebuySeatHere = rebuySeated && rebuyTableAllows;
+  const rebuyOptionShown = rebuyFlag !== false;
   useEffect(() => {
     if (autoRebuy && rebuySeatHere && phase === 'HandComplete' && prevPhaseForRebuyRef.current !== 'HandComplete') {
       if (myChips <= 0) {
-        const minBuyIn = gameState?.minBuyIn || 5000;
+        const minBuyIn = rebuyAmountFor(gameState, 5000);
         const socket = getSocket();
         if (socket?.connected) {
           // 2026-10-07 — replayable once if refused login_required on a
@@ -1832,7 +1903,7 @@ export default function GameHUD() {
       if (!action || action === 'None') return;
       if (prevSeat && prevSeat.lastAction === action && prevSeat.currentBet === seat.currentBet) return;
       newActions.push({
-        player: seat.playerName || `P${i+1}`,
+        player: safeName(seat.playerName, '') || `P${i+1}`,
         action,
         amount: seat.currentBet > 0 ? seat.currentBet : null,
         isMe: i === yourSeat,
@@ -1882,6 +1953,42 @@ export default function GameHUD() {
     setToasts(q => [...q, { id, msg, type }]);
     setTimeout(() => setToasts(q => q.filter(t => t.id !== id)), duration);
   }, []);
+
+  // R1 (CONTRACTS R1 #1) — the insurance confirmation shows the SERVER's
+  // numbers (`insuranceAccepted { cashout, equityPct }`), at the table where
+  // Accept was tapped. (It used to be an app-wide "Mission Complete!" popup
+  // echoing whatever the server computed, e.g. "3520% equity".)
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onAccepted = (data) => {
+      const acc = readInsuranceAccepted(data);
+      if (!acc) return;
+      addToast(
+        acc.equityPct === null
+          ? `🛡 Insurance locked in — ${acc.cashout.toLocaleString()} chips guaranteed`
+          : `🛡 Insurance locked in — ${acc.cashout.toLocaleString()} chips guaranteed (${acc.equityPct}% equity)`,
+        'success',
+        4500,
+      );
+    };
+    socket.on('insuranceAccepted', onAccepted);
+    return () => socket.off('insuranceAccepted', onAccepted);
+  }, [addToast]);
+
+  // R1 (TABLEUI-12) — a tap queued while the connection was down is held until
+  // the server restores the seat; if that never happens it is dropped (see
+  // socketService). Say so and let the player act again this turn.
+  useEffect(() => {
+    const onDropped = (e) => {
+      hasSentActionRef.current = false;
+      const t = e?.detail?.type;
+      const label = t === 'allIn' ? 'All-In' : typeof t === 'string' && t ? t.charAt(0).toUpperCase() + t.slice(1) : 'action';
+      addToast(`Your ${label} was not sent — the connection dropped. Please act again.`, 'warn', 4000);
+    };
+    window.addEventListener('poker:queued-action-dropped', onDropped);
+    return () => window.removeEventListener('poker:queued-action-dropped', onDropped);
+  }, [addToast]);
 
   // Persist auto-rebuy preference
   useEffect(() => {
@@ -2093,19 +2200,29 @@ export default function GameHUD() {
     return () => { if (muckTimerRef.current) clearTimeout(muckTimerRef.current); };
   }, [myPlayer?.folded, phase, yourCards.length]);
 
-  // Listen for mucked hand reveals from other players
+  // Listen for mucked hand reveals from other players.
+  // R1 (TABLEUI-5, CONTRACTS R1 #4) — the payload is checked before it is
+  // stored: an array of real cards ({rank 2-14, suit 0-3 or a suit name}),
+  // else the whole reveal is dropped (`cards: [null]` / 'x' used to crash
+  // every client at the table). The name is made safe too.
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
     const handler = (data) => {
-      if (data && data.cards && data.playerName) {
-        const addedAt = Date.now();
-        setMuckedHands((prev) => [...prev, { playerName: data.playerName, cards: data.cards, addedAt }]);
-        // Auto-dismiss after 4 seconds
-        setTimeout(() => {
-          setMuckedHands((prev) => prev.filter((m) => m.addedAt !== addedAt));
-        }, 4000);
+      if (!data || typeof data !== 'object') return;
+      const cards = sanitizeShownCards(data.cards);
+      if (!cards) {
+        try { console.warn('[table-payload] dropped a shown-hand payload with invalid cards'); } catch { /* ignore */ }
+        return;
       }
+      const seatNo = Number.isInteger(data.seatIndex) && data.seatIndex >= 0 ? data.seatIndex + 1 : null;
+      const playerName = safeName(data.playerName, '') || (seatNo ? `Seat ${seatNo}` : 'Player');
+      const addedAt = Date.now();
+      setMuckedHands((prev) => [...prev, { playerName, cards, addedAt }]);
+      // Auto-dismiss after 4 seconds
+      setTimeout(() => {
+        setMuckedHands((prev) => prev.filter((m) => m.addedAt !== addedAt));
+      }, 4000);
     };
     socket.on('muckedHandRevealed', handler);
     return () => socket.off('muckedHandRevealed', handler);
@@ -2130,8 +2247,10 @@ export default function GameHUD() {
     const socket = getSocket();
     if (!socket) return;
     const handler = (data) => {
-      if (data && data.cards) {
-        setRabbitCards(data.cards);
+      // R1 (contract #4) — only a real card list (a board has at most 5).
+      const cards = data && typeof data === 'object' ? sanitizeShownCards(data.cards, 5) : null;
+      if (cards) {
+        setRabbitCards(cards);
         setShowRabbitPanel(true);
       }
     };
@@ -2139,10 +2258,10 @@ export default function GameHUD() {
     return () => socket.off('rabbitHuntResult', handler);
   }, [setRabbitCards]);
 
-  // Reset insurance dismissed flag each hand
+  // Reset per-hand insurance UI each hand (R1: an accepted / declined quote is
+  // remembered by its handNumber, so no reset is needed for that).
   useEffect(() => {
     if (phase === 'PreFlop' || phase === 'WaitingForPlayers') {
-      setInsuranceDismissed(false);
       setShowInsurance(false);
       // Also reset the rabbit-hunt cooldown — fresh hand gets a fresh request.
       setRabbitHuntCooldownUntil(0);
@@ -2291,6 +2410,31 @@ export default function GameHUD() {
     }
     sendAction(type, amount);
   }, [sendAction, playSound, pot]);
+
+  // R1 (TABLEUI-2) — ONE two-step fold shared by the Fold button and the
+  // swipe-left gesture: the first tap / swipe arms it ("Fold? Tap again", 3s),
+  // the second folds. A gesture fold never skips the confirm the button has.
+  // Returns 'armed' | 'folded' | 'ignored'.
+  const requestFold = useCallback(() => {
+    // Audit fix #12: dedupe — if an action already went out this turn, ignore.
+    if (hasSentActionRef.current) return 'ignored';
+    if (!foldPendingRef.current) {
+      foldPendingRef.current = true;
+      setFoldPending(true);
+      clearTimeout(foldTimerRef.current);
+      foldTimerRef.current = setTimeout(() => {
+        foldPendingRef.current = false;
+        setFoldPending(false);
+      }, 3000);
+      return 'armed';
+    }
+    clearTimeout(foldTimerRef.current);
+    foldPendingRef.current = false;
+    setFoldPending(false);
+    handleAction('fold');
+    return 'folded';
+  }, [handleAction]);
+  gestureActRef.current = { handleAction, requestFold };
 
   // Time Bank handler (Upgrade 5)
   const handleTimeBank = useCallback(() => {
@@ -2457,24 +2601,49 @@ export default function GameHUD() {
     };
   }, []);
 
-  // Touch gesture handlers — use refs so handlers are stable and never re-register
+  // Touch gestures — R1 (TABLEUI-2, 2026-10-11). The listeners used to sit on
+  // the .hud root, whose only tappable parts are its CONTROLS (the felt is a
+  // separate layer under it), so tapping Options / Sit Out / Back / a toggle /
+  // the raise label / a gap between buttons sent CALL or CHECK, and a quick drag
+  // of the raise slider sent FOLD — even on a free street. Now:
+  //   - a gesture starts ONLY on the table felt (gestureStartAllowed), never on
+  //     a button, input, seat, the top bar, the Options menu, the raise slider
+  //     group or anything drawn over the felt; not while the Options menu is
+  //     open (that tap just closes it); one finger only; once per turn;
+  //   - swipe left on a free street CHECKS (never folds a free card);
+  //   - swipe left facing a bet goes through the SAME two-step confirm as the
+  //     Fold button (requestFold): the first swipe arms "Fold?", a second swipe
+  //     (or a tap on Fold) within 3s folds.
+  // Handlers read everything through refs, so they never re-register.
   const handleTouchStart = useCallback((e) => {
+    touchStartRef.current = null;
+    if (touchTimerRef.current) { clearTimeout(touchTimerRef.current); touchTimerRef.current = null; }
     if (!isTouchDevice || !isMyTurnRef.current) return;
-    // Don't intercept touches on action buttons, overlays, cards, or interactive UI
-    if (e.target.closest('.action-btn, .pre-action-btn, .ab-preset, .chat-toggle, .adv-tool-btn, .hud-cards, .card-peek, .card-slot, .raise-quick-btn, .raise-nudge-btn, .rail-btn, .rail-btn-wrap, .showdown-overlay, .showdown-panel, .winner-banner, .phase-banner, .gesture-hint-overlay, .allin-confirm-overlay, .gesture-raise-overlay')) return;
+    if (!e.touches || e.touches.length !== 1) return;     // pinch / two fingers: never an action
+    if (optionsOpenRef.current) return;                     // this tap only closes the Options menu
+    if (hasSentActionRef.current) return;                   // already acted this turn
     const touch = e.touches[0];
+    if (!gestureStartAllowed(e.target, touch.clientX, touch.clientY)) return; // bare felt only
     touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    // Hold (500ms, no movement) — open the raise slider when a raise is legal.
     touchTimerRef.current = setTimeout(() => {
-      setShowRaiseSlider(true);
+      touchTimerRef.current = null;
+      if (!touchStartRef.current || !isMyTurnRef.current || !canRaiseRef.current) return;
       touchStartRef.current = null;
+      setShowRaiseSlider(true);
     }, 500);
-  }, [isTouchDevice]); // stable — reads isMyTurn via ref
+  }, [isTouchDevice]);
 
-  const handleTouchMove = useCallback((e) => {
+  const handleTouchMove = useCallback(() => {
     if (touchTimerRef.current) {
       clearTimeout(touchTimerRef.current);
       touchTimerRef.current = null;
     }
+  }, []);
+
+  const handleTouchCancel = useCallback(() => {
+    if (touchTimerRef.current) { clearTimeout(touchTimerRef.current); touchTimerRef.current = null; }
+    touchStartRef.current = null;
   }, []);
 
   const handleTouchEnd = useCallback((e) => {
@@ -2482,47 +2651,45 @@ export default function GameHUD() {
       clearTimeout(touchTimerRef.current);
       touchTimerRef.current = null;
     }
-    if (!touchStartRef.current || !isMyTurnRef.current) return;
-    if (e.target.closest('.action-btn, .pre-action-btn, .ab-preset, .chat-toggle, .adv-tool-btn, .hud-cards, .card-peek, .card-slot, .raise-quick-btn, .raise-nudge-btn, .rail-btn, .rail-btn-wrap, .showdown-overlay, .showdown-panel, .winner-banner, .phase-banner, .gesture-hint-overlay, .allin-confirm-overlay, .gesture-raise-overlay')) {
-      touchStartRef.current = null;
-      return;
-    }
-    const touch = e.changedTouches[0];
-    const dx = touch.clientX - touchStartRef.current.x;
-    const dy = touch.clientY - touchStartRef.current.y;
-    const dt = Date.now() - touchStartRef.current.time;
+    const start = touchStartRef.current;
     touchStartRef.current = null;
+    if (!start || !isMyTurnRef.current || hasSentActionRef.current) return;
+    const touch = e.changedTouches && e.changedTouches[0];
+    if (!touch) return;
+    const { handleAction: act, requestFold: fold } = gestureActRef.current;
+    if (!act || !fold) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    const dt = Date.now() - start.time;
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
-    // Tap — check or call
+    const free = callAmountRef.current === 0;
+    // Tap — check (free) or call
     if (dt < 200 && absDx < 15 && absDy < 15) {
-      if (callAmountRef.current === 0) {
-        flashGesture('call');
-        handleAction('check');
-      } else {
-        flashGesture('call');
-        handleAction('call');
-      }
+      flashGesture(free ? 'check' : 'call');
+      act(free ? 'check' : 'call');
       return;
     }
-    // Horizontal swipe — fold (left) or call/check (right)
+    // Horizontal swipe — left: fold (two-step) or CHECK on a free street;
+    // right: check / call
     if (absDx > 60 && absDx > absDy * 1.5 && dt < 500) {
       if (dx < 0) {
-        flashGesture('fold');
-        handleAction('fold');
+        if (free) { flashGesture('check'); act('check'); return; }
+        const r = fold();
+        if (r === 'armed') flashGesture('foldArm');
+        else if (r === 'folded') flashGesture('fold');
       } else {
-        flashGesture('call');
-        if (callAmountRef.current === 0) handleAction('check');
-        else handleAction('call');
+        flashGesture(free ? 'check' : 'call');
+        act(free ? 'check' : 'call');
       }
       return;
     }
-    // Swipe UP — open raise slider
-    if (dy < -70 && absDy > absDx * 1.5 && dt < 500) {
+    // Swipe UP — open raise slider (only when a raise is legal)
+    if (dy < -70 && absDy > absDx * 1.5 && dt < 500 && canRaiseRef.current) {
       flashGesture('raise');
       setShowRaiseSlider(true);
     }
-  }, [handleAction, flashGesture]); // stable — reads isMyTurn/callAmount via refs
+  }, [flashGesture]); // stable — reads turn / call amount / handlers via refs
 
   // Show gesture hint on first mobile visit
   useEffect(() => {
@@ -2538,20 +2705,22 @@ export default function GameHUD() {
     } catch { /* ignore */ }
   }, [isTouchDevice]);
 
-  // Attach touch event listeners
+  // Attach touch event listeners — R1: on the document (a touch on the felt is
+  // NOT inside .hud); gestureStartAllowed decides whether a touch is a gesture.
   useEffect(() => {
-    if (!isTouchDevice) return;
-    const hud = document.querySelector('.hud');
-    if (!hud) return;
-    hud.addEventListener('touchstart', handleTouchStart, { passive: true });
-    hud.addEventListener('touchmove', handleTouchMove, { passive: true });
-    hud.addEventListener('touchend', handleTouchEnd, { passive: true });
+    if (!isTouchDevice) return undefined;
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: true });
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
+    document.addEventListener('touchcancel', handleTouchCancel, { passive: true });
     return () => {
-      hud.removeEventListener('touchstart', handleTouchStart);
-      hud.removeEventListener('touchmove', handleTouchMove);
-      hud.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('touchcancel', handleTouchCancel);
+      if (touchTimerRef.current) { clearTimeout(touchTimerRef.current); touchTimerRef.current = null; }
     };
-  }, [isTouchDevice, handleTouchStart, handleTouchMove, handleTouchEnd]); // stable refs — won't re-register
+  }, [isTouchDevice, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel]); // stable refs — won't re-register
 
   // Phase display label
   const phaseLabel = {
@@ -2825,7 +2994,11 @@ export default function GameHUD() {
           {/* Connection status dot */}
           <span
             className={`conn-dot conn-dot--${connStatus}`}
-            title={connStatus === 'connected' ? 'Connected' : connStatus === 'reconnecting' ? 'Reconnecting…' : 'Disconnected'}
+            title={connStatus === 'connected' ? 'Connected'
+              : connStatus === 'reconnecting' ? 'Reconnecting…'
+              : connStatus === 'error' ? 'Connection problem — retrying…'
+              : connStatus === 'failed' ? 'Connection lost — tap to reconnect'
+              : 'Disconnected'}
           />
           {/* Sit Out quick-access button */}
           <button
@@ -2889,13 +3062,16 @@ export default function GameHUD() {
                     onClick={() => setQuickShowdown(!quickShowdown)}
                   >{quickShowdown ? 'ON' : 'OFF'}</button>
                 </div>
-                <div className="options-row">
+                {/* R1 (contract #2) — not offered where the server refuses rebuys. */}
+                {rebuyOptionShown && (
+                <div className="options-row options-row--auto-rebuy">
                   <span className="options-label">Auto Rebuy</span>
                   <button
                     className={`options-toggle ${autoRebuy ? 'options-on' : 'options-off'}`}
                     onClick={() => setAutoRebuy(!autoRebuy)}
                   >{autoRebuy ? 'ON' : 'OFF'}</button>
                 </div>
+                )}
                 <div className="options-divider" />
                 <button className="options-action-btn options-bomb"
                   onClick={() => {
@@ -2936,7 +3112,7 @@ export default function GameHUD() {
                     />
                     <span className="options-volume-pct">{Math.round(sfxVolume * 100)}%</span>
                   </div>
-                  <span className="options-volume-label">{sfxVolume === 0 ? 'Muted' : sfxVolume < 0.3 ? 'Low' : sfxVolume < 0.7 ? 'Medium' : 'Loud'}</span>
+                  <span className="options-volume-label">{readSoundPrefs().muted ? 'Muted in Settings' : sfxVolume === 0 ? 'Muted' : sfxVolume < 0.3 ? 'Low' : sfxVolume < 0.7 ? 'Medium' : 'Loud'}</span>
                 </div>
                 {/* Keyboard shortcuts (#9) — read-only reference list */}
                 <button className="options-action-btn" onClick={() => { setShowShortcuts(true); setShowOptions(false); }}>
@@ -3125,7 +3301,7 @@ export default function GameHUD() {
             )}
           </div>
 
-          <span className="hud-name">{playerName}</span>
+          <span className="hud-name">{safeName(playerName, '')}</span>
           {/* Chip stack visual */}
           <div className={`hud-chip-stack ${myChips >= 5000 ? 'chip-deep' : myChips >= 1500 ? 'chip-mid' : 'chip-short'}`}>
             <span className="chip-coins">
@@ -3226,7 +3402,7 @@ export default function GameHUD() {
           <div className="chop-pot-shares">
             {(gameState.chopDetails || []).map((d, i) => (
               <span key={i} className="chop-pot-share">
-                {d.playerName}: {d.share.toLocaleString()}
+                {safeName(d.playerName, 'Player')}: {(Number(d.share) || 0).toLocaleString()}
               </span>
             ))}
           </div>
@@ -3244,8 +3420,8 @@ export default function GameHUD() {
             const raw = Number(equityResults[i]);
             const pct = Number.isFinite(raw) ? Math.round(Math.max(0, Math.min(100, raw))) : 0;
             return (
-              <div key={i} className="equity-badge" title={`${seat.playerName}: ${pct}% equity`}>
-                <span className="equity-player-name">{seat.playerName}</span>
+              <div key={i} className="equity-badge" title={`${safeName(seat.playerName, 'Player')}: ${pct}% equity`}>
+                <span className="equity-player-name">{safeName(seat.playerName, 'Player')}</span>
                 <span className="equity-pct">{pct}%</span>
               </div>
             );
@@ -3516,10 +3692,10 @@ export default function GameHUD() {
               );
             })()}
             <div className="hud-np-avatar" style={{ background: 'linear-gradient(135deg,#1e3a8a,#0d2c53)' }}>
-              {(playerName || 'P').charAt(0).toUpperCase()}
+              {nameInitial(playerName, 'P')}
             </div>
             <div className="hud-np-info">
-              <span className="hud-np-name">{playerName}</span>
+              <span className="hud-np-name">{safeName(playerName, '')}</span>
               <span className="hud-np-chips">● {(myPlayer.chipCount ?? myPlayer.chips ?? 0).toLocaleString()} · {bigBlind > 0 ? Math.round((myPlayer.chipCount ?? myPlayer.chips ?? 0) / bigBlind) : 0}bb</span>
             </div>
             {gameState?.seatPositions?.[yourSeat] && (
@@ -3730,25 +3906,10 @@ export default function GameHUD() {
                         : `Fold. Call amount ${callAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`
                   }
                   onClick={(e) => {
-                    // Audit fix #12: dedupe — if an action already went out
-                    // this turn, ignore subsequent clicks.
-                    if (hasSentActionRef.current) return;
-                    // Use the ref for the condition to avoid React batching
-                    // two click events into both seeing foldPending=false.
-                    if (!foldPendingRef.current) {
-                      foldPendingRef.current = true;
-                      setFoldPending(true);
-                      clearTimeout(foldTimerRef.current);
-                      foldTimerRef.current = setTimeout(() => {
-                        foldPendingRef.current = false;
-                        setFoldPending(false);
-                      }, 3000);
-                    } else {
-                      clearTimeout(foldTimerRef.current);
-                      foldPendingRef.current = false;
-                      handleAction('fold');
-                      setFoldPending(false);
-                    }
+                    // Two-step fold, shared with the swipe-left gesture (R1):
+                    // the ref-based confirm (no React batching race) + the
+                    // audit fix #12 dedupe live in requestFold.
+                    requestFold();
                     // Stop the event so the click can't bubble to an
                     // ancestor listener that re-routes it to another
                     // action (root-cause theory for the 2026-04-22 audit
@@ -4051,7 +4212,7 @@ export default function GameHUD() {
                       <div key={wi} className="showdown-winner-row">
                         <div className="showdown-winner-badge">WIN</div>
                         <div className="showdown-player-name showdown-winner-name">
-                          {winnerInfo?.playerName || `Seat ${wa.seatIndex + 1}`}
+                          {safeName(winnerInfo?.playerName, '') || `Seat ${wa.seatIndex + 1}`}
                         </div>
                         {winnerInfo?.handName && <div className="showdown-hand-name">{winnerInfo.handName}</div>}
                         <div className="showdown-chips-won">+{wa.amount.toLocaleString()} chips</div>
@@ -4070,7 +4231,7 @@ export default function GameHUD() {
                 <div key={winner.seatIndex} className="showdown-winner-row">
                   <div className="showdown-winner-badge">WINNER</div>
                   <div className="showdown-player-name showdown-winner-name">
-                    {winner.playerName}
+                    {safeName(winner.playerName, 'Player')}
                   </div>
                   <div className="showdown-hand-name">{winner.handName}</div>
                   <div className="showdown-chips-won">+{winner.chipsWon.toLocaleString()} chips</div>
@@ -4109,7 +4270,7 @@ export default function GameHUD() {
                     key={hand.seatIndex}
                     className={`showdown-hand-row ${isWinner ? 'showdown-hand-winner' : 'showdown-hand-loser'}`}
                   >
-                    <div className="showdown-hand-player">{hand.playerName}</div>
+                    <div className="showdown-hand-player">{safeName(hand.playerName, 'Player')}</div>
                     <div className="showdown-hand-cards">
                       {/* Hole cards */}
                       <span className="showdown-hole-label">Hole:</span>
@@ -4136,7 +4297,7 @@ export default function GameHUD() {
           <div className="showdown-panel showdown-panel-small">
             {handResult.winners.map((winner) => (
               <div key={winner.seatIndex} className="showdown-winner-row">
-                <div className="showdown-winner-name">{winner.playerName}</div>
+                <div className="showdown-winner-name">{safeName(winner.playerName, 'Player')}</div>
                 <div className="showdown-hand-name">{winner.handName}</div>
                 <div className="showdown-chips-won">+{winner.chipsWon.toLocaleString()} chips</div>
               </div>
@@ -4174,7 +4335,7 @@ export default function GameHUD() {
         <div className="mucked-hands-container">
           {muckedHands.map((mh, idx) => (
             <div key={mh.addedAt ?? idx} className="mucked-hand-reveal">
-              <span className="mucked-hand-player">{mh.playerName} shows:</span>
+              <span className="mucked-hand-player">{safeName(mh.playerName, 'Player')} shows:</span>
               <div className="mucked-hand-cards">
                 {mh.cards.map((c, ci) => renderMiniCard(c, false))}
               </div>
@@ -4231,34 +4392,37 @@ export default function GameHUD() {
         </div>
       )}
 
-      {/* Insurance panel (all-in, waiting for cards) */}
-      {showInsurancePanel && !insuranceDismissed && (
-        <div className="insurance-panel">
+      {/* Insurance panel — R1: ONLY the server's quote for this seat + hand
+          (gameState.insuranceQuote); its cashout + equity are shown as sent. */}
+      {showInsurancePanel && (
+        <div className="insurance-panel insurance-panel--server-quote">
           <div className="insurance-title">{'\uD83D\uDEE1\uFE0F'} Insurance</div>
           <div className="insurance-question">
-            Lock in {insuranceEquity}% equity for {insuranceCashout.toLocaleString()} chips?
+            Lock in {insuranceQuote.equityPct}% equity for {insuranceQuote.cashout.toLocaleString()} chips?
           </div>
           <div className="insurance-details">
-            <span>Pot: {pot.toLocaleString()}</span>
-            <span>Equity: {insuranceEquity}%</span>
+            <span>Pot: {(insuranceQuote.pot ?? pot).toLocaleString()}</span>
+            <span>Equity: {insuranceQuote.equityPct}%</span>
           </div>
           <div className="insurance-actions">
             <button
               className="insurance-btn insurance-accept"
               onClick={() => {
                 const socket = getSocket();
-                if (socket?.connected) socket.emit('acceptInsurance', {
-                  equityPct: insuranceEquity,
-                  cashoutAmount: insuranceCashout,
-                });
-                setInsuranceDismissed(true);
+                if (!socket?.connected) {
+                  addToast('Not connected — try Accept again in a moment.', 'warn', 3000);
+                  return;
+                }
+                // No client numbers: the server prices and settles its own quote.
+                socket.emit('acceptInsurance', { tableId: gameState?.tableId, handNumber: insuranceQuote.handNumber });
+                setInsuranceClosedHand(insuranceQuote.handNumber);
               }}
             >
               Accept
             </button>
             <button
               className="insurance-btn insurance-decline"
-              onClick={() => setInsuranceDismissed(true)}
+              onClick={() => setInsuranceClosedHand(insuranceQuote.handNumber)}
             >
               Decline
             </button>
@@ -4331,23 +4495,28 @@ export default function GameHUD() {
           key={`flash-${Date.now()}`}
         >
           <div className="gesture-flash-label">
-            {gestureFlash === 'fold' ? 'Fold' : gestureFlash === 'raise' ? 'Raise ↑' : 'Call'}
+            {gestureFlash === 'fold' ? 'Fold'
+              : gestureFlash === 'foldArm' ? 'Fold? Swipe again'
+              : gestureFlash === 'check' ? 'Check'
+              : gestureFlash === 'raise' ? 'Raise ↑' : 'Call'}
           </div>
         </div>
       )}
 
-      {/* Touch gesture hint overlay (first mobile visit) */}
+      {/* Touch gesture hint overlay (first mobile visit). R1: gestures work on
+          the table felt only; swipe-left asks twice, and checks a free street. */}
       {showGestureHint && (
         <div className="gesture-hint-overlay" onClick={() => setShowGestureHint(false)}>
           <div className="gesture-hint-panel">
             <div className="gesture-hint-title">Touch Controls</div>
+            <div className="gesture-hint-text gesture-hint-felt-only" style={{ textAlign: 'center', opacity: 0.8, marginBottom: 6 }}>On the table felt:</div>
             <div className="gesture-hint-row--new">
               <span className="gesture-hint-icon--lg">👆</span>
               <span className="gesture-hint-text"><strong>Tap</strong> — Check / Call</span>
             </div>
             <div className="gesture-hint-row--new">
               <span className="gesture-hint-icon--lg">⬅️</span>
-              <span className="gesture-hint-text"><strong>Swipe Left</strong> — Fold</span>
+              <span className="gesture-hint-text"><strong>Swipe Left</strong> — Fold (swipe twice) · Check when free</span>
             </div>
             <div className="gesture-hint-row--new">
               <span className="gesture-hint-icon--lg">➡️</span>
@@ -4442,7 +4611,7 @@ export default function GameHUD() {
               }}
             >
               <div>{emoteData.icon}</div>
-              <div style={{ fontSize: '0.65rem', color: '#4ade80', fontWeight: 700 }}>{emote.playerName}</div>
+              <div style={{ fontSize: '0.65rem', color: '#4ade80', fontWeight: 700 }}>{safeName(emote.playerName, '')}</div>
             </div>
           );
         }
@@ -4467,7 +4636,7 @@ export default function GameHUD() {
             }}
           >
             {emoteData.icon}
-            <div style={{ fontSize: '0.6rem', color: '#ccc', textAlign: 'center' }}>{emote.playerName}</div>
+            <div style={{ fontSize: '0.6rem', color: '#ccc', textAlign: 'center' }}>{safeName(emote.playerName, '')}</div>
           </div>
         );
       })}
@@ -4511,7 +4680,7 @@ export default function GameHUD() {
       {/* Opponent quick-stats popup */}
       {opponentStats && (
         <div className="opp-stats-popup" onClick={() => setOpponentStats(null)}>
-          <div className="opp-stats-name">{opponentStats.name}</div>
+          <div className="opp-stats-name">{safeName(opponentStats.name, 'Player')}</div>
           {opponentStats.hands > 0 ? (
             <div className="opp-stats-grid">
               <div className="opp-stat"><span className="opp-stat-label">VPIP</span><span className="opp-stat-val">{opponentStats.vpip ?? '--'}%</span></div>

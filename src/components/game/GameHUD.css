@@ -12,7 +12,14 @@
   z-index: 20;
 }
 
-.hud > * {
+/* R1 (TABLEUI-3, 2026-10-11) — :where() gives this default ZERO specificity.
+   As `.hud > *` (0,1,0) it beat the own `pointer-events: none` of overlay roots
+   whose stylesheet loads earlier (.hh-overlay and .coaching-rail in the
+   game-overlays chunk, .confetti-container / .confetti-text before this file),
+   turning the Equity Heatmap, the AI Coach Rail and the big-win confetti into
+   invisible full-screen tap blockers over the action buttons. Children with
+   no pointer-events rule of their own still get `auto` from it. */
+:where(.hud) > * {
   pointer-events: auto;
 }
 
@@ -5479,6 +5486,11 @@
 .conn-dot--connected    { background: #4ade80; color: #4ade80; }
 .conn-dot--reconnecting { background: #f59e0b; color: #f59e0b; animation: conn-blink 0.8s infinite; }
 .conn-dot--disconnected { background: #ef4444; color: #ef4444; }
+/* R1 (TABLEUI-12) — socketService also reports 'error' (connect_error while
+   retrying) and 'failed' (retries exhausted); the dot had no style for them.
+   Amber blink = retrying; steady blue = needs a tap (the table banner offers it). */
+.conn-dot--error        { background: #f59e0b; color: #f59e0b; animation: conn-blink 0.8s infinite; }
+.conn-dot--failed       { background: #93c5fd; color: #93c5fd; box-shadow: 0 0 0 2px rgba(255, 210, 74, 0.7); }
 
 @keyframes conn-blink {
   0%, 100% { opacity: 1; }
@@ -5803,6 +5815,13 @@ html.kb-open .table-pot-odds {
 .gesture-flash-overlay--fold  .gesture-flash-label { color: #ef4444; background: rgba(239,68,68,0.2); border: 2px solid rgba(239,68,68,0.5); }
 .gesture-flash-overlay--call  .gesture-flash-label { color: #4ade80; background: rgba(74,222,128,0.18); border: 2px solid rgba(74,222,128,0.45); }
 .gesture-flash-overlay--raise .gesture-flash-label { color: #fbbf24; background: rgba(251,191,36,0.18); border: 2px solid rgba(251,191,36,0.45); }
+/* R1 (TABLEUI-2) — a free-street swipe / tap says "Check" (it used to flash
+   "Call"), and the first swipe-left facing a bet only ARMS the fold, exactly
+   like the first tap on the Fold button: gold + blue, not a fold flash. */
+.gesture-flash-overlay--check { background: rgba(74,222,128,0.15); }
+.gesture-flash-overlay--check .gesture-flash-label { color: #4ade80; background: rgba(74,222,128,0.18); border: 2px solid rgba(74,222,128,0.45); }
+.gesture-flash-overlay--foldArm { background: rgba(30,58,138,0.22); }
+.gesture-flash-overlay--foldArm .gesture-flash-label { color: #ffd24a; background: rgba(8,20,52,0.85); border: 2px solid rgba(255,210,74,0.6); font-size: 1.5rem; }
 
 /* ── Updated gesture hint (now shows 4 gestures) ── */
 .gesture-hint-row--new {

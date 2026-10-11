@@ -1,6 +1,29 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useLayoutEffect, useState } from 'react';
 import { useThrottle } from '../../hooks/useThrottle';
 import './HandHeatmap.css';
+
+// R1 (TABLEUI-3, 2026-10-11) — each disc sits on its seat's avatar on the 2D
+// table (PokerTable2D marks every seat pod with data-seat-index; the table is
+// rotated so the hero sits at the bottom, so a fixed per-index position put a
+// disc on the wrong seat). The fixed positions below are only the fallback
+// when a seat pod can't be measured.
+function measureSeatAnchors() {
+  const out = {};
+  if (typeof document === 'undefined') return out;
+  document.querySelectorAll('.seat-pod[data-seat-index]').forEach((el) => {
+    const i = Number(el.getAttribute('data-seat-index'));
+    if (!Number.isInteger(i)) return;
+    const box = (el.querySelector('.seat-pod__avatar-wrap') || el).getBoundingClientRect();
+    if (box.width > 0 && box.height > 0) {
+      out[i] = { left: `${Math.round(box.left + box.width / 2)}px`, top: `${Math.round(box.top + box.height / 2)}px` };
+    }
+  });
+  return out;
+}
+const sameAnchors = (a, b) => {
+  const ka = Object.keys(a); const kb = Object.keys(b);
+  return ka.length === kb.length && ka.every((k) => b[k] && a[k].left === b[k].left && a[k].top === b[k].top);
+};
 
 // Approximate screen-space positions for a 9-seat table, based on the 3D camera view.
 // Values are CSS position strings (percentages of viewport width/height).
@@ -46,14 +69,30 @@ export default function HandHeatmap({
     [equityResults, mySeatIndex]
   );
 
+  // R1 — where each seat actually is on screen (re-measured as seats change).
+  const [anchors, setAnchors] = useState({});
+  useLayoutEffect(() => {
+    if (!shouldShow) return undefined;
+    const measure = () => {
+      const next = measureSeatAnchors();
+      setAnchors((prev) => (sameAnchors(prev, next) ? prev : next));
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [shouldShow, seats]);
+
   if (!shouldShow) return null;
 
   return (
     <div className="hh-overlay" aria-hidden="true">
-      {SEAT_OVERLAY_POSITIONS.map((posStyle, seatIndex) => {
+      {SEAT_OVERLAY_POSITIONS.map((fallbackPos, seatIndex) => {
         const seat = seats[seatIndex];
-        // Skip empty seats and the hero's own seat
-        if (!seat || !seat.active || seatIndex === mySeatIndex) return null;
+        // Skip empty / folded seats and the hero's own seat.
+        // R1 (TABLEUI-3) — the server never sends `seat.active`, so the old
+        // `!seat.active` filter skipped EVERY seat and the heatmap drew nothing.
+        if (!seat || seat.state !== 'occupied' || seat.folded || seatIndex === mySeatIndex) return null;
+        const posStyle = anchors[seatIndex] || fallbackPos;
 
         const equity     = parseFloat(equityResults[seatIndex]);
         // If no equity data yet, skip

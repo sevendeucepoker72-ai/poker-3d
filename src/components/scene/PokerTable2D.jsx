@@ -20,6 +20,9 @@ import { getPlayerTag, COLOR_TAGS } from '../ui/PlayerNotes';
 import { getRankInfo } from '../ui/RankBadge';
 import { getOpponentStats } from '../../utils/opponentTracker';
 import { useAvatar, PlayerAvatar } from '../../hooks/useAvatar';
+// R1 (AUTH-6, contract #3) — a seat name is shown as text and indexed for the
+// avatar initial; a non-string name used to throw for every viewer.
+import { safeName, nameInitial } from '../../utils/tablePayload';
 import './PokerTable2D.css';
 
 /* ── Player-notes callback (App.jsx sets this) ─────────────── */
@@ -279,7 +282,7 @@ function ActionBubble({ action }) {
 
   if (!text) return null;
 
-  const lower = text.toLowerCase();
+  const lower = String(text).toLowerCase();
   let cls = 'bubble--check';
   if (lower.startsWith('fold'))  cls = 'bubble--fold';
   else if (lower.startsWith('raise') || lower.startsWith('bet')) cls = 'bubble--raise';
@@ -343,10 +346,12 @@ const SeatPod = memo(function SeatPod({
 
   const {
     playerName, name: _name, currentBet, allIn, folded,
-    holeCards = [], lastAction, eliminated,
+    holeCards = [], lastAction: rawLastAction, eliminated,
     missedBlind, deadBlindOwedChips,
   } = serverSeat || {};
-  const name = playerName || _name || '';
+  // R1 (AUTH-6) — always a string here, whatever the frame carried.
+  const name = safeName(playerName || _name || '', '');
+  const lastAction = typeof rawLastAction === 'string' ? rawLastAction : null;
   // Show a small red badge on any seat currently owing dead blinds, so
   // observers can instantly see who skipped their turn and why they
   // aren't being dealt in. Only render if owed > 0 (non-null missedBlind
@@ -399,6 +404,7 @@ const SeatPod = memo(function SeatPod({
     return (
       <div
         className={`seat-pod seat-pod--empty ${isPendingMoveTarget ? 'seat-pod--pending-move' : ''}`}
+        data-seat-index={seatIndex}
         style={{
           ...style,
           ...(isPendingMoveTarget ? {
@@ -479,7 +485,7 @@ const SeatPod = memo(function SeatPod({
     ? heroEmoji
     : isSittingOut
     ? '💤'
-    : (name || '?')[0].toUpperCase();
+    : nameInitial(name);
 
   // ── Nameplate enrichment data ──────────────────────────────
   const tag    = !isMyPlayer && name ? getPlayerTag(name) : null;
@@ -506,6 +512,7 @@ const SeatPod = memo(function SeatPod({
   return (
     <div
       className={classes}
+      data-seat-index={seatIndex}
       style={style}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}

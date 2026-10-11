@@ -2,6 +2,10 @@ import { create } from 'zustand';
 import { getSocket, emitPlayerAction } from '../services/socketService';
 import { notePlayAttempt } from '../services/playAttempt';
 import { markTableLeft, isTableLeft } from '../services/leftTables';
+// R1 (AUTH-6, contract #3) — every frame the table renders passes through these
+// setters; a non-string name (number / object / array) is made safe here once,
+// so no seat, winner or showdown row can crash the table for its viewers.
+import { sanitizeTableState, sanitizeHandHistory, sanitizeNamedEvent } from '../utils/tablePayload';
 
 // 2026-10-07 — every gated play emit records how to replay itself, so a
 // login_required refusal that lands on a signed-out socket (reconnect race) can
@@ -27,7 +31,7 @@ export function forgetSitOutPreference() {
 export const useTableStore = create((set, get) => ({
   // Game state from server
   gameState: null,
-  setGameState: (state) => set({ gameState: state }),
+  setGameState: (state) => set({ gameState: sanitizeTableState(state) }),
 
   // Connection
   connected: false,
@@ -48,7 +52,8 @@ export const useTableStore = create((set, get) => ({
   // shown". Instead, we just cap silently; GameHUD renders a subtle "older
   // messages hidden" badge ABOVE the scroll area when it detects a cap hit.
   chatMessages: [],
-  addChatMessage: (msg) => set((state) => {
+  addChatMessage: (rawMsg) => set((state) => {
+    const msg = sanitizeNamedEvent(rawMsg);
     // Dedup — primary key is clientMessageId (server echoes it back so we
     // can match round-trip). Fallback: if the incoming msg has no
     // clientMessageId (server-originated system messages, or older client
@@ -318,7 +323,7 @@ export const useTableStore = create((set, get) => ({
   // Hand history (last 20 hands)
   handHistories: [],
   addHandHistory: (history) => set((state) => ({
-    handHistories: [...state.handHistories, history].slice(-20),
+    handHistories: [...state.handHistories, sanitizeHandHistory(history)].slice(-20),
   })),
 
   // Provably fair
@@ -360,7 +365,7 @@ export const useTableStore = create((set, get) => ({
   // ========== Emote System ==========
   emotes: [], // { seatIndex, emoteId, playerName, timestamp }
   addEmote: (emote) => set((state) => ({
-    emotes: [...state.emotes, { ...emote, timestamp: emote.timestamp ?? Date.now() }].slice(-50),
+    emotes: [...state.emotes, { ...sanitizeNamedEvent(emote), timestamp: emote.timestamp ?? Date.now() }].slice(-50),
   })),
   removeEmote: (timestamp) => set((state) => ({
     emotes: state.emotes.filter((e) => e.timestamp !== timestamp),
@@ -399,7 +404,8 @@ export const useTableStore = create((set, get) => ({
     if (socket) socket.emit('switchTable', { tableId });
   },
 
-  updateActiveTable: (tableId, gameState) => {
+  updateActiveTable: (tableId, rawGameState) => {
+    const gameState = sanitizeTableState(rawGameState);
     const { activeTables, currentTableId } = get();
     const newTables = new Map(activeTables);
     newTables.set(tableId, { gameState });

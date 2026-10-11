@@ -140,6 +140,12 @@ import LevelUpPopup from './components/ui/LevelUpPopup';
 import MissionsPanel from './components/ui/MissionsPanel';
 import SpinReveal from './components/ui/SpinReveal';
 import MultiTableTabs from './components/game/MultiTableTabs';
+// R1 (2026-10-11, C1) — table screen: a table-level error boundary (a bad frame
+// replaces only the table view, never the whole app) and a reconnect banner;
+// per-hand state keys are cleared when a delta starts a new hand.
+import TableErrorBoundary from './components/game/TableErrorBoundary';
+import TableReconnectBanner from './components/game/TableReconnectBanner';
+import { clearStalePerHandKeys } from './utils/tablePayload';
 import PlayerNotes from './components/ui/PlayerNotes';
 import BottomNav from './components/ui/BottomNav';
 import PWAInstallPrompt from './components/ui/PWAInstallPrompt';
@@ -785,6 +791,10 @@ function App() {
             if (!data.delta.yourCards) state.yourCards = [];
             if (!data.delta.selectedDiscards) state.selectedDiscards = [];
             if (!data.delta.handResult) state.handResult = null;
+            // R1 (TABLEUI-7, contract #5) — the previous hand's chop banner,
+            // pot breakdown, training panel and insurance quote never carry
+            // into a new hand (null = cleared, like a server null).
+            clearStalePerHandKeys(state, data.delta);
           }
         }
       } else {
@@ -1110,12 +1120,9 @@ function App() {
 
     // All-in insurance (cashout) feedback. Server computes + settles; these are
     // just player-facing confirmations of the guaranteed lock-in and the result.
-    socket.on('insuranceAccepted', (data) => {
-      useProgressStore.getState().addNotification({
-        type: 'mission',
-        message: `Insurance locked in — ${(data?.cashout || 0).toLocaleString()} chips guaranteed (${data?.equityPct || 0}% equity).`,
-      });
-    });
+    // R1 (contract #1) — 'insuranceAccepted' is confirmed at the table by
+    // GameHUD (a table toast with the server's validated numbers), no longer
+    // as an app-wide "Mission Complete!" popup.
     socket.on('insuranceSettled', (data) => {
       const d = Number(data?.delta) || 0;
       useProgressStore.getState().addNotification({
@@ -2811,17 +2818,18 @@ function App() {
       // fold/call/raise bar below the fold.
       <div className={`screen-transition ${transitionClass}`} style={{ position: 'relative', width: '100vw', height: '100dvh' }}>
         <MultiTableTabs />
-        {/* 2026-05-04 unified-push phase 3 — bottom-right banner inviting
-            online-poker players to set up tournament alerts in the league
-            player app (americanpub.poker). .online has no push of its own
-            by design; the player app is the canonical surface. */}
-        <PlayerAppPushBanner />
-        <Suspense fallback={<ChunkLoader />}><GameScene /></Suspense>
-        {/* 2026-04-22 audit fixes: the boundary moved up to the root wrapper
-            (see bottom of file). GameHUD no longer needs its own inner
-            boundary — the root one catches any render error in the whole
-            subtree and shows FriendlyErrorFallback. */}
-        <Suspense fallback={null}><GameHUD /></Suspense>
+        {/* R1 (TABLEUI-4 / APPUI-29) — the player-app push banner is LOBBY
+            ONLY: here it sat fixed bottom-right at z 9000 over the action bar
+            of new players. R1 (TABLEUI-12) — reconnect status for the table. */}
+        <TableReconnectBanner />
+        {/* R1 (AUTH-6) — a render error in the table view (a bad seat / frame)
+            replaces only the table view with "Table display error — tap to
+            reload table"; the root boundary (FriendlyErrorFallback) stays the
+            backstop for everything else. */}
+        <TableErrorBoundary>
+          <Suspense fallback={<ChunkLoader />}><GameScene /></Suspense>
+          <Suspense fallback={null}><GameHUD /></Suspense>
+        </TableErrorBoundary>
         {/* 2026-10-07 — server play refusals (rebuy, career start, extra
             table, club challenge) shown verbatim; see services/playRefusal. */}
         <PlayRefusalNotice />
@@ -2964,6 +2972,12 @@ function App() {
       <KeyboardShortcuts />
       <Tutorial />
       <PWAInstallPrompt />
+      {/* 2026-05-04 unified-push phase 3 — banner inviting online-poker players
+          to set up tournament alerts in the league player app
+          (americanpub.poker); .online has no push of its own by design.
+          R1 (TABLEUI-4) — lobby only (never drawn over a table), above the
+          bottom nav and the sticky Quick Play bar. */}
+      <PlayerAppPushBanner />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getAvatarInfo, preloadAvatar } from '../utils/avatarService';
+import { safeName, nameInitial } from '../utils/tablePayload';
 
 /**
  * React hook that returns the unified avatar info for a player.
@@ -45,14 +46,17 @@ export function useAvatar(playerId) {
  * Now the chip emojis show in 3D nameplates too, matching player-web
  * and admin kiosk behavior.
  */
-export function PlayerAvatar({ playerId, name, size = 40, style = {} }) {
+export function PlayerAvatar({ playerId, name: rawName, size = 40, style = {} }) {
   const { url, emoji } = useAvatar(playerId);
-  const initial = (name || '?')[0].toUpperCase();
+  // R1 (AUTH-6) — a non-string name used to throw here (`(name||'?')[0]` of a
+  // number / object) for every viewer of the seat.
+  const name = safeName(rawName, '');
+  const initial = nameInitial(name);
 
   // Generate consistent color from name
   let hash = 0;
-  for (let i = 0; i < (name || '').length; i++) {
-    hash = ((hash << 5) - hash) + (name || '').charCodeAt(i);
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) - hash) + name.charCodeAt(i);
     hash |= 0;
   }
   const hue = Math.abs(hash) % 360;
