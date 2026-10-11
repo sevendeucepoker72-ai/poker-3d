@@ -120,7 +120,7 @@ function ICMCalculator() {
               </select>
             </label>
             <label className="td-label">
-              Prize Pool ($)
+              Prize Pool (chips)
               <input className="td-input td-input-sm" type="number" value={prizePool} onChange={e => setPrizePool(e.target.value)} />
             </label>
           </div>
@@ -162,7 +162,7 @@ function ICMCalculator() {
               <div className="td-icm-results-header">
                 <span>Player</span>
                 <span>Chips</span>
-                <span>ICM Equity ($)</span>
+                <span>ICM Equity (chips)</span>
                 <span>Equity %</span>
               </div>
               {results.map(r => (
@@ -381,7 +381,7 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
               </label>
 
               <label className="td-label">
-                Buy-In ($)
+                Buy-In (chips)
                 <input className="td-input" type="number" min={1} value={buyIn} onChange={e => setBuyIn(Number(e.target.value))} />
               </label>
 
@@ -432,7 +432,7 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
             {isPKO && (
               <div className="td-sub-options">
                 <label className="td-label">
-                  Starting Bounty per Player ($)
+                  Starting Bounty per Player (chips)
                   <input className="td-input td-input-sm" type="number" min={1} value={bountyAmount}
                     onChange={e => setBountyAmount(Number(e.target.value))} />
                 </label>
@@ -464,7 +464,7 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
                   </select>
                 </label>
                 <label className="td-label">
-                  Rebuy cost ($)
+                  Rebuy cost (chips)
                   <input className="td-input td-input-sm" type="number" min={1} value={rebuyCost}
                     onChange={e => setRebuyCost(Number(e.target.value))} />
                 </label>
@@ -492,7 +492,7 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
             {addonAllowed && (
               <div className="td-sub-options td-sub-options-row">
                 <label className="td-label">
-                  Cost ($)
+                  Cost (chips)
                   <input className="td-input td-input-sm" type="number" min={1} value={addonCost}
                     onChange={e => setAddonCost(Number(e.target.value))} />
                 </label>

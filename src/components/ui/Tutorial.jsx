@@ -2,60 +2,67 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import './Tutorial.css';
 
+// 2026-10-11 (.online R2 — APPUI-35). The tour shows once per DEVICE: its
+// "done" mark is in localStorage (it was sessionStorage, so it came back on
+// every launch of the installed app). Copy matches the game: hole cards are
+// face up (no hover to peek), and there is no "time bank" — when the clock
+// runs out the hand is checked or folded for you.
+
 const STORAGE_KEY = 'app_poker_tutorial_complete';
+
+function readDone() {
+  try {
+    if (localStorage.getItem(STORAGE_KEY)) return true;
+    // A mark from an older build (this tab only) still counts.
+    if (sessionStorage.getItem(STORAGE_KEY)) return true;
+  } catch { /* storage blocked: show the tour */ }
+  return false;
+}
 
 const steps = [
   {
-    icon: '\u2660',
+    icon: '♠',
     title: 'Welcome to American Pub Poker!',
-    description: 'The most advanced free online poker platform. Let us show you around!',
+    description: 'Free-to-play poker with play-money chips. Let us show you around!',
   },
   {
-    icon: '\u26A1',
+    icon: '⚡',
     title: 'Quick Play',
-    description: 'Click Quick Play to jump into a game instantly. No waiting, no hassle.',
+    description: 'Tap Quick Play to jump into a game instantly.',
   },
   {
-    icon: '\uD83C\uDCCF',
+    icon: '🃏',
     title: 'Your Cards',
-    description: 'You\'ll receive cards at the bottom of the screen. Hover to peek at them!',
+    description: 'Your cards are shown face up at the bottom of the screen — only you can see them.',
   },
   {
-    icon: '\uD83C\uDFAF',
+    icon: '🎯',
     title: 'Actions',
-    description: 'Fold, Check, Call, Raise, or go All-In when it\'s your turn. Use keyboard shortcuts for speed!',
+    description: 'When it is your turn: Fold, Check, Call, Raise or All-In.',
   },
   {
-    icon: '\u23F1',
+    icon: '⏱',
     title: 'Timer',
-    description: 'You have 30 seconds to act, plus a time bank reserve for tough decisions.',
+    description: 'A clock runs around your seat on your turn. If it runs out, your hand is checked or folded for you.',
   },
   {
-    icon: '\uD83D\uDCDA',
+    icon: '📚',
     title: 'Features',
-    description: 'Explore the tabs: Play, Social, Profile, and Shop. Level up, earn achievements, and customize your experience.',
+    description: 'Explore the tabs: Play, Social, Profile and Shop. Level up, finish daily missions and earn achievements.',
   },
   {
-    icon: '\uD83C\uDF1F',
+    icon: '🌟',
     title: 'Good luck!',
-    description: 'You\'re ready to play! Have fun at the tables.',
+    description: 'You are ready to play. Have fun at the tables!',
   },
 ];
 
 export default function Tutorial() {
   const [step, setStep] = useState(0);
-  const [visible, setVisible] = useState(() => {
-    try {
-      return !sessionStorage.getItem(STORAGE_KEY);
-    } catch {
-      return false;
-    }
-  });
+  const [visible, setVisible] = useState(() => !readDone());
 
   const complete = () => {
-    try {
-      sessionStorage.setItem(STORAGE_KEY, 'true');
-    } catch {}
+    try { localStorage.setItem(STORAGE_KEY, 'true'); } catch { /* ignore */ }
     setVisible(false);
   };
 
@@ -78,7 +85,7 @@ export default function Tutorial() {
 
   return createPortal(
     <div className="tutorial-overlay">
-      <div className="tutorial-panel">
+      <div className="tutorial-panel" role="dialog" aria-label="Tutorial">
         <span className="tutorial-step-counter">{step + 1}/{steps.length}</span>
         <span className="tutorial-icon">{current.icon}</span>
         <div className="tutorial-title">{current.title}</div>

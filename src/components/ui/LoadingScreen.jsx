@@ -12,16 +12,12 @@ const TIPS = [
   'Tip: Watch bet sizing — it reveals hand strength.',
 ];
 
-const STAGES = [
-  { pct: 15, text: 'Loading assets…' },
-  { pct: 40, text: 'Connecting to server…' },
-  { pct: 70, text: 'Fetching tables…' },
-  { pct: 90, text: 'Almost ready…' },
-  { pct: 100, text: 'Ready!' },
-];
+// R2 (APPUI P3) — the splash no longer narrates stages it does not track
+// ("Connecting to server…", "Fetching tables…" on a fixed timer): it says
+// "Loading…" with an indeterminate bar, for the short moment it shows.
 
 const CARDS = ['A♠', 'K♥', 'Q♦', 'J♣', '10♠'];
-const CARD_COLORS = ['#fff', '#EF4444', '#EF4444', '#fff', '#fff'];
+const CARD_COLORS = ['#fff', '#ffd24a', '#ffd24a', '#fff', '#fff'];
 
 const PARTICLES = Array.from({ length: 18 }, (_, i) => ({
   id: i,
@@ -35,14 +31,13 @@ const PARTICLES = Array.from({ length: 18 }, (_, i) => ({
 
 const SUITS = [
   { sym: '♠', color: '#ffffff', angle: 0 },
-  { sym: '♥', color: '#EF4444', angle: 90 },
-  { sym: '♦', color: '#EF4444', angle: 180 },
+  { sym: '♥', color: '#ffd24a', angle: 90 },
+  { sym: '♦', color: '#ffd24a', angle: 180 },
   { sym: '♣', color: '#4ADE80', angle: 270 },
 ];
 
 export default function LoadingScreen({ exiting = false }) {
   const [tipIdx, setTipIdx] = useState(0);
-  const [stageIdx, setStageIdx] = useState(0);
 
   // Tip carousel — rotate every 2s
   useEffect(() => {
@@ -50,14 +45,6 @@ export default function LoadingScreen({ exiting = false }) {
     return () => clearInterval(t);
   }, []);
 
-  // Phase status messages — advance through stages
-  useEffect(() => {
-    const timings = [300, 800, 1400, 1750];
-    const timers = timings.map((ms, i) => setTimeout(() => setStageIdx(i + 1), ms));
-    return () => timers.forEach(clearTimeout);
-  }, []);
-
-  const stage = STAGES[Math.min(stageIdx, STAGES.length - 1)];
 
   return (
     <div className={`loading-screen ${exiting ? 'loading-screen--exit' : ''}`}>
@@ -77,7 +64,7 @@ export default function LoadingScreen({ exiting = false }) {
 
       {/* Title */}
       <h1 className="loading-title">American Pub Poker</h1>
-      <p className="loading-tagline">v1.0 · Play Free · No Download</p>
+      <p className="loading-tagline">Free play-money poker · No download</p>
 
       {/* Chip + orbiting suits */}
       <div className="loading-chip-wrap">
@@ -101,11 +88,11 @@ export default function LoadingScreen({ exiting = false }) {
       </div>
 
       {/* Status text */}
-      <div className="loading-text">{stage.text}</div>
+      <div className="loading-text">Loading…</div>
 
       {/* Progress bar */}
       <div className="loading-progress-container">
-        <div className="loading-progress-fill" style={{ width: `${stage.pct}%` }} />
+        <div className="loading-progress-fill loading-progress-fill--indeterminate" />
       </div>
 
       {/* Tip carousel */}

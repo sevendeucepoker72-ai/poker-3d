@@ -270,7 +270,7 @@ function Sparkline({ data, width = 120, height = 36, color = '#ffd24a' }) {
   }).join(' ');
   const last = data[data.length - 1];
   const isUp = last >= data[0];
-  const lineColor = isUp ? '#4ADE80' : '#EF4444';
+  const lineColor = isUp ? '#4ADE80' : '#60A5FA';
   const fillId = `sf${Math.random().toString(36).slice(2,6)}`;
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible' }}>
@@ -1178,6 +1178,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       } else if (res?.error === 'not_broke') {
         // Balance already recovered (a hand paid out / grant landed) — silently clear.
         setRefillToast(null);
+      } else if (res?.error === 'chips_on_table') {
+        // R2 (addendum / ECON-19) — the server's own sentence: he still has
+        // chips at a table, so the refill is not for him right now.
+        setRefillToast({ ok: false, text: typeof res.message === 'string' && res.message ? res.message : 'You still have chips at a table — the refill is only for an empty bankroll.' });
       } else {
         setRefillToast({ ok: false, text: 'Could not add chips — try again.' });
       }
@@ -1661,7 +1665,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <div className="upc-sparkline">
           <span className="upc-sparkline-label">7-day</span>
           <Sparkline data={sparklineData} width={110} height={32} />
-          <span className="upc-sparkline-trend" style={{ color: sparklineData[6] >= sparklineData[0] ? '#4ADE80' : '#EF4444' }}>
+          <span className="upc-sparkline-trend" style={{ color: sparklineData[6] >= sparklineData[0] ? '#4ADE80' : '#60A5FA' }}>
             {sparklineData[6] >= sparklineData[0] ? '▲' : '▼'} {sparklineData[0] > 0 ? Math.abs(Math.round((sparklineData[6] - sparklineData[0]) / sparklineData[0] * 100)) : 0}%
           </span>
         </div>
@@ -2434,32 +2438,25 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       {/* Broke-refill banner — appears whenever the wallet can't cover the
           cheapest cash table (5,000 min buy-in). Unlimited free top-ups keep
           a busted player in the game; the server enforces the < 5,000 gate. */}
-      {Number.isFinite(chips) && chips < 5000 && !joining && (
-        <div style={{
-          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 3100, display: 'flex', flexDirection: 'column', alignItems: 'center',
-          gap: 6, background: 'linear-gradient(135deg, #065f46, #047857)', color: '#fff',
-          padding: '14px 22px', borderRadius: 14, maxWidth: 340, textAlign: 'center',
-          boxShadow: '0 6px 28px rgba(0,0,0,0.55)', border: '1px solid rgba(16,185,129,0.6)',
-        }}>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>Out of chips?</div>
-          <div style={{ fontSize: 12.5, opacity: 0.9, lineHeight: 1.35 }}>
-            You have {(chips || 0).toLocaleString()}. Grab 5,000 free to sit back down — as many times as you need.
+      {/* R2 (addendum / APPUI P3) — never while he is seated (his chips are on
+          the table, so "Out of chips?" was wrong), sits ABOVE the bottom nav
+          (safe area included — it used to cover the nav), and shows the
+          server's chips_on_table answer when he has chips at another table. */}
+      {Number.isFinite(chips) && chips < 5000 && !joining && !isSeated && (
+        <div className="lobby-refill-banner">
+          <div className="lobby-refill-title">Low on chips</div>
+          <div className="lobby-refill-text">
+            You have {(chips || 0).toLocaleString()} in your bankroll. Get 5,000 free chips to sit back down — whenever your bankroll runs out.
           </div>
           <button
+            className="lobby-refill-btn"
             onClick={handleClaimRefill}
             disabled={refilling}
-            style={{
-              marginTop: 4, padding: '10px 20px', fontSize: 14, fontWeight: 700,
-              color: '#064e3b', background: refilling ? '#a7f3d0' : '#34d399',
-              border: 'none', borderRadius: 10, cursor: refilling ? 'default' : 'pointer',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
-            }}
           >
             {refilling ? 'Adding…' : 'Get 5,000 free chips'}
           </button>
           {refillToast && (
-            <div style={{ fontSize: 12, marginTop: 2, color: refillToast.ok ? '#d1fae5' : '#fecaca' }}>
+            <div className={`lobby-refill-note ${refillToast.ok ? 'lobby-refill-note--ok' : ''}`}>
               {refillToast.text}
             </div>
           )}
@@ -2549,7 +2546,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
               style={signingOut
                 /* T9 — "Signing out…" is blue, never red (owner preference); the idle Logout keeps its HEAD colour. */
                 ? { fontSize: '0.75rem', color: '#cfe0ff', opacity: 0.75, cursor: 'default' }
-                : { fontSize: '0.75rem', color: '#F87171' }}
+                : { fontSize: '0.75rem', color: '#cfe0ff' }}
             >
               {signingOut ? 'Signing out…' : 'Logout'}
             </button>

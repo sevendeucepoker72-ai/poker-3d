@@ -136,17 +136,19 @@ export default function LoginScreen() {
               <CreateAccountLink inApp={inApp.inApp} style={{ width: '100%' }} />
             </div>
 
-            {/* Remember me */}
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: 8, marginTop: 14,
-              fontSize: 13, color: 'rgba(255,255,255,0.7)', cursor: 'pointer',
+            {/* Remember me — R2 (APPUI P3): the whole row is the tap target
+                (>= 44px tall, a 22px box); it was a 16px checkbox. */}
+            <label className="login-keep-signed-in" style={{
+              display: 'flex', alignItems: 'center', gap: 10, marginTop: 10,
+              minHeight: 44, padding: '6px 4px',
+              fontSize: 14, color: 'rgba(255,255,255,0.8)', cursor: 'pointer',
               userSelect: 'none',
             }}>
               <input
                 type="checkbox"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
-                style={{ cursor: 'pointer', accentColor: '#B388FF' }}
+                style={{ cursor: 'pointer', accentColor: '#ffd24a', width: 22, height: 22, margin: 0, flexShrink: 0 }}
               />
               Keep me signed in on this device
             </label>

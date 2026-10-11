@@ -833,3 +833,22 @@ Recent Hands Logged
 This hand cannot be replayed
 Your recent hands (from your seat) as CSV
 W@SD
+
+# 2026-10-11 .online R2 (K2) — APPUI-26 / APPUI-27 / APPUI-35 / APPUI P3:
+#     Settings controls all work (card back / felt = C7 equips; auto-muck and
+#     turn timer removed); push "Turn on" enrolls the bearer's account (no
+#     local id), unsubscribe is scoped to this browser; tutorial once per
+#     device with honest copy; offline Retry without inline JS; light mode on
+#     its own key; PNG + apple-touch icons; no "$" on play money; red removed
+#     (connection banner, Logout, AuthCallback spinner, OverlayBoundary …);
+#     honest splash; nav whitelist 'social'; refill banner above the nav and
+#     never while seated, with the server's chips_on_table sentence.
+app_poker_ui_mode
+apple-touch-icon.png
+poker-icon-maskable-512.png
+class="retry" href=""
+loading-progress-fill--indeterminate
+lobby-refill-banner
+Opens from your home screen · No app store needed
+The pot-odds badge and the odds line on Call
+login-keep-signed-in

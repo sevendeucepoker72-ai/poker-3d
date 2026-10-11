@@ -258,7 +258,7 @@ export default function StakingMarketplace({
           <span className="staking-explainer-icon">💡</span>
           <span>
             Players sell action (%) before tournaments. Backers receive that % of any winnings.
-            Example: buy 10% of a player who wins $10,000 — you get $1,000.
+            Example: buy 10% of a player who wins 10,000 chips — you get 1,000 chips. Play money only.
           </span>
         </div>
 

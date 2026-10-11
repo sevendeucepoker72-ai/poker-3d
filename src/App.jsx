@@ -444,7 +444,9 @@ function App() {
   const [activeNavTab, setActiveNavTab] = useState(() => {
     try {
       const saved = sessionStorage.getItem('poker_active_nav_tab');
-      const KNOWN = new Set(['home', 'play', 'friends', 'shop', 'profile']);
+      // R2 (APPUI P3) — the Social tab's id is 'social' (the list said
+      // 'friends', so a reload on Social always reopened Home).
+      const KNOWN = new Set(['home', 'play', 'social', 'shop', 'profile']);
       return KNOWN.has(saved) ? saved : 'home';
     } catch { return 'home'; }
   });
@@ -545,10 +547,11 @@ function App() {
     setActiveNavTab(tabId);
   };
 
-  // Show loading screen for 2 seconds, then fade out
+  // A short brand splash, then fade out. R2 (APPUI P3): it held every launch
+  // for 2.2s behind made-up "Connecting / Fetching tables" stages.
   useEffect(() => {
-    const exitTimer = setTimeout(() => setLoadingExiting(true), 1700);
-    const doneTimer = setTimeout(() => setLoading(false), 2200);
+    const exitTimer = setTimeout(() => setLoadingExiting(true), 450);
+    const doneTimer = setTimeout(() => setLoading(false), 950);
     return () => { clearTimeout(exitTimer); clearTimeout(doneTimer); };
   }, []);
 
@@ -3070,7 +3073,9 @@ function App() {
           }}>
             <div style={{
               pointerEvents: 'auto',
-              background: connStatus === 'error' ? 'rgba(220,38,38,0.97)' : 'rgba(234,88,12,0.97)',
+              // R2 (APPUI P3) — blue + gold, never red / orange (owner preference).
+              background: connStatus === 'error' ? 'rgba(12,28,72,0.97)' : 'rgba(29,78,216,0.97)',
+              border: '1px solid rgba(255,210,74,0.6)', borderTop: 'none',
               color: '#fff', fontSize: '0.92rem', fontWeight: 700,
               padding: '10px 18px', letterSpacing: '0.03em',
               borderRadius: '0 0 12px 12px',
@@ -3087,7 +3092,8 @@ function App() {
             zIndex: 99999, pointerEvents: 'none',
           }}>
             <div style={{
-              background: connStatus === 'error' ? 'rgba(220,38,38,0.95)' : 'rgba(234,88,12,0.95)',
+              background: connStatus === 'error' ? 'rgba(12,28,72,0.95)' : 'rgba(29,78,216,0.95)',
+              border: '1px solid rgba(255,210,74,0.6)',
               color: '#fff', fontSize: '0.78rem', fontWeight: 700,
               padding: '6px 14px', borderRadius: '999px',
               boxShadow: '0 2px 10px rgba(0,0,0,0.5)',

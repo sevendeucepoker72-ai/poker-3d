@@ -319,8 +319,8 @@ export default function AuthCallback({ onExit } = {}) {
         <div style={{
           width: '40px',
           height: '40px',
-          border: '3px solid rgba(233, 69, 96, 0.3)',
-          borderTopColor: '#e94560',
+          border: '3px solid rgba(120, 160, 255, 0.3)',
+          borderTopColor: '#ffd24a',
           borderRadius: '50%',
           animation: 'spin 0.8s linear infinite',
           margin: '0 auto 16px',

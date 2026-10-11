@@ -6,9 +6,10 @@ import './PauseCoach.css';
 
 function formatEV(ev) {
   if (ev === null || ev === undefined) return '—';
-  if (ev === 0) return '$0';
-  const sign = ev > 0 ? '+' : '';
-  return `${sign}$${Math.round(Math.abs(ev)).toLocaleString()}`;
+  if (ev === 0) return '0 chips';
+  // R2 — play-money chips, no "$"; a negative EV keeps its minus sign.
+  const sign = ev > 0 ? '+' : '-';
+  return `${sign}${Math.round(Math.abs(ev)).toLocaleString()} chips`;
 }
 
 function riskLabel(action) {
@@ -335,7 +336,7 @@ export default function PauseCoach({
           />
           <ActionCard
             action="call"
-            label={`CALL $${callAmount.toLocaleString()}`}
+            label={`CALL ${callAmount.toLocaleString()}`}
             ev={evValues.call}
             equity={equity}
             revealed={revealBest}
