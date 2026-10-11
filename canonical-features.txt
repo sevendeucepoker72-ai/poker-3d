@@ -672,3 +672,6 @@ Sit Out follows the server
 #     (src/productionHosts.js). NOT lockable here - the host is also in
 #     index.html's CSP, which this grep reads; deploy-online.mjs's socket-host
 #     guard (a built JS chunk must contain it) is the lock.
+#     APPUI-31: sw.js never intercepts cross-origin (Google Fonts, API, remote
+#     images) or non-GET requests (dist/sw.js is public/sw.js verbatim).
+requestUrl.origin !== self.location.origin
