@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, Component, lazy, Suspense } from 'react';
+import { useEffect, useState, useRef, useCallback, Component, lazy, Suspense } from 'react';
 import { useGameStore, clearOtherAccountOidcFromTicketTab } from './store/gameStore';
 import { useTableStore, forgetSitOutPreference } from './store/tableStore';
 import { getAuthToken, setAuthToken, clearAuthToken, setOAuthItem, bearerForThisTab } from './services/tokenStorage';
@@ -81,6 +81,13 @@ import CreateAccountLink from './components/ui/CreateAccountLink';
 // byte cost (the module was already in the main chunk). Keep it static.
 import { consumeBridgeIfPresent, BRIDGE_EXCHANGE_TIMEOUT_MS } from './services/bridge';
 import FriendlyErrorFallback from './components/ui/FriendlyErrorFallback';
+// 2026-10-11 (.online fix round 1 — APPUI-23): real reload, failed-chunk
+// recovery, URL parameter clean-up, and a validated ?replay= link.
+import {
+  reloadApp, isAppReloadPending, isChunkLoadError, reloadForChunkFailureCaughtByBoundary,
+  removeUrlParams,
+} from './services/appReload';
+import { parseSharedReplayParam } from './utils/replayPayload';
 
 // Root ErrorBoundary (2026-04-22 audit fixes).
 // Previously this wrapped ONLY GameHUD and rendered the raw stack into the
@@ -88,21 +95,37 @@ import FriendlyErrorFallback from './components/ui/FriendlyErrorFallback';
 // leaked implementation detail to end users. The boundary now wraps the
 // full App tree at the default export site, and renders
 // FriendlyErrorFallback. The stack is still logged to console for devs.
+//
+// 2026-10-11 (APPUI-23): Reload is a REAL page reload (reloadApp, which also
+// drops a ?replay= link). The old soft reset (setState) re-rendered the same
+// broken tree: a failed lazy chunk is cached by React.lazy and re-throws, and
+// a crashing replay link crashed again — the player could never get out.
+// A chunk that failed to load reloads the page by itself, once (appReload
+// guard); the screen then says "Updating…". Reporting: createRoot's
+// onCaughtError (main.jsx -> services/errorReporting.js), not here.
 class ErrorBoundary extends Component {
-  constructor(props) { super(props); this.state = { error: null }; }
-  static getDerivedStateFromError(error) { return { error }; }
+  constructor(props) { super(props); this.state = { error: null, updating: false }; }
+  static getDerivedStateFromError(error) {
+    return { error, updating: isAppReloadPending() || isChunkLoadError(error) };
+  }
   componentDidCatch(error, _info) {
     // eslint-disable-next-line no-console
     console.error('[ErrorBoundary] caught:', error && error.stack ? error.stack : error);
+    if (isAppReloadPending()) return;
+    if (!reloadForChunkFailureCaughtByBoundary(error) && this.state.updating) {
+      // Not reloading after all (it already did once a moment ago): the plain
+      // error screen with its Reload button.
+      this.setState({ updating: false });
+    }
   }
   render() {
     if (this.state.error) {
-      return <FriendlyErrorFallback onReload={() => {
-        // Give the user a soft-reset escape hatch first; if the underlying
-        // render failure is deterministic, this will re-throw and they can
-        // hit Reload again for a hard page reload.
-        this.setState({ error: null });
-      }} />;
+      return (
+        <FriendlyErrorFallback
+          updating={this.state.updating}
+          onReload={() => reloadApp('error-screen')}
+        />
+      );
     }
     return this.props.children;
   }
@@ -151,20 +174,44 @@ import { API_BASE } from './config';
 import { checkSubscriptionHealth, isPushSupported, notify } from './hooks/usePushNotifications';
 import './components/ui/Transitions.css';
 
-/** Decode a ?replay=... URL param into a history object (returns null on failure). */
+/**
+ * Decode a ?replay=... URL param into a history object (returns null on failure).
+ * 2026-10-11 (APPUI-23): the payload is validated and normalized
+ * (utils/replayPayload). An invalid link is removed from the address bar and
+ * ignored — the app boots normally instead of crashing on every load.
+ */
 function parseReplayParam() {
   try {
     const param = new URLSearchParams(window.location.search).get('replay');
-    if (!param) return null;
-    return JSON.parse(decodeURIComponent(atob(param)));
-  } catch (_) {
+    if (param === null) return null;
+    const history = parseSharedReplayParam(param);
+    if (!history) {
+      console.warn('[replay] ignored an invalid ?replay= link');
+      removeUrlParams(['replay']);
+    }
+    return history;
+  } catch {
     return null;
   }
 }
 
-/** PWA shortcut action from manifest (e.g. ?action=quickplay) */
+/**
+ * PWA shortcut action from manifest (e.g. ?action=quickplay).
+ * 2026-10-11 (APPUI-12): only the manifest's own shortcuts are actions; any
+ * other value is dropped from the URL. App consumes the action exactly once
+ * (consumePwaAction) and removes it from the URL then.
+ */
+const PWA_SHORTCUT_ACTIONS = new Set(['quickplay', 'spingo']);
 function getPWAAction() {
-  return new URLSearchParams(window.location.search).get('action') || null;
+  try {
+    const action = new URLSearchParams(window.location.search).get('action');
+    if (action === null) return null;
+    if (PWA_SHORTCUT_ACTIONS.has(action)) return action;
+    removeUrlParams(['action']);
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /** OBS browser-source overlay: ?overlay=<tableId>&delay=<sec>&theme=<name> */
@@ -326,7 +373,22 @@ function App() {
   const [sharedReplay] = useState(() => parseReplayParam());
   const [overlayConfig] = useState(() => parseOverlayParam());
   // PWA shortcut action — auto-trigger after login
-  const [pwaAction] = useState(() => getPWAAction());
+  // 2026-10-11 (APPUI-12) — consumed EXACTLY ONCE per launch. It used to be a
+  // mount-time constant passed to every Lobby mount, so each Back to Lobby
+  // auto-joined another Quick Play / Spin & Go. The Lobby asks
+  // consumePwaAction() before acting (a ref makes a second ask return false);
+  // consuming clears it and removes ?action= from the URL (a reload never
+  // replays it).
+  const [pwaAction, setPwaAction] = useState(() => getPWAAction());
+  const pwaActionConsumedRef = useRef(false);
+  const consumePwaAction = useCallback((how = 'used') => {
+    if (pwaActionConsumedRef.current) return false;
+    pwaActionConsumedRef.current = true;
+    removeUrlParams(['action']);
+    setPwaAction(null);
+    console.warn('[pwa] shortcut action consumed:', how);
+    return true;
+  }, []);
   // Deep-link from player app (americanpub.poker). Either a waitlist hand-off
   // (auto-seat at Beginner's + banner) or a general play ticket (auth-only).
   const [deepLinkContext] = useState(() => parseDeepLinkContext());
@@ -463,6 +525,13 @@ function App() {
     const timer = setTimeout(() => setTransitionClass(''), 300);
     return () => clearTimeout(timer);
   }, [screen]);
+
+  // 2026-10-11 (APPUI-12) — a shortcut launch that lands on a table first (a
+  // restored seat) drops its action unused: a later Back to Lobby must never
+  // auto-join.
+  useEffect(() => {
+    if (pwaAction && screen === 'table') consumePwaAction('superseded by a table');
+  }, [pwaAction, screen, consumePwaAction]);
 
   // Handle bottom nav tab changes
   const handleNavTabChange = (tabId) => {
@@ -2944,7 +3013,7 @@ function App() {
         </>
       )}
       <Suspense fallback={<ChunkLoader />}>
-        <Lobby activeTab={activeNavTab} onTabChange={handleNavTabChange} pwaAction={pwaAction} waitlistContext={waitlistContext} />
+        <Lobby activeTab={activeNavTab} onTabChange={handleNavTabChange} pwaAction={pwaAction} onPwaActionConsumed={consumePwaAction} waitlistContext={waitlistContext} />
       </Suspense>
       {/* 2026-10-07 — server play refusals (suspended / no account) from any
           lobby path, shown verbatim with the sign-in action when needed. */}
@@ -2981,7 +3050,7 @@ function getOrdinal(n) {
 // to change.
 export default function RootApp() {
   return (
-    <ErrorBoundary>
+    <ErrorBoundary name="root">
       <App />
     </ErrorBoundary>
   );

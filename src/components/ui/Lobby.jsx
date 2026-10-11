@@ -968,7 +968,7 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
 // ═══════════════════════════════════════════
 // MAIN LOBBY COMPONENT
 // ═══════════════════════════════════════════
-export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = null, waitlistContext = null }) {
+export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = null, onPwaActionConsumed = null, waitlistContext = null }) {
   const setScreen = useGameStore((s) => s.setScreen);
   const playerName = useGameStore((s) => s.playerName);
   const setPlayerName = useGameStore((s) => s.setPlayerName);
@@ -1478,8 +1478,12 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   };
 
   // Auto-trigger PWA shortcut action once connected + name is set
+  // 2026-10-11 (APPUI-12) — once per launch: App's consumePwaAction() answers
+  // true only the first time (it then clears the action and the ?action= URL
+  // parameter), so a later Lobby mount (Back to Lobby) never auto-joins again.
   useEffect(() => {
     if (!pwaAction || !connected || !nameInput.trim()) return;
+    if (typeof onPwaActionConsumed === 'function' && onPwaActionConsumed('used') === false) return;
     const name = nameInput.trim();
     setPlayerName(name);
     if (pwaAction === 'quickplay') beginJoin('Finding a game…', () => quickPlay(name, avatar));

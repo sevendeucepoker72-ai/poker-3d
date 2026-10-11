@@ -9,14 +9,21 @@
 // Created 2026-04-22 audit fixes: previously the boundary only
 // wrapped GameHUD and rendered the raw stack to the user, which
 // leaked implementation detail + looked like a crash dump.
+//
+// 2026-10-11 (.online fix round 1 — APPUI-23): Reload is a REAL page reload
+// (services/appReload.reloadApp — it also drops a ?replay= link that may be
+// what crashed). `updating` = the page is already reloading itself for a lazy
+// chunk that failed to load: a calm "Updating…" instead of "Something went
+// wrong"; the Reload button stays as a manual way out.
 import { memo } from 'react';
+import { reloadApp } from '../../services/appReload';
 
-function FriendlyErrorFallback({ onReload }) {
+function FriendlyErrorFallback({ onReload, updating = false }) {
   const handleReload = () => {
     if (typeof onReload === 'function') {
       try { onReload(); return; } catch { /* fall through to hard reload */ }
     }
-    try { window.location.reload(); } catch { /* noop */ }
+    reloadApp('error-screen');
   };
 
   return (
@@ -48,11 +55,12 @@ function FriendlyErrorFallback({ onReload }) {
         }}
       >
         <h2 style={{ margin: 0, fontSize: '1.4rem', color: '#3b82f6' }}>
-          Something went wrong
+          {updating ? 'Updating…' : 'Something went wrong'}
         </h2>
         <p style={{ marginTop: 12, lineHeight: 1.5, color: '#CBD5E1' }}>
-          The app hit an unexpected error. Your chips, progress, and seat are
-          safe on the server — a quick reload should bring you back in.
+          {updating
+            ? 'Loading the latest version of the game. Your chips, progress, and seat are safe on the server.'
+            : 'The app hit an unexpected error. Your chips, progress, and seat are safe on the server — a quick reload should bring you back in.'}
         </p>
         <button
           type="button"

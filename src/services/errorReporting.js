@@ -16,12 +16,29 @@
 // Auth tokens are read from localStorage at send-time (not at install-time) so
 // errors that fire after login include a Bearer token, while errors before
 // login still report (anonymously).
+//
+// 2026-10-11 (.online fix round 1 — OPS-7 + AUTH P3):
+// - Render crashes are reported. React 19 never re-dispatches an error that an
+//   error boundary caught to window 'error', and the root ErrorBoundary wraps
+//   the whole app, so the "Something went wrong" screen was invisible to ops.
+//   main.jsx passes reactRootErrorOptions (onCaughtError / onUncaughtError) to
+//   createRoot: every boundary (root, OverlayBoundary, the table boundary)
+//   reports through this transport, with the component stack.
+// - The reported page URL is origin + path only. Query and hash can carry a
+//   Play Online ?token= ticket, a #bridge_id_token or an OAuth ?code=, and
+//   URLs inside message / stack text get the same treatment.
+// - A failed lazy chunk (`vite:preloadError`) is reported once, and the boundary
+//   catch of that same error is not reported a second time.
+// - The detail is kept under the master API's 4,000-char cap (an oversized
+//   detail is stored as {_truncated} and the message is lost).
 
 import { API_BASE } from '../config';
 import { bearerForThisTab } from './tokenStorage';
 
 const DEDUP_WINDOW_MS = 60_000;
 const DEDUP_MAX_KEYS = 10;
+// poker-api authEvents.js DETAIL_MAX_CHARS = 4000 (JSON length of `detail`).
+const DETAIL_BUDGET_CHARS = 3800;
 
 // Recent error keys -> last-sent timestamp. Bounded to DEDUP_MAX_KEYS entries
 // (oldest evicted on insert) so we never grow unbounded if an attacker or bug
@@ -93,27 +110,147 @@ function send(detail) {
   }
 }
 
-function reportError(message, stack) {
+// Absolute URL followed by a query and/or hash: keep scheme + host + path only.
+const URL_QUERY_HASH_RE = /(\bhttps?:\/\/[^\s?#'"`<>()\\]+)[?#][^\s'"`<>()\\]*/gi;
+// Sign-in material outside an absolute URL (a relative "/auth/callback?code=…",
+// a bare "#bridge_id_token=…"): keep the name, drop the value.
+const SECRET_PARAM_RE = /([?&#;]\s*(?:code|token|ticket|bridge_id_token|id_token|access_token|refresh_token|state|session_state)=)[^&#\s'"`<>()\\]*/gi;
+
+/** Strip query + hash from every URL in a report text, and redact sign-in parameters. */
+export function scrubReportText(text) {
+  if (typeof text !== 'string' || !text) return '';
   try {
-    const url = (typeof window !== 'undefined' && window.location && window.location.href) || '';
+    return text.replace(URL_QUERY_HASH_RE, '$1').replace(SECRET_PARAM_RE, '$1[redacted]');
+  } catch {
+    return '';
+  }
+}
+
+/** The page as origin + path — never the query or hash (?token= / ?code= / #bridge_id_token). */
+function pageUrl() {
+  try {
+    return `${window.location.origin}${window.location.pathname}`;
+  } catch {
+    return '';
+  }
+}
+
+/** Shrink the long fields so JSON.stringify(detail) stays under the API cap. */
+function fitDetail(detail) {
+  let d = detail;
+  try {
+    const order = [['componentStack', 200], ['stack', 400], ['message', 200], ['userAgent', 120]];
+    for (const [field, floor] of order) {
+      const over = JSON.stringify(d).length - DETAIL_BUDGET_CHARS;
+      if (over <= 0) return d;
+      const v = d[field];
+      if (typeof v !== 'string' || v.length <= floor) continue;
+      // Each raw char removed removes >= 1 JSON char, so this pass fits unless the floor stops it.
+      d = { ...d, [field]: `${v.slice(0, Math.max(floor, v.length - over - 8))}…` };
+    }
+    if (JSON.stringify(d).length > DETAIL_BUDGET_CHARS) {
+      d = { ...d, componentStack: '', stack: '', message: String(d.message || '').slice(0, 300) };
+    }
+  } catch { /* send what we have */ }
+  return d;
+}
+
+function reportError(message, stack, extra) {
+  try {
+    const msg = scrubReportText(String(message || '')).slice(0, 1000);
+    const stk = scrubReportText(String(stack || ''));
     const userAgent =
       (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     // Dedup key: first 120 chars of message + first stack frame keeps
     // "same error every render" collapsed to one POST per minute.
-    const firstFrame = (stack || '').split('\n').slice(0, 2).join('|');
-    const key = `${(message || '').slice(0, 120)}::${firstFrame.slice(0, 200)}`;
+    const firstFrame = stk.split('\n').slice(0, 2).join('|');
+    const key = `${msg.slice(0, 120)}::${firstFrame.slice(0, 200)}`;
     if (shouldDrop(key)) return;
-    send({ message: message || '', stack: stack || '', url, userAgent });
-  } catch (_) {
+    // urlScope tells the reader of auth_events that `url` deliberately
+    // omits the query and hash.
+    const detail = { message: msg, stack: stk, url: pageUrl(), urlScope: 'origin+path', userAgent };
+    if (extra && typeof extra === 'object') {
+      for (const [k, v] of Object.entries(extra)) {
+        if (v === undefined || v === null || v === '') continue;
+        detail[k] = typeof v === 'string' ? scrubReportText(v) : v;
+      }
+    }
+    send(fitDetail(detail));
+  } catch {
     // Reporter must never throw.
   }
 }
+
+function describeThrown(value) {
+  try {
+    if (value instanceof Error) return value.message || value.name || 'Error';
+    if (typeof value === 'string') return value;
+    return JSON.stringify(value) || String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+// The error object of the last `vite:preloadError` this reporter sent: the
+// boundary that then catches the same failed import is not reported again.
+let lastReportedChunkError = null;
+
+function reportReactError(kind, error, errorInfo) {
+  try {
+    if (error && error === lastReportedChunkError) return;
+    const componentStack = errorInfo && typeof errorInfo.componentStack === 'string'
+      ? errorInfo.componentStack.slice(0, 1500)
+      : '';
+    let boundary = null;
+    try {
+      const b = errorInfo && errorInfo.errorBoundary;
+      if (b) boundary = (b.props && typeof b.props.name === 'string' && b.props.name) || 'unnamed';
+    } catch { boundary = null; }
+    reportError(
+      `[render] ${describeThrown(error)}`,
+      error instanceof Error ? (error.stack || '') : '',
+      { kind, componentStack, boundary },
+    );
+  } catch {
+    // Reporter must never throw.
+  }
+}
+
+/**
+ * createRoot options (React 19). Passing these replaces React's defaults, so
+ * both still log to the console like the defaults did; onUncaughtError no
+ * longer goes through window.reportError (the window 'error' listener below
+ * would have sent it a second time).
+ */
+export const reactRootErrorOptions = {
+  onCaughtError(error, errorInfo) {
+    try { console.error('[react] error caught by a boundary:', error, (errorInfo && errorInfo.componentStack) || ''); } catch { /* ignore */ }
+    reportReactError('render_caught', error, errorInfo);
+  },
+  onUncaughtError(error, errorInfo) {
+    try { console.error('[react] uncaught render error:', error, (errorInfo && errorInfo.componentStack) || ''); } catch { /* ignore */ }
+    reportReactError('render_uncaught', error, errorInfo);
+  },
+};
 
 export function installErrorReporting() {
   try {
     if (installed) return;
     if (typeof window === 'undefined') return;
     installed = true;
+
+    // A lazy chunk (or its CSS) failed to load — see services/appReload.js.
+    window.addEventListener('vite:preloadError', (e) => {
+      try {
+        const err = e && e.payload;
+        lastReportedChunkError = err || null;
+        reportError(
+          `[chunk] ${describeThrown(err)}`,
+          (err && err.stack) || '',
+          { kind: 'chunk_load_failed' },
+        );
+      } catch { /* reporter must never throw */ }
+    });
 
     window.addEventListener('error', (e) => {
       try {

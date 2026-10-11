@@ -681,3 +681,32 @@ requestUrl.origin !== self.location.origin
 #     APPUI-9: lobby / profile Win % = server handsWon / totalHandsPlayed;
 #     recordHand skips spectated hands and never writes server-owned fields.
 recordHand skipped: not seated in this hand
+#     APPUI-23: the root error screen's Reload is a REAL reload (it drops a
+#     ?replay= link first); a lazy chunk that fails to load (vite:preloadError)
+#     reloads the page once (sessionStorage guard, never a loop; not
+#     automatically while seated at a table - the root boundary recovers if
+#     the app itself broke) and the screen says "Updating..."; ?replay= links
+#     are validated + normalized (utils/replayPayload) and an invalid one is
+#     removed and ignored.
+poker_chunk_reload_at
+a lazy chunk failed to load; reloading once
+failed while seated at a table; no automatic reload
+Loading the latest version of the game.
+[replay] ignored an invalid ?replay= link
+#     OPS-7 + AUTH P3: createRoot onCaughtError / onUncaughtError report
+#     render crashes (every boundary); a failed chunk is reported once; the
+#     reported url is origin + path only and URLs in message / stack lose
+#     their query + hash (?token / ?code / #bridge_id_token).
+render_caught
+render_uncaught
+chunk_load_failed
+origin+path
+#     APPUI-12: the PWA shortcut ?action= is consumed once and removed from
+#     the URL; a launch that lands on a table drops it.
+[pwa] shortcut action consumed:
+superseded by a table
+#     APPUI-30: the update notice is at the top, only its Reload button
+#     reloads, and it can be dismissed.
+sw-update-toast-reload
+sw-update-toast-close
+Dismiss update notice
