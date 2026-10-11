@@ -218,3 +218,14 @@
   font-weight: 700;
   cursor: pointer;
 }
+
+/* R2 (APPUI-37) — the real prize table and its odds under the wheel. */
+.spin-wheel-odds {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 12px;
+  margin: 4px 0 10px;
+  font-size: 0.75rem;
+  color: #c8d6f5;
+}

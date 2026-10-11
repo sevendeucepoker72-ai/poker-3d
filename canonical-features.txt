@@ -793,3 +793,13 @@ unequipItem
 Premium only — get Premium to claim it.
 scratch-reveal-all
 season XP
+
+# 2026-10-11 .online R2 (K2) — APPUI-36 / APPUI-37: the daily reward banner,
+#     auto-open and calendar follow the server's Denver claim date
+#     (already_claimed shown, VIP +50% tag, Day 7 box); the spin wheel draws
+#     exactly the server's prizes sized by their odds and stops on the paid one;
+#     auto-open once per Denver day per account.
+login-rewards-message
+Already claimed today — your next reward opens at midnight (Denver time).
+spin-wheel-odds
+app_poker_spin_seen

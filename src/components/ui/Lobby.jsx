@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
-import { useProgressStore, serverWinRate, vipPassActive, equippedIdFor } from '../../store/progressStore';
+import { useProgressStore, serverWinRate, vipPassActive, equippedIdFor, dailyLoginClaimable } from '../../store/progressStore';
 import ProgressBar from './ProgressBar';
 import MissionsPanel, { missionIcon } from './MissionsPanel';
-import { formatCountdown, nextDenverMidnightMs } from '../../utils/denverTime';
+import { formatCountdown, nextDenverMidnightMs, denverDateKey } from '../../utils/denverTime';
 import { PROFILE_BGS } from '../../utils/economyCatalog';
 import StatsPanel from './StatsPanel';
 import BattlePass from './BattlePass';
@@ -42,7 +42,7 @@ const ExportData          = lazy(() => import('./ExportData'));
 const HandReplayViewer    = lazy(() => import('../replay/HandReplayViewer'));
 // Kept eager — rendered in the default lobby view, not gated behind a modal.
 import ClubsPanel from './ClubsPanel';
-import SpinWheel from './SpinWheel';
+import SpinWheel, { spinSeenToday, markSpinSeenToday } from './SpinWheel';
 import ScratchCards from './ScratchCards';
 import MultiTableView from './MultiTableView';
 import PlayerProfile from './PlayerProfile';
@@ -1217,16 +1217,11 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   });
   const [returnBannerDismissed, setReturnBannerDismissed] = useState(false);
 
-  // Daily bonus claimed state
-  const [dailyBonusClaimed, setDailyBonusClaimed] = useState(() => {
-    try {
-      const raw = sessionStorage.getItem('app_poker_login_rewards');
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-      const stored = raw ? JSON.parse(raw) : null;
-      return !!(stored && stored.lastClaimDate === todayStr);
-    } catch { return false; }
-  });
+  // R2 (APPUI-36) — the daily reward is claimable when the SERVER's Denver
+  // claim date (playerProgress.lastLoginClaimDate) is not today's Denver date.
+  // (The banner used to read a sessionStorage key nothing wrote, so it showed
+  // "Daily Bonus Ready!" for a reward already claimed.)
+  const dailyClaimable = dailyLoginClaimable(progress);
 
   // #8 sticky quick play
   const quickPlayRef = useRef(null);
@@ -1416,36 +1411,36 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // across navigations). The dismissed flag is sessionStorage-scoped so
   // it resets when the browser closes — by tomorrow the modal will
   // re-prompt (since the date rolls over too).
+  // R2 (APPUI-36) — opens once the server has said the reward is claimable
+  // (hydrated progress), at most once per lobby visit, and not again on a
+  // Denver day he closed it.
+  const loginRewardsAutoRef = useRef(false);
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem('app_poker_login_rewards');
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      const stored = raw ? JSON.parse(raw) : null;
-      const dismissedToday = sessionStorage.getItem('app_poker_login_rewards_dismissed') === todayStr;
-      if ((!stored || stored.lastClaimDate !== todayStr) && !dismissedToday) {
-        setShowLoginRewards(true);
-        setLoginRewardsAutoOpened(true);
-      }
-    } catch { /* ignore */ }
-  }, []);
+    if (loginRewardsAutoRef.current || !dailyClaimable) return;
+    loginRewardsAutoRef.current = true;
+    let dismissedToday = false;
+    try { dismissedToday = sessionStorage.getItem('app_poker_login_rewards_dismissed') === denverDateKey(); } catch { /* ignore */ }
+    if (dismissedToday) return;
+    setShowLoginRewards(true);
+    setLoginRewardsAutoOpened(true);
+  }, [dailyClaimable]);
 
-  // Auto-show daily spin wheel once per day until the user spins.
-  // Runs AFTER the login rewards timer (6s offset) so the two don't
-  // stack on top of each other on first login. Locks via localStorage
-  // so "once per day" survives refresh inside the day. Spin completion
-  // also writes this key (see SpinWheel) so a successful spin clears
-  // the auto-open for the rest of the day.
+  // Auto-show the daily spin once per Denver day until he spins (per
+  // account on this device — SpinWheel writes the same key), 6s after the
+  // lobby shows and never on top of the daily rewards.
+  const playerUserId = useGameStore((s) => s.userId);
+  const progressHydrated = progress?.hydrated === true;
   useEffect(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    let spunToday = false;
-    try {
-      spunToday = localStorage.getItem('app_poker_last_spin_date') === todayStr;
-    } catch { /* ignore */ }
-    if (spunToday) return;
-    const t = setTimeout(() => setShowSpinWheel(true), 6000);
+    if (!progressHydrated || showLoginRewards) return undefined;
+    if (spinSeenToday(playerUserId)) return undefined;
+    const t = setTimeout(() => {
+      if (!spinSeenToday(playerUserId)) {
+        markSpinSeenToday(playerUserId);
+        setShowSpinWheel(true);
+      }
+    }, 6000);
     return () => clearTimeout(t);
-  }, []);
+  }, [progressHydrated, showLoginRewards, playerUserId]);
 
   // Listen for bottom nav actions (legacy support)
   useEffect(() => {
@@ -1746,15 +1741,16 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {/* Featured Table Banner */}
         <FeaturedTableBanner tables={tables} onSpectate={handleWatch} />
 
-        {/* Daily Bonus Banner */}
-        {!dailyBonusClaimed && (
+        {/* Daily Bonus Banner — R2 (APPUI-36): shown while the server's
+            Denver claim date says today's reward is unclaimed. */}
+        {dailyClaimable && (
           <div className="daily-bonus-banner" onClick={() => { setShowLoginRewards(true); setLoginRewardsAutoOpened(false); }}>
             <span className="daily-bonus-icon">🎁</span>
             <div className="daily-bonus-text">
               <div className="daily-bonus-title">Daily Bonus Ready!</div>
               <div className="daily-bonus-sub">Tap to claim your reward</div>
             </div>
-            <button className="daily-bonus-btn" onClick={(e) => { e.stopPropagation(); setShowLoginRewards(true); setLoginRewardsAutoOpened(false); setDailyBonusClaimed(true); }}>Claim</button>
+            <button className="daily-bonus-btn" onClick={(e) => { e.stopPropagation(); setShowLoginRewards(true); setLoginRewardsAutoOpened(false); }}>Claim</button>
           </div>
         )}
 
@@ -2576,13 +2572,11 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <LoginRewards
           onClose={() => {
             setShowLoginRewards(false);
-            // Remember that we closed the modal TODAY so the auto-open
-            // effect doesn't re-show it on the next nav/re-mount.
-            // Scoped to sessionStorage so it naturally resets tomorrow.
+            // Remember that we closed the modal TODAY (Denver — the reward's
+            // calendar) so the auto-open doesn't re-show it on the next
+            // nav/re-mount. Scoped to sessionStorage; tomorrow's date differs.
             try {
-              const today = new Date();
-              const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-              sessionStorage.setItem('app_poker_login_rewards_dismissed', todayStr);
+              sessionStorage.setItem('app_poker_login_rewards_dismissed', denverDateKey());
             } catch { /* ignore */ }
           }}
           autoOpened={loginRewardsAutoOpened}
