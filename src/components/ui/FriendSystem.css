@@ -315,3 +315,8 @@
   font-size: 0.8rem;
   text-align: center;
 }
+
+/* R2 (APPUI-14) — errors readable, names open the profile. */
+.friends-notice--error { color: #dbe6ff; border-color: rgba(120, 160, 255, 0.5); background: rgba(59, 130, 246, 0.12); }
+.friends-info--link { cursor: pointer; }
+.friends-info--link:hover .friends-name { text-decoration: underline; }

@@ -803,3 +803,19 @@ login-rewards-message
 Already claimed today — your next reward opens at midnight (Denver time).
 spin-wheel-odds
 app_poker_spin_seen
+
+# 2026-10-11 .online R2 (K2) — C9 / APPUI-17 / APPUI-50 / APPUI-14 / APPUI-47 /
+#     addendum: every leaderboard period says what it ranks, the inline board
+#     shows only all-time, "you" is the server's isYou, the season tab shows
+#     seasonEndsAt + the rewards really paid, season badges drawn; profiles are
+#     opened by user id and his own is detected by identity; friend errors
+#     (friend_not_found / friend_name_ambiguous) shown; player search shows no
+#     chips; Invite only to the table he is seated at.
+leaderboard-ranks-by
+Chips won this month — top 3 are paid at month end
+Paid automatically when the month ends (Denver time)
+player-search-row
+Add friend by exact display name...
+No player has that exact display name — check the spelling.
+profile-season-badge
+Invite to the table you are seated at

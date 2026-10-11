@@ -13,7 +13,7 @@ import RankBadge, { getRankInfo, getNextRankInfo, RANK_TIERS } from './RankBadge
 import CreateTableModal from './CreateTableModal';
 import TournamentLobby from './TournamentLobby';
 import QualifierLobby from './QualifierLobby';
-import Leaderboard from './Leaderboard';
+import Leaderboard, { BadgeIcons } from './Leaderboard';
 import FriendSystem from './FriendSystem';
 import UnlocksPanel from './UnlocksPanel';
 import VIPPanel from './VIPPanel';
@@ -550,10 +550,18 @@ function SeatPicker({ table, playerName, avatar, onJoin, onClose }) {
 }
 
 // ─── Inline Friends List (simplified, non-overlay) ───
-function InlineFriendsList() {
+function InlineFriendsList({ onOpenProfile }) {
   // 2026-06-18 Phase 3b — real friends from poker-server (was sessionStorage mock).
   const [friends, setFriends] = useState([]);
   const [inviteSent, setInviteSent] = useState(null);
+  // R2 (APPUI-47) — an invite names the table he is SEATED at (never a
+  // spectated or stale one); with no seat there is nothing to invite to, so
+  // Invite is not offered (it used to send an invite with no table).
+  const inviteTableId = useTableStore((s) => {
+    const gs = s.gameState;
+    const seated = gs && gs.isSpectator !== true && !s.isSpectating && Number.isInteger(gs.yourSeat) && gs.yourSeat >= 0;
+    return seated && gs.tableId != null ? gs.tableId : null;
+  });
 
   useEffect(() => {
     const s = getSocket();
@@ -574,8 +582,9 @@ function InlineFriendsList() {
   const onlineCount = friends.filter((f) => f.presence === 'online' || f.presence === 'in-game').length;
 
   const handleInvite = (friend) => {
+    if (!inviteTableId) return;
     const s = getSocket();
-    if (s?.connected) s.emit('inviteFriendToTable', { userId: friend.userId });
+    if (s?.connected) s.emit('inviteFriendToTable', { userId: friend.userId, tableId: inviteTableId });
     setInviteSent(friend.userId);
     setTimeout(() => setInviteSent(null), 2000);
   };
@@ -590,23 +599,29 @@ function InlineFriendsList() {
           No friends yet — add some in the Friends panel.
         </div>
       )}
-      {sortedFriends.map((friend) => (
+      {sortedFriends.map((friend) => {
+        const name = String(friend.username ?? 'Player');
+        return (
         <div key={friend.userId} className="inline-friend-card">
           <div className="inline-friend-avatar" style={{ borderColor: statusColors[friend.presence] }}>
-            {friend.username.charAt(0).toUpperCase()}
+            {name.charAt(0).toUpperCase()}
             <span className="inline-friend-dot" style={{ background: statusColors[friend.presence] }} />
           </div>
-          <div className="inline-friend-info">
-            <div className="inline-friend-name">{friend.username}</div>
+          <div
+            className={`inline-friend-info ${onOpenProfile ? 'inline-friend-info--link' : ''}`}
+            onClick={onOpenProfile ? () => onOpenProfile({ userId: friend.userId, name }) : undefined}
+          >
+            <div className="inline-friend-name">{name}</div>
             <div className="inline-friend-status" style={{ color: statusColors[friend.presence] }}>
               {statusLabels[friend.presence]}
             </div>
           </div>
-          {friend.presence === 'online' && (
+          {friend.presence === 'online' && inviteTableId && (
             <button
               className="inline-friend-invite-btn"
               onClick={() => handleInvite(friend)}
               disabled={inviteSent === friend.userId}
+              title="Invite to the table you are seated at"
             >
               {inviteSent === friend.userId ? 'Sent!' : 'Invite'}
             </button>
@@ -615,20 +630,23 @@ function InlineFriendsList() {
             <span style={{ fontSize: '0.65rem', color: '#ffd24a' }}>Playing…</span>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
 // ─── Inline Leaderboard (simplified, non-overlay) ───
-function InlineLeaderboard() {
-  const playerName = useGameStore((s) => s.playerName);
-  const [entries, setEntries] = useState([]);
+function InlineLeaderboard({ onOpenProfile }) {
+  const [entries, setEntries] = useState(null);
   // 2026-06-18 Phase 3b — real leaderboard from poker-server (was MOCK_NAMES).
+  // R2 (APPUI-50 / addendum) — only the ALL-TIME answer is shown here (the
+  // full board's Weekly / Daily / Season answers arrive on the same event and
+  // used to replace it under an all-time look), "you" is the server's isYou.
   useEffect(() => {
     const s = getSocket();
     if (!s) return undefined;
-    const onData = (d) => setEntries(Array.isArray(d?.entries) ? d.entries : []);
+    const onData = (d) => { if (d && d.period === 'alltime') setEntries(Array.isArray(d.entries) ? d.entries : []); };
     s.on('leaderboardData', onData);
     if (s.connected) s.emit('getLeaderboard', { period: 'alltime' });
     const t = setTimeout(() => { if (s.connected) s.emit('getLeaderboard', { period: 'alltime' }); }, 600);
@@ -642,29 +660,39 @@ function InlineLeaderboard() {
     return `#${rank}`;
   };
 
-  const data = entries.slice(0, 8).map((e, i) => ({
-    name: e.username,
-    chipsWon: e.chips || 0,
-    rank: e.rank || i + 1,
-    isCurrentPlayer: !!playerName && e.username === playerName,
+  const data = (entries || []).slice(0, 8).map((e, i) => ({
+    name: String(e.displayName ?? e.username ?? 'Player'),
+    chips: Number(e.chips) || 0,
+    rank: Number(e.rank) || i + 1,
+    isYou: e.isYou === true,
+    userId: e.userId ?? null,
+    badges: e.badges,
   }));
 
   return (
     <div className="inline-leaderboard">
-      {data.length === 0 && (
+      <div className="inline-lb-caption">All-time · ranked by chip balance</div>
+      {entries === null && (
         <div className="inline-lb-row" style={{ opacity: 0.6, justifyContent: 'center' }}>Loading leaderboard…</div>
       )}
-      {data.map((entry) => (
-        <div
-          key={entry.rank}
-          className={`inline-lb-row ${entry.isCurrentPlayer ? 'inline-lb-row-current' : ''} ${entry.rank <= 3 ? 'inline-lb-row-top' : ''}`}
-        >
-          <span className="inline-lb-rank">{getRankIcon(entry.rank)}</span>
-          <PlayerAvatar playerId={entry.name} name={entry.name} size={24} style={{ flexShrink: 0 }} />
-          <span className="inline-lb-name">{entry.name}</span>
-          <span className="inline-lb-chips">{entry.chipsWon.toLocaleString()}</span>
-        </div>
-      ))}
+      {entries !== null && data.length === 0 && (
+        <div className="inline-lb-row" style={{ opacity: 0.6, justifyContent: 'center' }}>No ranked players yet.</div>
+      )}
+      {data.map((entry) => {
+        const canOpen = typeof onOpenProfile === 'function' && entry.userId != null;
+        return (
+          <div
+            key={`${entry.rank}-${entry.name}`}
+            className={`inline-lb-row ${entry.isYou ? 'inline-lb-row-current' : ''} ${entry.rank <= 3 ? 'inline-lb-row-top' : ''} ${canOpen ? 'inline-lb-row-link' : ''}`}
+            onClick={canOpen ? () => onOpenProfile({ userId: entry.userId, name: entry.name }) : undefined}
+          >
+            <span className="inline-lb-rank">{getRankIcon(entry.rank)}</span>
+            <PlayerAvatar playerId={entry.name} name={entry.name} size={24} style={{ flexShrink: 0 }} />
+            <span className="inline-lb-name">{entry.name}{entry.isYou ? ' (you)' : ''}<BadgeIcons badges={entry.badges} /></span>
+            <span className="inline-lb-chips">{entry.chips.toLocaleString()}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1360,20 +1388,38 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     () => { try { return !!new URLSearchParams(window.location.search).get('bracket'); } catch { return false; } }
   );
   const [showBankrollAI, setShowBankrollAI] = useState(false);
-  const [showPlayerProfile, setShowPlayerProfile] = useState(false);
+  // R2 (APPUI-14) — the profile on screen: { own: true } (his own, by
+  // identity) or { userId, name } (another player, opened by user id).
+  const [profileTarget, setProfileTarget] = useState(null);
+  const openProfile = useCallback((t) => { if (t) setProfileTarget(t); }, []);
+  // A shared `?profile=<user id>` link opens that profile once.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      const id = url.searchParams.get('profile');
+      if (!id) return;
+      url.searchParams.delete('profile');
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+      if (/^[0-9]{1,12}$/.test(id)) setProfileTarget({ userId: Number(id) });
+    } catch { /* ignore */ }
+  }, []);
   const [showNFTBadges, setShowNFTBadges] = useState(false);
 
   // Player search state
   const [playerSearchQuery, setPlayerSearchQuery] = useState('');
   const [playerSearchResults, setPlayerSearchResults] = useState([]);
   const [playerSearchLoading, setPlayerSearchLoading] = useState(false);
+  const [playerSearchError, setPlayerSearchError] = useState(null);
   const playerSearchTimerRef = useRef(null);
 
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
-    const handleResults = ({ results }) => {
-      setPlayerSearchResults(results || []);
+    const handleResults = (payload) => {
+      const results = payload && Array.isArray(payload.results) ? payload.results : [];
+      setPlayerSearchResults(results);
+      setPlayerSearchError(payload && payload.error === 'login_required' ? 'Sign in to search for players.'
+        : payload && payload.error === 'rate_limited' ? 'Too many searches — wait a moment.' : null);
       setPlayerSearchLoading(false);
     };
     socket.on('playerSearchResults', handleResults);
@@ -1830,9 +1876,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       {/* ── RIGHT SIDEBAR (#9) ── */}
       <div className="lobby-home-sidebar">
         <SectionHeader>Leaderboard</SectionHeader>
-        <InlineLeaderboard />
+        <InlineLeaderboard onOpenProfile={openProfile} />
         <SectionHeader>Friends</SectionHeader>
-        <InlineFriendsList onJoinFriendTable={handleWatch} />
+        <InlineFriendsList onOpenProfile={openProfile} />
       </div>
 
       {/* Sticky Quick Play bar */}
@@ -1953,7 +1999,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
       {/* Friends */}
       <SectionHeader>Friends</SectionHeader>
-      <InlineFriendsList onJoinFriendTable={handleWatch} />
+      <InlineFriendsList onOpenProfile={openProfile} />
       <button
         className="btn-accent lobby-full-width-btn"
         style={{ marginTop: '8px', marginBottom: '24px' }}
@@ -1964,7 +2010,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
       {/* Leaderboard */}
       <SectionHeader>Leaderboard</SectionHeader>
-      <InlineLeaderboard />
+      <InlineLeaderboard onOpenProfile={openProfile} />
       <button
         className="btn-accent lobby-full-width-btn"
         style={{ marginTop: '8px', marginBottom: '24px' }}
@@ -1979,7 +2025,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <input
           type="text"
           className="table-search-input"
-          placeholder="Search by username..."
+          placeholder="Search players by display name..."
           style={{ width: '100%', marginBottom: '8px' }}
           value={playerSearchQuery}
           onChange={(e) => handlePlayerSearch(e.target.value)}
@@ -1987,20 +2033,30 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {playerSearchLoading && (
           <p style={{ color: '#6b6b8a', fontSize: '0.8rem', margin: 0 }}>Searching…</p>
         )}
-        {!playerSearchLoading && playerSearchQuery.length >= 2 && playerSearchResults.length === 0 && (
+        {!playerSearchLoading && playerSearchError && (
+          <p style={{ color: '#9fb3d9', fontSize: '0.8rem', margin: 0 }}>{playerSearchError}</p>
+        )}
+        {!playerSearchLoading && !playerSearchError && playerSearchQuery.length >= 2 && playerSearchResults.length === 0 && (
           <p style={{ color: '#6b6b8a', fontSize: '0.8rem', margin: 0 }}>No players found.</p>
         )}
         {playerSearchResults.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {playerSearchResults.map((p) => (
-              <div key={p.id} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '8px 12px',
-              }}>
-                <span style={{ color: '#e0e0ff', fontWeight: 600 }}>{p.username}</span>
-                <span style={{ color: '#888', fontSize: '0.8rem' }}>Lv.{p.level} · {(p.chips || 0).toLocaleString()} chips</span>
-              </div>
-            ))}
+            {/* R2 (addendum / APPUI-14) — a public name and a level only
+                (never chips); a result with a user id opens that profile. */}
+            {playerSearchResults.map((p, i) => {
+              const name = String(p.displayName ?? p.username ?? 'Player');
+              const canOpen = p.userId != null;
+              return (
+                <div
+                  key={p.id ?? `${name}-${i}`}
+                  className={`player-search-row ${canOpen ? 'player-search-row--link' : ''}`}
+                  onClick={canOpen ? () => openProfile({ userId: p.userId, name }) : undefined}
+                >
+                  <span className="player-search-name">{name}</span>
+                  <span className="player-search-level">Lv.{Number(p.level) || 1}{canOpen ? ' · View profile' : ''}</span>
+                </div>
+              );
+            })}
           </div>
         )}
         {!playerSearchQuery && (
@@ -2241,7 +2297,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <button
           className="btn-accent"
           style={toolBtnStyle}
-          onClick={() => setShowPlayerProfile(true)}
+          onClick={() => setProfileTarget({ own: true })}
         >
           👤 My Profile Page
         </button>
@@ -2555,8 +2611,8 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
       {/* ─── Overlay components (preserved) ─── */}
       {showStats && <StatsPanel onClose={() => setShowStats(false)} />}
-      {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
-      {showFriends && <FriendSystem onClose={() => setShowFriends(false)} />}
+      {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} onOpenProfile={(t) => { setShowLeaderboard(false); openProfile(t); }} />}
+      {showFriends && <FriendSystem onClose={() => setShowFriends(false)} onOpenProfile={(t) => { setShowFriends(false); openProfile(t); }} />}
       {showUnlocks && <UnlocksPanel onClose={() => setShowUnlocks(false)} />}
       {showVIP && <VIPPanel onClose={() => setShowVIP(false)} />}
       {showBattlePass && <BattlePass onClose={() => setShowBattlePass(false)} />}
@@ -2638,7 +2694,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       {showSpinWheel && <SpinWheel onClose={() => setShowSpinWheel(false)} />}
       {showScratchCards && <ScratchCards autoStart={scratchAutoStart} onClose={() => { setShowScratchCards(false); setScratchAutoStart(false); }} />}
       {showMultiTable && <MultiTableView onClose={() => setShowMultiTable(false)} />}
-      {showPlayerProfile && <PlayerProfile username={nameInput || 'Player'} socket={getSocket()} onClose={() => setShowPlayerProfile(false)} onViewReplay={() => {}} />}
+      {profileTarget && <PlayerProfile target={profileTarget} socket={getSocket()} onClose={() => setProfileTarget(null)} onViewReplay={(h) => { setProfileTarget(null); setReplayHand(h); }} />}
 
       {/* Custom-tournament create confirmation toast (GAP 14). Root-level so it
           shows regardless of which lobby tab is active after the director closes. */}

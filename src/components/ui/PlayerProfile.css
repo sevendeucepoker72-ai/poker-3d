@@ -66,9 +66,9 @@
   z-index: 10;
 }
 .profile-close-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  border-color: #ef4444;
+  background: rgba(255, 210, 74, 0.15);
+  color: #ffd24a;
+  border-color: #ffd24a;
 }
 
 /* Loading state */
@@ -280,7 +280,7 @@
 }
 
 .stat-value.stat-negative {
-  color: #f87171;
+  color: #8fa8d8;
 }
 
 .stat-label {
@@ -594,3 +594,6 @@
     font-size: 16px;
   }
 }
+
+/* R2 (C9) — season badges next to the name. */
+.profile-season-badge { margin-left: 6px; font-size: 1rem; vertical-align: middle; }

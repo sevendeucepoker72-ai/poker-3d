@@ -2564,3 +2564,23 @@
   cursor:pointer; padding:4px; transition:color 0.2s; flex-shrink:0;
 }
 .achievement-toast-close:hover { color:#fff; }
+
+/* R2 (APPUI-14 / APPUI-50 / addendum) — inline board caption, profile links,
+   player search rows (name + level only). */
+.inline-lb-caption { font-size: 0.68rem; color: #8fa8d8; margin: 0 0 6px 2px; }
+.inline-lb-row-link { cursor: pointer; }
+.inline-friend-info--link { cursor: pointer; }
+.player-search-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.player-search-row--link { cursor: pointer; }
+.player-search-row--link:hover { background: rgba(120, 160, 255, 0.1); }
+.player-search-name { color: #e0e0ff; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-search-level { color: #9fb3d9; font-size: 0.8rem; white-space: nowrap; }

@@ -6,12 +6,20 @@ import { notify } from '../../hooks/usePushNotifications';
 import './FriendSystem.css';
 
 // The friend invite must carry the inviter's current table id so the recipient
-// can actually join. gameState.tableId covers the primary single-table path;
-// currentTableId covers the multi-table path. Null => inviter isn't seated.
+// can actually join. R2 (APPUI-47) — only a table he is SEATED at (not one he
+// watches as a spectator or a stale view). Null => nothing to invite to.
 function getCurrentTableId() {
   const ts = useTableStore.getState();
-  return ts.gameState?.tableId || ts.currentTableId || null;
+  const gs = ts.gameState;
+  const seated = gs && gs.isSpectator !== true && !ts.isSpectating && Number.isInteger(gs.yourSeat) && gs.yourSeat >= 0;
+  return seated && gs.tableId != null ? gs.tableId : null;
 }
+
+// R2 (APPUI-14 / addendum) — the server's friend error codes, in words.
+const FRIEND_ERRORS = {
+  friend_not_found: 'No player has that exact display name — check the spelling.',
+  friend_name_ambiguous: 'More than one player uses that name — add them from their profile or a table instead.',
+};
 
 // 2026-06-18 — Phase 3a: real, durable friends backed by poker-server
 // (Postgres). Replaces the sessionStorage mock. Server events:
@@ -19,6 +27,11 @@ function getCurrentTableId() {
 //         / removeFriend{userId} / inviteFriendToTable{userId}
 //   recv  friendsList{friends:[{userId,username,status,presence}]}
 //         / friendsChanged / friendRequestSent / friendError / friendInviteSent
+
+/** A friend row's public name (never a non-string). */
+function nameOf(f) {
+  return String(f?.username ?? f?.displayName ?? 'Player');
+}
 
 function presenceColor(p) {
   switch (p) {
@@ -35,10 +48,10 @@ function presenceLabel(p) {
   }
 }
 
-export default function FriendSystem({ onClose }) {
+export default function FriendSystem({ onClose, onOpenProfile }) {
   const [friends, setFriends] = useState([]);
   const [addInput, setAddInput] = useState('');
-  const [notice, setNotice] = useState(null);
+  const [notice, setNotice] = useState(null); // { text, ok }
   const [inviteSent, setInviteSent] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -66,7 +79,7 @@ export default function FriendSystem({ onClose }) {
           const was = prev[f.userId];
           const isOnline = f.presence === 'online' || f.presence === 'in-game';
           const wasOffline = was === undefined || was === 'offline';
-          if (isOnline && wasOffline) notify.friendOnline(f.username);
+          if (isOnline && wasOffline) notify.friendOnline(nameOf(f));
         }
       }
       const next = {};
@@ -76,8 +89,8 @@ export default function FriendSystem({ onClose }) {
       setLoading(false);
     };
     const onChanged = () => refresh();
-    const onSent = (d) => setNotice(d?.status === 'accepted' ? 'Friend added!' : 'Request sent');
-    const onErr = (d) => setNotice(d?.message || 'Something went wrong');
+    const onSent = (d) => setNotice({ ok: true, text: d?.status === 'accepted' ? 'Friend added!' : 'Request sent' });
+    const onErr = (d) => setNotice({ ok: false, text: FRIEND_ERRORS[d?.code] || d?.message || 'Something went wrong' });
     const onInvited = () => { /* handled optimistically below */ };
     s.on('friendsList', onList);
     s.on('friendsChanged', onChanged);
@@ -99,7 +112,8 @@ export default function FriendSystem({ onClose }) {
 
   useEffect(() => {
     if (!notice) return undefined;
-    const t = setTimeout(() => setNotice(null), 2500);
+    // An error stays long enough to read it.
+    const t = setTimeout(() => setNotice(null), notice.ok ? 2500 : 6000);
     return () => clearTimeout(t);
   }, [notice]);
 
@@ -114,7 +128,7 @@ export default function FriendSystem({ onClose }) {
   const handleRemove = (userId) => { const s = getSocket(); if (s?.connected) s.emit('removeFriend', { userId }); };
   const handleInvite = (userId) => {
     const tableId = getCurrentTableId();
-    if (!tableId) { setNotice('Join a table first'); return; }
+    if (!tableId) { setNotice({ ok: false, text: 'Sit at a table first, then invite.' }); return; }
     const s = getSocket();
     if (s?.connected) s.emit('inviteFriendToTable', { userId, tableId });
     setInviteSent(userId);
@@ -143,7 +157,7 @@ export default function FriendSystem({ onClose }) {
           <input
             type="text"
             className="friends-add-input"
-            placeholder="Add friend by username..."
+            placeholder="Add friend by exact display name..."
             value={addInput}
             onChange={(e) => setAddInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -151,7 +165,7 @@ export default function FriendSystem({ onClose }) {
           />
           <button className="friends-add-btn" onClick={handleAdd} disabled={!addInput.trim()}>Add</button>
         </div>
-        {notice && <div className="friends-notice">{notice}</div>}
+        {notice && <div className={`friends-notice ${notice.ok ? '' : 'friends-notice--error'}`}>{notice.text}</div>}
 
         <div className="friends-list">
           {loading && <div className="friends-empty">Loading…</div>}
@@ -162,9 +176,9 @@ export default function FriendSystem({ onClose }) {
               {incoming.map((f) => (
                 <div key={`in-${f.userId}`} className="friends-card friends-card-online">
                   <div className="friends-card-left">
-                    <div className="friends-avatar">{f.username.charAt(0).toUpperCase()}</div>
+                    <div className="friends-avatar">{nameOf(f).charAt(0).toUpperCase()}</div>
                     <div className="friends-info">
-                      <div className="friends-name">{f.username}</div>
+                      <div className="friends-name">{nameOf(f)}</div>
                       <div className="friends-status" style={{ color: '#ffd24a' }}>wants to be friends</div>
                     </div>
                   </div>
@@ -185,21 +199,25 @@ export default function FriendSystem({ onClose }) {
             <div key={f.userId} className={`friends-card friends-card-${f.presence}`}>
               <div className="friends-card-left">
                 <div className="friends-avatar">
-                  {f.username.charAt(0).toUpperCase()}
+                  {nameOf(f).charAt(0).toUpperCase()}
                   <span className="friends-status-dot" style={{ background: presenceColor(f.presence) }} />
                 </div>
-                <div className="friends-info">
-                  <div className="friends-name">{f.username}</div>
+                <div
+                  className={`friends-info ${onOpenProfile ? 'friends-info--link' : ''}`}
+                  onClick={onOpenProfile ? () => onOpenProfile({ userId: f.userId, name: nameOf(f) }) : undefined}
+                  title={onOpenProfile ? 'View profile' : undefined}
+                >
+                  <div className="friends-name">{nameOf(f)}</div>
                   <div className="friends-status" style={{ color: presenceColor(f.presence) }}>{presenceLabel(f.presence)}</div>
                 </div>
               </div>
               <div className="friends-card-actions">
-                {f.presence === 'online' && (
+                {f.presence === 'online' && atTable && (
                   <button
                     className="friends-invite-btn"
                     onClick={() => handleInvite(f.userId)}
-                    disabled={inviteSent === f.userId || !atTable}
-                    title={atTable ? 'Invite to your table' : 'Join a table first'}
+                    disabled={inviteSent === f.userId}
+                    title="Invite to the table you are seated at"
                   >
                     {inviteSent === f.userId ? 'Sent!' : 'Invite to Table'}
                   </button>
@@ -216,9 +234,9 @@ export default function FriendSystem({ onClose }) {
               {outgoing.map((f) => (
                 <div key={`out-${f.userId}`} className="friends-card friends-card-offline">
                   <div className="friends-card-left">
-                    <div className="friends-avatar">{f.username.charAt(0).toUpperCase()}</div>
+                    <div className="friends-avatar">{nameOf(f).charAt(0).toUpperCase()}</div>
                     <div className="friends-info">
-                      <div className="friends-name">{f.username}</div>
+                      <div className="friends-name">{nameOf(f)}</div>
                       <div className="friends-status" style={{ color: '#8298c4' }}>Request sent</div>
                     </div>
                   </div>

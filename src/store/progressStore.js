@@ -563,9 +563,14 @@ export const useProgressStore = create((set, get) => ({
     if (Number.isFinite(sentWinRate) && sentWinRate >= 0 && sentWinRate <= 100) {
       merged.winRate = Math.round(sentWinRate * 10) / 10;
       merged.winRateFromServer = true;
-    } else {
+    } else if (incoming.handsWon !== undefined || incoming.totalHandsPlayed !== undefined || prev.winRateFromServer !== true) {
+      // New counters without a rate (an older payload): derive from them.
       merged.winRateFromServer = false;
       merged.winRate = serverWinRate(merged);
+    } else {
+      // A partial payload that carries neither keeps the server's rate.
+      merged.winRate = prev.winRate;
+      merged.winRateFromServer = true;
     }
 
     saveProgress(merged);
