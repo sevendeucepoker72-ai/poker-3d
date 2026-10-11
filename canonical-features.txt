@@ -749,3 +749,6 @@ superseded by a table
 sw-update-toast-reload
 sw-update-toast-close
 Dismiss update notice
+
+# 2026-10-11 R1 review (R1REV-MONEY-2): Decline ends the insurance decision window on the server
+declineInsurance

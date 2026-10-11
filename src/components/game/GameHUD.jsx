@@ -4422,7 +4422,14 @@ export default function GameHUD() {
             </button>
             <button
               className="insurance-btn insurance-decline"
-              onClick={() => setInsuranceClosedHand(insuranceQuote.handNumber)}
+              onClick={() => {
+                // R1 review (R1REV-MONEY-2): tell the server, so the table's
+                // decision window closes now instead of waiting out the full
+                // timer. Fire-and-forget: the server is silent on anything
+                // invalid and the panel closes either way.
+                getSocket()?.emit('declineInsurance', { tableId: gameState?.tableId, handNumber: insuranceQuote.handNumber });
+                setInsuranceClosedHand(insuranceQuote.handNumber);
+              }}
             >
               Decline
             </button>
