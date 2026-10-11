@@ -4,6 +4,8 @@ import { useGameStore } from '../../store/gameStore';
 import { useQualifiers, qualifierActions, DEFAULT_BLIND_STRUCTURE } from '../../store/qualifierStore';
 import { useCodes, usePromos, codeActions } from '../../store/codeStore';
 import { getSocket } from '../../services/socketService';
+// R2 (APPUI-34) — the server's maintenance state, learned from its broadcasts.
+import { getMaintenanceMode, subscribeMaintenanceMode, noteMaintenanceMode } from '../../services/serverFlags';
 import './AdminDashboard.css';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -201,7 +203,11 @@ export default function AdminDashboard({ onClose }) {
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [broadcastSent, setBroadcastSent] = useState(false);
   const broadcastCooldownRef = useRef(0);
-  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  // R2 (APPUI-34) — the SERVER's state (it used to start OFF on every open,
+  // whatever the server said, and flip locally before the server answered).
+  const [maintenanceMode, setMaintenanceMode] = useState(() => getMaintenanceMode());
+  const [maintenancePending, setMaintenancePending] = useState(false);
+  useEffect(() => subscribeMaintenanceMode((on) => setMaintenanceMode(on)), []);
   const [actionMsg, setActionMsg] = useState(null); // { ok, text } admin-action feedback
   const [serverCodes, setServerCodes] = useState([]); // Batch 5b: real server-backed entry codes
 
@@ -211,6 +217,7 @@ export default function AdminDashboard({ onClose }) {
     const handleStats = (data) => {
       if (data.error) { setIsAdmin(false); setLoading(false); return; }
       setIsAdmin(true); setStats(data); setUsers(data.users || []);
+      if (typeof data.maintenanceMode === 'boolean') { noteMaintenanceMode(data.maintenanceMode); setMaintenanceMode(data.maintenanceMode); }
       setActiveTables(data.tables || []); setLoading(false);
     };
     socket.on('adminStats', handleStats);
@@ -225,6 +232,7 @@ export default function AdminDashboard({ onClose }) {
       'adminForceCloseTableResult',
     ];
     const onResult = (res) => {
+      if (res && typeof res.enabled === 'boolean') { noteMaintenanceMode(res.enabled); setMaintenanceMode(res.enabled); setMaintenancePending(false); }
       if (res && res.success === false) {
         setActionMsg({ ok: false, text: res.error || 'Action failed' });
       } else {
@@ -292,9 +300,14 @@ export default function AdminDashboard({ onClose }) {
     setTimeout(() => setBroadcastSent(false), 3000);
   };
   const handleMaintenance = () => {
-    const next = !maintenanceMode;
-    setMaintenanceMode(next);
-    getSocket()?.emit('adminMaintenance', { enabled: next });
+    if (maintenancePending) return;
+    const socket = getSocket();
+    if (!socket) return;
+    // The label changes when the SERVER answers (adminMaintenanceResult / the
+    // maintenanceMode broadcast), never before.
+    setMaintenancePending(true);
+    setTimeout(() => setMaintenancePending(false), 8000);
+    socket.emit('adminMaintenance', { enabled: !maintenanceMode });
   };
   const handleForceCloseTable = (tableId) => { getSocket()?.emit('adminForceCloseTable', { tableId }); setActiveTables((p) => p.filter((t) => t.id !== tableId)); };
 
@@ -360,15 +373,15 @@ export default function AdminDashboard({ onClose }) {
 
       <span style={secTitle}>Server Controls</span>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button onClick={handleMaintenance} style={{
-          ...btn(maintenanceMode ? 'rgba(248,113,113,0.2)' : 'rgba(255,255,255,0.06)', maintenanceMode ? '#F87171' : '#aaa', maintenanceMode ? 'rgba(248,113,113,0.4)' : 'rgba(255,255,255,0.1)'),
-          display: 'flex', alignItems: 'center', gap: 6,
+        <button onClick={handleMaintenance} disabled={maintenancePending} className="admin-maintenance-toggle" style={{
+          ...btn(maintenanceMode ? 'rgba(255,210,74,0.18)' : 'rgba(255,255,255,0.06)', maintenanceMode ? '#ffd24a' : '#aaa', maintenanceMode ? 'rgba(255,210,74,0.45)' : 'rgba(255,255,255,0.1)'),
+          display: 'flex', alignItems: 'center', gap: 6, opacity: maintenancePending ? 0.6 : 1,
         }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: maintenanceMode ? '#F87171' : '#555', display: 'inline-block' }} />
-          {maintenanceMode ? 'Maintenance: ON' : 'Maintenance: OFF'}
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: maintenanceMode ? '#ffd24a' : '#555', display: 'inline-block' }} />
+          {maintenancePending ? 'Maintenance: …' : (maintenanceMode ? 'Maintenance: ON' : 'Maintenance: OFF')}
         </button>
         <span style={{ color: '#555', fontSize: '0.72rem' }}>
-          {maintenanceMode ? 'New logins are blocked. Players will see a maintenance message.' : 'Server is open to players.'}
+          {maintenanceMode ? 'New sign-ins (except admins) and new games are paused; hands in progress finish.' : 'Server is open to players.'}
         </span>
       </div>
     </>
@@ -663,7 +676,8 @@ export default function AdminDashboard({ onClose }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#fff' }}>{t.name || `Table ${t.id}`}</div>
                   <div style={{ color: '#666', fontSize: '0.72rem', marginTop: 2 }}>
-                    {t.players || 0}/{t.maxPlayers || 9} seats · {t.stakes || 'N/A'} · {t.variant || 'Hold\'em'}
+                    {/* R2 (APPUI-34) — the server sends `blinds` ("25/50"), not `stakes`. */}
+                    {t.players || 0}{Number.isFinite(Number(t.maxSeats)) ? `/${t.maxSeats}` : ''} seated · {t.blinds || (t.smallBlind != null && t.bigBlind != null ? `${t.smallBlind}/${t.bigBlind}` : 'blinds n/a')} · {t.variant || 'Hold\'em'}{t.isTournament ? ' · tournament' : ''}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -727,14 +741,17 @@ export default function AdminDashboard({ onClose }) {
             {selectedUser?.id === user.id && (
               <div style={{ background: 'rgba(0,0,0,0.4)', borderTop: '1px solid rgba(255,255,255,0.06)', padding: '12px 14px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+                  {/* R2 (APPUI-34) — only fields the server sends (getAdminStats users:
+                      id, username, chips, level, isAdmin, banned). XP / hands / win
+                      rate showed 0 / N/A for everyone; they appear if it sends them. */}
                   {[
-                    ['Chips', (user.chips || 0).toLocaleString()],
+                    ['Chips', (Number(user.chips) || 0).toLocaleString()],
                     ['Level', user.level || 1],
-                    ['XP', (user.xp || 0).toLocaleString()],
-                    ['Hands Played', user.handsPlayed || 0],
-                    ['Win Rate', user.winRate ? `${user.winRate}%` : 'N/A'],
+                    Number.isFinite(Number(user.xp)) && user.xp !== null ? ['XP', Number(user.xp).toLocaleString()] : null,
+                    Number.isFinite(Number(user.handsPlayed)) && user.handsPlayed !== null ? ['Hands Played', Number(user.handsPlayed).toLocaleString()] : null,
+                    Number.isFinite(Number(user.winRate)) && user.winRate !== null ? ['Win Rate', `${Number(user.winRate)}%`] : null,
                     ['Status', user.banned ? '🚫 Banned' : user.isAdmin ? '👑 Admin' : '✓ Active'],
-                  ].map(([k, v]) => (
+                  ].filter(Boolean).map(([k, v]) => (
                     <div key={k} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 7, padding: '8px 10px' }}>
                       <div style={{ color: '#555', fontSize: '0.65rem', marginBottom: 2 }}>{k}</div>
                       <div style={{ color: '#ccc', fontSize: '0.82rem', fontWeight: 600 }}>{v}</div>

@@ -830,3 +830,10 @@ Sit at a table to invite online friends to it.
 friend_name_ambiguous
 leaveSocialBracket
 sb-organizer-rule
+
+# 2026-10-11 R2 K3 (APPUI-24 / APPUI-25 / APPUI-34): Career Mode is its own dvh scroll container;
+#     the avatar customizer's Done returns to the lobby (plus a sticky Done), its mobile overrides
+#     target the real classes, Reset is synced; the admin maintenance toggle follows the server, the
+#     user drawer shows only fields the server sends, table blinds come from `blinds`.
+customizer-done-top
+admin-maintenance-toggle

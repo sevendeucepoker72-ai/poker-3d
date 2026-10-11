@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useGameStore } from '../../store/gameStore';
-import { useTableStore } from '../../store/tableStore';
 import { useProgressStore } from '../../store/progressStore';
 import { getSocket } from '../../services/socketService';
 import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
@@ -63,8 +62,9 @@ const VENUES = [
     reward: '100,000 chips',
     rewardExtra: 'Exclusive Theme',
     icon: '🐉',
-    accent: '#EF4444',
-    bg: 'linear-gradient(135deg, #4e1a1a, #2d0d0d)',
+    // Jade (no red in the UI — owner preference).
+    accent: '#34D399',
+    bg: 'linear-gradient(135deg, #0f3d33, #082520)',
     boss: { name: 'The Shark', personality: 'Shark', icon: '🦈' },
   },
   {
@@ -86,8 +86,14 @@ const STAGES_PER_VENUE = 3;
 export default function CareerMode() {
   const setScreen = useGameStore((s) => s.setScreen);
   const playerName = useGameStore((s) => s.playerName);
-  const startCareerGame = useTableStore((s) => s.startCareerGame);
   const progress = useProgressStore((s) => s.progress);
+  // R2 (APPUI-24) — the start carries the ACCOUNT's display name: poker-server
+  // (R1 contract #3) seats a signed-in socket under its account name anyway;
+  // an older server that read the payload seated "Player".
+  const startCareerGame = useCallback((venue, stage) => {
+    const socket = getSocket();
+    if (socket) socket.emit('startCareerGame', { venue, stage, ...(playerName ? { playerName } : {}) });
+  }, [playerName]);
 
   const [selectedVenue, setSelectedVenue] = useState(null);
   // 2026-10-07 — a stage start waits for the server to CONFIRM it
