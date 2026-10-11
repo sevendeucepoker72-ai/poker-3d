@@ -22,9 +22,9 @@ import './SeatPicker.css';
  * CreateTableModal): Lobby.css gives every direct child of .lobby
  * `position: relative; z-index: 1`, which would pin an in-tree picker to the
  * bottom of the lobby instead of over the viewport. (Inline when there is no
- * DOM, e.g. server rendering in tests.)
+ * <body> to portal into, e.g. server rendering in tests.)
  */
-const mount = (node) => (typeof document === 'undefined' ? node : createPortal(node, document.body));
+const mount = (node) => (typeof document === 'undefined' || !document.body ? node : createPortal(node, document.body));
 
 export default function SeatPicker({ table, preferredSeat = null, onPick, onClose }) {
   useEffect(() => {
