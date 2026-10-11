@@ -775,3 +775,21 @@ mission-strip-open
 mission-chip--claimable
 Loading today's missions
 The game server did not answer — try again.
+
+# 2026-10-11 .online R2 (K2) — C7 / C8 / APPUI-5 / APPUI-6 / APPUI-33 / APPUI-38:
+#     the Shop says what every item does, Equip / Unequip from the server's
+#     equipped / owned state, two-tap buying (no stray-tap spending), only
+#     drawn cosmetics are sold, the dead Theme Shop modal is gone; VIP pass
+#     perks are exactly the real ones + the monthly bonus claim; booster copy
+#     matches the server; Battle Pass Premium buyable from the lobby with
+#     visible answers, claims one at a time with per-tier errors; the Shop's
+#     scratch "Reveal" shows the result; the lobby VIP card uses season XP.
+shop-btn--confirm
+Changes the felt and rail you see at every table.
+claimVipMonthly
+Collect monthly VIP bonus
+Pot winnings are not boosted.
+unequipItem
+Premium only — get Premium to claim it.
+scratch-reveal-all
+season XP

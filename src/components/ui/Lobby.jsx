@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
-import { useProgressStore, serverWinRate } from '../../store/progressStore';
+import { useProgressStore, serverWinRate, vipPassActive, equippedIdFor } from '../../store/progressStore';
 import ProgressBar from './ProgressBar';
 import MissionsPanel, { missionIcon } from './MissionsPanel';
 import { formatCountdown, nextDenverMidnightMs } from '../../utils/denverTime';
+import { PROFILE_BGS } from '../../utils/economyCatalog';
 import StatsPanel from './StatsPanel';
-import ThemeShop from './ThemeShop';
 import BattlePass from './BattlePass';
+import ShopTab from './ShopTab';
 import RankBadge, { getRankInfo, getNextRankInfo, RANK_TIERS } from './RankBadge';
 import CreateTableModal from './CreateTableModal';
 import TournamentLobby from './TournamentLobby';
@@ -196,6 +197,13 @@ function FeaturedTableBanner({ tables, onSpectate }) {
       </div>
     </div>
   );
+}
+
+// R2 (C7) — the equipped profile background as the profile banner's style.
+function profileBannerStyle(progress) {
+  const id = equippedIdFor(progress, 'profile_bg');
+  const bg = id && id !== 'default' ? PROFILE_BGS.find((b) => b.id === id)?.bg : null;
+  return bg ? { background: bg } : undefined;
 }
 
 // ─── Mission Strip ───
@@ -1275,7 +1283,6 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   }, [activityEvents.length]);
 
   const [showStats, setShowStats] = useState(false);
-  const [showShop, setShowShop] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
   const [showUnlocks, setShowUnlocks] = useState(false);
@@ -1298,6 +1305,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const [showBankrollGraph, setShowBankrollGraph] = useState(false);
   const [showSpinWheel, setShowSpinWheel] = useState(false);
   const [showScratchCards, setShowScratchCards] = useState(false);
+  // R2 (APPUI-38) — the Shop's "Reveal" opens the scratch panel and scratches
+  // one card right away, so the result is shown (it used to emit
+  // claimScratchCard with nobody listening).
+  const [scratchAutoStart, setScratchAutoStart] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [showExportData, setShowExportData] = useState(false);
   const [replayHand, setReplayHand] = useState(null);
@@ -1547,7 +1558,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const xpToNextLevel = progress?.xpToNextLevel ?? 140;
   const xpPercent = xpToNextLevel > 0 ? Math.min((currentXP / xpToNextLevel) * 100, 100) : 0;
   const starCount = progress?.stars || 0;
-  const vipTier = getVIPTier(currentXP);
+  // R2 (APPUI-33) — the XP-rate tier is by cumulative season XP (totalXp),
+  // the same number the server applies the perk on (not the per-level xp).
+  const seasonXp = Number(progress?.totalXp) || 0;
+  const vipTier = getVIPTier(seasonXp);
 
   // Animated chip counter
   const animatedChips = useAnimatedCounter(chipCount);
@@ -2004,7 +2018,8 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     <div className="lobby-tab-content lobby-tab-fade" key="profile">
       {/* Player Info Card with Banner */}
       <div className="lobby-profile-banner-wrap">
-        <div className="lobby-profile-banner" />
+        {/* R2 (C7) — the equipped profile background (Shop) is drawn here. */}
+        <div className="lobby-profile-banner" style={profileBannerStyle(progress)} />
         <div className="lobby-profile-card lobby-profile-card--with-banner">
           <div className="lobby-profile-avatar lobby-profile-avatar--overlap" style={{ background: 'transparent', overflow: 'hidden' }}>
             <PlayerAvatar playerId={nameInput || playerName} name={nameInput || playerName} size={72} style={{ border: '3px solid #16162e' }} />
@@ -2268,15 +2283,19 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         ))}
       </div>
 
-      {/* VIP Status Inline Card */}
+      {/* VIP Status Inline Card — R2 (APPUI-33 / C8): the XP-rate tier by
+          cumulative season XP (totalXp, what the server uses), plus the VIP
+          pass state. */}
       <SectionHeader>VIP Status</SectionHeader>
       <div className="lobby-vip-inline-card" style={{ borderLeftColor: vipTier.color }}>
         <div className="lobby-vip-badge" style={{ background: vipTier.color, color: '#0a0a1a' }}>
           {vipTier.name}
         </div>
         <div className="lobby-vip-info">
-          <span style={{ color: vipTier.color, fontWeight: 600 }}>{currentXP.toLocaleString()} XP</span>
-          <span style={{ color: '#8888AA', fontSize: '0.8rem' }}>{vipTier.xpRate} XP rate</span>
+          <span style={{ color: vipTier.color, fontWeight: 600 }}>{seasonXp.toLocaleString()} season XP</span>
+          <span style={{ color: '#9fb3d9', fontSize: '0.8rem' }}>
+            {vipTier.xpRate} XP rate · {vipPassActive(progress) ? `VIP pass active (${formatCountdown(progress.vip.expiresAt)} left)` : 'no VIP pass'}
+          </span>
         </div>
         <button
           className="btn-accent"
@@ -2311,621 +2330,21 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     </div>
   );
 
-  const renderShopTab = () => {
-    // Persistence-sweep helpers: ownership / equipped state from server-hydrated store.
-    const ownedBy = progress?.ownedBy || {};
-    const equippedBy = progress?.equippedBy || {};
-    const isOwned = (type, id) => !!ownedBy[type]?.has?.(id);
-    const isEquipped = (type, id) => equippedBy[type] === id;
-    const onBuy = (type, id) => {
-      const socket = getSocket();
-      if (!socket) return;
-      socket.emit('purchaseShopItem', { itemType: type, itemId: id });
-    };
-    const onEquip = (type, id) => {
-      const socket = getSocket();
-      if (!socket) return;
-      socket.emit('equipItem', { itemType: type, itemId: id });
-    };
-    const actionLabel = (type, id, price) => {
-      if (isEquipped(type, id)) return 'Equipped';
-      if (isOwned(type, id)) return 'Equip';
-      return price;
-    };
-    const actionClick = (type, id) => () => {
-      if (isEquipped(type, id)) return;
-      if (isOwned(type, id)) onEquip(type, id);
-      else                   onBuy(type, id);
-    };
-
-    return (
-    <div className="lobby-tab-content lobby-tab-fade" key="shop">
-      {/* Sticky currency balance — always visible at the top of the shop
-          so the user knows what they can afford before browsing. */}
-      <div className="lobby-shop-balance" style={{
-        position: 'sticky', top: 0, zIndex: 10,
-        display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 14px', marginBottom: '14px',
-        background: 'linear-gradient(135deg, rgba(14,14,36,0.95), rgba(26,16,46,0.95))',
-        border: '1px solid rgba(255, 215, 0, 0.35)',
-        borderRadius: '10px',
-        boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-      }}>
-        <span style={{ color: '#FFD700', fontWeight: 800, fontSize: '1.02rem', letterSpacing: '0.3px' }}>
-          ⭐ {(progress?.stars ?? 0).toLocaleString()} Stars
-        </span>
-        <span style={{ color: '#ffd24a', fontWeight: 700, fontSize: '0.95rem' }}>
-          🪙 {(progress?.chips ?? chipCount ?? 0).toLocaleString()} Chips
-        </span>
-      </div>
-
-      {/* Battle Pass */}
-      <SectionHeader>Battle Pass</SectionHeader>
-      <button
-        className="btn-accent lobby-full-width-btn lobby-bp-btn"
-        onClick={() => setShowBattlePass(true)}
-      >
-        ⚔️ Season 1: The River — View Battle Pass
-      </button>
-
-      {/* Daily Rewards */}
-      <SectionHeader>Daily Rewards</SectionHeader>
-      <div className="lobby-daily-rewards-inline">
-        <LoginRewards
-          onClose={() => {}}
-          autoOpened={false}
-          inline={true}
-        />
-      </div>
-      <button
-        className="btn-accent lobby-full-width-btn"
-        style={{ marginBottom: '12px', background: 'linear-gradient(135deg, #F59E0B, #D97706)', color: '#0a0a1a', borderColor: 'rgba(245,158,11,0.5)' }}
-        onClick={() => { setShowLoginRewards(true); setLoginRewardsAutoOpened(false); }}
-      >
-        Open Daily Rewards
-      </button>
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
-        <button
-          className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #EC4899, #F472B6)', color: '#fff' }}
-          onClick={() => setShowSpinWheel(true)}
-        >
-          Daily Spin
-        </button>
-        <button
-          className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #A855F7, #C084FC)', color: '#fff' }}
-          onClick={() => setShowScratchCards(true)}
-        >
-          Scratch Cards
-        </button>
-      </div>
-
-      {/* Table Themes — inline grid. The previous "Browse Table Themes"
-          modal button opened a nested overlay that didn't work (click
-          was swallowed by something in the Lobby tree). Inline grid
-          using the same isOwned/isEquipped/actionClick pattern as the
-          other shop sections works directly. */}
-      <SectionHeader>Table Themes</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'classic_blue',     name: 'Classic Blue',     felt: '#2874a6', rail: '#8B5E3C', price: 0 },
-          { id: 'green_felt',       name: 'Green Felt',       felt: '#1a5c2a', rail: '#8B6914', price: 0 },
-          { id: 'midnight_purple',  name: 'Midnight Purple',  felt: '#4a1d6e', rail: '#C0C0C0', price: 300 },
-          { id: 'ocean_breeze',     name: 'Ocean Breeze',     felt: '#1a7a7a', rail: '#F5F5F5', price: 400 },
-          { id: 'casino_royale',    name: 'Casino Royale',    felt: '#1a5c2a', rail: '#B8860B', price: 500 },
-          { id: 'neon_vegas',       name: 'Neon Vegas',       felt: '#050c20', rail: '#0c1a44', price: 600 },
-          { id: 'carbon_black',     name: 'Carbon Black',     felt: '#18181b', rail: '#3f3f46', price: 700 },
-          { id: 'royal_gold',       name: 'Royal Gold',       felt: '#0a1a3a', rail: '#DAA520', price: 800 },
-          { id: 'cherry_wood',      name: 'Cherry Wood',      felt: '#3d1a1a', rail: '#7c2d12', price: 900 },
-          { id: 'cosmic_nebula',    name: 'Cosmic Nebula',    felt: '#312e81', rail: '#a78bfa', price: 1500 },
-        ].map((theme) => {
-          const owned = isOwned('theme', theme.id) || theme.price === 0;
-          const equipped = isEquipped('theme', theme.id);
-          return (
-            <div
-              key={theme.id}
-              onClick={actionClick('theme', theme.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: theme.felt, border: `3px solid ${theme.rail}` }}>
-                <span style={{ fontSize: '1.2rem' }}>♠</span>
-              </div>
-              <span className="lobby-card-back-name">{theme.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${theme.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Card Backs */}
-      <SectionHeader>Card Backs</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'classic_red',     name: 'Classic Red',     color: '#DC2626', price: 0 },
-          { id: 'royal_blue',      name: 'Royal Blue',      color: '#2563EB', price: 0 },
-          { id: 'silver_foil',     name: 'Silver Foil',     color: '#C0C0C0', price: 400 },
-          { id: 'gold_premium',    name: 'Gold Premium',    color: '#D97706', price: 500 },
-          { id: 'neon_green',      name: 'Neon Green',      color: '#16A34A', price: 500 },
-          { id: 'holographic',     name: 'Holographic',     color: '#A78BFA', price: 800 },
-          { id: 'dragon',          name: 'Dragon',          color: '#DC2626', price: 1200 },
-          { id: 'phoenix',         name: 'Phoenix',         color: '#F59E0B', price: 1500 },
-          { id: 'diamond_pattern', name: 'Diamond',         color: '#B9F2FF', price: 2000 },
-          { id: 'mythic',          name: 'Mythic',          color: '#FF1744', price: 5000 },
-        ].map((card) => {
-          const owned = isOwned('card_back', card.id) || card.price === 0;
-          const equipped = isEquipped('card_back', card.id);
-          return (
-            <div
-              key={card.id}
-              onClick={actionClick('card_back', card.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: `linear-gradient(135deg, ${card.color}, ${card.color}88)` }}>
-                <span style={{ fontSize: '1.5rem' }}>{'\u{1F0CF}'}</span>
-              </div>
-              <span className="lobby-card-back-name">{card.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : owned ? '#ffd24a' : '#ffd24a' }}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${card.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Chip Packs — stars → chips conversion */}
-      <SectionHeader>Chip Packs</SectionHeader>
-      <div className="lobby-vip-packages">
-        {[
-          { id: 'refill',  name: 'Refill Stack',  desc: '10,000 chips',     price: 50,    color: '#3B82F6' },
-          { id: 'small',   name: 'Small Stack',   desc: '25,000 chips',     price: 100,   color: '#3b82f6' },
-          { id: 'medium',  name: 'Medium Stack',  desc: '100,000 chips',    price: 300,   color: '#10B981' },
-          { id: 'big',     name: 'Big Stack',     desc: '250,000 chips',    price: 600,   color: '#84CC16' },
-          { id: 'pro',     name: 'Pro Stack',     desc: '750,000 chips',    price: 1500,  color: '#8B5CF6' },
-          { id: 'whale',   name: 'Whale Stack',   desc: '2,000,000 chips',  price: 3000,  color: '#F59E0B' },
-          { id: 'kingpin', name: 'Kingpin Stack', desc: '5,000,000 chips',  price: 6000,  color: '#EC4899' },
-          { id: 'emperor', name: 'Emperor Stack', desc: '15,000,000 chips', price: 12000, color: '#FFD700' },
-        ].map((pkg) => (
-          <div key={pkg.id} className="lobby-vip-package-card" style={{ borderLeftColor: pkg.color }}>
-            <div>
-              <div style={{ color: pkg.color, fontWeight: 700, fontSize: '0.95rem' }}>{pkg.name}</div>
-              <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{pkg.desc}</div>
-            </div>
-            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('chip_pack', pkg.id)}>
-              {pkg.price.toLocaleString()} ⭐
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Mystery Boxes — stars → random reward (chips / stars / cosmetic) */}
-      <SectionHeader>Mystery Boxes</SectionHeader>
-      <div className="lobby-vip-packages">
-        {[
-          { id: 'basic',     name: '📦 Basic Mystery Box',    desc: 'Roll: chips, stars, or common emote/sound',   price: 500,  color: '#A3A3A3' },
-          { id: 'premium',   name: '🎁 Premium Mystery Box',  desc: 'Roll: bigger chips, stars, or silver+ items', price: 2000, color: '#A78BFA' },
-          { id: 'legendary', name: '✨ Legendary Mystery Box', desc: 'Roll: huge chips, stars, or diamond+ items',  price: 8000, color: '#FFD700' },
-        ].map((box) => (
-          <div key={box.id} className="lobby-vip-package-card" style={{ borderLeftColor: box.color }}>
-            <div>
-              <div style={{ color: box.color, fontWeight: 700, fontSize: '0.95rem' }}>{box.name}</div>
-              <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{box.desc}</div>
-            </div>
-            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('mystery_box', box.id)}>
-              {box.price.toLocaleString()} ⭐
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Emotes */}
-      <SectionHeader>Emotes</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'nice_hand',   name: 'Nice Hand',   icon: '👍', price: 150 },
-          { id: 'good_game',   name: 'Good Game',   icon: '🤝', price: 150 },
-          { id: 'well_played', name: 'Well Played', icon: '🎯', price: 150 },
-          { id: 'thumbs_up',   name: 'Thumbs Up',   icon: '👍', price: 150 },
-          { id: 'clap',        name: 'Clap',        icon: '👏', price: 200 },
-          { id: 'love',        name: 'Love',        icon: '❤️', price: 250 },
-          { id: 'big_brain',   name: 'Big Brain',   icon: '🧠', price: 200 },
-          { id: 'money',       name: 'Money',       icon: '💰', price: 200 },
-          { id: 'fire',        name: 'Fire',        icon: '🔥', price: 250 },
-          { id: 'tears',       name: 'Tears',       icon: '😭', price: 250 },
-          { id: 'rocket',      name: 'Rocket',      icon: '🚀', price: 300 },
-          { id: 'crown',       name: 'Crown',       icon: '👑', price: 400 },
-          { id: 'sunglasses',  name: 'Cool',        icon: '😎', price: 200 },
-          { id: 'laughing',    name: 'Laughing',    icon: '😂', price: 200 },
-          { id: 'surprised',   name: 'Surprised',   icon: '😲', price: 200 },
-          { id: 'dead',        name: 'Dead',        icon: '💀', price: 300 },
-          { id: 'think',       name: 'Thinking',    icon: '🤔', price: 300 },
-          { id: 'poker_face',  name: 'Poker Face',  icon: '😐', price: 400 },
-          { id: 'mic_drop',    name: 'Mic Drop',    icon: '🎤', price: 500 },
-          { id: 'trophy',      name: 'Trophy',      icon: '🏆', price: 600 },
-        ].map((e) => {
-          const owned = isOwned('emote', e.id);
-          return (
-            <div
-              key={e.id}
-              onClick={owned ? undefined : () => onBuy('emote', e.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: owned ? 'default' : 'pointer' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #1f2937, #111827)' }}>
-                <span style={{ fontSize: '1.8rem' }}>{e.icon}</span>
-              </div>
-              <span className="lobby-card-back-name">{e.name}</span>
-              {owned
-                ? <span className="lobby-card-back-price" style={{ color: '#10B981' }}>Owned</span>
-                : <span className="lobby-card-back-price">{e.price} ⭐</span>}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Avatar Frames */}
-      <SectionHeader>Avatar Frames</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'bronze',   name: 'Bronze',   color: '#CD7F32', icon: '◯', price: 500 },
-          { id: 'silver',   name: 'Silver',   color: '#C0C0C0', icon: '◯', price: 1000 },
-          { id: 'gold',     name: 'Gold',     color: '#FFD700', icon: '◯', price: 2000 },
-          { id: 'flame',    name: 'Flame',    color: '#FF4500', icon: '🔥', price: 6000 },
-          { id: 'ice',      name: 'Ice',      color: '#60A5FA', icon: '❄', price: 6000 },
-          { id: 'platinum', name: 'Platinum', color: '#E5E7EB', icon: '◆', price: 8000 },
-          { id: 'crown',    name: 'Crown',    color: '#FFD700', icon: '👑', price: 10000 },
-          { id: 'diamond',  name: 'Diamond',  color: '#B9F2FF', icon: '◆', price: 5000 },
-          { id: 'mythic',   name: 'Mythic',   color: '#FF1744', icon: '★', price: 15000 },
-        ].map((f) => {
-          const owned = isOwned('frame', f.id);
-          const equipped = isEquipped('frame', f.id);
-          return (
-            <div
-              key={f.id}
-              onClick={actionClick('frame', f.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: `radial-gradient(circle, ${f.color}22 0%, transparent 70%)`, border: `2px solid ${f.color}` }}>
-                <span style={{ fontSize: '1.6rem', color: f.color }}>{f.icon}</span>
-              </div>
-              <span className="lobby-card-back-name">{f.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${f.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Win Celebrations */}
-      <SectionHeader>Win Celebrations</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'confetti',       name: 'Confetti',       icon: '🎉', price: 400 },
-          { id: 'chip_rain',      name: 'Chip Rain',      icon: '🪙', price: 800 },
-          { id: 'fireworks',      name: 'Fireworks',      icon: '🎆', price: 1200 },
-          { id: 'lightning',      name: 'Lightning',      icon: '⚡', price: 1500 },
-          { id: 'golden_shower',  name: 'Golden Rain',    icon: '💫', price: 2000 },
-          { id: 'dragon_breath',  name: 'Dragon Breath',  icon: '🐉', price: 3000 },
-          { id: 'cosmic_burst',   name: 'Cosmic Burst',   icon: '🌌', price: 4000 },
-          { id: 'supernova',      name: 'Supernova',      icon: '💥', price: 6000 },
-        ].map((w) => {
-          const owned = isOwned('celebration', w.id);
-          const equipped = isEquipped('celebration', w.id);
-          return (
-            <div
-              key={w.id}
-              onClick={actionClick('celebration', w.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #0e7490, #155e75)' }}>
-                <span style={{ fontSize: '1.8rem' }}>{w.icon}</span>
-              </div>
-              <span className="lobby-card-back-name">{w.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${w.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Mystery Boxes — handled as scratch cards server-side (surprise reveals) */}
-      <SectionHeader>Scratch Cards</SectionHeader>
-      <div className="lobby-vip-packages">
-        <div className="lobby-vip-package-card" style={{ borderLeftColor: '#D97706' }}>
-          <div>
-            <div style={{ color: '#D97706', fontWeight: 700, fontSize: '0.95rem' }}>🎟️ You have {progress?.scratchCardsAvailable || 0} scratch cards</div>
-            <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>Earn 1 card every 20 hands. Reveals chips, stars, or surprise items.</div>
-          </div>
-          <button
-            className="btn-accent"
-            style={{ padding: '6px 16px', fontSize: '0.8rem', opacity: (progress?.scratchCardsAvailable || 0) > 0 ? 1 : 0.4 }}
-            disabled={(progress?.scratchCardsAvailable || 0) === 0}
-            onClick={() => {
-              const socket = getSocket();
-              socket?.emit('claimScratchCard');
-            }}
-          >
-            Reveal
-          </button>
-        </div>
-      </div>
-
-      {/* Sound Packs */}
-      <SectionHeader>Sound Packs</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'silent_mode',    name: 'Silent Mode',    icon: '🔇', price: 100 },
-          { id: 'classic_casino', name: 'Classic Casino', icon: '🎵', price: 300 },
-          { id: 'vegas_casino',   name: 'Vegas Casino',   icon: '🎰', price: 300 },
-          { id: 'old_school',     name: 'Old School',     icon: '🎼', price: 500 },
-          { id: 'cyberpunk',      name: 'Cyberpunk',      icon: '🎧', price: 750 },
-          { id: 'fantasy',        name: 'Fantasy',        icon: '🎻', price: 1000 },
-        ].map((s) => {
-          const owned = isOwned('sound_pack', s.id);
-          const equipped = isEquipped('sound_pack', s.id);
-          return (
-            <div
-              key={s.id}
-              onClick={actionClick('sound_pack', s.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #581c87, #3b0764)' }}>
-                <span style={{ fontSize: '1.8rem' }}>{s.icon}</span>
-              </div>
-              <span className="lobby-card-back-name">{s.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Active' : owned ? 'Equip' : `${s.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Player Titles */}
-      <SectionHeader>Player Titles</SectionHeader>
-      <div className="lobby-vip-packages">
-        {[
-          { id: 'nitwit',             name: 'Nitwit',             desc: 'For the tightest of the tight',      price: 300,  color: '#A3A3A3' },
-          { id: 'calling_station',    name: 'Calling Station',    desc: 'Wear your call stats with pride',    price: 400,  color: '#94A3B8' },
-          { id: 'grinder',            name: 'Grinder',            desc: 'Earn it one hand at a time',         price: 500,  color: '#64748B' },
-          { id: 'river_rat',          name: 'River Rat',          desc: 'Miracle on the river specialist',    price: 600,  color: '#84CC16' },
-          { id: 'chip_leader',        name: 'Chip Leader',        desc: 'Stack the whole table',              price: 700,  color: '#22C55E' },
-          { id: 'degenerate',         name: 'Degenerate',         desc: 'No fold button here',                price: 700,  color: '#A78BFA' },
-          { id: 'the_shark',          name: 'The Shark',          desc: 'Dangerous waters',                   price: 800,  color: '#3b82f6' },
-          { id: 'bad_beat_survivor',  name: 'Bad Beat Survivor',  desc: 'Ran bad, kept playing',              price: 800,  color: '#F97316' },
-          { id: 'final_table',        name: 'Final Table',        desc: 'Tournament endgame',                 price: 1000, color: '#3B82F6' },
-          { id: 'bluff_master',       name: 'Bluff Master',       desc: 'Show cards, they fold',              price: 1200, color: '#EC4899' },
-          { id: 'all_in_legend',      name: 'All-In Legend',      desc: 'Every hand, all-in',                 price: 1500, color: '#F59E0B' },
-          { id: 'phantom',            name: 'Phantom',            desc: 'Disappearing act',                   price: 1500, color: '#8B5CF6' },
-          { id: 'tournament_champ',   name: 'Tournament Champ',   desc: 'Proven winner',                      price: 2000, color: '#10B981' },
-          { id: 'royal',              name: 'Royal',              desc: 'King of the felt',                   price: 3000, color: '#FFD700' },
-          { id: 'godmode',            name: 'God Mode',           desc: 'The apex predator',                  price: 8000, color: '#FF1744' },
-        ].map((t) => {
-          const owned = isOwned('title', t.id);
-          const equipped = isEquipped('title', t.id);
-          return (
-            <div key={t.id} className="lobby-vip-package-card" style={{ borderLeftColor: t.color, outline: equipped ? '2px solid #10B981' : 'none' }}>
-              <div>
-                <div style={{ color: t.color, fontWeight: 700, fontSize: '0.95rem' }}>{t.name}</div>
-                <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{t.desc}</div>
-              </div>
-              <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={actionClick('title', t.id)}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${t.price.toLocaleString()} ⭐`}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Chip Skins — how your chips look in the seat stack */}
-      <SectionHeader>Chip Skins</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'classic',      name: 'Classic',      bg: 'linear-gradient(135deg, #64748B, #475569)', emoji: '🪙', price: 0 },
-          { id: 'crimson',      name: 'Crimson',      bg: 'linear-gradient(135deg, #DC2626, #991B1B)', emoji: '🪙', price: 400 },
-          { id: 'cobalt',       name: 'Cobalt',       bg: 'linear-gradient(135deg, #2563EB, #1E40AF)', emoji: '🪙', price: 500 },
-          { id: 'emerald',      name: 'Emerald',      bg: 'linear-gradient(135deg, #059669, #047857)', emoji: '🪙', price: 600 },
-          { id: 'amethyst',     name: 'Amethyst',     bg: 'linear-gradient(135deg, #9333EA, #6B21A8)', emoji: '🪙', price: 800 },
-          { id: 'gold_rimmed',  name: 'Gold Rimmed',  bg: 'linear-gradient(135deg, #FFD700, #B8860B)', emoji: '🪙', price: 1200 },
-          { id: 'neon',         name: 'Neon',         bg: 'linear-gradient(135deg, #00FF88, #00CC6A)', emoji: '🪙', price: 1800 },
-          { id: 'holographic',  name: 'Holographic',  bg: 'linear-gradient(135deg, #A78BFA, #F472B6, #60A5FA)', emoji: '🪙', price: 2500 },
-          { id: 'mythic',       name: 'Mythic',       bg: 'linear-gradient(135deg, #FF1744, #FF5252)', emoji: '🪙', price: 4000 },
-        ].map((s) => {
-          const owned = isOwned('chip_skin', s.id) || s.price === 0;
-          const equipped = isEquipped('chip_skin', s.id);
-          return (
-            <div key={s.id} onClick={actionClick('chip_skin', s.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: s.bg }}>
-                <span style={{ fontSize: '1.8rem' }}>{s.emoji}</span>
-              </div>
-              <span className="lobby-card-back-name">{s.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${s.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Card Fronts — alt face designs for hero's cards */}
-      <SectionHeader>Card Fronts</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'standard',    name: 'Standard',    emoji: '🂱', price: 0 },
-          { id: 'minimal',     name: 'Minimal',     emoji: '♠', price: 400 },
-          { id: 'retro',       name: 'Retro',       emoji: '🃞', price: 600 },
-          { id: 'modern',      name: 'Modern',      emoji: '🂡', price: 800 },
-          { id: 'futuristic',  name: 'Futuristic',  emoji: '🂻', price: 1200 },
-          { id: 'luxury',      name: 'Luxury',      emoji: '👑', price: 1800 },
-          { id: 'hanafuda',    name: 'Hanafuda',    emoji: '🎴', price: 2200 },
-          { id: 'artistic',    name: 'Artistic',    emoji: '🖼', price: 2800 },
-        ].map((c) => {
-          const owned = isOwned('card_front', c.id) || c.price === 0;
-          const equipped = isEquipped('card_front', c.id);
-          return (
-            <div key={c.id} onClick={actionClick('card_front', c.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #fff, #e5e7eb)' }}>
-                <span style={{ fontSize: '1.8rem', color: '#050c20' }}>{c.emoji}</span>
-              </div>
-              <span className="lobby-card-back-name">{c.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${c.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Dealer Voices */}
-      <SectionHeader>Dealer Voices</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'standard',     name: 'Standard',       icon: '🎙', price: 0 },
-          { id: 'vegas_vet',    name: 'Vegas Veteran',  icon: '🎰', price: 600 },
-          { id: 'british_butler', name: 'British Butler', icon: '🎩', price: 800 },
-          { id: 'pirate',       name: 'Pirate',         icon: '🏴‍☠️', price: 900 },
-          { id: 'robot',        name: 'Robot',          icon: '🤖', price: 1100 },
-          { id: 'sportscaster', name: 'Sportscaster',   icon: '📢', price: 1400 },
-          { id: 'celebrity',    name: 'Celebrity',      icon: '⭐', price: 2200 },
-          { id: 'mythic_sage',  name: 'Mythic Sage',    icon: '🧙', price: 4000 },
-        ].map((v) => {
-          const owned = isOwned('dealer_voice', v.id) || v.price === 0;
-          const equipped = isEquipped('dealer_voice', v.id);
-          return (
-            <div key={v.id} onClick={actionClick('dealer_voice', v.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #7c2d12, #431407)' }}>
-                <span style={{ fontSize: '1.8rem' }}>{v.icon}</span>
-              </div>
-              <span className="lobby-card-back-name">{v.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Active' : owned ? 'Equip' : `${v.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Profile Backgrounds */}
-      <SectionHeader>Profile Backgrounds</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'default',         name: 'Default',         bg: 'linear-gradient(135deg, #1e293b, #0f172a)', price: 0 },
-          { id: 'sunset',          name: 'Sunset',          bg: 'linear-gradient(135deg, #FB923C, #EF4444)', price: 200 },
-          { id: 'city_lights',     name: 'City Lights',     bg: 'linear-gradient(135deg, #1E3A8A, #312E81)', price: 350 },
-          { id: 'deep_space',      name: 'Deep Space',      bg: 'linear-gradient(135deg, #030712, #4C1D95)', price: 500 },
-          { id: 'aurora',          name: 'Aurora',          bg: 'linear-gradient(135deg, #14B8A6, #8B5CF6)', price: 700 },
-          { id: 'volcano',         name: 'Volcano',         bg: 'linear-gradient(135deg, #991B1B, #F59E0B)', price: 900 },
-          { id: 'underwater',      name: 'Underwater',      bg: 'linear-gradient(135deg, #0E7490, #1E3A8A)', price: 1100 },
-          { id: 'cherry_blossom',  name: 'Cherry Blossom',  bg: 'linear-gradient(135deg, #F472B6, #FBCFE8)', price: 1400 },
-          { id: 'diamond_rain',    name: 'Diamond Rain',    bg: 'linear-gradient(135deg, #B9F2FF, #60A5FA)', price: 2500 },
-        ].map((b) => {
-          const owned = isOwned('profile_bg', b.id) || b.price === 0;
-          const equipped = isEquipped('profile_bg', b.id);
-          return (
-            <div key={b.id} onClick={actionClick('profile_bg', b.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: b.bg }} />
-              <span className="lobby-card-back-name">{b.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Applied' : owned ? 'Apply' : `${b.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Boosters — consumable XP / chip multipliers */}
-      <SectionHeader>Boosters</SectionHeader>
-      <div className="lobby-vip-packages">
-        {[
-          { id: 'xp_2x_15m',    name: '2× XP — 15 min',  desc: 'Doubles XP from wins for 15 minutes',   price: 200,  color: '#A78BFA' },
-          { id: 'xp_2x_1h',     name: '2× XP — 1 hour',  desc: 'Doubles XP from wins for 1 hour',       price: 600,  color: '#8B5CF6' },
-          { id: 'xp_2x_1d',     name: '2× XP — 1 day',   desc: 'Doubles XP from wins for 24 hours',     price: 2500, color: '#6D28D9' },
-          { id: 'chip_1p5x_1h', name: '1.5× Chips — 1h', desc: '+50% chip bonus on big wins (1 hour)',  price: 400,  color: '#F59E0B' },
-          { id: 'chip_1p5x_1d', name: '1.5× Chips — 1d', desc: '+50% chip bonus on big wins (1 day)',   price: 2000, color: '#D97706' },
-        ].map((b) => (
-          <div key={b.id} className="lobby-vip-package-card" style={{ borderLeftColor: b.color }}>
-            <div>
-              <div style={{ color: b.color, fontWeight: 700, fontSize: '0.95rem' }}>{b.name}</div>
-              <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{b.desc}</div>
-            </div>
-            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('booster', b.id)}>
-              {b.price.toLocaleString()} ⭐
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* VIP Passes */}
-      <SectionHeader>VIP Passes</SectionHeader>
-      <div className="lobby-vip-packages">
-        {[
-          { id: 'daily',    name: 'Daily VIP',    desc: '24 hours of premium perks',     price: 300,   color: '#3b82f6' },
-          { id: 'weekly',   name: 'Weekly VIP',   desc: '7 days of premium perks',       price: 1500,  color: '#3B82F6' },
-          { id: 'monthly',  name: 'Monthly VIP',  desc: '30 days of premium perks',      price: 5000,  color: '#8B5CF6' },
-          { id: 'lifetime', name: 'Lifetime VIP', desc: 'All premium perks, forever',    price: 50000, color: '#FFD700' },
-        ].map((v) => (
-          <div key={v.id} className="lobby-vip-package-card" style={{ borderLeftColor: v.color }}>
-            <div>
-              <div style={{ color: v.color, fontWeight: 700, fontSize: '0.95rem' }}>{v.name}</div>
-              <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{v.desc}</div>
-            </div>
-            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('vip_pass', v.id)}>
-              {v.price.toLocaleString()} ⭐
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Bundles — multi-item grants */}
-      <SectionHeader>Bundle Deals</SectionHeader>
-      <div className="lobby-vip-packages">
-        {[
-          { id: 'starter',       name: '🎁 Starter Bundle',    desc: '3 items — Silver Foil back, Nice Hand emote, Bronze frame',                price: 800,   color: '#84CC16' },
-          { id: 'collector',     name: '📦 Collector Bundle',  desc: '5 items — Gold back, Casino Royale, Silver frame, Crown emote, Chip Rain', price: 2500,  color: '#3b82f6' },
-          { id: 'tournament',    name: '🏆 Tournament Bundle', desc: '6 items — Tournament Champ title + premium cosmetics',                     price: 4000,  color: '#F59E0B' },
-          { id: 'whale_bundle',  name: '🐋 Whale Bundle',      desc: '8 items — Royal title, Cosmic Nebula, Diamond frame + more',               price: 10000, color: '#A78BFA' },
-          { id: 'mythic_bundle', name: '✨ Mythic Bundle',     desc: '9 items — Everything mythic-tier: God Mode title, Supernova, Mythic frame', price: 25000, color: '#FF1744' },
-        ].map((b) => (
-          <div key={b.id} className="lobby-vip-package-card" style={{ borderLeftColor: b.color }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ color: b.color, fontWeight: 700, fontSize: '0.95rem' }}>{b.name}</div>
-              <div style={{ color: '#8888AA', fontSize: '0.78rem', lineHeight: 1.35 }}>{b.desc}</div>
-            </div>
-            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('bundle', b.id)}>
-              {b.price.toLocaleString()} ⭐
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ marginBottom: '24px', padding: '12px', textAlign: 'center', color: '#8888AA', fontSize: '0.8rem', background: 'rgba(120, 160, 255,0.05)', borderRadius: '8px', border: '1px solid rgba(120, 160, 255,0.15)' }}>
-        💡 Earn ⭐ stars by playing hands, winning pots, daily spins, leveling up, and completing missions/achievements.
-      </div>
-
-    </div>
+  // 2026-10-11 (R2, C7 / C8) — the Shop tab lives in ShopTab.jsx: what each
+  // item does, Equip / Unequip from the server's equipped / owned state, two-
+  // tap buying, the VIP pass + monthly bonus, boosters, Battle Pass Premium.
+  // The dead Theme Shop modal (a second, different price list) is gone.
+  const renderShopTab = () => (
+    <ShopTab
+      progress={progress}
+      chipCount={chipCount}
+      onOpenBattlePass={() => setShowBattlePass(true)}
+      onOpenDailyRewards={() => { setShowLoginRewards(true); setLoginRewardsAutoOpened(false); }}
+      onOpenSpin={() => setShowSpinWheel(true)}
+      onOpenScratch={(autoStart) => { setScratchAutoStart(!!autoStart); setShowScratchCards(true); }}
+      onOpenVip={() => setShowVIP(true)}
+    />
   );
-  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -3140,7 +2559,6 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
       {/* ─── Overlay components (preserved) ─── */}
       {showStats && <StatsPanel onClose={() => setShowStats(false)} />}
-      {showShop && <ThemeShop onClose={() => setShowShop(false)} />}
       {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
       {showFriends && <FriendSystem onClose={() => setShowFriends(false)} />}
       {showUnlocks && <UnlocksPanel onClose={() => setShowUnlocks(false)} />}
@@ -3224,7 +2642,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           help. */}
       {showClubs && <ClubsPanel onClose={() => setShowClubs(false)} />}
       {showSpinWheel && <SpinWheel onClose={() => setShowSpinWheel(false)} />}
-      {showScratchCards && <ScratchCards onClose={() => setShowScratchCards(false)} />}
+      {showScratchCards && <ScratchCards autoStart={scratchAutoStart} onClose={() => { setShowScratchCards(false); setScratchAutoStart(false); }} />}
       {showMultiTable && <MultiTableView onClose={() => setShowMultiTable(false)} />}
       {showPlayerProfile && <PlayerProfile username={nameInput || 'Player'} socket={getSocket()} onClose={() => setShowPlayerProfile(false)} onViewReplay={() => {}} />}
 

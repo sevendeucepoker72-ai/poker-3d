@@ -1,129 +1,239 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useProgressStore } from '../../store/progressStore';
+import { useProgressStore, vipPassActive } from '../../store/progressStore';
+import { getSocket } from '../../services/socketService';
+import { useBackButtonClose } from '../../hooks/useBackButtonClose';
+import { VIP_PASS_PERKS, VIP_XP_TIERS, VIP_EMOTES, vipXpTierFor, shopErrorText, formatReward } from '../../utils/economyCatalog';
+import { denverMonthKey, nextDenverMonthStartMs, formatCountdown } from '../../utils/denverTime';
 import './VIPPanel.css';
 
-const VIP_TIERS = [
-  {
-    name: 'Bronze',
-    minXP: 0,
-    maxXP: 999,
-    color: '#CD7F32',
-    xpRate: '1x',
-    perks: ['1x XP rate', 'Standard tables'],
-  },
-  {
-    name: 'Silver',
-    minXP: 1000,
-    maxXP: 4999,
-    color: '#C0C0C0',
-    xpRate: '1.5x',
-    perks: ['1.5x XP rate', 'Silver nameplate border', 'Priority matchmaking'],
-  },
-  {
-    name: 'Gold',
-    minXP: 5000,
-    maxXP: 19999,
-    color: '#FFD700',
-    xpRate: '2x',
-    perks: ['2x XP rate', 'Gold nameplate border', 'Exclusive emotes', 'Monthly bonus chips'],
-  },
-  {
-    name: 'Platinum',
-    minXP: 20000,
-    maxXP: Infinity,
-    color: '#B388FF',
-    xpRate: '3x',
-    perks: ['3x XP rate', 'Platinum nameplate border', 'Priority seating', 'Custom table', 'All exclusive emotes', 'VIP-only tournaments'],
-  },
-];
+// 2026-10-11 (.online R2 — C8 / ECON-7 / APPUI-33). Two separate things, both
+// real:
+//  1. The VIP PASS (bought in the Shop, timed): while active it grants exactly
+//     the perks in VIP_PASS_PERKS — VIP badge + gold nameplate frame at tables,
+//     +50% daily login reward, a monthly chip bonus claimed here once per
+//     Denver month (claimVipMonthly), and the VIP emotes. Nothing else.
+//  2. The XP-RATE TIER (Bronze → Platinum by cumulative season XP, totalXp):
+//     every player has one; it multiplies XP earned. That is its only perk.
+// The panel used to list perks that never existed (priority matchmaking,
+// custom tables, VIP-only tournaments …) and tiered by the per-level XP.
 
-function getCurrentTier(xp) {
-  for (let i = VIP_TIERS.length - 1; i >= 0; i--) {
-    if (xp >= VIP_TIERS[i].minXP) return i;
-  }
-  return 0;
+const MONTHLY_TIMEOUT_MS = 10000;
+
+const MONTHLY_ERRORS = {
+  already_claimed: 'already',
+  vip_monthly_already_claimed: 'already',
+  vip_required: 'Needs an active VIP pass.',
+  not_vip: 'Needs an active VIP pass.',
+  vip_inactive: 'Needs an active VIP pass.',
+  vip_expired: 'Needs an active VIP pass.',
+};
+
+function nextMonthLabel() {
+  return new Date(nextDenverMonthStartMs()).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+/** Whether the server says this month's VIP bonus is already collected (optional C8 fields). */
+function serverSaysMonthlyClaimed(vip) {
+  if (!vip || typeof vip !== 'object') return false;
+  if (vip.monthlyBonusClaimed === true || vip.monthlyBonusAvailable === false) return true;
+  const m = vip.monthlyClaimMonth || vip.lastMonthlyClaimMonth;
+  if (typeof m === 'string' && m === denverMonthKey()) return true;
+  const d = vip.lastMonthlyClaimDate || vip.monthlyClaimedAt;
+  if (typeof d === 'string' && d.slice(0, 7) === denverMonthKey()) return true;
+  return false;
+}
+
+/**
+ * The monthly VIP chip bonus: `claimVipMonthly` → `vipMonthlyClaimed
+ * { success, chips?, reward?, error? }` (an acknowledgement callback is also
+ * honoured). The balance itself arrives in the playerProgress that follows.
+ */
+export function useVipMonthlyClaim() {
+  const progress = useProgressStore((s) => s.progress);
+  const [state, setState] = useState({ phase: 'idle', text: '', month: null });
+  const timerRef = useRef(null);
+  const doneRef = useRef(false);
+
+  const finish = useCallback((res) => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    if (res && res.success) {
+      const what = res.reward ? formatReward(res.reward) : (Number(res.chips) > 0 ? `${Number(res.chips).toLocaleString()} chips` : 'your VIP bonus');
+      setState({ phase: 'done', text: `Collected ${what}. The next bonus opens ${nextMonthLabel()}.`, month: denverMonthKey() });
+      return;
+    }
+    const code = res && (res.code || res.error);
+    const mapped = MONTHLY_ERRORS[code];
+    if (mapped === 'already') {
+      setState({ phase: 'done', text: `Already collected this month — the next bonus opens ${nextMonthLabel()}.`, month: denverMonthKey() });
+      return;
+    }
+    setState({ phase: 'error', text: mapped || shopErrorText(res, 'Could not collect the bonus — try again.'), month: null });
+  }, []);
+
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onResult = (res) => finish(res);
+    socket.on('vipMonthlyClaimed', onResult);
+    return () => {
+      socket.off('vipMonthlyClaimed', onResult);
+      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    };
+  }, [finish]);
+
+  const claim = useCallback(() => {
+    const socket = getSocket();
+    if (!socket || !socket.connected) { setState({ phase: 'error', text: 'Not connected — try again in a moment.', month: null }); return; }
+    doneRef.current = false;
+    setState({ phase: 'pending', text: 'Collecting…', month: null });
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      if (doneRef.current) return;
+      doneRef.current = true;
+      setState({ phase: 'error', text: 'The game server did not answer — try again.', month: null });
+    }, MONTHLY_TIMEOUT_MS);
+    socket.emit('claimVipMonthly', {}, (ack) => { if (ack && typeof ack === 'object') finish(ack); });
+  }, [finish]);
+
+  const active = vipPassActive(progress);
+  const claimedThisMonth = (state.month && state.month === denverMonthKey()) || serverSaysMonthlyClaimed(progress?.vip);
+  return { active, claimedThisMonth, state, claim };
+}
+
+/** VIP pass status + monthly bonus — shared by the panel and the Shop tab. */
+export function VipPassStatus({ compact = false }) {
+  const progress = useProgressStore((s) => s.progress);
+  const { active, claimedThisMonth, state, claim } = useVipMonthlyClaim();
+  const exp = progress?.vip?.expiresAt;
+  const lifetime = active && exp - Date.now() > 3650 * 86400000;
+  const until = active && !lifetime ? new Date(exp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+  return (
+    <div className={`vip-pass-status ${active ? 'vip-pass-status--active' : ''} ${compact ? 'vip-pass-status--compact' : ''}`}>
+      <div className="vip-pass-status-row">
+        <span className="vip-pass-badge">{active ? '💎 VIP' : 'VIP'}</span>
+        <span className="vip-pass-expiry">
+          {active
+            ? (lifetime ? 'Active — lifetime pass' : `Active until ${until} (${formatCountdown(exp)} left)`)
+            : 'No VIP pass — get one in the Shop.'}
+        </span>
+      </div>
+      {active && (
+        <div className="vip-pass-monthly">
+          <button
+            type="button"
+            className="vip-monthly-btn"
+            onClick={claim}
+            disabled={state.phase === 'pending' || claimedThisMonth}
+          >
+            {state.phase === 'pending' ? 'Collecting…' : claimedThisMonth ? 'Monthly bonus collected' : 'Collect monthly VIP bonus'}
+          </button>
+          {state.text && state.phase !== 'pending' && (
+            <div className={`vip-monthly-note vip-monthly-note--${state.phase}`}>{state.text}</div>
+          )}
+          {claimedThisMonth && !state.text && (
+            <div className="vip-monthly-note">The next bonus opens {nextMonthLabel()}.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function VIPPanel({ onClose }) {
   const progress = useProgressStore((s) => s.progress);
+  useBackButtonClose(true, onClose);
   // Tier is by CUMULATIVE season XP (what the server applies the XP-rate perk
   // on), not the per-level `xp` that resets on every level-up.
-  const currentXP = progress?.totalXp ?? progress?.xp ?? 0;
-  const tierIndex = getCurrentTier(currentXP);
-  const currentTier = VIP_TIERS[tierIndex];
-  const nextTier = tierIndex < VIP_TIERS.length - 1 ? VIP_TIERS[tierIndex + 1] : null;
-
+  const seasonXp = Number(progress?.totalXp) || 0;
+  const tier = vipXpTierFor(seasonXp);
+  const tierIndex = VIP_XP_TIERS.indexOf(tier);
+  const nextTier = tierIndex < VIP_XP_TIERS.length - 1 ? VIP_XP_TIERS[tierIndex + 1] : null;
   const progressPct = nextTier
-    ? Math.min(100, Math.round(((currentXP - currentTier.minXP) / (nextTier.minXP - currentTier.minXP)) * 100))
+    ? Math.min(100, Math.round(((seasonXp - tier.minXp) / (nextTier.minXp - tier.minXp)) * 100))
     : 100;
-  const xpToNext = nextTier ? nextTier.minXP - currentXP : 0;
+  const passActive = vipPassActive(progress);
+  const serverPerks = Array.isArray(progress?.vip?.perks) ? progress.vip.perks : [];
 
   return createPortal(
     <div className="vip-overlay" onClick={onClose}>
-      <div className="vip-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="vip-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="VIP">
         <div className="vip-header">
-          <div className="vip-title">VIP Status</div>
+          <div className="vip-title">VIP</div>
           <button className="vip-close" onClick={onClose}>Close</button>
         </div>
 
-        {/* Current Tier Display */}
-        <div className="vip-current-tier" style={{ borderColor: currentTier.color }}>
-          <div className="vip-tier-badge" style={{ background: currentTier.color, color: '#0a0a1a' }}>
-            {currentTier.name}
+        {/* VIP pass */}
+        <div className="vip-section-title">VIP pass perks</div>
+        <VipPassStatus />
+        <div className="vip-perk-list">
+          {VIP_PASS_PERKS.map((perk) => {
+            const on = passActive && (serverPerks.length === 0 || serverPerks.includes(perk.id));
+            return (
+              <div key={perk.id} className={`vip-perk-row ${on ? 'vip-perk-row--on' : ''}`}>
+                <span className="vip-perk-icon" aria-hidden="true">{perk.icon}</span>
+                <span className="vip-perk-text">{perk.text}</span>
+                <span className="vip-perk-state">{on ? 'On' : 'With a pass'}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="vip-emote-row">
+          VIP emotes: {VIP_EMOTES.map((e) => <span key={e.id} title={e.name} className="vip-emote">{e.icon}</span>)}
+        </div>
+
+        {/* XP-rate tier (everyone) */}
+        <div className="vip-section-title">XP-rate tier</div>
+        <div className="vip-current-tier" style={{ borderColor: tier.color }}>
+          <div className="vip-tier-badge" style={{ background: tier.color, color: '#0a0a1a' }}>
+            {tier.name}
           </div>
           <div className="vip-xp-info">
-            <span className="vip-xp-value" style={{ color: currentTier.color }}>
-              {currentXP.toLocaleString()} XP
+            <span className="vip-xp-value" style={{ color: tier.color }}>
+              {seasonXp.toLocaleString()} season XP
             </span>
-            <span className="vip-xp-rate">{currentTier.xpRate} XP rate</span>
+            <span className="vip-xp-rate">{tier.rate}× XP rate</span>
           </div>
-          {nextTier && (
+          {nextTier ? (
             <div className="vip-progress-section">
               <div className="vip-progress-track">
                 <div
                   className="vip-progress-fill"
-                  style={{ width: `${progressPct}%`, background: `linear-gradient(90deg, ${currentTier.color}, ${nextTier.color})` }}
+                  style={{ width: `${progressPct}%`, background: `linear-gradient(90deg, ${tier.color}, ${nextTier.color})` }}
                 />
               </div>
               <div className="vip-progress-label">
-                {xpToNext.toLocaleString()} XP to {nextTier.name}
+                {(nextTier.minXp - seasonXp).toLocaleString()} XP to {nextTier.name} ({nextTier.rate}× XP)
               </div>
             </div>
-          )}
-          {!nextTier && (
-            <div className="vip-max-tier">Maximum tier reached!</div>
+          ) : (
+            <div className="vip-max-tier">Top tier reached — 3× XP</div>
           )}
         </div>
-
-        {/* All Tiers */}
         <div className="vip-tiers-list">
-          {VIP_TIERS.map((tier, i) => {
+          {VIP_XP_TIERS.map((t, i) => {
             const isCurrent = i === tierIndex;
             const isLocked = i > tierIndex;
             return (
               <div
-                key={tier.name}
+                key={t.name}
                 className={`vip-tier-card ${isCurrent ? 'vip-tier-card-active' : ''} ${isLocked ? 'vip-tier-card-locked' : ''}`}
-                style={{ borderLeftColor: tier.color }}
+                style={{ borderLeftColor: t.color }}
               >
                 <div className="vip-tier-card-header">
-                  <span className="vip-tier-name" style={{ color: isLocked ? '#666' : tier.color }}>{tier.name}</span>
-                  <span className="vip-tier-range">
-                    {tier.maxXP === Infinity
-                      ? `${tier.minXP.toLocaleString()}+ XP`
-                      : `${tier.minXP.toLocaleString()} - ${tier.maxXP.toLocaleString()} XP`}
-                  </span>
+                  <span className="vip-tier-name" style={{ color: isLocked ? '#8a96b5' : t.color }}>{t.name}</span>
+                  <span className="vip-tier-range">{t.minXp.toLocaleString()}+ season XP</span>
                   {isCurrent && <span className="vip-tier-current-badge">Current</span>}
                 </div>
                 <div className="vip-tier-perks">
-                  {tier.perks.map((perk, j) => (
-                    <div key={j} className="vip-perk-item">
-                      <span className="vip-perk-check" style={{ color: isLocked ? '#444' : tier.color }}>
-                        {isLocked ? '\u{25CB}' : '\u{2713}'}
-                      </span>
-                      <span className={isLocked ? 'vip-perk-locked' : ''}>{perk}</span>
-                    </div>
-                  ))}
+                  <div className="vip-perk-item">
+                    <span className="vip-perk-check" style={{ color: isLocked ? '#5b6b8f' : t.color }}>
+                      {isLocked ? '\u{25CB}' : '\u{2713}'}
+                    </span>
+                    <span className={isLocked ? 'vip-perk-locked' : ''}>{t.rate}× XP earned</span>
+                  </div>
                 </div>
               </div>
             );
