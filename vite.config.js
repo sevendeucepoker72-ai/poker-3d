@@ -33,27 +33,15 @@ export default defineConfig({
           if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) {
             return 'vendor-react';
           }
-          // Lazy-loaded game overlays — split into own chunk, loaded on first open
-          const OVERLAY_COMPONENTS = [
-            'TimingTellTracker', 'TableCommentary', 'RangeVisualizer', 'SpectatorPredict',
-            'PauseCoach', 'StreamOverlay', 'GTOSolver', 'CoachingRail', 'SessionRecap',
-            'PredictionMarket', 'HandHeatmap', 'GTOOverlay', 'PostHandCoach', 'VoiceChat',
-            'ProvablyFair', 'ShareReplay', 'EquityCalculator', 'HandReplayViewer', 'HotkeySettings',
-          ];
-          if (OVERLAY_COMPONENTS.some(name =>
-            id.includes(`/ui/${name}`) || id.includes(`/game/${name}`) || id.includes(`/replay/${name}`)
-          )) {
-            return 'game-overlays';
-          }
-          // Lobby-only features — not needed at the table
-          const LOBBY_COMPONENTS = [
-            'AdvancedAnalytics', 'StakingMarketplace', 'TournamentBracket', 'TournamentDirector',
-            'HandHistoryImporter', 'MultiTableView', 'SocialBracket', 'BankrollAI',
-            'PlayerProfile', 'NFTBadges',
-          ];
-          if (LOBBY_COMPONENTS.some(name => id.includes(`/ui/${name}`))) {
-            return 'lobby-features';
-          }
+          // R2 (2026-10-11, APPUI-32) — NO manual groups for app code. The
+          // 'game-overlays' / 'lobby-features' groups made rolldown pull the
+          // modules those components share with the app shell (stores,
+          // services, utils — ~90 exports) into the two groups, and the entry
+          // imported them STATICALLY while the preload filter below hid them:
+          // the sign-in screen waited for index.js, then fetched ~95KB gz of
+          // those two chunks serially. The React.lazy() imports split the app
+          // code on their own; a shared module lands in a chunk the entry
+          // preloads.
         },
       },
     },
@@ -67,9 +55,10 @@ export default defineConfig({
     // Ref: https://vite.dev/config/build-options.html#build-modulepreload
     modulePreload: {
       resolveDependencies: (_filename, deps /* , { hostId, hostType } */) => {
+        // Only vendor-three (the 3D scene / avatar customizer) is heavy AND
+        // reached through a dynamic import only. Never filter a chunk the
+        // entry imports statically: that is a serial waterfall, not a saving.
         const HEAVY_LAZY_CHUNKS = [
-          'game-overlays',
-          'lobby-features',
           'vendor-three',
         ];
         return deps.filter((dep) => {

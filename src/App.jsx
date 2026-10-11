@@ -183,7 +183,10 @@ import PWAInstallPrompt from './components/ui/PWAInstallPrompt';
 import { setOnOpenPlayerNotes } from './components/scene/PokerTable2D';
 import KeyboardShortcuts from './components/ui/KeyboardShortcuts';
 import Tutorial from './components/ui/Tutorial';
-import HandReplayViewer from './components/replay/HandReplayViewer';
+// R2 (APPUI-32) — LAZY: only a ?replay= link renders it from here. A static
+// import put it (and, through the overlay manual chunk, ~95KB gz of shared
+// modules) on the sign-in path as a serial chunk waterfall.
+const HandReplayViewer = lazy(() => import('./components/replay/HandReplayViewer'));
 import { API_BASE } from './config';
 import { checkSubscriptionHealth, isPushSupported, notify } from './hooks/usePushNotifications';
 import './components/ui/Transitions.css';
@@ -2710,10 +2713,12 @@ function App() {
   // Shared replay link — show viewer without any auth requirement
   if (sharedReplay) {
     return (
-      <HandReplayViewer
-        history={sharedReplay}
-        onClose={() => { window.history.replaceState(null, '', window.location.pathname); window.location.reload(); }}
-      />
+      <Suspense fallback={<ChunkLoader />}>
+        <HandReplayViewer
+          history={sharedReplay}
+          onClose={() => { window.history.replaceState(null, '', window.location.pathname); window.location.reload(); }}
+        />
+      </Suspense>
     );
   }
 
