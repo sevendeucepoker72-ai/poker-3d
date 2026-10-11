@@ -1165,8 +1165,12 @@ input, textarea {
    bottom-sheet treatment: full width, capped to the DYNAMIC viewport height with
    internal scroll + safe-area bottom padding. Targets verified against each
    component's actual root class.
+   2026-10-11 (.online fix round 1 — APPUI-7): the Daily Rewards panel EMBEDDED
+   in the Shop tab (LoginRewards inline -> .login-rewards-panel.login-rewards-
+   inline) is not a modal: it was forced into this fixed bottom sheet over the
+   shop with no way to close it. Only the modal panel gets the sheet.
    ================================================================ */
-.login-rewards-panel,
+.login-rewards-panel:not(.login-rewards-inline),
 .scratch-panel,
 .spin-wheel-panel,
 .pf-modal,

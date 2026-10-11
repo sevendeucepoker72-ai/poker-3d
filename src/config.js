@@ -4,11 +4,17 @@
 // dev/staging build silently hit prod. These constants resolve the same values
 // the call sites used; import from here instead of re-deriving.
 
-// Socket.io server (poker-server / Railway). Null in a prod build with no env
-// set, so a misconfigured deploy fails loud instead of hitting localhost.
+import { PRODUCTION_SERVER_URL } from './productionHosts.js';
+
+// Socket.io server (poker-server / Railway).
+// 2026-10-11 (OPS-8) — a production build without VITE_SERVER_URL falls back
+// to the production game server, like API_BASE below. It used to be null:
+// io(null) then connected to this site's own origin and the game was
+// unplayable while every deploy check stayed green. deploy-online.mjs refuses
+// a build whose JS chunks lack this host (src/productionHosts.js).
 export const SERVER_URL =
   import.meta.env.VITE_SERVER_URL ||
-  (import.meta.env.DEV ? 'http://localhost:3001' : null);
+  (import.meta.env.DEV ? 'http://localhost:3001' : PRODUCTION_SERVER_URL);
 
 // Master REST API (americanpub.poker, Cloud Run). Accept both historical env
 // var names so existing deploy configs keep working.

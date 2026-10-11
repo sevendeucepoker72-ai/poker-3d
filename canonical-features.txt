@@ -705,3 +705,47 @@ poker:queued-action-dropped
 was not sent — the connection dropped. Please act again.
 Muted in Settings
 conn-dot--failed
+# (P) 2026-10-11 .online fix round 1 - app shell (builder C2, branch
+#     r1-app-shell).
+#     OPS-8: SERVER_URL falls back to the production game server
+#     (src/productionHosts.js). NOT lockable here - the host is also in
+#     index.html's CSP, which this grep reads; deploy-online.mjs's socket-host
+#     guard (a built JS chunk must contain it) is the lock.
+#     APPUI-31: sw.js never intercepts cross-origin (Google Fonts, API, remote
+#     images) or non-GET requests (dist/sw.js is public/sw.js verbatim).
+requestUrl.origin !== self.location.origin
+#     APPUI-7: the Daily Rewards panel embedded in the Shop tab is not forced
+#     into the fixed bottom sheet.
+.login-rewards-panel:not(.login-rewards-inline)
+#     APPUI-9: lobby / profile Win % = server handsWon / totalHandsPlayed;
+#     recordHand skips spectated hands and never writes server-owned fields.
+recordHand skipped: not seated in this hand
+#     APPUI-23: the root error screen's Reload is a REAL reload (it drops a
+#     ?replay= link first); a lazy chunk that fails to load (vite:preloadError)
+#     reloads the page once (sessionStorage guard, never a loop; not
+#     automatically while seated at a table - the root boundary recovers if
+#     the app itself broke) and the screen says "Updating..."; ?replay= links
+#     are validated + normalized (utils/replayPayload) and an invalid one is
+#     removed and ignored.
+poker_chunk_reload_at
+a lazy chunk failed to load; reloading once
+failed while seated at a table; no automatic reload
+Loading the latest version of the game.
+[replay] ignored an invalid ?replay= link
+#     OPS-7 + AUTH P3: createRoot onCaughtError / onUncaughtError report
+#     render crashes (every boundary); a failed chunk is reported once; the
+#     reported url is origin + path only and URLs in message / stack lose
+#     their query + hash (?token / ?code / #bridge_id_token).
+render_caught
+render_uncaught
+chunk_load_failed
+origin+path
+#     APPUI-12: the PWA shortcut ?action= is consumed once and removed from
+#     the URL; a launch that lands on a table drops it.
+[pwa] shortcut action consumed:
+superseded by a table
+#     APPUI-30: the update notice is at the top, only its Reload button
+#     reloads, and it can be dismissed.
+sw-update-toast-reload
+sw-update-toast-close
+Dismiss update notice

@@ -11,19 +11,31 @@
 // is strictly safer than risking an empty docroot on network blip.
 //
 // Usage: FTP_HOST=... FTP_USER=... FTP_PASS=... node deploy-online.mjs
+//        node deploy-online.mjs --check-only [--dist=<build dir>]
+//          runs every pre-flight guard below and exits WITHOUT uploading (no
+//          FTP credentials needed); --dist= checks another build directory and
+//          is refused without --check-only.
 import { Client } from 'basic-ftp';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+// 2026-10-11 (OPS-8) — the SAME constant src/config.js falls back to.
+import { PRODUCTION_SERVER_URL } from './src/productionHosts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DIST_DIR = path.join(__dirname, 'dist');
+const CHECK_ONLY = process.argv.includes('--check-only');
+const distArg = process.argv.find((a) => a.startsWith('--dist='));
+if (distArg && !CHECK_ONLY) {
+  console.error('[deploy-online] --dist= is only allowed with --check-only (a deploy always uploads ./dist).');
+  process.exit(1);
+}
+const DIST_DIR = distArg ? path.resolve(distArg.slice('--dist='.length)) : path.join(__dirname, 'dist');
 
 const host = process.env.FTP_HOST;
 const user = process.env.FTP_USER;
 const password = process.env.FTP_PASS;
 
-if (!host || !user || !password) {
+if (!CHECK_ONLY && (!host || !user || !password)) {
   console.error('Missing FTP_HOST / FTP_USER / FTP_PASS env vars');
   process.exit(1);
 }
@@ -115,6 +127,40 @@ if (fs.existsSync(MANIFEST_PATH)) {
   console.log(`[deploy-online] canonical-features.txt: ${tokens.length} tokens verified in bundle.`);
 } else {
   console.warn('[deploy-online] WARN: no canonical-features.txt — deploy guard disabled.');
+}
+
+// 2026-10-11 (OPS-8) — Socket-host guard. The game-server URL must be compiled
+// into a built JS chunk. A build without it (fresh clone: the gitignored
+// .env.production missing, before src/config.js had a fallback) calls io()
+// against this site's own origin and every player sits on "Connecting...".
+// The canonical-features grep above cannot catch that: the host also appears
+// in index.html's CSP meta. So only dist/assets/**/*.js counts here.
+const SOCKET_HOST = new URL(PRODUCTION_SERVER_URL).host;
+function listJsFiles(dir) {
+  const out = [];
+  if (!fs.existsSync(dir)) return out;
+  for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, ent.name);
+    if (ent.isDirectory()) out.push(...listJsFiles(full));
+    else if (ent.name.endsWith('.js')) out.push(full);
+  }
+  return out;
+}
+const jsChunks = listJsFiles(path.join(DIST_DIR, 'assets'));
+const socketHostChunk = jsChunks.find((f) => {
+  try { return fs.readFileSync(f, 'utf8').includes(SOCKET_HOST); } catch (_) { return false; }
+});
+if (!socketHostChunk) {
+  console.error(`[deploy-online] FAIL: none of the ${jsChunks.length} built JS chunks under ${path.join(DIST_DIR, 'assets')} contains the game-server host ${SOCKET_HOST}.`);
+  console.error('  This build cannot reach the game server (players would sit on "Connecting...").');
+  console.error('  Check SERVER_URL in src/config.js / VITE_SERVER_URL, then `npm run build` again.');
+  process.exit(1);
+}
+console.log(`[deploy-online] socket host ${SOCKET_HOST} verified in ${path.basename(socketHostChunk)}.`);
+
+if (CHECK_ONLY) {
+  console.log(`[deploy-online] --check-only: every pre-flight guard passed for ${DIST_DIR}; nothing was uploaded.`);
+  process.exit(0);
 }
 
 // 2026-05-06 — retry-with-backoff for FTPS connect.

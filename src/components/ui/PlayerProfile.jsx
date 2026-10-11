@@ -160,16 +160,22 @@ export default function PlayerProfile({ username, socket, onClose, onViewReplay 
   if (!username) return null;
 
   function buildProfileFromProgress(progress = {}, uname = '') {
-    const totalHands = progress.totalHandsPlayed ?? progress.totalHands ?? 0;
+    // 2026-10-11 (APPUI-9) — wins / losses / win % from the SERVER's lifetime
+    // counters (handsWon / totalHandsPlayed), not this browser's local count.
+    const totalHands = Math.max(0, Number(progress.totalHandsPlayed ?? progress.totalHands ?? 0) || 0);
+    const rawWon = Math.max(0, Number(progress.handsWon) || 0);
+    // More wins than hands = a stale local copy (an older build overwrote
+    // totalHandsPlayed); the server's next playerProgress replaces it.
+    const handsWon = rawWon <= totalHands ? rawWon : 0;
     return {
       username: uname,
       level: progress.level ?? 1,
       elo: progress.elo ?? 500,
-      wins: progress.wins ?? 0,
-      losses: progress.losses ?? 0,
+      wins: handsWon,
+      losses: Math.max(0, totalHands - handsWon),
       totalHands,
       winRate: totalHands > 0
-        ? ((( progress.wins ?? 0) / totalHands) * 100).toFixed(1)
+        ? ((handsWon / totalHands) * 100).toFixed(1)
         : '0.0',
       netChips: progress.netChips ?? 0,
       vpip: progress.vpip ?? 0,

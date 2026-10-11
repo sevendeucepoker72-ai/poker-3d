@@ -1,6 +1,25 @@
 import { create } from 'zustand';
+import { useTableStore } from './tableStore';
 
 let notificationIdCounter = 0;
+let loggedSpectatorSkip = false;
+
+// ─── Win rate (2026-10-11, .online fix round 1 — APPUI-9) ──────────────────
+/**
+ * Win % from the SERVER's lifetime counters (playerProgress: handsWon /
+ * totalHandsPlayed — the same ratio the server's detailed stats use). The old
+ * lobby value divided the server's lifetime handsWon by this browser's local
+ * handsPlayed count, so it showed impossible numbers (300%+). Integer 0..100.
+ * The server never has more wins than hands; a copy that does (cached by an
+ * older build, which overwrote totalHandsPlayed with its local count) reads 0
+ * until the server's next playerProgress replaces it.
+ */
+export function serverWinRate(progress) {
+  const total = Number(progress && progress.totalHandsPlayed);
+  const won = Number(progress && progress.handsWon);
+  if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(won) || won <= 0 || won > total) return 0;
+  return Math.round((won / total) * 100);
+}
 
 // ─── 1000-level XP system ───────────────────────────────────────────────────
 const MAX_LEVEL = 1000;
@@ -102,7 +121,13 @@ const STORAGE_KEY = 'poker_player_progress';
 function loadSavedProgress() {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const saved = JSON.parse(raw);
+      // 2026-10-11 (APPUI-9) — a copy saved by an older build can hold the
+      // impossible local win rate; always re-derive it from the server counters.
+      if (saved && typeof saved === 'object') saved.winRate = serverWinRate(saved);
+      return saved;
+    }
   } catch { /* ignore corrupt data */ }
   return null;
 }
@@ -357,6 +382,9 @@ export const useProgressStore = create((set, get) => ({
       merged.xpToNextLevel = info.xpToNextLevel;
     }
 
+    // 2026-10-11 (APPUI-9) — derived from the server's counters only.
+    merged.winRate = serverWinRate(merged);
+
     saveProgress(merged);
     set({ progress: merged });
   },
@@ -466,18 +494,49 @@ export const useProgressStore = create((set, get) => ({
     return { levelsGained: info.level - prev.level, newLevel: info.level };
   },
 
-  /** Record a completed hand — awards XP and updates all stats. */
-  recordHand: ({ won, potSize, handName, chipsAfter, voluntaryPut, preflopRaise, position, holeCards, communityCards, actions, handId, raiseCount }) => {
+  /**
+   * Record a completed hand in the LOCAL stats (VPIP/PFR, positions, hand
+   * types, recent hands, today's count, …).
+   *
+   * 2026-10-11 (.online fix round 1 — APPUI-9):
+   * - Only a hand this player was SEATED in counts: never a spectated hand
+   *   (yourSeat >= 0 && !isSpectator — taken from the caller when it passes
+   *   them, else from the table store). Every HandComplete a spectator watched
+   *   used to be recorded as a lost hand.
+   * - Server-owned fields are NOT written here: totalHandsPlayed, handsWon,
+   *   currentStreak, bestStreak, biggestPot, elo, eloHistory, dailyMissions and
+   *   level / xp / totalXp all arrive in the server's `playerProgress` after the
+   *   hand (setProgress). Writing them here made the lobby Win % impossible,
+   *   overwrote the lifetime hand count with this browser's count, replaced the
+   *   server's ELO with a made-up one, zeroed the server's mission progress, and
+   *   double-counted XP whenever playerProgress arrived first.
+   */
+  recordHand: ({ won, potSize, handName, chipsAfter, voluntaryPut, preflopRaise, position, holeCards, communityCards, actions, handId, raiseCount, yourSeat, isSpectator }) => {
+    let seat = yourSeat;
+    let spectating = isSpectator;
+    if (typeof seat !== 'number' || typeof spectating !== 'boolean') {
+      try {
+        const ts = useTableStore.getState();
+        const gs = ts.gameState;
+        if (typeof seat !== 'number') seat = gs && gs.yourSeat != null ? gs.yourSeat : ts.mySeat;
+        if (typeof spectating !== 'boolean') spectating = !!ts.isSpectating || !!(gs && gs.isSpectator);
+      } catch {
+        seat = -1;
+      }
+    }
+    if (!(Number.isInteger(seat) && seat >= 0) || spectating) {
+      if (!loggedSpectatorSkip) {
+        loggedSpectatorSkip = true;
+        try { console.warn('[progress] recordHand skipped: not seated in this hand (spectating); further skips are silent'); } catch { /* ignore */ }
+      }
+      return;
+    }
+
     const prev = get().progress || defaultProgress();
-    // XP based on actual pot size (not just chipsWon) so losers don't get inflated XP
-    const xpEarned = won ? 50 + Math.floor((potSize || 0) / 100) : 15;
 
     // Reset handsToday if the date changed
     const today = new Date().toDateString();
     const todayCount = prev.handsTodayDate === today ? (prev.handsToday || 0) : 0;
-
-    const newStreak = won ? (prev.currentStreak || 0) + 1 : 0;
-    const newBestStreak = Math.max(prev.bestStreak || 0, newStreak);
 
     // Track best hand (rank order: High Card < Pair < ... < Royal Flush)
     // Update regardless of win/loss — the hand was held at showdown
@@ -486,10 +545,6 @@ export const useProgressStore = create((set, get) => ({
     if (handName && HAND_RANKS.indexOf(handName) > HAND_RANKS.indexOf(newBestHand)) {
       newBestHand = handName;
     }
-
-    // ELO update (simple: +10 for win, -8 for loss, scaled by pot)
-    const eloChange = won ? 10 + Math.floor(potSize / 500) : -(8 + Math.floor(potSize / 1000));
-    const newElo = Math.max(0, (prev.elo || 500) + eloChange);
 
     // VPIP/PFR tracking
     const newVpipHands = (prev.vpipHands || 0) + (voluntaryPut ? 1 : 0);
@@ -507,21 +562,17 @@ export const useProgressStore = create((set, get) => ({
     // Net chips
     const chipsDelta = chipsAfter != null ? chipsAfter - (prev.chips || 0) : 0;
 
+    // Local counters only (see the header). handsPlayed = hands recorded in
+    // this browser (the VPIP/PFR denominator); wins/losses likewise.
     const updated = {
       ...prev,
       handsPlayed: totalHands,
-      totalHandsPlayed: totalHands,
-      handsWon: (prev.handsWon || 0) + (won ? 1 : 0),
       wins: (prev.wins || 0) + (won ? 1 : 0),
       losses: (prev.losses || 0) + (won ? 0 : 1),
       handsToday: todayCount + 1,
       handsTodayDate: today,
-      currentStreak: newStreak,
-      bestStreak: newBestStreak,
       bestHand: newBestHand,
-      biggestPot: Math.max(prev.biggestPot || 0, potSize || 0),
       netChips: (prev.netChips || 0) + chipsDelta,
-      elo: newElo,
       vpipHands: newVpipHands,
       pfrHands: newPfrHands,
       vpip: totalHands > 0 ? Math.round((newVpipHands / totalHands) * 100) : 0,
@@ -531,9 +582,7 @@ export const useProgressStore = create((set, get) => ({
       blindFolded: newBlindFolded,
       lastHandAt: Date.now(),
     };
-    if (updated.handsPlayed > 0) {
-      updated.winRate = Math.round((updated.handsWon / updated.handsPlayed) * 100);
-    }
+    updated.winRate = serverWinRate(updated);
 
     // Position stats
     if (position) {
@@ -593,20 +642,15 @@ export const useProgressStore = create((set, get) => ({
     if (dch.length > 30) dch.splice(0, dch.length - 30);
     updated.dailyChipHistory = dch;
 
-    // ELO history
-    const eh = [...(prev.eloHistory || [])];
-    if (!eh.length || eh[eh.length - 1].date !== todayStr) {
-      eh.push({ date: todayStr, elo: updated.elo });
-    } else {
-      eh[eh.length - 1].elo = updated.elo;
-    }
-    if (eh.length > 30) eh.splice(0, eh.length - 30);
-    updated.eloHistory = eh;
+    // (2026-10-11, APPUI-9: no ELO / ELO-history writes here — the server
+    // sends elo + eloHistory in playerProgress.)
 
-    // Daily missions progress
+    // Local daily mission counters, reset at local midnight. The mission LIST
+    // and its progress are the server's (playerProgress.dailyMissions) and are
+    // not touched here (2026-10-11, APPUI-9: this used to replace the server's
+    // missions at midnight and zero their progress after every hand).
     const seed = getDailySeed();
     if (prev.dailyMissionsSeed !== seed) {
-      updated.dailyMissions = generateDailyMissions(seed);
       updated.dailyMissionsSeed = seed;
       updated.missionsWinCount = 0;
       updated.missionsPlayCount = 0;
@@ -617,14 +661,6 @@ export const useProgressStore = create((set, get) => ({
     if (won) updated.missionsWinCount = (updated.missionsWinCount || 0) + 1;
     if (raiseCount > 0) updated.missionsRaiseCount = (updated.missionsRaiseCount || 0) + raiseCount;
     updated.sessionBiggestPot = Math.max(updated.sessionBiggestPot || 0, potSize || 0);
-    // Update mission progress
-    const missions = [...(updated.dailyMissions || [])];
-    for (const m of missions) {
-      if (m.claimed) continue;
-      const val = updated[m.field] ?? 0;
-      m.progress = Math.min(val, m.target);
-    }
-    updated.dailyMissions = missions;
 
     // 2026-05-19 audit — REMOVED client-side achievement check.
     //
@@ -653,9 +689,10 @@ export const useProgressStore = create((set, get) => ({
     saveProgress(updated);
     set({ progress: updated });
 
-    // Award XP locally for the XP bar progress animation. No notifications,
-    // no level-up popup, no bonus chips — those are all server-driven.
-    get().awardXP(xpEarned);
+    // 2026-10-11 (APPUI-9) — no local XP award any more: level / xp / totalXp
+    // are the server's and arrive in playerProgress right after the hand (the
+    // local guess was added ON TOP of the server's value whenever that event
+    // came first).
   },
 
   /** Claim a daily mission reward. */

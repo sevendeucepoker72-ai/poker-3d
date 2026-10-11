@@ -17,8 +17,14 @@ import './mobile.css'
 // visible server-side. The console.error listeners below are KEPT for
 // local-dev visibility — both the reporter and the console handlers are
 // independent listeners, so they fire additively.
-import { installErrorReporting } from './services/errorReporting.js'
+import { installErrorReporting, reactRootErrorOptions } from './services/errorReporting.js'
 installErrorReporting()
+// 2026-10-11 (.online fix round 1 — APPUI-23) — a lazy chunk that fails to
+// load (`vite:preloadError`) reloads the page once (guarded against loops; not
+// automatically while the player holds a table seat). Installed before the
+// first render, i.e. before any lazy import can run. services/appReload.js.
+import { installChunkLoadRecovery } from './services/appReload.js'
+installChunkLoadRecovery()
 
 window.addEventListener('unhandledrejection', (e) => {
   // eslint-disable-next-line no-console
@@ -224,47 +230,84 @@ window.addEventListener('poker:session-expired', (e) => {
 // self.skipWaiting from sw.js to keep it from auto-activating), and we
 // message it to SKIP_WAITING when the user taps the toast. Without this
 // pattern, installed PWAs stay on stale JS chunks across deploys.
+//
+// 2026-10-11 (.online fix round 1 — APPUI-30) — the notice sat at the BOTTOM
+// (over the lobby's bottom nav and the table's fold / call / raise bar), could
+// not be dismissed, and a tap anywhere on it reloaded — mid-hand included. Now:
+// a compact notice at the TOP (below the notch / status bar); only its Reload
+// button reloads (a stray tap on the text does nothing); ✕ dismisses it for
+// this page load (the waiting version then starts on the next launch, when
+// the old service worker has no page left).
+let swUpdateReloading = false
+function reloadOnceForUpdate() {
+  if (swUpdateReloading) return
+  swUpdateReloading = true
+  window.location.reload()
+}
+function applyWaitingUpdate(reg) {
+  const waiting = reg && reg.waiting
+  if (!waiting) { reloadOnceForUpdate(); return }
+  // Reload once the new SW takes control; never stuck if that never comes.
+  navigator.serviceWorker.addEventListener('controllerchange', reloadOnceForUpdate, { once: true })
+  try { waiting.postMessage({ type: 'SKIP_WAITING' }) } catch { reloadOnceForUpdate(); return }
+  setTimeout(reloadOnceForUpdate, 4000)
+}
+function showUpdateToast(reg) {
+  if (document.getElementById('sw-update-toast')) return
+  const toast = document.createElement('div')
+  toast.id = 'sw-update-toast'
+  toast.setAttribute('role', 'status')
+  toast.setAttribute('aria-live', 'polite')
+  toast.style.cssText = [
+    'position:fixed', 'top:calc(env(safe-area-inset-top, 0px) + 8px)', 'left:50%',
+    'transform:translateX(-50%)', 'z-index:99999', 'box-sizing:border-box',
+    'max-width:min(420px, calc(100vw - 24px))', 'display:flex', 'align-items:center', 'gap:8px',
+    'padding:6px 6px 6px 14px', 'border-radius:12px',
+    'background:linear-gradient(180deg,#10224e,#081434)', 'color:#E5E7EB',
+    'border:1px solid rgba(255,210,74,0.55)', 'box-shadow:0 8px 24px rgba(0,0,0,0.55)',
+    'font-family:system-ui,-apple-system,sans-serif', 'font-size:0.85rem', 'font-weight:600',
+    'cursor:default',
+  ].join(';')
+  const label = document.createElement('span')
+  label.textContent = 'New version available'
+  label.style.cssText = 'flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'
+  const reloadBtn = document.createElement('button')
+  reloadBtn.type = 'button'
+  reloadBtn.className = 'sw-update-toast-reload'
+  reloadBtn.textContent = 'Reload'
+  reloadBtn.style.cssText = 'flex:0 0 auto;min-height:36px;padding:6px 14px;border-radius:8px;border:none;background:#ffd24a;color:#0a1628;font-weight:700;font-size:0.82rem;cursor:pointer'
+  const closeBtn = document.createElement('button')
+  closeBtn.type = 'button'
+  closeBtn.className = 'sw-update-toast-close'
+  closeBtn.setAttribute('aria-label', 'Dismiss update notice')
+  closeBtn.textContent = '✕'
+  closeBtn.style.cssText = 'flex:0 0 auto;width:36px;height:36px;border-radius:8px;border:1px solid rgba(120,160,255,0.35);background:transparent;color:#CBD5E1;font-size:1rem;line-height:1;cursor:pointer'
+  reloadBtn.addEventListener('click', (e) => { e.stopPropagation(); applyWaitingUpdate(reg) })
+  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); toast.remove() })
+  toast.append(label, reloadBtn, closeBtn)
+  document.body.appendChild(toast)
+  try {
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      toast.animate(
+        [{ opacity: 0, transform: 'translate(-50%, -12px)' }, { opacity: 1, transform: 'translate(-50%, 0)' }],
+        { duration: 220, easing: 'ease-out' },
+      )
+    }
+  } catch { /* animation is decoration only */ }
+}
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then((reg) => {
       // Watch for an updated SW reaching "installed" while an old one
       // still controls the page.
-      const showUpdateToast = () => {
-        // Deferred import — this runs once in the app lifetime and we
-        // don't want to ship the toast helper with main.jsx bundle.
-        const html = `
-          <div id="sw-update-toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99999;
-               background:linear-gradient(180deg,#1F2937,#0B0F19);color:#E5E7EB;
-               border:1px solid rgba(34,211,238,0.6);border-radius:12px;
-               padding:14px 20px;box-shadow:0 10px 28px rgba(0,0,0,0.6),0 0 20px rgba(34,211,238,0.3);
-               font-family:system-ui,-apple-system,sans-serif;font-size:0.92rem;font-weight:600;
-               display:flex;gap:12px;align-items:center;cursor:pointer;max-width:calc(100vw - 32px);
-               animation:swToastSlide 0.25s ease-out">
-            <span>🔄 New version available</span>
-            <span style="padding:4px 10px;background:rgba(34,211,238,0.2);border:1px solid rgba(34,211,238,0.5);border-radius:6px;font-size:0.8rem">Reload</span>
-          </div>
-          <style>@keyframes swToastSlide { from { transform: translate(-50%, 40px); opacity:0 } to { transform: translate(-50%, 0); opacity:1 } }</style>
-        `;
-        const host = document.createElement('div');
-        host.innerHTML = html;
-        document.body.appendChild(host);
-        host.addEventListener('click', () => {
-          const waiting = reg.waiting;
-          if (waiting) waiting.postMessage({ type: 'SKIP_WAITING' });
-          // Reload once the new SW takes control.
-          navigator.serviceWorker.addEventListener('controllerchange', () => {
-            window.location.reload();
-          });
-        });
-      };
-      if (reg.waiting) showUpdateToast();
+      if (reg.waiting) showUpdateToast(reg);
       reg.addEventListener('updatefound', () => {
         const nw = reg.installing;
         if (!nw) return;
         nw.addEventListener('statechange', () => {
           // "installed" + existing controller = fresh update waiting
           if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-            showUpdateToast();
+            showUpdateToast(reg);
           }
         });
       });
@@ -347,6 +390,10 @@ async function bootstrapBridgeOrMount() {
     console.warn('[silent-sso] cold-start guard error:', err && err.message);
   }
 
-  createRoot(document.getElementById('root')).render(<App />)
+  // 2026-10-11 (OPS-7) — React 19 hands errors caught by an error boundary
+  // only to these callbacks (never to window 'error'), so render crashes —
+  // the root "Something went wrong" screen, a panel's OverlayBoundary, the
+  // table boundary — are reported through services/errorReporting.js.
+  createRoot(document.getElementById('root'), reactRootErrorOptions).render(<App />)
 }
 bootstrapBridgeOrMount()

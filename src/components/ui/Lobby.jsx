@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
-import { useProgressStore } from '../../store/progressStore';
+import { useProgressStore, serverWinRate } from '../../store/progressStore';
 import ProgressBar from './ProgressBar';
 import MissionsPanel from './MissionsPanel';
 import StatsPanel from './StatsPanel';
@@ -968,7 +968,7 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
 // ═══════════════════════════════════════════
 // MAIN LOBBY COMPONENT
 // ═══════════════════════════════════════════
-export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = null, waitlistContext = null }) {
+export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = null, onPwaActionConsumed = null, waitlistContext = null }) {
   const setScreen = useGameStore((s) => s.setScreen);
   const playerName = useGameStore((s) => s.playerName);
   const setPlayerName = useGameStore((s) => s.setPlayerName);
@@ -1478,8 +1478,12 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   };
 
   // Auto-trigger PWA shortcut action once connected + name is set
+  // 2026-10-11 (APPUI-12) — once per launch: App's consumePwaAction() answers
+  // true only the first time (it then clears the action and the ?action= URL
+  // parameter), so a later Lobby mount (Back to Lobby) never auto-joins again.
   useEffect(() => {
     if (!pwaAction || !connected || !nameInput.trim()) return;
+    if (typeof onPwaActionConsumed === 'function' && onPwaActionConsumed('used') === false) return;
     const name = nameInput.trim();
     setPlayerName(name);
     if (pwaAction === 'quickplay') beginJoin('Finding a game…', () => quickPlay(name, avatar));
@@ -1516,7 +1520,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     setScreen('table');
   };
 
-  const winRate = progress?.winRate ?? 0;
+  // 2026-10-11 (APPUI-9) — the server's lifetime handsWon / totalHandsPlayed,
+  // never the local hand count (that showed impossible 300%+ win rates).
+  const winRate = serverWinRate(progress);
   const handsToday = progress?.handsToday ?? 0;
   const currentStreak = progress?.currentStreak ?? 0;
   const bestHand = progress?.bestHand || 'None yet';

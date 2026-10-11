@@ -10,6 +10,8 @@
  *   - Other static assets (favicons, models, loose images in /public) → Cache First
  *     with background refresh (URLs are stable; refresh catches in-place edits).
  *   - Socket.io / API / auth calls → Network Only (never cache live game data).
+ *   - Cross-origin requests (Google Fonts, the API / auth / game servers, remote
+ *     images) and non-GET requests → not intercepted at all (2026-10-11).
  *   - Offline fallback → dedicated /offline.html precached at install; navigation
  *     falls back to it when both network and cached '/' are unavailable.
  */
@@ -103,6 +105,20 @@ self.addEventListener('activate', (e) => {
 // ── Fetch ──────────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', (e) => {
   const { request } = e;
+
+  // 2026-10-11 (.online fix round 1 — APPUI-31): only SAME-ORIGIN GET requests
+  // are handled here. Anything else is left to the browser (no respondWith).
+  // Re-fetching a cross-origin request from the worker runs it under THIS
+  // script's CSP (the sw.js response header), whose connect-src does not list
+  // fonts.googleapis.com / fonts.gstatic.com: every returning visitor (page
+  // controlled by this worker) lost the brand fonts, and any https image from
+  // another host failed the same way. The master API, auth server and game
+  // server are cross-origin too and never cached. Non-GET requests cannot be
+  // cached at all.
+  let requestUrl;
+  try { requestUrl = new URL(request.url); } catch { return; }
+  if (requestUrl.origin !== self.location.origin) return;
+  if (request.method !== 'GET') return;
 
   // Navigation / HTML → Network First. A stale index.html is worse than a
   // network round-trip because its inline <script type="module" src="/assets/xxx-<hash>.js">
