@@ -76,7 +76,9 @@ export function usableEmoteIds(progress, nowMs = Date.now()) {
   const p = progress && typeof progress === 'object' ? progress : null;
   if (!p) return out;
   const eq = p.equipped;
-  if (eq && typeof eq === 'object' && Array.isArray(eq.emotes)) {
+  // (the server's list always holds the free emotes; an EMPTY list is a
+  // store default for "not sent", so the owned keys decide then)
+  if (eq && typeof eq === 'object' && Array.isArray(eq.emotes) && eq.emotes.length > 0) {
     for (const id of eq.emotes) if (typeof id === 'string') out.add(id);
     return out;
   }

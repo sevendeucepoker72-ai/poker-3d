@@ -94,6 +94,12 @@
 .np-frame {
   --np-c: #ffd24a;
   --np-glow: rgba(255, 210, 74, 0.35);
+}
+/* (the hero plate's own box-shadow is !important at the same specificity in
+   GameHUD.css, which loads later — hence the .hud twin; it sets no colour so
+   each frame's --np-c below still applies) */
+.np-frame,
+.hud .hud-nameplate-me.np-frame {
   border-color: var(--np-c) !important;
   box-shadow: 0 0 0 1px var(--np-c), 0 0 9px var(--np-glow), 0 4px 16px rgba(0, 0, 0, 0.6) !important;
 }
@@ -103,16 +109,19 @@
 .np-frame--platinum { --np-c: #e5e7eb; --np-glow: rgba(229, 231, 235, 0.45); }
 .np-frame--ice      { --np-c: #60a5fa; --np-glow: rgba(96, 165, 250, 0.5); }
 .np-frame--flame    { --np-c: #f59e0b; --np-glow: rgba(245, 158, 11, 0.55); }
-.np-frame--diamond {
+.np-frame--diamond,
+.hud .hud-nameplate-me.np-frame--diamond {
   --np-c: #b9f2ff; --np-glow: rgba(185, 242, 255, 0.5);
   box-shadow: 0 0 0 1px #b9f2ff, 0 0 0 3px rgba(185, 242, 255, 0.28), 0 0 10px rgba(185, 242, 255, 0.45), 0 4px 16px rgba(0, 0, 0, 0.6) !important;
 }
-.np-frame--mythic {
+.np-frame--mythic,
+.hud .hud-nameplate-me.np-frame--mythic {
   --np-c: #a78bfa; --np-glow: rgba(167, 139, 250, 0.55);
   box-shadow: 0 0 0 1px #a78bfa, 0 0 0 2.5px rgba(255, 210, 74, 0.6), 0 0 11px rgba(167, 139, 250, 0.5), 0 4px 16px rgba(0, 0, 0, 0.6) !important;
 }
 .np-frame--crown    { --np-c: #ffd24a; --np-glow: rgba(255, 210, 74, 0.5); }
-.np-frame--vip {
+.np-frame--vip,
+.hud .hud-nameplate-me.np-frame--vip {
   --np-c: #ffd24a; --np-glow: rgba(255, 210, 74, 0.45);
   box-shadow: 0 0 0 1px #ffd24a, 0 0 0 2px rgba(184, 134, 11, 0.7), 0 0 9px rgba(255, 210, 74, 0.4), 0 4px 16px rgba(0, 0, 0, 0.6) !important;
 }
