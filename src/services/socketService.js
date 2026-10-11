@@ -330,19 +330,24 @@ export const connectToServer = () => {
 
 /**
  * Trigger a manual reconnect. Called from the app-resume handler and from
- * the "tap to reconnect" banner CTA after the `failed` terminal state. If
- * the underlying socket.io reconnect loop has exhausted, we recreate a
- * fresh socket via connectToServer() — calling .connect() on a socket
- * whose manager is in the failed state is a no-op otherwise.
+ * the "tap to reconnect" banner CTA after the `failed` terminal state.
+ *
+ * 2026-10-11 (.online R1 client review, R1C-REV-1): ALWAYS reuse the SAME
+ * socket instance. App.jsx and GameHUD bind their game listeners (connect ->
+ * re-auth, gameState, loginResult, error, insurance, reveals...) to this
+ * instance in mount-once effects; the old 'failed' branch nulled it and built
+ * a new one, so the banner went away and the dot turned green while nothing
+ * re-authenticated, no state arrived and every action was dropped — a frozen
+ * table until a full reload. Verified against socket.io-client 4.8.3: after
+ * `reconnect_failed`, Socket.connect() on the same instance calls io.open()
+ * and reconnects, and every listener registered before the outage keeps
+ * receiving events. Lock token: forceReconnectSameInstance
  */
 export const forceReconnect = () => {
   if (_socket && _socket.connected) return;
-  if (_connectionStatus === 'failed') {
-    // Terminal: the manager won't retry on its own. Build a new socket.
-    try { _socket?.disconnect(); } catch { /* ignore */ }
-    socket = null;
-    _socket = null;
-    connectToServer();
+  if (_connectionStatus === 'failed' && _socket) {
+    try { console.info('[forceReconnectSameInstance] reconnecting the existing socket after reconnect_failed'); } catch { /* ignore */ }
+    try { _socket.connect(); } catch { /* ignore */ }
     return;
   }
   if (!_socket) {

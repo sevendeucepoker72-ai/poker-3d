@@ -752,3 +752,6 @@ Dismiss update notice
 
 # 2026-10-11 R1 review (R1REV-MONEY-2): Decline ends the insurance decision window on the server
 declineInsurance
+
+# 2026-10-11 R1 client review (R1C-REV-1): Tap to reconnect reuses the SAME socket so every listener keeps working
+forceReconnectSameInstance
