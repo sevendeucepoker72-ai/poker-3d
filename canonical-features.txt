@@ -675,3 +675,6 @@ Sit Out follows the server
 #     APPUI-31: sw.js never intercepts cross-origin (Google Fonts, API, remote
 #     images) or non-GET requests (dist/sw.js is public/sw.js verbatim).
 requestUrl.origin !== self.location.origin
+#     APPUI-7: the Daily Rewards panel embedded in the Shop tab is not forced
+#     into the fixed bottom sheet.
+.login-rewards-panel:not(.login-rewards-inline)
