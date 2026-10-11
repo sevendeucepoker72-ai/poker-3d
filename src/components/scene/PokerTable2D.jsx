@@ -24,7 +24,10 @@ import { useAvatar, PlayerAvatar } from '../../hooks/useAvatar';
 // avatar initial; a non-string name used to throw for every viewer.
 import { safeName, nameInitial } from '../../utils/tablePayload';
 import { TABLE_GEOMETRY_EVENT } from '../game/useTableGeometry';
+// R2 (C7 / C8) — the shop cosmetics the server sends per seat + myTheme.
+import { feltForTheme, seatLook } from './tableCosmetics';
 import './PokerTable2D.css';
+import './TableCosmetics.css';
 
 /* ── Player-notes callback (App.jsx sets this) ─────────────── */
 let _onOpenPlayerNotes = null;
@@ -139,11 +142,11 @@ const RAIL_CLEARANCE = 32;
 /* ============================================================
    Card2D — playing card with deal animation
    ============================================================ */
-function Card2D({ card, faceUp = true, small = false, dealDelay = 0 }) {
+function Card2D({ card, faceUp = true, small = false, dealDelay = 0, backClass = '' }) {
   if (!faceUp || !card) {
     return (
       <div
-        className={`card2d card2d--back card2d--deal${small ? ' card2d--small' : ''}`}
+        className={`card2d card2d--back card2d--deal${small ? ' card2d--small' : ''}${backClass ? ` ${backClass}` : ''}`}
         style={{ animationDelay: `${dealDelay}s` }}
       >
         <div className="card2d__back-pattern" />
@@ -519,6 +522,12 @@ const SeatPod = memo(function SeatPod({
 
   const rankInfo = serverSeat?.rank ? getRankInfo(serverSeat.rank) : null;
 
+  // R2 (C7 / C8) — the seated account's equipped look: card back, nameplate
+  // frame (or the VIP gold frame), title, season badge, VIP badge. A seat
+  // without `cosmetics` (older server, AI) draws exactly as before.
+  const look = seatLook(serverSeat?.cosmetics);
+  const hasLook = !!(look.frameClass || look.vip || look.title || look.badge);
+
   const streak = winStreak ?? 0;
 
   const classes = [
@@ -575,7 +584,7 @@ const SeatPod = memo(function SeatPod({
                 <Card2D key={i} card={c} faceUp small dealDelay={i * 0.07} />
               ))
             : [0, 1].map(i => (
-                <Card2D key={i} card={null} faceUp={false} small dealDelay={i * 0.07} />
+                <Card2D key={i} card={null} faceUp={false} small dealDelay={i * 0.07} backClass={look.cardBack} />
               ))
           }
         </div>
@@ -632,7 +641,8 @@ const SeatPod = memo(function SeatPod({
 
       {/* Nameplate — hidden for hero (GameHUD already shows it) */}
       {!isMyPlayer && (
-        <div className={`seat-pod__nameplate${isSittingOut ? ' seat-pod__nameplate--sitout' : ''}`}>
+        <div className={`seat-pod__nameplate${isSittingOut ? ' seat-pod__nameplate--sitout' : ''}${hasLook ? ` np-cos ${look.frameClass}` : ''}`}>
+          {look.vip && <span className="np-vip" title="VIP">VIP</span>}
 
           {/* Row 1: note dot + name + rank icon + streak */}
           <div className="seat-pod__name-row">
@@ -644,6 +654,7 @@ const SeatPod = memo(function SeatPod({
               />
             )}
             <div className="seat-pod__name" title={name}>{name}</div>
+            {look.badge && <span className="np-badge" title={look.badge.name}>{look.badge.icon}</span>}
             {rankInfo && (
               <span className="seat-pod__rank-icon" title={rankInfo.name}>{rankInfo.icon}</span>
             )}
@@ -654,6 +665,8 @@ const SeatPod = memo(function SeatPod({
               <span className="seat-pod__streak" title={`${Math.abs(streak)} loss streak`}>❄️</span>
             )}
           </div>
+
+          {look.title && <div className={look.titleClass}>{look.title}</div>}
 
           {/* Row 2: chips + BB badge + position */}
           <div className="seat-pod__chips">
@@ -866,6 +879,14 @@ export default function PokerTable2D() {
     try { return sessionStorage.getItem('app_poker_theme') || 'blue'; } catch { return 'blue'; }
   });
   const theme = TABLE_THEMES[themeKey] || TABLE_THEMES.blue;
+  // R2 (C7) — the felt of the table theme the player EQUIPPED in the shop
+  // (`gameState.myTheme`, server-validated). It wins over the Options felt
+  // picker until he picks a felt there while it is equipped (a later equip
+  // shows again). Unknown / no theme: the picker's felt, as before.
+  const myTheme = gameState?.myTheme ?? null;
+  const shopFelt = feltForTheme(myTheme);
+  const [feltPickedFor, setFeltPickedFor] = useState(undefined);
+  const feltBg = shopFelt && feltPickedFor !== myTheme ? shopFelt.felt : theme.felt;
 
   const cycleTheme = useCallback(() => {
     const next = THEME_KEYS[(THEME_KEYS.indexOf(themeKey) + 1) % THEME_KEYS.length];
@@ -881,8 +902,12 @@ export default function PokerTable2D() {
   useEffect(() => {
     const onSet = (e) => {
       const key = e?.detail?.key;
+      // R2 (C7) — 'equipped' = back to the shop theme; a felt key = the
+      // player's own pick, over the equipped theme it was picked against.
+      if (key === 'equipped') { setFeltPickedFor(undefined); return; }
       if (key && TABLE_THEMES[key]) {
         setThemeKey(key);
+        setFeltPickedFor(e?.detail?.over ?? null);
         try { sessionStorage.setItem('app_poker_theme', key); } catch {}
       }
     };
@@ -1019,7 +1044,7 @@ export default function PokerTable2D() {
       <div
         className="table2d-felt"
         ref={feltRef}
-        style={{ '--felt-bg': theme.felt }}
+        style={{ '--felt-bg': feltBg }}
       >
        <div className="table2d-felt__surface">
         {/* drifting spotlight caustic on the felt */}

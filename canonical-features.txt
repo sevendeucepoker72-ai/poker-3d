@@ -814,3 +814,25 @@ straddle_not_allowed
 bomb_pot_not_allowed
 Tap Sit Here on an open seat to play again.
 Raising is capped this round
+
+# 2026-10-11 .online R2 K1 (table screen, part 3): C7 / C8 cosmetics at the table
+#     the viewer's equipped table theme (myTheme) is the felt; every seat's
+#     equipped card back / nameplate frame / title / season badge and the VIP
+#     badge + gold frame (seats[i].cosmetics) are drawn for every id the shop
+#     sells (unknown ids draw the default look); the emote panel adds owned and
+#     VIP emotes to the free set (C5 equipped.emotes / owned / vip).
+Cosmic Nebula
+np-frame np-frame--
+np-vip
+cb-diamond_pattern
+options-theme-swatch--equipped
+emote-panel__grid
+emoteRefused
+vip_champagne
+#     APPUI-45 / 46: the opt-in panels (Predict Winner, Prediction Market, Voice,
+#     GTO) share one dock, under the top bar on phones (never on the action bar
+#     or the hero); Predict Winner lists the dealt-in seats; picks close at the
+#     river and market bets before the flop, as the server rules.
+hud-panel-dock
+Picks close when the river is dealt
+Bets close when the flop is dealt

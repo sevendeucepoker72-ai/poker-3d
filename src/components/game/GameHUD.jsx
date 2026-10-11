@@ -14,7 +14,8 @@ import {
 } from '../../utils/tablePayload';
 import useSoundEffects, { readSoundPrefs, SOUND_SETTINGS_EVENT, TABLE_SOUND_KEY } from '../../hooks/useSoundEffects';
 import TrainingOverlay from './TrainingOverlay';
-import EmoteWheel, { EMOTE_MAP } from './EmoteWheel';
+import EmoteWheel from './EmoteWheel';
+import { EMOTE_MAP } from './emoteCatalog';
 // PWA audit #9: request Screen Wake Lock while the user has an active
 // turn so the phone doesn't auto-sleep mid-decision (which would drop
 // the socket and auto-fold). Hook self-gates on browser support.
@@ -46,6 +47,8 @@ import { notify } from '../../hooks/usePushNotifications';
 import { liveTableIds } from '../../store/tableStore';
 import { OPEN_TABLE_PICKER_EVENT } from './MultiTableTabs';
 import useTableGeometry from './useTableGeometry';
+// R2 (C7 / C8) — the hero's own seat look + the equipped table theme.
+import { seatLook, feltForTheme } from '../scene/tableCosmetics';
 import './GameHUD.css';
 // R2 (TABLEUI-8/9) — the phone layout layer; imported LAST so it is the final
 // layer of the table cascade (it reads useTableGeometry's measured CSS vars).
@@ -685,6 +688,15 @@ export default function GameHUD() {
   const yourSeat = gameState?.yourSeat ?? mySeat;
   const seats = gameState?.seats || [];
   const myPlayer = yourSeat >= 0 && seats[yourSeat] ? seats[yourSeat] : null;
+  // R2 (C7 / C8) — the hero's equipped look from his own seat's `cosmetics`
+  // (what everyone else at the table sees): frame / VIP, title, badge, back.
+  const heroLook = seatLook(myPlayer?.cosmetics);
+  // R2 (C7) — the table theme he equipped (`myTheme`) and whether the felt
+  // picker below overrides it (mirrors PokerTable2D's rule).
+  const myThemeId = gameState?.myTheme ?? null;
+  const equippedFelt = feltForTheme(myThemeId);
+  const [feltPickedFor, setFeltPickedFor] = useState(undefined);
+  const equippedFeltShown = !!equippedFelt && feltPickedFor !== myThemeId;
   const isSeated = myPlayer != null;
   // R2 (P3 / TABLEUI-15) — this socket PLAYS this table (not watching it).
   const seatedHere = isSeated && !isSpectating && gameState?.isSpectator !== true;
@@ -3302,13 +3314,28 @@ export default function GameHUD() {
                 <div className="options-theme-row" role="radiogroup" aria-label="Table felt color">
                   <span className="options-label">🎨 Table Felt</span>
                   <div className="options-theme-swatches">
+                    {/* R2 (C7) — the theme equipped in the shop (myTheme). */}
+                    {equippedFelt && (
+                      <button
+                        role="radio"
+                        aria-checked={equippedFeltShown}
+                        className={`options-theme-swatch options-theme-swatch--equipped ${equippedFeltShown ? 'options-theme-swatch--active' : ''}`}
+                        title={`Your theme: ${equippedFelt.name}`}
+                        aria-label={`Your theme: ${equippedFelt.name}`}
+                        style={{ background: equippedFelt.felt }}
+                        onClick={() => {
+                          setFeltPickedFor(undefined);
+                          window.dispatchEvent(new CustomEvent('poker:set-theme', { detail: { key: 'equipped' } }));
+                        }}
+                      >{equippedFeltShown ? '✓' : '★'}</button>
+                    )}
                     {[
                       { key: 'blue',    label: '🔵 Speed',    preview: 'linear-gradient(135deg, #1a3a6e, #0f2447)' },
                       { key: 'green',   label: '🟢 Classic',  preview: 'linear-gradient(135deg, #2e7d52, #1a5438)' },
                       { key: 'black',   label: '⬛ Midnight', preview: 'linear-gradient(135deg, #0c1a44, #0d0d1a)' },
                       { key: 'crimson', label: '🔴 Crimson',  preview: 'linear-gradient(135deg, #7c1d1d, #4a0f0f)' },
                     ].map(({ key, label, preview }) => {
-                      const active = (sessionStorage.getItem('app_poker_theme') || 'blue') === key;
+                      const active = !equippedFeltShown && (sessionStorage.getItem('app_poker_theme') || 'blue') === key;
                       return (
                         <button
                           key={key}
@@ -3318,7 +3345,9 @@ export default function GameHUD() {
                           title={label}
                           style={{ background: preview }}
                           onClick={() => {
-                            window.dispatchEvent(new CustomEvent('poker:set-theme', { detail: { key } }));
+                            // R2 (C7) — a pick here wins over the equipped theme it was made against.
+                            setFeltPickedFor(myThemeId);
+                            window.dispatchEvent(new CustomEvent('poker:set-theme', { detail: { key, over: myThemeId } }));
                             /* Don't close the Options menu — let the user
                                compare themes live. Close with the gear
                                toggle or tap outside when satisfied. */
@@ -3788,7 +3817,7 @@ export default function GameHUD() {
                       )}
                     </div>
                     {/* Back face - red/gold pattern */}
-                    <div className="card-peek-back" />
+                    <div className={`card-peek-back${heroLook.cardBack ? ` ${heroLook.cardBack}` : ''}`} />
                   </div>
                 </div>
               );
@@ -3810,7 +3839,9 @@ export default function GameHUD() {
             nameplate via position:absolute inset:-6. Only hero gets
             this — all other seats keep their own avatar-centric rings. */}
         {myPlayer && yourSeat >= 0 && (
-          <div className={`hud-nameplate-me ${isMyTurn ? 'hud-nameplate-me--active' : ''}`}>
+          <div className={`hud-nameplate-me ${isMyTurn ? 'hud-nameplate-me--active' : ''}${heroLook.frameClass ? ` ${heroLook.frameClass}` : ''}`}>
+            {heroLook.title && <span className={heroLook.titleClass}>{heroLook.title}</span>}
+            {heroLook.vip && <span className="np-vip" title="VIP">VIP</span>}
             {isMyTurn && (() => {
               // Use the same 0–30s base as the seat-pod timer ring.
               const pct = Math.max(0, Math.min(100, timerPct));
@@ -3844,7 +3875,7 @@ export default function GameHUD() {
               {nameInitial(playerName, 'P')}
             </div>
             <div className="hud-np-info">
-              <span className="hud-np-name">{safeName(playerName, '')}</span>
+              <span className="hud-np-name">{safeName(playerName, '')}{heroLook.badge && <span className="np-badge" title={heroLook.badge.name}>{heroLook.badge.icon}</span>}</span>
               <span className="hud-np-chips">● {(myPlayer.chipCount ?? myPlayer.chips ?? 0).toLocaleString()} · {bigBlind > 0 ? Math.round((myPlayer.chipCount ?? myPlayer.chips ?? 0) / bigBlind) : 0}bb</span>
             </div>
             {gameState?.seatPositions?.[yourSeat] && (
@@ -4955,18 +4986,6 @@ export default function GameHUD() {
         {showAchievements && <AchievementsPanel onClose={() => setShowAchievements(false)} />}
         {showEquityCalc && <EquityCalculator onClose={() => setShowEquityCalc(false)} />}
 
-        {/* GTO Overlay — always mounted, toggled via visibility */}
-        <GTOOverlay
-          holeCards={yourCards}
-          communityCards={gameState?.communityCards}
-          pot={gameState?.pot}
-          callAmount={gameState?.callAmount || gameState?.toCall}
-          numOpponents={(gameState?.seats || []).filter(s => s?.playerName && !s?.folded).length - 1}
-          phase={phase}
-          omaha={/omaha/i.test(gameVariant)}
-          visible={gtoVisible && isMyTurn}
-        />
-
         {showProvablyFair && (
           <ProvablyFair
             commitment={deckCommitment}
@@ -5001,14 +5020,69 @@ export default function GameHUD() {
         />
       )}
 
-      {/* Voice Chat */}
-      <Suspense fallback={null}>
-        <VoiceChat
-          tableId={gameState?.tableId}
-          username={gameState?.seats?.[yourSeat]?.playerName || 'Player'}
-          visible={showVoiceChat}
-        />
-      </Suspense>
+      {/* R2 (APPUI-45/46) — the opt-in floating panels (Predict Winner,
+          Prediction Market, Voice Chat, the GTO overlay + solver) share ONE
+          dock. Desktop: display:contents, every panel keeps its own corner.
+          Phones (TableLayout.css): a column under the top bar sized to the
+          measured bars, so none sits on the action bar, the hero's cards or
+          another panel (they were fixed at bottom:116px — ON the 143-149px
+          portrait bar — and over each other). */}
+      <OverlayBoundary
+        name="Table Panels"
+        onClose={() => {
+          setShowSpectatorPredict(false);
+          setShowPredictionMarket(false);
+          setShowVoiceChat(false);
+          setGtoVisible(false);
+          setShowGTOSolver(false);
+        }}
+      >
+        <div className="hud-panel-dock">
+          <Suspense fallback={null}>
+            <SpectatorPredict
+              tableId={gameState?.tableId}
+              gameState={gameState}
+              socket={getSocket()}
+              visible={showSpectatorPredict}
+              onClose={() => setShowSpectatorPredict(false)}
+            />
+            {/* 2026-10-09 — refusal handling passed in (PredictionMarket is in
+                the manual 'game-overlays' chunk; see its header). */}
+            <PredictionMarket
+              gameState={gameState}
+              socket={getSocket()}
+              visible={showPredictionMarket}
+              onClose={() => setShowPredictionMarket(false)}
+              onPlayRefusal={reportPlayRefusal}
+              notePlayAttempt={notePlayAttempt}
+            />
+            <VoiceChat
+              tableId={gameState?.tableId}
+              username={gameState?.seats?.[yourSeat]?.playerName || 'Player'}
+              visible={showVoiceChat}
+            />
+            {/* GTO Overlay — always mounted, toggled via visibility */}
+            <GTOOverlay
+              holeCards={yourCards}
+              communityCards={gameState?.communityCards}
+              pot={gameState?.pot}
+              callAmount={gameState?.callAmount || gameState?.toCall}
+              numOpponents={(gameState?.seats || []).filter(s => s?.playerName && !s?.folded).length - 1}
+              phase={phase}
+              omaha={/omaha/i.test(gameVariant)}
+              visible={gtoVisible && isMyTurn}
+            />
+            <GTOSolver
+              gameState={gameState}
+              yourCards={yourCards}
+              positionLabel={gameState?.seats?.[yourSeat]?.positionLabel || ''}
+              equity={equityResults?.[yourSeat] ?? null}
+              visible={showGTOSolver}
+              onClose={() => setShowGTOSolver(false)}
+            />
+          </Suspense>
+        </div>
+      </OverlayBoundary>
 
       {/* Lazy-loaded overlays — code-split, loaded on first open */}
       <Suspense fallback={null}>
@@ -5030,13 +5104,6 @@ export default function GameHUD() {
           visible={showRangeViz}
           onClose={() => setShowRangeViz(false)}
         />
-        <SpectatorPredict
-          tableId={gameState?.tableId}
-          gameState={gameState}
-          socket={getSocket()}
-          visible={showSpectatorPredict}
-          onClose={() => setShowSpectatorPredict(false)}
-        />
         <PauseCoach
           visible={showPauseCoach}
           gameState={gameState}
@@ -5052,14 +5119,6 @@ export default function GameHUD() {
           yourCards={yourCards}
           visible={showStream}
           onClose={() => setShowStream(false)}
-        />
-        <GTOSolver
-          gameState={gameState}
-          yourCards={yourCards}
-          positionLabel={gameState?.seats?.[yourSeat]?.positionLabel || ''}
-          equity={equityResults?.[yourSeat] ?? null}
-          visible={showGTOSolver}
-          onClose={() => setShowGTOSolver(false)}
         />
         <CoachingRail
           gameState={gameState}
@@ -5098,16 +5157,6 @@ export default function GameHUD() {
             setShowSessionRecap(false);
             setShowReplay(true);
           }}
-        />
-        {/* 2026-10-09 — refusal handling passed in (PredictionMarket is in
-            the manual 'game-overlays' chunk; see its header). */}
-        <PredictionMarket
-          gameState={gameState}
-          socket={getSocket()}
-          visible={showPredictionMarket}
-          onClose={() => setShowPredictionMarket(false)}
-          onPlayRefusal={reportPlayRefusal}
-          notePlayAttempt={notePlayAttempt}
         />
         <HandHeatmap
           seats={gameState?.seats || []}

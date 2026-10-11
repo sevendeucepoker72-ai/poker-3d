@@ -80,6 +80,16 @@ export default function PredictionMarket({
 
   const tableId = gameState?.tableId;
 
+  // R2 (APPUI-45) — the server takes market bets only BEFORE THE FLOP: hand in
+  // progress, pre-flop, no board, nobody all-in (predictionWindowClosed
+  // 'market'). Read from the live (unthrottled) state; outside that window
+  // every market is shown closed instead of inviting a bet the server refuses
+  // once the answer is (nearly) visible.
+  const live = gameStateRaw || gameState;
+  const bettingOpen = !!live && live.phase === 'PreFlop'
+    && !(Array.isArray(live.communityCards) && live.communityCards.length > 0)
+    && !(Array.isArray(live.seats) && live.seats.some((s) => s && s.state !== 'empty' && !s.folded && s.allIn));
+
   // Keep a ref of positions so the settle toast can read stake without
   // re-subscribing the socket listener on every bet.
   const positionsRef = useRef(positions);
@@ -169,7 +179,7 @@ export default function PredictionMarket({
   const confirmBet = useCallback((market, rawStake) => {
     const amount = Math.max(MIN_STAKE, Math.min(MAX_STAKE, parseInt(rawStake, 10) || MIN_STAKE));
     const outcome = stakeInput[market.id]?.outcome;
-    if (!outcome || balance == null || amount > balance) return;
+    if (!outcome || balance == null || amount > balance || !bettingOpen) return;
     if (socket?.connected) {
       const bet = {
         tableId,
@@ -187,18 +197,18 @@ export default function PredictionMarket({
       socket.emit('placePredictionBet', bet);
     }
     // Position is set when the server confirms via predictionBetPlaced.
-  }, [socket, tableId, currentHandId, stakeInput, balance, notePlayAttempt]);
+  }, [socket, tableId, currentHandId, stakeInput, balance, notePlayAttempt, bettingOpen]);
 
   if (!visible) return null;
 
-  const openCount = activeMarkets.filter(m => !resolved[m.id]).length;
+  const openCount = bettingOpen ? activeMarkets.filter(m => !resolved[m.id] && !positions[m.id]).length : 0;
 
   // ─── Render collapsed ───────────────────────────────────────────────────
   if (!expanded) {
     return (
       <div className="pm-collapsed" onClick={() => setExpanded(true)} title="Open Prediction Markets">
-        <span className="pm-pulse-dot" />
-        <span className="pm-collapsed-label">🎲 Markets · {openCount} open</span>
+        {bettingOpen && openCount > 0 && <span className="pm-pulse-dot" />}
+        <span className="pm-collapsed-label">🎲 Markets · {bettingOpen ? `${openCount} open` : 'closed'}</span>
       </div>
     );
   }
@@ -217,6 +227,9 @@ export default function PredictionMarket({
         <button className="pm-collapse-btn" onClick={() => setExpanded(false)} title="Collapse">▾</button>
       </div>
       <div className="pm-balance">Your balance: <strong>{balance == null ? '…' : balance}</strong> chips</div>
+      <div className={`pm-window ${bettingOpen ? 'pm-window--open' : 'pm-window--closed'}`}>
+        {bettingOpen ? 'Bets close when the flop is dealt' : 'Bets are closed for this hand. The next hand opens before the flop.'}
+      </div>
 
       <div className="pm-markets">
         {activeMarkets.map(market => {
@@ -256,21 +269,21 @@ export default function PredictionMarket({
                       <button
                         className="pm-btn pm-btn--yes"
                         onClick={() => openStakeInput(market.id, 'yes')}
-                        disabled={!!stake?.open || balance == null}
+                        disabled={!bettingOpen || !!stake?.open || balance == null}
                       >
                         YES ({yesOdds}%)
                       </button>
                       <button
                         className="pm-btn pm-btn--no"
                         onClick={() => openStakeInput(market.id, 'no')}
-                        disabled={!!stake?.open || balance == null}
+                        disabled={!bettingOpen || !!stake?.open || balance == null}
                       >
                         NO ({noOdds}%)
                       </button>
                     </div>
                   )}
 
-                  {stake?.open && !pos && (
+                  {stake?.open && !pos && bettingOpen && (
                     <div className="pm-stake-row">
                       <input
                         className="pm-stake-input"
@@ -288,7 +301,7 @@ export default function PredictionMarket({
                       <button
                         className="pm-btn pm-btn--confirm"
                         onClick={() => confirmBet(market, stake.value)}
-                        disabled={balance == null || parseInt(stake.value, 10) > balance}
+                        disabled={!bettingOpen || balance == null || parseInt(stake.value, 10) > balance}
                       >
                         Bet
                       </button>
