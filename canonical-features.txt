@@ -816,3 +816,17 @@ home-game-invite-code
 invalid_table_config
 private_table_limit
 Take your seat
+
+# 2026-10-11 R2 K3 (CLUBS-5 / APPUI-53 / APPUI-47 / APPUI-43): club Join Table goes through
+#     joinClubTable and the lobby's join watcher; club Ranks readable at 320-360px ('you' by account
+#     id); club tournament registration state; a challenge is accepted only by the challenged player;
+#     the lobby friend invite only from a seat (with its table id); friend error codes; the social
+#     bracket follows ONE bracket id, leaves it on close, scrubs ?bracket=, and states the
+#     organizer-can't-bet rule.
+joinClubTable
+club-tourney-registered
+club-challenge-waiting
+Sit at a table to invite online friends to it.
+friend_name_ambiguous
+leaveSocialBracket
+sb-organizer-rule

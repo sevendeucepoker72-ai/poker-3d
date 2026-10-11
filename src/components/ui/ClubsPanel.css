@@ -1234,3 +1234,29 @@
   color: #e2e2f0;
   font-size: 0.8rem;
 }
+
+/* R2 (2026-10-11 — APPUI-53): club Ranks readable on 320-360px phones. The
+   panel is full-screen there (mobile-overrides); with 24px side padding and
+   three 70px stat columns the name column collapsed to a few pixels. Narrower
+   gutters + 52px stat columns (values are compacted: 12.3k / 1.2M) leave the
+   name 90px+ at 320px. */
+@media (max-width: 420px) {
+  .clubs-panel { padding-left: 14px; padding-right: 14px; }
+  .club-leaderboard-header,
+  .club-leaderboard-row { padding: 8px 8px; gap: 4px; }
+  .club-leaderboard-header { letter-spacing: 0; font-size: 0.6rem; }
+  .club-lb-rank { width: 24px; }
+  .club-lb-stat { width: 52px; font-size: 0.72rem; }
+  .club-leaderboard-periods { flex-wrap: wrap; }
+}
+
+/* R2 — club tournaments + challenges (blue + gold). */
+.club-tourney-card--mine { border-color: rgba(255, 210, 74, 0.45); }
+.club-tourney-registered {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #ffd24a;
+}
+.club-tourney-status--running { color: #6abaff; }
+.club-challenge-waiting { font-size: 0.72rem; color: #9fb4d8; white-space: nowrap; }
