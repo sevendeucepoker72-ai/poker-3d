@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useProgressStore } from '../../store/progressStore';
 import { getSocket } from '../../services/socketService';
+import { useDetailedStats } from '../../hooks/useDetailedStats';
 import { lifetimeAchievementRows, sortAchievementRows } from '../../utils/achievementCatalog';
 import './StatsPanel.css';
 
@@ -190,8 +191,6 @@ function getStatIndicator(value, goodMin, goodMax) {
   return { color: '#60A5FA', label: 'Off target' };
 }
 
-const STATS_TIMEOUT_MS = 10000;
-
 // 2026-10-11 (.online R2 — C10 / APPUI-10 / APPUI-49). Every number here is
 // the SERVER's: getDetailedStats (answered for an unseated socket since R2,
 // DB-backed) for the HUD stats / distribution / actions / positions, and the
@@ -200,25 +199,17 @@ const STATS_TIMEOUT_MS = 10000;
 // not tracked shows "-", and before the server answers the panel says so.
 export default function StatsPanel({ onClose }) {
   const progress = useProgressStore((s) => s.progress);
-  const [detailedStats, setDetailedStats] = useState(null);
-  const [status, setStatus] = useState('loading'); // loading | ready | unavailable
+  // loading | ready | unavailable (a still-loading record is asked again, never drawn as zeros)
+  const { stats: detailedStats, status } = useDetailedStats();
   const [liveAchievements, setLiveAchievements] = useState(null);
 
   useEffect(() => {
     const socket = getSocket();
-    if (!socket) { setStatus('unavailable'); return undefined; }
-    const handler = (stats) => {
-      if (!stats || typeof stats !== 'object') return;
-      setDetailedStats(stats);
-      setStatus('ready');
-    };
+    if (!socket) return undefined;
     const onList = (payload) => { if (payload && Array.isArray(payload.lifetime)) setLiveAchievements(payload.lifetime); };
-    socket.on('detailedStats', handler);
     socket.on('achievementsList', onList);
-    socket.emit('getDetailedStats');
     socket.emit('getAchievements');
-    const t = setTimeout(() => setStatus((s) => (s === 'loading' ? 'unavailable' : s)), STATS_TIMEOUT_MS);
-    return () => { clearTimeout(t); socket.off('detailedStats', handler); socket.off('achievementsList', onList); };
+    return () => { socket.off('achievementsList', onList); };
   }, []);
 
   // Server values only: the detailed answer, else the server's own

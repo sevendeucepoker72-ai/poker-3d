@@ -66,14 +66,29 @@ export function missionsFromPayload(p) {
   return list.map(normalizeMission).filter(Boolean);
 }
 
-/** C8 `vip` → { tier, expiresAt (ms|null), perks[], active } (an older server sends only vipExpiresAt). */
+/**
+ * C8 `vip` → { tier, expiresAt (ms|null), perks[], active, monthlyClaimed,
+ * monthKey, monthlyBonus, xpRate, loginMultiplier } (an older server sends
+ * only vipExpiresAt; the monthly fields are then unknown: false / null / 0).
+ */
 export function normalizeVip(p, nowMs = Date.now()) {
   const v = p && typeof p.vip === 'object' && p.vip ? p.vip : null;
   const expiresAt = toEpochMs(v ? v.expiresAt : p?.vipExpiresAt);
   const active = expiresAt != null && expiresAt > nowMs;
   const perks = v && Array.isArray(v.perks) ? v.perks.map(String) : [];
   const tier = v && typeof v.tier === 'string' && v.tier ? v.tier : vipXpTierFor(p?.totalXp).name;
-  return { tier, expiresAt, perks, active };
+  const num = (x) => (Number.isFinite(Number(x)) && Number(x) > 0 ? Number(x) : 0);
+  return {
+    tier,
+    expiresAt,
+    perks,
+    active,
+    monthlyClaimed: v ? v.monthlyClaimed === true : false,
+    monthKey: v && typeof v.monthKey === 'string' ? v.monthKey : null,
+    monthlyBonus: v ? num(v.monthlyBonus) : 0,
+    xpRate: v ? num(v.xpRate) : 0,
+    loginMultiplier: v ? num(v.loginMultiplier) : 0,
+  };
 }
 
 /** Is the VIP pass active NOW (its expiry checked at render time, not at receipt)? */
@@ -101,15 +116,22 @@ export function activeBoostersAt(progress, nowMs = Date.now()) {
   return (Array.isArray(progress?.boosters) ? progress.boosters : []).filter((b) => b.expiresAt > nowMs);
 }
 
-/** C7 `equipped` → { theme, cardBack, frame, title, emotes[] } (older server: equippedTableTheme / equippedCardBack). */
+/**
+ * C7 `equipped` → { theme, cardBack, frame, title, profileBg, badge, emotes[] }
+ * (older server: equippedTableTheme / equippedCardBack). A slot the payload
+ * does not name is undefined (unknown), not null (nothing equipped).
+ */
 export function normalizeEquipped(p, prev) {
   const e = p && typeof p.equipped === 'object' && p.equipped ? p.equipped : null;
   if (e) {
+    const slot = (k) => (Object.prototype.hasOwnProperty.call(e, k) ? (e[k] ?? null) : undefined);
     return {
       theme: e.theme ?? null,
       cardBack: e.cardBack ?? null,
       frame: e.frame ?? null,
       title: e.title ?? null,
+      profileBg: slot('profileBg'),
+      badge: slot('badge'),
       emotes: Array.isArray(e.emotes) ? e.emotes.map(String) : [],
     };
   }
@@ -158,12 +180,12 @@ export function isItemOwned(progress, type, id, { free = false } = {}) {
   return owned.includes(id) && !owned.some((k) => k.endsWith(`:${id}`) && !k.startsWith(`${t}:`));
 }
 
-/** The id the player has equipped for `type`, from C5 `equipped` (theme/card_back/frame/title) else the inventory rows. */
+/** The id the player has equipped for `type`, from C5 `equipped` (theme/card_back/frame/title/profile_bg/badge) else the inventory rows. */
 export function equippedIdFor(progress, type) {
   const t = normalizeItemType(type);
   const e = progress?.equipped;
-  const key = { theme: 'theme', card_back: 'cardBack', frame: 'frame', title: 'title' }[t];
-  if (e && key && Object.prototype.hasOwnProperty.call(e, key)) return e[key] || null;
+  const key = { theme: 'theme', card_back: 'cardBack', frame: 'frame', title: 'title', profile_bg: 'profileBg', badge: 'badge' }[t];
+  if (e && key && e[key] !== undefined) return e[key] || null;
   return progress?.equippedBy?.[t] || null;
 }
 

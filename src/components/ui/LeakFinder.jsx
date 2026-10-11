@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useDetailedStats } from '../../hooks/useDetailedStats';
 import { createPortal } from 'react-dom';
-import { getSocket } from '../../services/socketService';
 import './LeakFinder.css';
 
 // Each check names the server stats it needs (`fields`); a check whose stat
@@ -61,25 +60,10 @@ function getGrade(leakCount) {
 // since R2). It used to fall back to this browser's own counts and zeros, so
 // an unanswered request showed "PFR 0.0%" as a real leak. No answer → it
 // says so; too few tracked hands → it says how many it has.
-const STATS_TIMEOUT_MS = 10000;
 
 export default function LeakFinder({ onClose }) {
-  const [detailedStats, setDetailedStats] = useState(null);
-  const [status, setStatus] = useState('loading'); // loading | ready | unavailable
-
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) { setStatus('unavailable'); return undefined; }
-    const handler = (stats) => {
-      if (!stats || typeof stats !== 'object') return;
-      setDetailedStats(stats);
-      setStatus('ready');
-    };
-    socket.on('detailedStats', handler);
-    socket.emit('getDetailedStats');
-    const t = setTimeout(() => setStatus((s) => (s === 'loading' ? 'unavailable' : s)), STATS_TIMEOUT_MS);
-    return () => { clearTimeout(t); socket.off('detailedStats', handler); };
-  }, []);
+  // loading | ready | unavailable (a still-loading record is asked again, never graded as zeros)
+  const { stats: detailedStats, status } = useDetailedStats();
 
   const raw = detailedStats || {};
   const num = (v) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null);

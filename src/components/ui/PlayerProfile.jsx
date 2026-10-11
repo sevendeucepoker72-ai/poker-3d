@@ -5,15 +5,21 @@ import { RANK_TIERS } from './RankBadge';
 import { lifetimeAchievementRows, sortAchievementRows } from '../../utils/achievementCatalog';
 import { SEASON_BADGES, PROFILE_BGS, vipXpTierFor } from '../../utils/economyCatalog';
 import { ownHandResult } from '../../utils/handLog';
+import { useDetailedStats } from '../../hooks/useDetailedStats';
+import { isPublicId, profileRequestOf, profileAnswerMatches, profileLink, friendRequestOf } from '../../utils/profileTarget';
 import './PlayerProfile.css';
 
 // 2026-10-11 (.online R2 — APPUI-14 / APPUI-49 / C9 / C10).
 // - Whose profile it is comes from IDENTITY: `target.own`, or a `target.userId`
 //   equal to this account's id. (It compared names with a store field nothing
 //   wrote, so his own profile was fetched from the server as a stranger's.)
-// - Another player's profile is asked for by USER ID (`requestProfile
-//   { userId }`; an older server gets the name as well) — never a name that
-//   two players can share.
+// - Another player's profile is asked for by ID — the opaque `publicId` the
+//   server puts on leaderboard / search / friends rows, or a friend's
+//   `userId` (`requestProfile { publicId | userId }`; an older server gets the
+//   name as well) — never a name that two players can share. The server's
+//   `isYou` turns an id-opened profile into his own. Add Friend sends the same
+//   id (`sendFriendRequest { publicId | userId }`), and the shared link carries
+//   the public id (`?profile=p…`), never the account id when the server gave one.
 // - Achievements are the server's (ids / names; live list when it answers),
 //   season badges and the equipped profile background are drawn, and his own
 //   VPIP / PFR are the server's tracked stats (getDetailedStats), not this
@@ -78,6 +84,13 @@ function getRankFromElo(elo = 0) {
   return { current, next, icon: current.icon, progress };
 }
 
+// Friend request refusals, in words (the profile was opened by id, so a
+// "not found" here is an account that is gone, not a misspelling).
+const PROFILE_FRIEND_ERRORS = {
+  friend_not_found: 'That player could not be found.',
+  friend_name_ambiguous: 'That player could not be identified exactly — try again from their profile.',
+};
+
 /** Is this target the signed-in player? (identity, never the name) */
 export function isOwnProfileTarget(target, myUserId) {
   if (!target) return false;
@@ -90,14 +103,21 @@ export default function PlayerProfile({ target, socket, onClose, onViewReplay })
   const handLog = useProgressStore((s) => s.handLog);
   const myUserId = useGameStore((s) => s.userId);
   const myName = useGameStore((s) => s.playerName);
-  const isOwnProfile = isOwnProfileTarget(target, myUserId);
-  const targetUserId = isOwnProfile ? myUserId : (target?.userId ?? null);
+  const ownByTarget = isOwnProfileTarget(target, myUserId);
+  // The server can say an id-opened profile is his own (`isYou`) — e.g. his row in a search.
+  const [answeredIsYou, setAnsweredIsYou] = useState(false);
+  const isOwnProfile = ownByTarget || answeredIsYou;
   const targetName = isOwnProfile ? (myName || 'You') : String(target?.name ?? '');
+  const requestKey = useMemo(() => {
+    const req = ownByTarget ? null : profileRequestOf(target);
+    return req ? JSON.stringify(req) : '';
+  }, [ownByTarget, target]);
 
   const [otherProfile, setOtherProfile] = useState(null);
   const [loading, setLoading] = useState(!isOwnProfile);
   const [liveAchievements, setLiveAchievements] = useState(null);
-  const [detailed, setDetailed] = useState(null);
+  const [ownPublicId, setOwnPublicId] = useState(null);
+  const [friendState, setFriendState] = useState(null); // { ok, text, pending }
   const [showAllAchievements, setShowAllAchievements] = useState(false);
   const [copied, setCopied] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -105,21 +125,24 @@ export default function PlayerProfile({ target, socket, onClose, onViewReplay })
   const [nameError, setNameError] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [localName, setLocalName] = useState(null); // optimistic override after a rename
-  const requestedRef = useRef(null);
+  const friendTimerRef = useRef(null);
 
-  // Another player's profile: by user id (the name too, for an older server).
+  // A different player on screen: forget the previous answer's state.
   useEffect(() => {
-    if (isOwnProfile || !socket) { setLoading(false); return undefined; }
-    if (targetUserId == null && !targetName) { setLoading(false); return undefined; }
+    setAnsweredIsYou(false);
+    setFriendState(null);
+  }, [requestKey]);
+
+  // Another player's profile: by public id / user id (the name too, for an older server).
+  useEffect(() => {
+    if (ownByTarget || !socket) { setLoading(false); return undefined; }
+    const req = requestKey ? JSON.parse(requestKey) : null;
+    if (!req) { setLoading(false); return undefined; }
     setLoading(true);
     setOtherProfile(null);
-    const req = { userId: targetUserId ?? undefined, username: targetName || undefined };
-    requestedRef.current = req;
     const handler = (data) => {
-      if (!data || typeof data !== 'object') return;
-      const byId = data.userId != null && targetUserId != null && String(data.userId) === String(targetUserId);
-      const byName = !!targetName && typeof data.username === 'string' && data.username.toLowerCase() === targetName.toLowerCase();
-      if (!byId && !byName) return;
+      if (!profileAnswerMatches(data, req)) return;
+      if (data.isYou === true) setAnsweredIsYou(true);
       setOtherProfile(data.notFound ? { notFound: true } : data);
       setLoading(false);
     };
@@ -127,19 +150,52 @@ export default function PlayerProfile({ target, socket, onClose, onViewReplay })
     socket.emit('requestProfile', req);
     const t = setTimeout(() => setLoading(false), 10000);
     return () => { clearTimeout(t); socket.off('profileData', handler); };
-  }, [isOwnProfile, socket, targetUserId, targetName]);
+  }, [ownByTarget, socket, requestKey]);
 
-  // His own: the server's achievement list + tracked stats.
+  // His own: the server's achievement list + tracked stats (a still-loading record is asked again).
+  const { stats: detailed } = useDetailedStats(isOwnProfile && !!socket);
   useEffect(() => {
     if (!isOwnProfile || !socket) return undefined;
     const onList = (payload) => { if (payload && Array.isArray(payload.lifetime)) setLiveAchievements(payload.lifetime); };
-    const onStats = (s) => { if (s && typeof s === 'object') setDetailed(s); };
     socket.on('achievementsList', onList);
-    socket.on('detailedStats', onStats);
     socket.emit('getAchievements');
-    socket.emit('getDetailedStats');
-    return () => { socket.off('achievementsList', onList); socket.off('detailedStats', onStats); };
+    return () => { socket.off('achievementsList', onList); };
   }, [isOwnProfile, socket]);
+
+  // His own public id, for the shareable link: the server's answer about HIM
+  // (`isYou`, computed by the server). An older server sends none → the link
+  // falls back to the account id.
+  useEffect(() => {
+    if (!isOwnProfile || !socket || myUserId == null || ownPublicId) return undefined;
+    const onData = (data) => {
+      if (data && data.isYou === true && isPublicId(data.publicId)) setOwnPublicId(data.publicId);
+    };
+    socket.on('profileData', onData);
+    socket.emit('requestProfile', { userId: myUserId });
+    return () => { socket.off('profileData', onData); };
+  }, [isOwnProfile, socket, myUserId, ownPublicId]);
+
+  useEffect(() => () => { if (friendTimerRef.current) clearTimeout(friendTimerRef.current); }, []);
+
+  // Add Friend — by the same exact id the profile was opened with.
+  const friendReq = !isOwnProfile ? friendRequestOf({ publicId: otherProfile?.publicId || target?.publicId, userId: target?.userId }) : null;
+  const handleAddFriend = () => {
+    if (!friendReq || !socket || friendState?.pending) return;
+    if (!socket.connected) { setFriendState({ ok: false, text: 'Not connected — try again in a moment.' }); return; }
+    setFriendState({ pending: true, text: 'Sending…' });
+    const done = (next) => {
+      socket.off('friendRequestSent', onSent);
+      socket.off('friendError', onErr);
+      if (friendTimerRef.current) { clearTimeout(friendTimerRef.current); friendTimerRef.current = null; }
+      setFriendState(next);
+    };
+    const onSent = (d) => done({ ok: true, text: d?.status === 'accepted' ? 'You are now friends.' : 'Friend request sent.' });
+    const onErr = (d) => done({ ok: false, text: PROFILE_FRIEND_ERRORS[d?.code] || (typeof d?.message === 'string' && d.message) || 'Could not send the request — try again.' });
+    socket.on('friendRequestSent', onSent);
+    socket.on('friendError', onErr);
+    friendTimerRef.current = setTimeout(() => done({ ok: false, text: 'The game server did not answer — try again.' }), 10000);
+    socket.emit('sendFriendRequest', friendReq);
+  };
 
   const handleSaveName = () => {
     const err = validateDisplayName(nameInput);
@@ -229,9 +285,13 @@ export default function PlayerProfile({ target, socket, onClose, onViewReplay })
     return pts.slice(-30);
   }, [isOwnProfile, handLog, myName]);
 
+  const shareLink = profileLink(window.location.origin, isOwnProfile
+    ? { publicId: ownPublicId, userId: ownPublicId ? null : myUserId }
+    : { publicId: otherProfile?.publicId || target?.publicId, userId: target?.userId });
+
   function handleCopyLink() {
-    if (targetUserId == null) return;
-    const link = `${window.location.origin}/?profile=${encodeURIComponent(String(targetUserId))}`;
+    if (!shareLink) return;
+    const link = shareLink;
     navigator.clipboard.writeText(link).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -316,9 +376,14 @@ export default function PlayerProfile({ target, socket, onClose, onViewReplay })
               <span className="profile-level-badge">LVL {view.level}</span>
             </div>
             <div className="profile-action-buttons">
-              {targetUserId != null && (
+              {shareLink && (
                 <button className="profile-copy-btn" onClick={handleCopyLink}>
                   {copied ? '✓ Copied!' : '📋 Copy Profile Link'}
+                </button>
+              )}
+              {!isOwnProfile && friendReq && (
+                <button className="profile-friend-btn" onClick={handleAddFriend} disabled={!!friendState?.pending || friendState?.ok === true}>
+                  {friendState?.pending ? 'Sending…' : friendState?.ok ? '✓ Requested' : '➕ Add Friend'}
                 </button>
               )}
               {isOwnProfile && !editingName && (
@@ -328,6 +393,9 @@ export default function PlayerProfile({ target, socket, onClose, onViewReplay })
                 >✏️ Edit</button>
               )}
             </div>
+            {friendState && !friendState.pending && (
+              <div className={`profile-friend-note ${friendState.ok ? 'profile-friend-note--ok' : ''}`} role="status">{friendState.text}</div>
+            )}
           </div>
         </div>
 

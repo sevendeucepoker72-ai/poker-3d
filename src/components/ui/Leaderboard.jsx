@@ -4,6 +4,7 @@ import { getSocket } from '../../services/socketService';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 import { SEASON_REWARDS, SEASON_BADGES } from '../../utils/economyCatalog';
 import { nextDenverMonthStartMs, formatCountdown, denverParts, toEpochMs } from '../../utils/denverTime';
+import { profileTargetOf } from '../../utils/profileTarget';
 import './Leaderboard.css';
 
 // 2026-10-11 (.online R2 — C9 / APPUI-17 / APPUI-50 / addendum).
@@ -14,7 +15,10 @@ import './Leaderboard.css';
 // - Season: the server's ranking, `seasonEndsAt` countdown, and the rewards
 //   that are really paid at month end (50k / 25k / 10k chips + a badge).
 // - Season badges a player holds (row `badges`) are drawn next to the name.
-// - A row with a `userId` opens that player's profile (onOpenProfile).
+// - A row with an id (the server's opaque `publicId`; `isYou` = his own)
+//   opens that player's profile (onOpenProfile).
+// - The season box lists the rewards the server says it pays (`rewards`),
+//   daily / weekly show when their window resets (`windowEndsAt`).
 
 export const LEADERBOARD_TABS = [
   { key: 'alltime', label: 'All-Time', ranks: 'Chip balance — every player' },
@@ -78,7 +82,13 @@ export default function Leaderboard({ onClose, onOpenProfile }) {
     const handleData = (data) => {
       if (!data || data.period !== activeTab) return;
       setEntries(Array.isArray(data.entries) ? data.entries : []);
-      setMeta({ seasonEndsAt: toEpochMs(data.seasonEndsAt), rankedBy: data.rankedBy || data.metric || null, seasonName: data.seasonName || null });
+      setMeta({
+        seasonEndsAt: toEpochMs(data.seasonEndsAt),
+        windowEndsAt: toEpochMs(data.windowEndsAt),
+        rankedBy: data.rankedBy || data.metric || null,
+        seasonName: data.seasonName || null,
+        rewards: Array.isArray(data.rewards) ? data.rewards : null,
+      });
       setLoading(false);
     };
     socket.on('leaderboardData', handleData);
@@ -92,6 +102,14 @@ export default function Leaderboard({ onClose, onOpenProfile }) {
     ? 'Chip balance of players active in this period'
     : tab.ranks;
   const currentPlayer = entries.find((e) => e && e.isYou === true);
+
+  // The rewards the server says it pays (an older server sends none → the catalog's).
+  const seasonRewards = useMemo(() => {
+    const list = (meta.rewards || [])
+      .map((r) => ({ place: Number(r?.place), chips: Number(r?.chips) || 0, badge: typeof r?.badge === 'string' ? r.badge : null }))
+      .filter((r) => Number.isInteger(r.place) && r.place > 0);
+    return list.length ? list.sort((a, b) => a.place - b.place) : SEASON_REWARDS;
+  }, [meta.rewards]);
 
   const season = useMemo(() => {
     const endsAt = meta.seasonEndsAt || nextDenverMonthStartMs(now);
@@ -122,7 +140,10 @@ export default function Leaderboard({ onClose, onOpenProfile }) {
             </button>
           ))}
         </div>
-        <div className="leaderboard-ranks-by">Ranked by: {ranksText}</div>
+        <div className="leaderboard-ranks-by">
+          Ranked by: {ranksText}
+          {(activeTab === 'daily' || activeTab === 'weekly') && meta.windowEndsAt > now ? ` · resets in ${formatCountdown(meta.windowEndsAt, now)}` : ''}
+        </div>
 
         {activeTab === 'season' && (
           <div className="season-info-section">
@@ -136,7 +157,7 @@ export default function Leaderboard({ onClose, onOpenProfile }) {
             <div className="season-rewards-box">
               <div className="season-rewards-title">Paid automatically when the month ends (Denver time)</div>
               <div className="season-rewards-list">
-                {SEASON_REWARDS.map((r) => {
+                {seasonRewards.map((r) => {
                   const badge = SEASON_BADGES.find((b) => b.id === r.badge);
                   return (
                     <div key={r.place} className="season-reward-item" style={{ borderLeftColor: badge ? badge.color : '#ffd24a' }}>
@@ -170,13 +191,14 @@ export default function Leaderboard({ onClose, onOpenProfile }) {
                 const rank = Number(entry.rank) || i + 1;
                 const you = entry.isYou === true;
                 const name = String(entry.displayName ?? entry.username ?? 'Player');
-                const canOpen = typeof onOpenProfile === 'function' && entry.userId != null;
+                const target = profileTargetOf(entry, name);
+                const canOpen = typeof onOpenProfile === 'function' && target != null;
                 const cls = [rank === 1 ? 'leaderboard-row-gold' : rank === 2 ? 'leaderboard-row-silver' : rank === 3 ? 'leaderboard-row-bronze' : '', you ? 'leaderboard-row-current' : '', canOpen ? 'leaderboard-row-link' : ''].join(' ');
                 return (
                   <tr
                     key={`${rank}-${name}-${i}`}
                     className={cls}
-                    onClick={canOpen ? () => onOpenProfile({ userId: entry.userId, name }) : undefined}
+                    onClick={canOpen ? () => onOpenProfile(target) : undefined}
                   >
                     <td className="rank-cell">{getRankDisplay(rank)}</td>
                     <td className={you ? 'player-name-current' : 'player-name'}>

@@ -56,6 +56,7 @@ import { openLiveTableOverlay } from '../../store/liveTableOverlayStore';
 // tournament-seat store field `bannerBottom`; TournamentSeatNotice.jsx).
 import { useTournamentSeatStore } from '../../store/tournamentSeatStore';
 import { PlayerAvatar } from '../../hooks/useAvatar';
+import { profileTargetOf, profileTargetFromParam } from '../../utils/profileTarget';
 import './Lobby.css';
 
 const VARIANT_FILTERS = [
@@ -593,6 +594,7 @@ function InlineFriendsList({ onOpenProfile }) {
       )}
       {sortedFriends.map((friend) => {
         const name = String(friend.username ?? 'Player');
+        const target = onOpenProfile ? profileTargetOf(friend, name) : null;
         return (
         <div key={friend.userId} className="inline-friend-card">
           <div className="inline-friend-avatar" style={{ borderColor: statusColors[friend.presence] }}>
@@ -600,8 +602,8 @@ function InlineFriendsList({ onOpenProfile }) {
             <span className="inline-friend-dot" style={{ background: statusColors[friend.presence] }} />
           </div>
           <div
-            className={`inline-friend-info ${onOpenProfile ? 'inline-friend-info--link' : ''}`}
-            onClick={onOpenProfile ? () => onOpenProfile({ userId: friend.userId, name }) : undefined}
+            className={`inline-friend-info ${target ? 'inline-friend-info--link' : ''}`}
+            onClick={target ? () => onOpenProfile(target) : undefined}
           >
             <div className="inline-friend-name">{name}</div>
             <div className="inline-friend-status" style={{ color: statusColors[friend.presence] }}>
@@ -652,14 +654,18 @@ function InlineLeaderboard({ onOpenProfile }) {
     return `#${rank}`;
   };
 
-  const data = (entries || []).slice(0, 8).map((e, i) => ({
-    name: String(e.displayName ?? e.username ?? 'Player'),
-    chips: Number(e.chips) || 0,
-    rank: Number(e.rank) || i + 1,
-    isYou: e.isYou === true,
-    userId: e.userId ?? null,
-    badges: e.badges,
-  }));
+  const data = (entries || []).slice(0, 8).map((e, i) => {
+    const name = String(e.displayName ?? e.username ?? 'Player');
+    return {
+      name,
+      chips: Number(e.chips) || 0,
+      rank: Number(e.rank) || i + 1,
+      isYou: e.isYou === true,
+      // R2 — the row's opaque public id (or his own row): opens that profile exactly.
+      target: profileTargetOf(e, name),
+      badges: e.badges,
+    };
+  });
 
   return (
     <div className="inline-leaderboard">
@@ -671,12 +677,12 @@ function InlineLeaderboard({ onOpenProfile }) {
         <div className="inline-lb-row" style={{ opacity: 0.6, justifyContent: 'center' }}>No ranked players yet.</div>
       )}
       {data.map((entry) => {
-        const canOpen = typeof onOpenProfile === 'function' && entry.userId != null;
+        const canOpen = typeof onOpenProfile === 'function' && entry.target != null;
         return (
           <div
             key={`${entry.rank}-${entry.name}`}
             className={`inline-lb-row ${entry.isYou ? 'inline-lb-row-current' : ''} ${entry.rank <= 3 ? 'inline-lb-row-top' : ''} ${canOpen ? 'inline-lb-row-link' : ''}`}
-            onClick={canOpen ? () => onOpenProfile({ userId: entry.userId, name: entry.name }) : undefined}
+            onClick={canOpen ? () => onOpenProfile(entry.target) : undefined}
           >
             <span className="inline-lb-rank">{getRankIcon(entry.rank)}</span>
             <PlayerAvatar playerId={entry.name} name={entry.name} size={24} style={{ flexShrink: 0 }} />
@@ -1358,10 +1364,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   );
   const [showBankrollAI, setShowBankrollAI] = useState(false);
   // R2 (APPUI-14) — the profile on screen: { own: true } (his own, by
-  // identity) or { userId, name } (another player, opened by user id).
+  // identity) or { publicId, userId, name } (another player, opened by id).
   const [profileTarget, setProfileTarget] = useState(null);
   const openProfile = useCallback((t) => { if (t) setProfileTarget(t); }, []);
-  // A shared `?profile=<user id>` link opens that profile once.
+  // A shared `?profile=<public id>` link (or an older `?profile=<user id>`) opens that profile once.
   useEffect(() => {
     try {
       const url = new URL(window.location.href);
@@ -1369,7 +1375,8 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       if (!id) return;
       url.searchParams.delete('profile');
       window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
-      if (/^[0-9]{1,12}$/.test(id)) setProfileTarget({ userId: Number(id) });
+      const t = profileTargetFromParam(id);
+      if (t) setProfileTarget(t);
     } catch { /* ignore */ }
   }, []);
   const [showNFTBadges, setShowNFTBadges] = useState(false);
@@ -1445,8 +1452,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // lobby shows and never on top of the daily rewards.
   const playerUserId = useGameStore((s) => s.userId);
   const progressHydrated = progress?.hydrated === true;
+  const spinUsedToday = progress?.dailySpinClaimed === true; // C5 (the server's Denver day)
   useEffect(() => {
-    if (!progressHydrated || showLoginRewards) return undefined;
+    if (!progressHydrated || showLoginRewards || spinUsedToday) return undefined;
     if (spinSeenToday(playerUserId)) return undefined;
     const t = setTimeout(() => {
       if (!spinSeenToday(playerUserId)) {
@@ -1455,7 +1463,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       }
     }, 6000);
     return () => clearTimeout(t);
-  }, [progressHydrated, showLoginRewards, playerUserId]);
+  }, [progressHydrated, showLoginRewards, playerUserId, spinUsedToday]);
 
   // Listen for bottom nav actions (legacy support)
   useEffect(() => {
@@ -2005,15 +2013,17 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {playerSearchResults.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {/* R2 (addendum / APPUI-14) — a public name and a level only
-                (never chips); a result with a user id opens that profile. */}
+                (never chips); a result with an id (the server's public id)
+                opens that profile. */}
             {playerSearchResults.map((p, i) => {
               const name = String(p.displayName ?? p.username ?? 'Player');
-              const canOpen = p.userId != null;
+              const target = profileTargetOf(p, name);
+              const canOpen = target != null;
               return (
                 <div
                   key={p.id ?? `${name}-${i}`}
                   className={`player-search-row ${canOpen ? 'player-search-row--link' : ''}`}
-                  onClick={canOpen ? () => openProfile({ userId: p.userId, name }) : undefined}
+                  onClick={canOpen ? () => openProfile(target) : undefined}
                 >
                   <span className="player-search-name">{name}</span>
                   <span className="player-search-level">Lv.{Number(p.level) || 1}{canOpen ? ' · View profile' : ''}</span>

@@ -33,9 +33,14 @@ function nextMonthLabel() {
   return new Date(nextDenverMonthStartMs()).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
-/** Whether the server says this month's VIP bonus is already collected (optional C8 fields). */
+/**
+ * Whether the server says this month's VIP bonus is already collected: C8
+ * `vip.monthlyClaimed` for `vip.monthKey` (the Denver month it was computed in
+ * — a payload from last month does not block this month's claim).
+ */
 function serverSaysMonthlyClaimed(vip) {
   if (!vip || typeof vip !== 'object') return false;
+  if (vip.monthlyClaimed === true) return !vip.monthKey || vip.monthKey === denverMonthKey();
   if (vip.monthlyBonusClaimed === true || vip.monthlyBonusAvailable === false) return true;
   const m = vip.monthlyClaimMonth || vip.lastMonthlyClaimMonth;
   if (typeof m === 'string' && m === denverMonthKey()) return true;
@@ -46,8 +51,9 @@ function serverSaysMonthlyClaimed(vip) {
 
 /**
  * The monthly VIP chip bonus: `claimVipMonthly` → `vipMonthlyClaimed
- * { success, chips?, reward?, error? }` (an acknowledgement callback is also
- * honoured). The balance itself arrives in the playerProgress that follows.
+ * { success, chips, monthKey }` or { success:false, code, error } (an
+ * acknowledgement callback is also honoured). The balance itself arrives in
+ * the playerProgress that follows.
  */
 export function useVipMonthlyClaim() {
   const progress = useProgressStore((s) => s.progress);
@@ -108,6 +114,7 @@ export function VipPassStatus({ compact = false }) {
   const progress = useProgressStore((s) => s.progress);
   const { active, claimedThisMonth, state, claim } = useVipMonthlyClaim();
   const exp = progress?.vip?.expiresAt;
+  const bonus = Number(progress?.vip?.monthlyBonus) || 0;
   const lifetime = active && exp - Date.now() > 3650 * 86400000;
   const until = active && !lifetime ? new Date(exp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : null;
   return (
@@ -128,7 +135,7 @@ export function VipPassStatus({ compact = false }) {
             onClick={claim}
             disabled={state.phase === 'pending' || claimedThisMonth}
           >
-            {state.phase === 'pending' ? 'Collecting…' : claimedThisMonth ? 'Monthly bonus collected' : 'Collect monthly VIP bonus'}
+            {state.phase === 'pending' ? 'Collecting…' : claimedThisMonth ? 'Monthly bonus collected' : `Collect monthly VIP bonus${bonus > 0 ? ` · ${bonus.toLocaleString()} chips` : ''}`}
           </button>
           {state.text && state.phase !== 'pending' && (
             <div className={`vip-monthly-note vip-monthly-note--${state.phase}`}>{state.text}</div>

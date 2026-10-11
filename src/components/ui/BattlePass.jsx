@@ -20,8 +20,11 @@ import './BattlePass.css';
 // - Premium is the SERVER's entitlement (playerProgress.battlePassPremium) —
 //   never a sessionStorage flag; buying it works from the lobby
 //   (purchaseBattlePass with an acknowledgement) and says what happened.
-// - Every tier's reward is what the server grants (economyCatalog
-//   battlePassReward — the premium milestones are real, rendered cosmetics).
+// - Every tier's reward is what the server grants: its own table when it
+//   answers getBattlePass (`battlePassInfo` { tiers, claims, premium,
+//   premiumCost, xpPerTier, totalTiers, seasonName, totalXp }), else the
+//   same table from economyCatalog battlePassReward (the premium milestones
+//   are real, rendered cosmetics).
 // - Claims go one at a time (the server rate-limits per account) and every
 //   refusal is shown on its tier (locked / premium only / slow down …).
 
@@ -47,7 +50,29 @@ const PURCHASE_ERRORS = {
   'not in a session': 'Join a table, then try again.',
   already_premium: 'You already have Premium.',
   'already premium': 'You already have Premium.',
+  already_owned: 'You already have Premium.',
 };
+
+/** A `battlePassInfo` answer → the parts this screen uses (null when unusable). */
+export function normalizeBattlePassInfo(d) {
+  if (!d || typeof d !== 'object') return null;
+  const pos = (v) => (Number.isInteger(Number(v)) && Number(v) > 0 ? Number(v) : null);
+  const tiers = new Map();
+  for (const t of Array.isArray(d.tiers) ? d.tiers : []) {
+    const n = pos(t && t.tier);
+    if (n && t.free && typeof t.free === 'object' && t.premium && typeof t.premium === 'object') tiers.set(n, { free: t.free, premium: t.premium });
+  }
+  return {
+    totalTiers: pos(d.totalTiers),
+    xpPerTier: pos(d.xpPerTier),
+    premiumCost: pos(d.premiumCost),
+    seasonName: typeof d.seasonName === 'string' && d.seasonName.trim() ? d.seasonName.trim() : null,
+    totalXp: Number.isFinite(Number(d.totalXp)) ? Number(d.totalXp) : null,
+    premium: d.premium === true,
+    claims: Array.isArray(d.claims) ? d.claims.map(String) : [],
+    tiers,
+  };
+}
 
 /** Buying Premium: purchaseBattlePass with an ack → { success, error }. */
 export function useBattlePassPremium() {
@@ -73,11 +98,12 @@ export function useBattlePassPremium() {
       if (ack && ack.success) {
         setState({ phase: 'done', text: 'Premium unlocked — claim your premium rewards.' });
         // The entitlement arrives in playerProgress; refresh the claim list too.
-        try { socket.emit('getDurableState', { seasonId: SEASON_ID }); } catch { /* ignore */ }
+        try { socket.emit('getDurableState', { seasonId: SEASON_ID }); socket.emit('getBattlePass'); } catch { /* ignore */ }
         return;
       }
+      const byCode = PURCHASE_ERRORS[String(ack && ack.code || '').toLowerCase()];
       const key = String(ack && ack.error || '').toLowerCase();
-      setState({ phase: 'error', text: PURCHASE_ERRORS[key] || shopErrorText(ack && ack.error, 'Could not buy Premium — try again.') });
+      setState({ phase: 'error', text: byCode || PURCHASE_ERRORS[key] || shopErrorText(ack, 'Could not buy Premium — try again.') });
     });
   }, []);
   return { premium, stars, state, buy, cost: BATTLE_PASS_PREMIUM_COST };
@@ -98,21 +124,50 @@ function rewardLabel(r) {
   return text.startsWith('the ') ? text.slice(4).replace(/^\w/, (c) => c.toUpperCase()) : text.replace(/^\w/, (c) => c.toUpperCase());
 }
 
-const TIERS = Array.from({ length: TOTAL_TIERS }, (_, i) => {
-  const tier = i + 1;
-  return { tier, isMilestone: tier % 10 === 0, freeReward: battlePassReward(tier, 'free'), premiumReward: battlePassReward(tier, 'premium') };
-});
+function buildTiers(info) {
+  const total = (info && info.totalTiers) || TOTAL_TIERS;
+  return Array.from({ length: total }, (_, i) => {
+    const tier = i + 1;
+    const srv = info && info.tiers.get(tier);
+    return {
+      tier,
+      isMilestone: tier % 10 === 0,
+      freeReward: srv ? srv.free : battlePassReward(tier, 'free'),
+      premiumReward: srv ? srv.premium : battlePassReward(tier, 'premium'),
+    };
+  });
+}
 
 export default function BattlePass({ onClose }) {
   const progress = useProgressStore((s) => s.progress);
-  const { premium: hasPremium, stars, state: buyState, buy, cost } = useBattlePassPremium();
+  const { premium: premiumFromProgress, stars, state: buyState, buy, cost: defaultCost } = useBattlePassPremium();
+  // The server's own season table (an older server does not answer → the catalog's).
+  const [info, setInfo] = useState(null);
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onInfo = (d) => { const n = normalizeBattlePassInfo(d); if (n) setInfo(n); };
+    socket.on('battlePassInfo', onInfo);
+    try { socket.emit('getBattlePass'); } catch { /* ignore */ }
+    return () => { socket.off('battlePassInfo', onInfo); };
+  }, []);
+  const TIERS = useMemo(() => buildTiers(info), [info]);
+  const totalTiers = TIERS.length;
+  const xpPerTier = (info && info.xpPerTier) || XP_PER_TIER;
+  const cost = (info && info.premiumCost) || defaultCost;
+  const seasonName = (info && info.seasonName) || SEASON_NAME;
+  const hasPremium = premiumFromProgress || (info ? info.premium : false);
   // Server is the source of truth for claimed tiers (user_battle_pass_claims):
-  // `${tier}:${track}` keys, hydrated by durableState.
-  const claimedTiers = useMemo(() => (Array.isArray(progress?.battlePassClaimed) ? progress.battlePassClaimed.map(String) : []), [progress?.battlePassClaimed]);
+  // `${tier}:${track}` keys, from durableState and the battlePassInfo answer.
+  const claimedTiers = useMemo(() => {
+    const set = new Set(Array.isArray(progress?.battlePassClaimed) ? progress.battlePassClaimed.map(String) : []);
+    if (info) for (const k of info.claims) set.add(k);
+    return [...set];
+  }, [progress?.battlePassClaimed, info]);
 
-  const currentXP = Number(progress?.totalXp) || 0;
-  const currentTier = Math.min(TOTAL_TIERS, Math.floor(currentXP / XP_PER_TIER));
-  const tierProgress = currentTier >= TOTAL_TIERS ? 100 : ((currentXP % XP_PER_TIER) / XP_PER_TIER) * 100;
+  const currentXP = Number(progress?.totalXp) || (info && info.totalXp) || 0;
+  const currentTier = Math.min(totalTiers, Math.floor(currentXP / xpPerTier));
+  const tierProgress = currentTier >= totalTiers ? 100 : ((currentXP % xpPerTier) / xpPerTier) * 100;
 
   const [scrollTier, setScrollTier] = useState(() => Math.max(1, Math.min(TOTAL_TIERS - 9, currentTier - 2)));
   const visibleTiers = TIERS.slice(scrollTier - 1, scrollTier + 9);
@@ -136,7 +191,7 @@ export default function BattlePass({ onClose }) {
       if (hasPremium && !claimedTiers.includes(`${t.tier}:premium`)) out.push({ tier: t.tier, track: 'premium' });
     }
     return out;
-  }, [currentTier, claimedTiers, hasPremium]);
+  }, [TIERS, currentTier, claimedTiers, hasPremium]);
 
   // One claim at a time: the server answers battlePassTierClaimed for each.
   const pump = useCallback(() => {
@@ -144,7 +199,11 @@ export default function BattlePass({ onClose }) {
     const next = queueRef.current.shift();
     if (!next) {
       if (mountedRef.current) setClaimingAll(false);
-      try { getSocket()?.emit('getDurableState', { seasonId: SEASON_ID }); } catch { /* ignore */ }
+      try {
+        const sk = getSocket();
+        sk?.emit('getDurableState', { seasonId: SEASON_ID });
+        sk?.emit('getBattlePass');
+      } catch { /* ignore */ }
       return;
     }
     const socket = getSocket();
@@ -241,7 +300,7 @@ export default function BattlePass({ onClose }) {
         <div className="bp-header">
           <div className="bp-header-left">
             <span className="bp-season-badge">SEASON 1</span>
-            <h2 className="bp-title">{SEASON_NAME}</h2>
+            <h2 className="bp-title">{seasonName}</h2>
           </div>
           <div className="bp-header-right">
             {claimable.length > 0 && (
@@ -262,8 +321,8 @@ export default function BattlePass({ onClose }) {
         <div className="bp-xp-bar-wrap">
           <div className="bp-xp-bar-labels">
             <span>Tier {currentTier}</span>
-            <span>{currentXP.toLocaleString()} season XP · {currentTier >= TOTAL_TIERS ? 'all tiers unlocked' : `${(currentXP % XP_PER_TIER).toLocaleString()} / ${XP_PER_TIER} to next tier`}</span>
-            <span>Tier {Math.min(TOTAL_TIERS, currentTier + 1)}</span>
+            <span>{currentXP.toLocaleString()} season XP · {currentTier >= totalTiers ? 'all tiers unlocked' : `${(currentXP % xpPerTier).toLocaleString()} / ${xpPerTier} to next tier`}</span>
+            <span>Tier {Math.min(totalTiers, currentTier + 1)}</span>
           </div>
           <div className="bp-xp-bar">
             <div className="bp-xp-fill" style={{ width: `${tierProgress}%` }} />
@@ -319,8 +378,8 @@ export default function BattlePass({ onClose }) {
         {/* Scroll controls */}
         <div className="bp-scroll-controls">
           <button className="bp-scroll-btn" disabled={scrollTier <= 1} onClick={() => setScrollTier(t => Math.max(1, t - 10))}>◀ Previous</button>
-          <span className="bp-scroll-info">Tiers {scrollTier}–{Math.min(TOTAL_TIERS, scrollTier + 9)}</span>
-          <button className="bp-scroll-btn" disabled={scrollTier + 9 >= TOTAL_TIERS} onClick={() => setScrollTier(t => Math.min(TOTAL_TIERS - 9, t + 10))}>Next ▶</button>
+          <span className="bp-scroll-info">Tiers {scrollTier}–{Math.min(totalTiers, scrollTier + 9)}</span>
+          <button className="bp-scroll-btn" disabled={scrollTier + 9 >= totalTiers} onClick={() => setScrollTier(t => Math.max(1, Math.min(totalTiers - 9, t + 10)))}>Next ▶</button>
         </div>
 
         {/* Upgrade CTA */}

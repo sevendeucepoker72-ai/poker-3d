@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { getSocket } from '../../services/socketService';
 import { useTableStore } from '../../store/tableStore';
 import { notify } from '../../hooks/usePushNotifications';
+import { profileTargetOf } from '../../utils/profileTarget';
 import './FriendSystem.css';
 
 // The friend invite must carry the inviter's current table id so the recipient
@@ -25,7 +26,7 @@ const FRIEND_ERRORS = {
 // (Postgres). Replaces the sessionStorage mock. Server events:
 //   emit  getFriends / sendFriendRequest{name} / acceptFriendRequest{userId}
 //         / removeFriend{userId} / inviteFriendToTable{userId}
-//   recv  friendsList{friends:[{userId,username,status,presence}]}
+//   recv  friendsList{friends:[{userId,publicId,username,status,presence}]}
 //         / friendsChanged / friendRequestSent / friendError / friendInviteSent
 
 /** A friend row's public name (never a non-string). */
@@ -195,7 +196,9 @@ export default function FriendSystem({ onClose, onOpenProfile }) {
             <div className="friends-empty">No friends yet. Add someone above!</div>
           )}
 
-          {sorted.map((f) => (
+          {sorted.map((f) => {
+            const target = onOpenProfile ? profileTargetOf(f, nameOf(f)) : null;
+            return (
             <div key={f.userId} className={`friends-card friends-card-${f.presence}`}>
               <div className="friends-card-left">
                 <div className="friends-avatar">
@@ -203,9 +206,9 @@ export default function FriendSystem({ onClose, onOpenProfile }) {
                   <span className="friends-status-dot" style={{ background: presenceColor(f.presence) }} />
                 </div>
                 <div
-                  className={`friends-info ${onOpenProfile ? 'friends-info--link' : ''}`}
-                  onClick={onOpenProfile ? () => onOpenProfile({ userId: f.userId, name: nameOf(f) }) : undefined}
-                  title={onOpenProfile ? 'View profile' : undefined}
+                  className={`friends-info ${target ? 'friends-info--link' : ''}`}
+                  onClick={target ? () => onOpenProfile(target) : undefined}
+                  title={target ? 'View profile' : undefined}
                 >
                   <div className="friends-name">{nameOf(f)}</div>
                   <div className="friends-status" style={{ color: presenceColor(f.presence) }}>{presenceLabel(f.presence)}</div>
@@ -226,7 +229,8 @@ export default function FriendSystem({ onClose, onOpenProfile }) {
                 <button className="friends-remove-btn" onClick={() => handleRemove(f.userId)} title="Remove friend">X</button>
               </div>
             </div>
-          ))}
+            );
+          })}
 
           {!loading && outgoing.length > 0 && (
             <>

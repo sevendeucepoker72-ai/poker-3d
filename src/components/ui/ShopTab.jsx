@@ -15,8 +15,8 @@ import './ShopTab.css';
 // 2026-10-11 (.online R2 — C7 / C8 / ECON-6 / ECON-7 / APPUI-5). The Shop:
 // - every item says what it does (TYPE_EFFECTS), its owned / equipped state
 //   comes from the server (inventory rows + C5 equipped / owned), and each
-//   kind has Equip / Unequip (Unequip = back to the free default, or
-//   `unequipItem` for frames and titles);
+//   kind has Equip / Unequip (Unequip = `equipItem { itemType, itemId: null }`:
+//   the slot goes back to the free default / nothing);
 // - only cosmetics something draws are sold (economyCatalog SOLD_TYPES);
 //   ones bought before that show in "Your collection";
 // - buying takes two taps (tap the price, then Confirm) so a stray tap on a
@@ -67,16 +67,17 @@ function useShopActions() {
       const p = pendingRef.current;
       if (!p || (p.action !== 'equip' && p.action !== 'unequip')) return;
       if (res && res.itemType && !p.key.startsWith(`${res.itemType}:`)) return;
-      if (res && res.success) settle(p.key, true, p.action === 'unequip' ? 'Removed.' : 'Equipped.');
-      else settle(p.key, false, EQUIP_ERRORS[res && res.error] || shopErrorText(res && res.error, 'Could not change that — try again.'));
+      if (res && res.success) { settle(p.key, true, p.action === 'unequip' ? 'Removed.' : 'Equipped.'); return; }
+      const code = res && (res.code || res.error);
+      // An older server cannot clear a slot (it answers not_owned for itemId null).
+      if (p.action === 'unequip' && code === 'not_owned') { settle(p.key, false, 'Removing it is not available on this server yet.'); return; }
+      settle(p.key, false, EQUIP_ERRORS[code] || shopErrorText(res, 'Could not change that — try again.'));
     };
     socket.on('purchaseResult', onPurchase);
     socket.on('equipResult', onEquip);
-    socket.on('unequipResult', onEquip);
     return () => {
       socket.off('purchaseResult', onPurchase);
       socket.off('equipResult', onEquip);
-      socket.off('unequipResult', onEquip);
     };
   }, [settle]);
 
@@ -93,7 +94,7 @@ function useShopActions() {
     answerTimer.current = setTimeout(() => {
       answerTimer.current = null;
       setPending((p) => (p && p.key === key ? null : p));
-      setStatus((s) => ({ ...s, [key]: { ok: false, text: action === 'unequip' ? 'Removing it is not available on this server yet.' : 'The game server did not answer — check your stars before trying again.' } }));
+      setStatus((s) => ({ ...s, [key]: { ok: false, text: action === 'buy' ? 'The game server did not answer — check your stars before trying again.' : 'The game server did not answer — try again.' } }));
     }, ANSWER_TIMEOUT_MS);
     socket.emit(event, payload);
   }, [settle]);
@@ -115,10 +116,9 @@ function useShopActions() {
     send(`${type}:${id}`, 'equip', 'equipItem', { itemType: type, itemId: id });
   }, [send]);
 
+  // itemId null clears the slot (the free default shows again where there is one).
   const unequip = useCallback((type, id) => {
-    const free = FREE_DEFAULTS[type];
-    if (free) { send(`${type}:${id}`, 'unequip', 'equipItem', { itemType: type, itemId: free }); return; }
-    send(`${type}:${id}`, 'unequip', 'unequipItem', { itemType: type });
+    send(`${type}:${id}`, 'unequip', 'equipItem', { itemType: type, itemId: null });
   }, [send]);
 
   return { armed, pending, status, buy, equip, unequip };

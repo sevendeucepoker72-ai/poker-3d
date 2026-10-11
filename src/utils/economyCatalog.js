@@ -390,19 +390,32 @@ const fmtInt = (n) => Math.round(Number(n) || 0).toLocaleString('en-US');
  *   { kind:'chips'|'stars'|'xp', amount }   (mystery box, Battle Pass, R2 scratch)
  *   { kind:'item', itemType, itemId }
  *   { chips?, stars?, xp?, item?:{type,id} } (scratch card / missions / daily)
- * Never "0 item" / "[object Object]": an empty reward is "nothing".
+ *   { kind:'stars', amount, reason:'duplicate_refund', itemType, itemId }
+ *     (an item he already owned, paid in stars — never shown as the item)
+ * A stated kind wins over item fields. Never "0 item" / "[object Object]":
+ * an empty reward is "nothing".
  */
+const VALUE_KINDS = ['chips', 'stars', 'xp'];
+function isItemReward(reward, kind) {
+  if (kind === 'item') return true;
+  if (VALUE_KINDS.includes(kind)) return false;
+  return !!(reward.itemId || (reward.item && typeof reward.item === 'object'));
+}
 export function formatReward(reward) {
   if (reward == null) return 'nothing';
   if (typeof reward === 'string') return reward;
   if (typeof reward !== 'object') return 'nothing';
   const kind = reward.kind || reward.type;
-  if (kind === 'item' || reward.itemId || (reward.item && typeof reward.item === 'object')) {
+  if (isItemReward(reward, kind)) {
     const t = reward.itemType || reward.item?.type || reward.item?.itemType;
     const id = reward.itemId || reward.item?.id || reward.item?.itemId;
     if (id) return `the ${itemLabel(t, id)}`;
   }
   if (kind === 'chips') return `${fmtInt(reward.amount)} chips`;
+  if (kind === 'stars' && reward.reason === 'duplicate_refund') {
+    const what = reward.itemId ? `the ${itemLabel(reward.itemType, reward.itemId)}` : 'that item';
+    return `${fmtInt(reward.amount)} stars (you already owned ${what})`;
+  }
   if (kind === 'stars') return `${fmtInt(reward.amount)} stars`;
   if (kind === 'xp') return `${fmtInt(reward.amount)} XP`;
   const parts = [];
@@ -418,8 +431,8 @@ export function formatReward(reward) {
 export function rewardKind(reward) {
   if (!reward || typeof reward !== 'object') return 'none';
   const k = reward.kind || reward.type;
-  if (k === 'item' || reward.itemId || (reward.item && typeof reward.item === 'object')) return 'item';
-  if (k === 'chips' || k === 'stars' || k === 'xp') return k;
+  if (isItemReward(reward, k)) return 'item';
+  if (VALUE_KINDS.includes(k)) return k;
   if (Number(reward.stars) > 0 && !(Number(reward.chips) > 0)) return 'stars';
   if (Number(reward.chips) > 0) return 'chips';
   if (Number(reward.xp) > 0) return 'xp';
@@ -443,25 +456,40 @@ const PURCHASE_ERROR_TEXT = {
   'server error': 'Something went wrong — try again.',
   server_error: 'Something went wrong — try again.',
   not_hydrated: 'Your account is still loading — try again in a moment.',
+  progress_loading: 'Your account is still loading — try again in a moment.',
   rate_limited: 'Too many tries — wait a moment and try again.',
+  login_required: 'Sign in to use the shop.',
+  vip_required: 'That needs an active VIP pass.',
+  no_cards_available: 'No scratch cards to reveal yet — you earn one every 20 hands.',
+  not_owned: 'You do not own that yet.',
+  not_equippable: 'That item cannot be equipped.',
+  already_claimed: 'Already claimed.',
 };
 
-/** A server error (code or sentence) as a player sentence. */
+/**
+ * A server error as a player sentence. Accepts a code / sentence string or the
+ * whole answer ({ code, error, message } — poker-server R2 sends a stable
+ * `code` plus an `error` sentence): a known code / sentence is mapped, a
+ * sentence written for players is kept, a bare unknown code is not shown.
+ */
 export function shopErrorText(err, fallback = 'That did not work — try again.') {
   if (!err) return fallback;
-  const raw = typeof err === 'object' ? (err.code || err.error || err.message) : err;
-  const key = String(raw || '').trim().toLowerCase();
-  if (PURCHASE_ERROR_TEXT[key]) return PURCHASE_ERROR_TEXT[key];
-  const msg = typeof err === 'object' && typeof err.message === 'string' ? err.message : (typeof raw === 'string' ? raw : '');
-  // A sentence written for players is kept; a bare code is not shown.
-  if (msg && /\s/.test(msg) && msg.length <= 160) return msg;
+  const parts = typeof err === 'object' ? [err.code, err.error, err.message] : [err];
+  for (const raw of parts) {
+    const key = String(raw || '').trim().toLowerCase();
+    if (key && PURCHASE_ERROR_TEXT[key]) return PURCHASE_ERROR_TEXT[key];
+  }
+  const sentences = typeof err === 'object' ? [err.message, err.error] : [err];
+  for (const msg of sentences) {
+    if (typeof msg === 'string' && /\s/.test(msg.trim()) && msg.length <= 160) return msg.trim();
+  }
   return fallback;
 }
 
 /** `purchaseResult` → the toast text (null when there is nothing to say). */
 export function purchaseResultText(data, nowMs = Date.now()) {
   if (!data || typeof data !== 'object') return null;
-  if (!data.success) return data.error ? `Purchase failed: ${shopErrorText(data.error)}` : null;
+  if (!data.success) return data.error || data.code ? `Purchase failed: ${shopErrorText(data)}` : null;
   const type = data.itemType;
   if (type === 'chip_pack') {
     const payout = Number(data.payout) || CHIP_PACKS.find((p) => p.id === data.itemId)?.chips || 0;
@@ -495,14 +523,15 @@ export function purchaseResultText(data, nowMs = Date.now()) {
 
 /**
  * The daily spin's REAL prize table (poker-server claimDailySpinServer /
- * SPIN_WHEEL_SEGMENTS): the wheel draws exactly these, sized by their odds.
- * A `spinWheel` answer from the server replaces it.
+ * SPIN_WHEEL_SEGMENTS, in the server's order): the wheel draws exactly these,
+ * sized by their odds. The server's `spinWheelConfig` answer (getSpinWheel)
+ * replaces it.
  */
 export const DEFAULT_SPIN_SEGMENTS = [
-  { id: 'chips_2500',  label: '2,500 Chips',  chips: 2500,  stars: 0,   weight: 50 },
-  { id: 'stars_25',    label: '25 Stars',     chips: 0,     stars: 25,  weight: 20 },
-  { id: 'chips_10000', label: '10,000 Chips', chips: 10000, stars: 0,   weight: 25 },
   { id: 'stars_100',   label: '100 Stars',    chips: 0,     stars: 100, weight: 5 },
+  { id: 'stars_25',    label: '25 Stars',     chips: 0,     stars: 25,  weight: 20 },
+  { id: 'chips_2500',  label: '2,500 Chips',  chips: 2500,  stars: 0,   weight: 50 },
+  { id: 'chips_10000', label: '10,000 Chips', chips: 10000, stars: 0,   weight: 25 },
 ];
 
 /** Normalise a server segment list; null when unusable. */
@@ -546,14 +575,15 @@ export const BATTLE_PASS_SEASON_NAME = 'Season 1: The River';
 /**
  * Premium milestone cosmetics — REAL catalog items (the server grants exactly
  * these; every one renders at the table). The other tiers mirror the server's
- * bpReward table.
+ * bpReward table; a `battlePassInfo` answer (getBattlePass) replaces this
+ * table with the server's own tiers.
  */
 export const BATTLE_PASS_PREMIUM_MILESTONES = {
   10: ['card_back', 'dragon'],
-  20: ['emote', 'mic_drop'],
+  20: ['emote', 'trophy'],
   30: ['theme', 'neon_vegas'],
   40: ['frame', 'diamond'],
-  50: ['title', 'tournament_champ'],
+  50: ['title', 'royal'],
 };
 
 /** The reward of (tier, track), as the server grants it. */

@@ -16,7 +16,12 @@ import './Progression.css';
 
 const CLAIM_TIMEOUT_MS = 10000;
 
+// poker-server R2 missionClaimError codes: progress_loading | mission_not_found |
+// mission_expired | mission_incomplete | already_claimed | rate_limited | …
 const MISSION_CLAIM_ERRORS = {
+  mission_incomplete: 'Finish the mission first.',
+  progress_loading: 'Your missions are still loading — try again in a moment.',
+  rate_limited: 'Too many tries — wait a moment and try again.',
   mission_not_complete: 'Finish the mission first.',
   not_complete: 'Finish the mission first.',
   already_claimed: 'Already claimed.',

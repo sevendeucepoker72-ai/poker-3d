@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { getSocket } from '../../services/socketService';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 import { useGameStore } from '../../store/gameStore';
+import { useProgressStore } from '../../store/progressStore';
 import { DEFAULT_SPIN_SEGMENTS, normalizeSpinSegments, segmentForSpinResult, formatReward, shopErrorText } from '../../utils/economyCatalog';
 import { denverDateKey, nextDenverMidnightMs, formatCountdown } from '../../utils/denverTime';
 import './SpinWheel.css';
@@ -12,8 +13,10 @@ import './SpinWheel.css';
 // prize the server paid (claimDailySpinServer → dailySpinClaimed { success,
 // reward, segmentId? }). It used to draw eight made-up prizes (100 / 250 /
 // 2x XP / Mystery …) the server never pays and "Double XP for your next 10
-// hands!" copy. A `spinWheel` answer to getSpinWheel (when the server sends
-// one) replaces the built-in table. One spin per Denver day.
+// hands!" copy. The server's `spinWheelConfig` answer to getSpinWheel
+// ({ segments, claimedToday, resetsAt }) replaces the built-in table and says
+// whether today's spin is used (so is playerProgress.dailySpinClaimed). One
+// spin per Denver day.
 
 const SPIN_SEEN_KEY = 'app_poker_spin_seen';
 const SEGMENT_COLORS = ['#1d4ed8', '#7c3aed', '#0f766e', '#b45309', '#2563eb', '#6d28d9'];
@@ -35,11 +38,13 @@ function segIcon(seg) {
 
 export default function SpinWheel({ onClose }) {
   const userId = useGameStore((s) => s.userId);
+  const usedToday = useProgressStore((s) => s.progress?.dailySpinClaimed === true);
   const [segments, setSegments] = useState(DEFAULT_SPIN_SEGMENTS);
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [prize, setPrize] = useState(null); // { icon, text }
-  const [canSpin, setCanSpin] = useState(true);
+  const [canSpin, setCanSpin] = useState(!usedToday);
+  const [resetsAt, setResetsAt] = useState(null); // the server's next Denver midnight
   const [errMsg, setErrMsg] = useState(null);
   const activeListenerRef = useRef(null);
   const timeoutIdsRef = useRef(new Set());
@@ -49,17 +54,24 @@ export default function SpinWheel({ onClose }) {
     mountedRef.current = true;
     const sock = getSocket();
     const onWheel = (payload) => {
+      if (!mountedRef.current) return;
       const list = normalizeSpinSegments(Array.isArray(payload) ? payload : payload?.segments);
-      if (list && mountedRef.current) setSegments(list);
+      if (list) setSegments(list);
+      const r = Number(payload?.resetsAt);
+      if (Number.isFinite(r) && r > Date.now()) setResetsAt(r);
+      if (payload?.claimedToday === true) {
+        setCanSpin(false);
+        markSpinSeenToday(userId);
+      }
     };
     if (sock) {
-      sock.on('spinWheel', onWheel);
+      sock.on('spinWheelConfig', onWheel);
       try { sock.emit('getSpinWheel'); } catch { /* an older server has no table to send */ }
     }
     return () => {
       mountedRef.current = false;
       if (sock) {
-        sock.off('spinWheel', onWheel);
+        sock.off('spinWheelConfig', onWheel);
         if (activeListenerRef.current) sock.off('dailySpinClaimed', activeListenerRef.current);
       }
       timeoutIdsRef.current.forEach(clearTimeout);
@@ -68,6 +80,10 @@ export default function SpinWheel({ onClose }) {
   }, []);
 
   useBackButtonClose(true, onClose);
+
+  // The server's playerProgress says today's spin is used (another tab / device).
+  useEffect(() => { if (usedToday && !spinning && !prize) setCanSpin(false); }, [usedToday, spinning, prize]);
+  const nextSpinAt = resetsAt && resetsAt > Date.now() ? resetsAt : nextDenverMidnightMs();
 
   // Slice angles by odds (weight).
   const total = segments.reduce((s, x) => s + (x.weight || 1), 0) || 1;
@@ -106,9 +122,9 @@ export default function SpinWheel({ onClose }) {
           if (res?.error === 'already_claimed') {
             setCanSpin(false);
             markSpinSeenToday(userId);
-            setErrMsg(`You already used today's spin — the next one opens in ${formatCountdown(nextDenverMidnightMs())}.`);
+            setErrMsg(`You already used today's spin — the next one opens in ${formatCountdown(nextSpinAt)}.`);
           } else {
-            setErrMsg(shopErrorText(res?.error, 'Could not spin — try again.'));
+            setErrMsg(shopErrorText(res, 'Could not spin — try again.'));
           }
         }, 600);
         return;
@@ -139,7 +155,7 @@ export default function SpinWheel({ onClose }) {
       setErrMsg('The game server did not answer — try again.');
     }, 15000);
     socket.emit('claimDailySpinServer');
-  }, [spinning, canSpin, segments, arcs, userId]);
+  }, [spinning, canSpin, segments, arcs, userId, nextSpinAt]);
 
   const closePrize = () => setPrize(null);
 
@@ -221,7 +237,7 @@ export default function SpinWheel({ onClose }) {
 
           {errMsg && <div className="spin-wheel-cooldown">{errMsg}</div>}
           {!canSpin && !spinning && !errMsg && (
-            <div className="spin-wheel-cooldown">Next free spin in {formatCountdown(nextDenverMidnightMs())} (midnight, Denver time).</div>
+            <div className="spin-wheel-cooldown">Next free spin in {formatCountdown(nextSpinAt)} (midnight, Denver time).</div>
           )}
         </div>
       </div>

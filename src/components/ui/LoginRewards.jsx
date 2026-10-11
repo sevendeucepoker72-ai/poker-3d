@@ -86,7 +86,9 @@ export default function LoginRewards({ onClose, autoOpened, inline }) {
       if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
       if (!mountedRef.current) return;
       setClaiming(false);
-      const today = denverDateKey();
+      // The server's own Denver claim date when it sends one (R2), else today's.
+      const sentDate = typeof res?.lastLoginClaimDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(res.lastLoginClaimDate) ? res.lastLoginClaimDate.slice(0, 10) : null;
+      const today = sentDate || denverDateKey();
       if (res?.success) {
         // The server recorded today's claim (its ledger date is Denver's):
         // reflect exactly that until its playerProgress arrives.
@@ -97,12 +99,12 @@ export default function LoginRewards({ onClose, autoOpened, inline }) {
         setMessage({ ok: true, text: claimedText(res) });
         return;
       }
-      if (res?.error === 'already_claimed') {
+      if (res?.error === 'already_claimed' || res?.code === 'already_claimed') {
         useProgressStore.getState().setProgress({ lastLoginClaimDate: today });
         setMessage({ ok: true, text: 'Already claimed today — your next reward opens at midnight (Denver time).' });
         return;
       }
-      setMessage({ ok: false, text: shopErrorText(res?.error, 'Could not claim — try again.') });
+      setMessage({ ok: false, text: shopErrorText(res, 'Could not claim — try again.') });
     };
     activeListenerRef.current = onResult;
     socket.on('dailyLoginClaimed', onResult);

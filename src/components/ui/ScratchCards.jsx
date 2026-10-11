@@ -89,7 +89,7 @@ export default function ScratchCards({ onClose, autoStart = false }) {
       setWaiting(false);
       if (!res?.success) {
         const code = String(res?.error || '').toLowerCase();
-        setError(SCRATCH_ERRORS[code] || shopErrorText(res?.error, 'Could not reveal a card — try again.'));
+        setError(SCRATCH_ERRORS[code] || shopErrorText(res, 'Could not reveal a card — try again.'));
         return;
       }
       const reward = res.reward || {};

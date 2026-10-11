@@ -789,7 +789,7 @@ Changes the felt and rail you see at every table.
 claimVipMonthly
 Collect monthly VIP bonus
 Pot winnings are not boosted.
-unequipItem
+Removing it is not available on this server yet.
 Premium only — get Premium to claim it.
 scratch-reveal-all
 season XP
@@ -852,3 +852,18 @@ lobby-refill-banner
 Opens from your home screen · No app store needed
 The pot-odds badge and the odds line on Call
 login-keep-signed-in
+
+# 2026-10-11 .online R2 (K2) — aligned with poker-server R2 (S3) final names:
+#     profiles / Add Friend / shared links by the server's opaque publicId
+#     (leaderboard, search, friends rows; isYou = his own); Unequip is
+#     equipItem { itemId: null }; the spin wheel reads spinWheelConfig
+#     (claimedToday / resetsAt) and C5 dailySpinClaimed; Battle Pass reads the
+#     server's battlePassInfo table (premium milestones trophy / royal); the
+#     VIP monthly bonus reads vip.monthlyClaimed; the month-end season award
+#     toast (seasonRewardAwarded); a duplicate reward paid in stars says so;
+#     stats panels re-ask a still-loading record instead of drawing zeros.
+profile-friend-btn
+spinWheelConfig
+battlePassInfo
+seasonRewardAwarded
+stars (you already owned

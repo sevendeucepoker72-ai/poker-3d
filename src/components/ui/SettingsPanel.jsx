@@ -52,7 +52,7 @@ function EquipPicker({ type, items, swatch }) {
     const onResult = (res) => {
       if (res && res.itemType && res.itemType !== type) return;
       setPending(null);
-      setMsg(res && res.success ? null : shopErrorText(res && res.error, 'Could not change it — try again.'));
+      setMsg(res && res.success ? null : shopErrorText(res, 'Could not change it — try again.'));
     };
     socket.on('equipResult', onResult);
     const t = setTimeout(() => { setPending(null); setMsg('The game server did not answer — try again.'); }, 10000);

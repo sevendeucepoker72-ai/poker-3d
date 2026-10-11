@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getSocket } from '../../services/socketService';
+import { useDetailedStats } from '../../hooks/useDetailedStats';
 import { serverWinRate } from '../../store/progressStore';
 import { summarizeOwnHands, recordToPokerStarsText } from '../../utils/handLog';
 import './AdvancedAnalytics.css';
@@ -297,12 +297,11 @@ function ExportTab({ handLog, myName }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 const TABS = ['Overview', 'Leaks', 'Results', 'Export'];
-const STATS_TIMEOUT_MS = 10000;
 
 export default function AdvancedAnalytics({ progress, handLog = [], myName = '', onClose }) {
   const [activeTab, setActiveTab] = useState('Overview');
-  const [detailed, setDetailed] = useState(null);
-  const [status, setStatus] = useState('loading');
+  // loading | ready | unavailable (a still-loading record is asked again, never graded as zeros)
+  const { stats: detailed, status } = useDetailedStats();
   const summary = useMemo(() => summarizeOwnHands(handLog, myName), [handLog, myName]);
 
   useEffect(() => {
@@ -310,16 +309,6 @@ export default function AdvancedAnalytics({ progress, handLog = [], myName = '',
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
-
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) { setStatus('unavailable'); return undefined; }
-    const onStats = (s) => { if (s && typeof s === 'object') { setDetailed(s); setStatus('ready'); } };
-    socket.on('detailedStats', onStats);
-    socket.emit('getDetailedStats');
-    const t = setTimeout(() => setStatus((s) => (s === 'loading' ? 'unavailable' : s)), STATS_TIMEOUT_MS);
-    return () => { clearTimeout(t); socket.off('detailedStats', onStats); };
-  }, []);
 
   const xp = Number(progress?.xp) || 0;
   const xpNext = Number(progress?.xpToNextLevel) || 0;

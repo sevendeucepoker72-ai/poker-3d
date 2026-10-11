@@ -1044,16 +1044,18 @@ function App() {
 
     // R2 (APPUI-26) — the account row (loadProgress): restore clientData
     // (settings, notes, bet sizes…) the first time this tab sees it.
-    socket.on('progressLoaded', (result) => {
+    const onProgressLoaded = (result) => {
       try {
         const stats = result?.userData?.stats;
         const blob = stats && typeof stats === 'object' ? stats.clientData : null;
         if (blob && typeof blob === 'object') restoreClientDataFromServer(blob);
       } catch { /* best-effort */ }
-    });
-    socket.on('shopCatalog', (payload) => {
+    };
+    socket.on('progressLoaded', onProgressLoaded);
+    const onShopCatalog = (payload) => {
       try { setServerShopCatalog(payload); } catch { /* ignore */ }
-    });
+    };
+    socket.on('shopCatalog', onShopCatalog);
 
     // Full durable-state snapshot (inventory + BP claims + customization + prefs + stars)
     socket.on('durableState', (payload) => {
@@ -1143,14 +1145,33 @@ function App() {
     // R2 (APPUI-38) — the server banked a scratch card (every 20 hands). The
     // count arrives in playerProgress (C5); an older server only tells us, so
     // re-read the durable state for the count.
-    socket.on('scratchCardEarned', () => {
+    const onScratchCardEarned = () => {
       useProgressStore.getState().addNotification({
         type: 'reward',
         title: 'Scratch Card',
         message: 'You earned a scratch card! Reveal it in the Shop.',
       });
       try { socket.emit('getDurableState', { seasonId: 'season_1_the_river' }); } catch { /* ignore */ }
-    });
+    };
+    socket.on('scratchCardEarned', onScratchCardEarned);
+
+    // R2 (C9) — the month-end season award paid this account (top 3 by chips
+    // won): chips + a season badge. The balance and the badge arrive in the
+    // playerProgress that follows.
+    const onSeasonRewardAwarded = (data) => {
+      const place = Number(data?.place);
+      const chips = Math.max(0, Math.round(Number(data?.chips) || 0));
+      const badge = typeof data?.badge === 'string' && data.badge ? itemName('badge', data.badge) : null;
+      const placeText = place === 1 ? '1st' : place === 2 ? '2nd' : place === 3 ? '3rd' : (Number.isInteger(place) && place > 0 ? `#${place}` : 'in the top 3');
+      const paid = [chips > 0 ? `${chips.toLocaleString()} chips` : null, badge ? `the ${badge} badge` : null].filter(Boolean).join(' and ');
+      useProgressStore.getState().addNotification({
+        type: 'reward',
+        kind: 'season_reward',
+        title: 'Season Reward',
+        message: `You finished ${placeText} last season${paid ? ` — ${paid} added to your account` : ''}!`,
+      });
+    };
+    socket.on('seasonRewardAwarded', onSeasonRewardAwarded);
 
     // Batch 5 (2026-07-01): admin broadcast / maintenance / kick / table-close.
     // These make the AdminDashboard actions visible to players.
@@ -1662,6 +1683,10 @@ function App() {
       socket.off('missionComplete');
       socket.off('dailyBonusClaimed');
       socket.off('missionClaimed');
+      socket.off('progressLoaded', onProgressLoaded);
+      socket.off('shopCatalog', onShopCatalog);
+      socket.off('scratchCardEarned', onScratchCardEarned);
+      socket.off('seasonRewardAwarded', onSeasonRewardAwarded);
       socket.off('handHistory');
       socket.off('durableState');
       socket.off('inventoryUpdated');
