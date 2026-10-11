@@ -181,6 +181,13 @@ import { API_BASE } from './config';
 import { checkSubscriptionHealth, isPushSupported, notify } from './hooks/usePushNotifications';
 import './components/ui/Transitions.css';
 
+// R2 (S1) — why the server closed the table on screen (`tableClosed.reason`).
+const TABLE_CLOSED_TEXT = {
+  private_table_idle: 'This private table closed after everyone left.',
+  quick_game_over: 'The game is over and its table has closed.',
+  tournament_finished: 'The tournament is over and its table has closed.',
+};
+
 /**
  * Decode a ?replay=... URL param into a history object (returns null on failure).
  * 2026-10-11 (APPUI-23): the payload is validated and normalized
@@ -1105,9 +1112,30 @@ function App() {
     socket.on('maintenanceMode', (data) => {
       if (data?.enabled) useProgressStore.getState().addNotification({ type: 'mission', message: 'Server maintenance in progress — play may be briefly interrupted.' });
     });
+    const handleTableClosed = (data) => {
+      if (!data || data.tableId == null) return;
+      let res = { shown: false };
+      try { res = useTableStore.getState().closeTable(data.tableId) || res; } catch { /* best-effort */ }
+      if (!res.shown) return;
+      useProgressStore.getState().addNotification({
+        type: 'system', title: 'Table closed',
+        message: TABLE_CLOSED_TEXT[data.reason] || 'This table has closed.',
+      });
+      try {
+        const gs = useGameStore.getState();
+        if (gs.screen === 'table' && !useTableStore.getState().gameState) gs.setScreen('lobby');
+      } catch { /* ignore */ }
+    };
     socket.on('tableClosedByAdmin', () => {
       useProgressStore.getState().addNotification({ type: 'mission', message: 'This table was closed by an administrator.' });
     });
+    // R2 (S1) — `tableClosed { tableId, reason }`: the server removed a table
+    // (private_table_idle / quick_game_over / tournament_finished). Whatever
+    // this tab held of it goes (tableStore.closeTable) and, when it was the
+    // table on screen with no other seat to show, back to the lobby with a
+    // short line — never a frozen table. (A quick game's / tournament's result
+    // overlay is app-level and stays up over the lobby.)
+    socket.on('tableClosed', handleTableClosed);
     socket.on('kickedByAdmin', (data) => {
       // The server disconnects this socket right after; just surface why.
       useProgressStore.getState().addNotification({ type: 'mission', message: data?.reason || 'You were removed by an administrator.' });
@@ -1318,6 +1346,11 @@ function App() {
     const handleQualifierTournamentStarted = (data) => {
       try { noteTournamentSeat({ tournamentId: data?.tournamentId, tableId: data?.tableId, name: 'Qualifier Tournament' }); } catch { /* best-effort */ }
       if (data?.tableId) { try { clearTableLeft(data.tableId); } catch { /* ignore */ } }
+      // R2 (S1) — a LATE entrant was seated in a qualifier already running
+      // (`lateEntry: true`, its table's state follows): take him to the seat.
+      if (data?.lateEntry === true && data?.tableId) {
+        try { useGameStore.getState().setScreen('table'); } catch { /* ignore */ }
+      }
     };
     socket.on('qualifierTournamentStarted', handleQualifierTournamentStarted);
     // Busted (also while away — an absent seat can blind out): the seat is gone.
@@ -1606,6 +1639,7 @@ function App() {
       socket.off('themeEquipped');
       socket.off('tournamentStarted');
       socket.off('qualifierTournamentStarted', handleQualifierTournamentStarted);
+      socket.off('tableClosed', handleTableClosed);
       socket.off('eliminatedToSpectator', handleEliminatedToSpectator);
       socket.off('tournamentSeatKept', handleTournamentSeatKept);
       socket.off(TOURNAMENT_SEAT_TAKEN_OVER_EVENT, handleTournamentSeatTakenOver);

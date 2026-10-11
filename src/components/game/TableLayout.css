@@ -130,6 +130,55 @@
   box-shadow: none;
 }
 
+/* R2 (S1) — "your tournament has started" while he plays another table: a
+   card under the top bar (above the panel dock, below menus / confirms). */
+.hud .hud-tourney-start-offer {
+  position: fixed;
+  z-index: 560;
+  top: calc(var(--hud-top-h, 96px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(100vw - 16px), 440px);
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(16, 40, 96, 0.97), rgba(8, 20, 52, 0.97));
+  border: 1px solid rgba(246, 220, 138, 0.75);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  color: #e8eefc;
+  pointer-events: auto;
+}
+.hud .hud-tourney-start-offer__text {
+  flex: 1 1 170px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.hud .hud-tourney-start-offer__go {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 236, 170, 0.9);
+  background: linear-gradient(180deg, #ffe08a, #d9a92a);
+  color: #0c1a44;
+  font-weight: 800;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.hud .hud-tourney-start-offer__close {
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  color: #f6dc8a;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
 /* R2 (APPUI-45) — when a pick / market bet closes, said in the panel. */
 .sp-window-note {
   padding: 0 12px 6px;

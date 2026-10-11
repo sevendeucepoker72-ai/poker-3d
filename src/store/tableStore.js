@@ -538,6 +538,42 @@ export const useTableStore = create((set, get) => ({
   // R2 (TABLEUI-14) — the socket's seat at `tableId` is gone (playerMoved's
   // fromTable): its entry is dropped (no phantom tab for the old table) and,
   // with `ignore`, a late frame of it never flashes the old table back.
+  // R2 (S1) — the server CLOSED a table (`tableClosed`: a private table nobody
+  // plays at, a quick game that ended, a finished tournament's table). All
+  // this tab held of it goes — the shown table, a cached / extra entry, a
+  // watched table — and its late frames are ignored. Another live seat (multi
+  // table) takes the screen. → { shown } — was the closed table on screen.
+  closeTable: (tableId) => {
+    const id = tableId != null ? String(tableId) : null;
+    if (!id) return { shown: false };
+    const { activeTables, currentTableId, gameState } = get();
+    let key = null;
+    if (activeTables && typeof activeTables.forEach === 'function') activeTables.forEach((_e, k) => { if (String(k) === id) key = k; });
+    const cached = key !== null ? activeTables.get(key) : null;
+    const shown = !!gameState && String(gameState.tableId) === id;
+    if (!shown && !cached) return { shown: false };
+    markTableLeft(key !== null ? key : id, (cached && cached.gameState) || (shown ? gameState : null), { ignore: true });
+    const updates = {};
+    let rest = activeTables;
+    if (key !== null) {
+      rest = new Map(activeTables);
+      rest.delete(key);
+      updates.activeTables = rest;
+      if (currentTableId != null && String(currentTableId) === id) updates.currentTableId = null;
+    }
+    if (shown) {
+      let nextId = null;
+      if (rest && typeof rest.forEach === 'function') rest.forEach((e, k) => { if (nextId === null && e && isLiveSeatState(e.gameState)) nextId = k; });
+      const next = nextId !== null ? rest.get(nextId) : null;
+      Object.assign(updates, next
+        ? { gameState: next.gameState, mySeat: next.gameState?.yourSeat ?? -1, isSpectating: false, sittingOut: false }
+        : { gameState: null, mySeat: -1, isSpectating: false, sittingOut: false });
+    }
+    set(updates);
+    get().settleActiveTables();
+    return { shown };
+  },
+
   dropActiveTable: (tableId, { ignore = false } = {}) => {
     const id = tableId != null ? String(tableId) : null;
     const { activeTables } = get();

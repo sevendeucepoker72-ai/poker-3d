@@ -836,3 +836,16 @@ vip_champagne
 hud-panel-dock
 Picks close when the river is dealt
 Bets close when the flop is dealt
+
+# 2026-10-11 .online R2 K1 (table screen, part 5): the S1 server notes
+#     tableClosed (private_table_idle / quick_game_over / tournament_finished)
+#     leaves the table view for the lobby with a line; leaving a Spin & Go in
+#     play asks first (it forfeits the entry); server_restarting is a plain
+#     sentence; a tournament that starts while he plays another table offers
+#     "Go to your tournament seat" (leave, then Return); a late qualifier
+#     entrant goes to his seat. A Fold armed at one table never folds at another.
+quick_game_over
+Leaving forfeits your Spin & Go entry
+Server is restarting
+hud-tourney-start-offer
+Go to your tournament seat

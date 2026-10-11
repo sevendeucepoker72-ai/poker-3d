@@ -38,8 +38,9 @@ import { useTimerStore, serverNow } from '../../store/timerStore';
 // player leaves the table screen; he is told so first and returns from the lobby.
 import {
   useTournamentSeatStore, isTournamentSeatView, leaveTournamentSeatToLobby, eliminationShownElsewhere,
-  TOURNAMENT_SEAT_AWAY_ACTS_TEXT,
+  TOURNAMENT_SEAT_AWAY_ACTS_TEXT, awaySeatOfTournament, awaySeatKey,
 } from '../../store/tournamentSeatStore';
+import { returnToTournament } from '../../services/tournamentReturn';
 import { TournamentLeaveDialog } from '../ui/TournamentSeatNotice';
 import { loadHotkeys } from '../ui/HotkeySettings';
 import { useAFKTracker } from '../../hooks/useAFKTracker';
@@ -157,6 +158,7 @@ const ACTION_ERROR_TEXT = {
   bomb_pot_not_allowed: 'Bomb pots are only available at Hold\'em and Omaha cash tables.',
   invalid_draw: 'That draw is not allowed right now.',
   no_seat_available: 'No seat is free at this table right now.',
+  server_restarting: 'Server is restarting — try again in a moment.',
   sit_out_limit: 'You were sitting out for a while, so your seat was released and your chips went back to your balance.',
 };
 // The fixed-limit variants (the server's bettingStructure 'fixed-limit').
@@ -1213,10 +1215,17 @@ export default function GameHUD() {
   // action bar before the player has interacted. Runs for every hand boundary,
   // including the first hand dealt after joining.
   const prevHandNumberRef = useRef(null);
+  // R2 (TABLEUI-14/18) — and whenever ANOTHER table takes the screen (multi
+  // table): two tables can be on the same hand number, and a Fold armed at
+  // table A ("Fold?") used to fold at table B with a single tap.
+  const prevHandTableRef = useRef(null);
   useEffect(() => {
     const hn = gameState?.handNumber ?? gameState?.handId ?? null;
     if (hn == null) return;
-    if (prevHandNumberRef.current != null && prevHandNumberRef.current !== hn) {
+    const tid = gameState?.tableId != null ? String(gameState.tableId) : null;
+    const tableChanged = prevHandTableRef.current != null && tid != null && prevHandTableRef.current !== tid;
+    if (tid != null) prevHandTableRef.current = tid;
+    if ((prevHandNumberRef.current != null && prevHandNumberRef.current !== hn) || tableChanged) {
       setRaiseAmount(0);
       lastRaiseRef.current = null;
       setPreAction(null);
@@ -1228,7 +1237,7 @@ export default function GameHUD() {
       autoFoldedRef.current = false;
     }
     prevHandNumberRef.current = hn;
-  }, [gameState?.handNumber, gameState?.handId]);
+  }, [gameState?.handNumber, gameState?.handId, gameState?.tableId]);
 
   // Mobile audit M2: iOS software-keyboard handling. When the chat / chip /
   // rabbit-hunt input focuses on iOS Safari, the keyboard (~290-380px tall)
@@ -2857,11 +2866,82 @@ export default function GameHUD() {
     SeventhStreet: '7th Street',
   }[phase] || phase;
 
+  // R2 (S1, ECON-8) — a VOLUNTARY leave from a Spin & Go forfeits the entry
+  // (a prize format: the stack is never cashed). While the game is on and he
+  // still has chips, every way off the table asks first.
+  const [quickGameOverTable, setQuickGameOverTable] = useState(null);
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onOver = (d) => { if (d && d.tableId != null) setQuickGameOverTable(String(d.tableId)); };
+    socket.on('quickGameOver', onOver);
+    return () => socket.off('quickGameOver', onOver);
+  }, []);
+  const spinGoEntryLive = gameState?.tableKind === 'spingo' && seatedHere && !!myPlayer
+    && !myPlayer.eliminated && (myPlayer.chipCount ?? 0) > 0
+    && quickGameOverTable !== String(gameState?.tableId);
+
+  // R2 (S1, TOURNEY-9) — his tournament started while he plays THIS table: the
+  // server dealt his tournament seat in absent (`tournamentSeatKept` with
+  // `atStart: true`; App.jsx keeps it as an away seat). Offer to go there:
+  // leave this table, then Return to the tournament seat.
+  const [tourneyStartOffer, setTourneyStartOffer] = useState(null);
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onKept = (d) => {
+      if (!d || d.atStart !== true || d.tableId == null) return;
+      setTourneyStartOffer({
+        tournamentId: d.tournamentId != null ? String(d.tournamentId) : null,
+        tableId: String(d.tableId),
+        name: typeof d.tournamentName === 'string' && d.tournamentName.trim() ? d.tournamentName.trim() : 'Your tournament',
+      });
+    };
+    socket.on('tournamentSeatKept', onKept);
+    return () => socket.off('tournamentSeatKept', onKept);
+  }, []);
+  const goToTournamentSeat = useCallback(() => {
+    const offer = tourneyStartOffer;
+    if (!offer) return;
+    const inLiveHand = phase && phase !== 'WaitingForPlayers' && phase !== 'HandComplete' && phase !== 'Showdown';
+    if (onTournamentSeat) {
+      const ok = typeof window !== 'undefined' && window.confirm(`Go to ${offer.name}? Your seat at this tournament stays in play while you are away.`);
+      if (!ok) return;
+      leaveTournamentSeatToLobby('lobby', gameState);
+      leaveTable();
+    } else if (seatedHere) {
+      const parts = ['Leave this table and take your tournament seat?'];
+      parts.push(spinGoEntryLive ? 'Leaving forfeits your Spin & Go entry.' : 'Your chips here go back to your balance.');
+      if (inLiveHand) parts.push('Your hand here will be folded.');
+      const ok = typeof window !== 'undefined' && window.confirm(parts.join(' '));
+      if (!ok) return;
+      leaveTable();
+    } else if (isSpectating || gameState?.isSpectator === true) {
+      stopSpectating();
+    }
+    setTourneyStartOffer(null);
+    setScreen('lobby');
+    const entry = offer.tournamentId ? awaySeatOfTournament(offer.tournamentId) : null;
+    const key = entry ? awaySeatKey(entry) : null;
+    // (the leave first reaches the server; the lobby's Return banner shows the
+    // answer and offers Return again if it is refused)
+    setTimeout(() => { returnToTournament(key).catch(() => { /* answered in the store */ }); }, 700);
+  }, [tourneyStartOffer, phase, onTournamentSeat, seatedHere, spinGoEntryLive, isSpectating, gameState, leaveTable, stopSpectating, setScreen]);
+
   const handleBackToLobby = useCallback(() => {
     // 2026-10-10 (S2) — a LIVE tournament seat: say what leaving means (the
     // seat stays in play, auto-folded, until he returns) before leaving.
     if (onTournamentSeat) {
       setTournamentLeaveVia('lobby');
+      return;
+    }
+    // R2 (S1) — a Spin & Go in play: leaving forfeits the entry (one confirm,
+    // which also covers a hand in progress).
+    if (spinGoEntryLive) {
+      const ok = typeof window !== 'undefined' && window.confirm('Leaving forfeits your Spin & Go entry. Leave anyway?');
+      if (!ok) return;
+      leaveTable();
+      setScreen('lobby');
       return;
     }
     // R2 (TABLEUI-15) — a SPECTATOR has nothing at stake: no forfeit confirm
@@ -2889,7 +2969,7 @@ export default function GameHUD() {
     }
     leaveTable();
     setScreen('lobby');
-  }, [leaveTable, setScreen, phase, gameState?.seats, gameState?.isSpectator, yourSeat, isMyTurn, onTournamentSeat, isSpectating, isSeated, stopSpectating]);
+  }, [leaveTable, setScreen, phase, gameState?.seats, gameState?.isSpectator, yourSeat, isMyTurn, onTournamentSeat, isSpectating, isSeated, stopSpectating, spinGoEntryLive]);
 
   // S2 — the player confirmed leaving his LIVE tournament seat: the lobby
   // remembers it ("Return to tournament"), then the socket leaves the table
@@ -3404,7 +3484,12 @@ export default function GameHUD() {
                       && phase !== 'HandComplete' && phase !== 'Showdown';
                     const mySeatObj = gameState?.seats?.[yourSeat];
                     const chipsAtRisk = (mySeatObj?.currentBet || 0) > 0;
-                    if (inLiveHand && (isMyTurn || chipsAtRisk)) {
+                    if (spinGoEntryLive) {
+                      // R2 (S1) — leaving a Spin & Go in play forfeits the entry.
+                      const ok = typeof window !== 'undefined'
+                        && window.confirm('Customize avatar? Leaving the table forfeits your Spin & Go entry.');
+                      if (!ok) return;
+                    } else if (inLiveHand && (isMyTurn || chipsAtRisk)) {
                       const ok = typeof window !== 'undefined'
                         && window.confirm('Customize avatar? You\'ll leave the table and your hand will be auto-folded.');
                       if (!ok) return;
@@ -4627,6 +4712,19 @@ export default function GameHUD() {
               Decline
             </button>
           </div>
+        </div>
+      )}
+
+      {/* R2 (S1) — his tournament started while he plays this table. */}
+      {tourneyStartOffer && (
+        <div className="hud-tourney-start-offer" role="status">
+          <span className="hud-tourney-start-offer__text">
+            {'\uD83C\uDFC6'} {tourneyStartOffer.name} has started. Your seat is waiting.
+          </span>
+          <button type="button" className="hud-tourney-start-offer__go" onClick={goToTournamentSeat}>
+            Go to your tournament seat
+          </button>
+          <button type="button" className="hud-tourney-start-offer__close" aria-label="Not now" onClick={() => setTourneyStartOffer(null)}>{'\u2715'}</button>
         </div>
       )}
 
