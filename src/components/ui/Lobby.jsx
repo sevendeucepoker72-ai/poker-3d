@@ -3,7 +3,8 @@ import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
 import { useProgressStore, serverWinRate } from '../../store/progressStore';
 import ProgressBar from './ProgressBar';
-import MissionsPanel from './MissionsPanel';
+import MissionsPanel, { missionIcon } from './MissionsPanel';
+import { formatCountdown, nextDenverMidnightMs } from '../../utils/denverTime';
 import StatsPanel from './StatsPanel';
 import ThemeShop from './ThemeShop';
 import BattlePass from './BattlePass';
@@ -198,43 +199,57 @@ function FeaturedTableBanner({ tables, onSpectate }) {
 }
 
 // ─── Mission Strip ───
-const PLACEHOLDER_MISSIONS = [
-  { name: 'Win 3 Hands', progress: 1, target: 3, icon: '🏆', xp: 100 },
-  { name: 'Play 10 Hands', progress: 4, target: 10, icon: '🃏', xp: 75 },
-  { name: 'Raise 5 Times', progress: 2, target: 5, icon: '⚡', xp: 50 },
-];
+// 2026-10-11 (R2, C6 / APPUI-3) — the server's missions (playerProgress
+// .missions); tapping any of them opens the Missions panel, where they are
+// claimed. No placeholder missions: before the server answers it says so.
+function missionRewardShort(r) {
+  if (!r) return '';
+  if (r.chips > 0) return `+${r.chips >= 1000 ? `${(r.chips / 1000).toFixed(r.chips % 1000 ? 1 : 0)}k` : r.chips}`;
+  if (r.stars > 0) return `+${r.stars}⭐`;
+  if (r.xp > 0) return `+${r.xp} XP`;
+  return '';
+}
 
 function MissionStrip({ missions, onOpenMissions }) {
-  const now = new Date();
-  const midnight = new Date(now); midnight.setHours(24, 0, 0, 0);
-  const hoursLeft = Math.floor((midnight - now) / 3600000);
-  const minsLeft = Math.floor(((midnight - now) % 3600000) / 60000);
-  const timeStr = hoursLeft > 0 ? `${hoursLeft}h ${minsLeft}m` : `${minsLeft}m`;
-
-  const displayMissions = (missions && missions.length > 0) ? missions.slice(0, 3) : PLACEHOLDER_MISSIONS;
+  const timeStr = formatCountdown(nextDenverMidnightMs());
+  const list = Array.isArray(missions) ? missions.slice(0, 3) : null;
+  const ready = (list || []).filter((m) => m.completed && !m.claimed).length;
 
   return (
     <div className="mission-strip">
-      <div className="mission-strip-header">
-        <span className="mission-strip-title">📋 Daily Missions</span>
-        <span className="mission-strip-refresh">Resets in {timeStr}</span>
-      </div>
+      <button type="button" className="mission-strip-header mission-strip-open" onClick={onOpenMissions}>
+        <span className="mission-strip-title">📋 Daily Missions{ready > 0 ? ` · ${ready} to claim` : ''}</span>
+        <span className="mission-strip-refresh">New in {timeStr}</span>
+      </button>
       <div className="mission-strip-scroll">
-        {displayMissions.map((m, i) => {
-          const pct = Math.min(100, ((m.progress || 0) / (m.target || 1)) * 100);
-          const done = pct >= 100;
+        {list === null && (
+          <div className="mission-chip mission-chip--loading" onClick={onOpenMissions}>
+            <span className="mission-chip-icon">🎯</span>
+            <div className="mission-chip-body"><div className="mission-chip-name">Loading today's missions…</div></div>
+          </div>
+        )}
+        {(list || []).map((m) => {
+          const pct = Math.min(100, (m.progress / Math.max(1, m.target)) * 100);
+          const claimable = m.completed && !m.claimed;
           return (
-            <div key={i} className={`mission-chip ${done ? 'mission-chip--done' : ''}`} onClick={onOpenMissions}>
-              <span className="mission-chip-icon">{m.icon || '🎯'}</span>
+            <div
+              key={m.id}
+              role="button"
+              tabIndex={0}
+              className={`mission-chip ${m.completed ? 'mission-chip--done' : ''} ${claimable ? 'mission-chip--claimable' : ''} ${m.claimed ? 'mission-chip--claimed' : ''}`}
+              onClick={onOpenMissions}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenMissions(); } }}
+            >
+              <span className="mission-chip-icon">{missionIcon(m)}</span>
               <div className="mission-chip-body">
-                <div className="mission-chip-name">{m.name}</div>
+                <div className="mission-chip-name">{m.description}</div>
                 <div className="mission-chip-bar-track">
                   <div className="mission-chip-bar-fill" style={{ width: `${pct}%` }} />
                 </div>
-                <div className="mission-chip-prog">{m.progress || 0}/{m.target || 1}</div>
+                <div className="mission-chip-prog">{m.claimed ? 'Claimed' : claimable ? 'Tap to claim' : `${m.progress}/${m.target}`}</div>
               </div>
-              <div className="mission-chip-xp">+{m.xp || 0}<span style={{fontSize:'0.6rem'}}> XP</span></div>
-              {done && <div className="mission-chip-check">✓</div>}
+              <div className="mission-chip-xp">{missionRewardShort(m.reward)}</div>
+              {m.completed && <div className="mission-chip-check">✓</div>}
             </div>
           );
         })}
@@ -1729,16 +1744,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           </div>
         )}
 
-        {/* Mission Strip */}
+        {/* Mission Strip — the server's missions; opens the Missions panel (C6) */}
         <MissionStrip
-          missions={(progress?.dailyMissions || []).map((m) => ({
-            name: m.text,
-            icon: '🎯',
-            target: m.target,
-            xp: m.xp,
-            progress: progress?.[m.field] || 0,
-          }))}
-          onOpenMissions={() => {}}
+          missions={progress?.missions ?? null}
+          onOpenMissions={() => useProgressStore.getState().setMissionsExpanded(true)}
         />
 
         {/* Swipeable cards: player / rank / session (upgrades #1 #2 #4 #5 #9) */}

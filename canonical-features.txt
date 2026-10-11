@@ -767,3 +767,11 @@ pref-hide-pot-odds
 pref-four-color-deck
 Mission reward collected:
 You earned a scratch card! Reveal it in the Shop.
+
+# 2026-10-11 .online R2 (K2) — C6 / APPUI-3: the lobby mission strip shows the
+#     server's missions and opens the Missions panel; claims go to the server
+#     (claimMission, no seat) and show its answer; no placeholder missions.
+mission-strip-open
+mission-chip--claimable
+Loading today's missions
+The game server did not answer — try again.

@@ -2280,6 +2280,13 @@
 .mission-chip-prog { font-size:0.65rem; color:#666; }
 .mission-chip-xp { font-size:0.78rem; font-weight:700; color:#ffd24a; white-space:nowrap; }
 .mission-chip-check { position:absolute; top:4px; right:6px; font-size:0.7rem; color:#4ADE80; font-weight:700; }
+/* R2 (C6) — the header opens the Missions panel; claimable / claimed states. */
+.mission-strip-open { width:100%; background:none; border:none; padding:0; cursor:pointer; font:inherit; text-align:left; min-height:32px; }
+.mission-strip-open:focus-visible { outline:2px solid #ffd24a; outline-offset:2px; border-radius:6px; }
+.mission-chip--claimable { border-color:rgba(255,210,74,0.55); background:rgba(255,210,74,0.08); box-shadow:0 0 0 1px rgba(255,210,74,0.15); }
+.mission-chip--claimable .mission-chip-prog { color:#ffd24a; font-weight:700; }
+.mission-chip--claimed { opacity:0.6; }
+.mission-chip--loading { cursor:default; }
 
 /* ═══════════════════════════════ */
 /* RECENT HANDS IMPROVEMENTS       */

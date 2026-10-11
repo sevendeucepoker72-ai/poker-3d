@@ -403,6 +403,24 @@
   font-weight: 600;
 }
 
+/* R2 (C6) — server missions: loading / empty state + per-claim answer. */
+.missions-empty {
+  padding: 14px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #9fb3d9;
+  background: rgba(120, 160, 255, 0.06);
+  border: 1px dashed rgba(120, 160, 255, 0.25);
+  border-radius: 10px;
+}
+.mission-claim-note {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+.mission-claim-note--done { color: #ffd24a; }
+.mission-claim-note--error { color: #9fc2ff; }
+
 .missions-timer {
   text-align: center;
   font-size: 0.78rem;
