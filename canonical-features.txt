@@ -788,3 +788,14 @@ custom tournaments are freezeouts.
 #     careerGameComplete. APPUI-53: a club challenge auto-join is followed to the table screen.
 career-result-notice
 try again from the Clubs panel.
+
+# 2026-10-11 R2 K3 (C3 / TOURNEY-2 / TOURNEY-13 / APPUI-44 / AUTH-9 client): the qualifier lobby +
+#     dashboard render ONLY the server's list (never a built-in default), never assume signup open,
+#     show the real schedule / signup window / late registration, the server's structure and
+#     seatsForTop, status counts; "registered" from the server (Withdraw after a reload); the
+#     player's own place + "won a championship seat" (never "wins 0 chips").
+qualifier-status-counts
+Signup times have not been announced yet
+you won a championship seat
+poker_qual_reg_v1
+Qualifier complete!
