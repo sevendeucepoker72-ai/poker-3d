@@ -2,20 +2,8 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useProgressStore } from '../../store/progressStore';
 import { getSocket } from '../../services/socketService';
+import { lifetimeAchievementRows, sortAchievementRows } from '../../utils/achievementCatalog';
 import './StatsPanel.css';
-
-const ALL_ACHIEVEMENTS = [
-  { id: 'first_win', name: 'First Blood', description: 'Win your first hand' },
-  { id: 'high_roller', name: 'High Roller', description: 'Win a pot over 50,000' },
-  { id: 'streak_5', name: 'Hot Streak', description: 'Win 5 hands in a row' },
-  { id: 'streak_10', name: 'Unstoppable', description: 'Win 10 hands in a row' },
-  { id: 'hands_100', name: 'Card Shark', description: 'Play 100 hands' },
-  { id: 'hands_1000', name: 'Veteran', description: 'Play 1000 hands' },
-  { id: 'royal_flush', name: 'Royal Flush!', description: 'Get a Royal Flush' },
-  { id: 'bluff_master', name: 'Bluff Master', description: 'Win 10 hands with less than a pair' },
-  { id: 'all_in_warrior', name: 'All-In Warrior', description: 'Go all-in and win 20 times' },
-  { id: 'social_butterfly', name: 'Social Butterfly', description: 'Send 50 chat messages' },
-];
 
 const HAND_RANKS = [
   'High Card', 'One Pair', 'Two Pair', 'Three of a Kind',
@@ -26,11 +14,11 @@ const HAND_RANKS = [
 const BAR_COLORS = [
   '#64748b', '#3b82f6', '#8b5cf6', '#ec4899',
   '#f97316', '#22c55e', '#3b82f6', '#eab308',
-  '#ef4444', '#FFD700',
+  '#A855F7', '#FFD700',
 ];
 
 const PIE_COLORS = {
-  fold: '#EF4444',
+  fold: '#64748B',
   check: '#22C55E',
   call: '#3B82F6',
   raise: '#F97316',
@@ -179,100 +167,121 @@ function PieChart({ actionCounts }) {
 }
 
 function getAdvancedStats(stats) {
-  const vpip = stats.vpip || 0;
-  const pfr = stats.pfr || 0;
-  // 2026-06-18 — AF is (bets+raises)/calls, NOT derivable from vpip/pfr.
-  // Use a real af if the stats object provides one; otherwise show '-' rather
-  // than the previous (incorrect) vpip/pfr ratio.
-  const af = (stats.af != null && !Number.isNaN(Number(stats.af))) ? +Number(stats.af).toFixed(1) : '-';
-  // WTSD / W$SD / 3-Bet are real server-tracked stats now; null until sampled.
-  const wtsd = (stats.wtsd != null && !Number.isNaN(Number(stats.wtsd))) ? +Number(stats.wtsd).toFixed(1) : '-';
-  const wsd = (stats.wsd != null && !Number.isNaN(Number(stats.wsd))) ? +Number(stats.wsd).toFixed(1) : '-';
-  const threeBet = (stats.threeBet != null && !Number.isNaN(Number(stats.threeBet))) ? +Number(stats.threeBet).toFixed(1) : '-';
+  const num = (v) => (v != null && v !== '' && !Number.isNaN(Number(v)) ? +Number(v).toFixed(1) : '-');
+  // AF is (bets+raises)/calls; the server sends 99 when there are no calls yet.
+  const afRaw = stats.af != null ? Number(stats.af) : NaN;
+  const af = Number.isFinite(afRaw) && afRaw < 99 ? +afRaw.toFixed(1) : '-';
   return [
-    { key: 'vpip', name: 'VPIP', description: 'Voluntarily Put In Pot', value: vpip, unit: '%', goodMin: 22, goodMax: 30 },
-    { key: 'pfr', name: 'PFR', description: 'Pre-Flop Raise %', value: pfr, unit: '%', goodMin: 15, goodMax: 22 },
-    { key: 'af', name: 'AF', description: 'Aggression Factor', value: af, unit: '', goodMin: 2, goodMax: 3 },
-    { key: '3bet', name: '3-Bet %', description: 'Pre-Flop Re-Raise %', value: threeBet, unit: '%', goodMin: 6, goodMax: 10 },
-    { key: 'wtsd', name: 'WTSD', description: 'Went to Showdown %', value: wtsd, unit: '%', goodMin: 28, goodMax: 35 },
-    { key: 'wsd', name: 'W$SD', description: 'Won $ at Showdown %', value: wsd, unit: '%', goodMin: 50, goodMax: 55 },
+    { key: 'vpip', name: 'VPIP', description: 'Voluntarily put chips in the pot', value: num(stats.vpip), unit: '%', goodMin: 22, goodMax: 30 },
+    { key: 'pfr', name: 'PFR', description: 'Pre-flop raise %', value: num(stats.pfr), unit: '%', goodMin: 15, goodMax: 22 },
+    { key: 'af', name: 'AF', description: 'Aggression factor', value: af, unit: '', goodMin: 2, goodMax: 3 },
+    { key: '3bet', name: '3-Bet %', description: 'Pre-flop re-raise %', value: num(stats.threeBet), unit: '%', goodMin: 6, goodMax: 10 },
+    { key: 'wtsd', name: 'WTSD', description: 'Went to showdown %', value: num(stats.wtsd), unit: '%', goodMin: 28, goodMax: 35 },
+    { key: 'wsd', name: 'W@SD', description: 'Won at showdown %', value: num(stats.wsd), unit: '%', goodMin: 50, goodMax: 55 },
   ];
 }
 
 function getStatIndicator(value, goodMin, goodMax) {
-  if (value === '-' || value == null || isNaN(value)) return { color: '#888', label: 'N/A' };
+  if (value === '-' || value == null || isNaN(value)) return { color: '#8fa8d8', label: 'Not enough data' };
   if (value >= goodMin && value <= goodMax) return { color: '#4ADE80', label: 'Good' };
   const marginMin = goodMin - (goodMax - goodMin) * 0.5;
   const marginMax = goodMax + (goodMax - goodMin) * 0.5;
   if (value >= marginMin && value <= marginMax) return { color: '#FBBF24', label: 'Marginal' };
-  return { color: '#EF4444', label: 'Poor' };
+  return { color: '#60A5FA', label: 'Off target' };
 }
 
+const STATS_TIMEOUT_MS = 10000;
+
+// 2026-10-11 (.online R2 — C10 / APPUI-10 / APPUI-49). Every number here is
+// the SERVER's: getDetailedStats (answered for an unseated socket since R2,
+// DB-backed) for the HUD stats / distribution / actions / positions, and the
+// server's lifetime achievements (getAchievements; snapshot ids otherwise).
+// Nothing falls back to this browser's own counts — a stat the server has
+// not tracked shows "-", and before the server answers the panel says so.
 export default function StatsPanel({ onClose }) {
   const progress = useProgressStore((s) => s.progress);
   const [detailedStats, setDetailedStats] = useState(null);
+  const [status, setStatus] = useState('loading'); // loading | ready | unavailable
+  const [liveAchievements, setLiveAchievements] = useState(null);
 
   useEffect(() => {
     const socket = getSocket();
-    if (socket) {
-      socket.emit('getDetailedStats');
-      const handler = (stats) => setDetailedStats(stats);
-      socket.on('detailedStats', handler);
-      return () => socket.off('detailedStats', handler);
-    }
+    if (!socket) { setStatus('unavailable'); return undefined; }
+    const handler = (stats) => {
+      if (!stats || typeof stats !== 'object') return;
+      setDetailedStats(stats);
+      setStatus('ready');
+    };
+    const onList = (payload) => { if (payload && Array.isArray(payload.lifetime)) setLiveAchievements(payload.lifetime); };
+    socket.on('detailedStats', handler);
+    socket.on('achievementsList', onList);
+    socket.emit('getDetailedStats');
+    socket.emit('getAchievements');
+    const t = setTimeout(() => setStatus((s) => (s === 'loading' ? 'unavailable' : s)), STATS_TIMEOUT_MS);
+    return () => { clearTimeout(t); socket.off('detailedStats', handler); socket.off('achievementsList', onList); };
   }, []);
 
-  const stats = detailedStats || progress || {};
-  const achievements = stats.achievements || [];
+  // Server values only: the detailed answer, else the server's own
+  // playerProgress counters for the overview (never the local VPIP / PFR).
+  const stats = detailedStats || {};
+  const overview = detailedStats || progress || {};
+  const totalHands = Number(overview.totalHandsPlayed) || 0;
+  const handsWon = Number(overview.handsWon) || 0;
+  const tracked = Number(stats.handsTracked ?? stats.totalHandsPlayed) || 0;
+  const achievements = sortAchievementRows(lifetimeAchievementRows(liveAchievements, overview.achievements || progress?.achievements));
   const handsPerRank = stats.handsPerRank || {};
   const actionCounts = stats.actionCounts || {};
-  const chipHistory = stats.chipHistory || [];
-  const positionWins = stats.positionWins || {};
+  const chipHistory = Array.isArray(stats.chipHistory) ? stats.chipHistory.filter((v) => Number.isFinite(Number(v))).map(Number) : [];
+  const positionWins = stats.positionStats || stats.positionWins || {};
 
-  const maxRankCount = Math.max(1, ...Object.values(handsPerRank));
+  const maxRankCount = Math.max(1, ...Object.values(handsPerRank).map((v) => Number(v) || 0));
 
   return createPortal(
     <div className="stats-overlay" onClick={onClose}>
-      <div className="stats-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="stats-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="My stats">
         <div className="stats-header">
           <div className="stats-title">My Stats</div>
           <button className="stats-close" onClick={onClose}>Close</button>
         </div>
 
+        {status !== 'ready' && (
+          <div className="stats-source-note">
+            {status === 'loading' ? 'Loading your stats from the server…' : 'Your detailed stats are not available right now — try again in a moment.'}
+          </div>
+        )}
+
         {/* Overview */}
         <div className="stats-overview">
           <div className="stats-overview-card">
-            <div className="stats-overview-value">{stats.level || 1}</div>
+            <div className="stats-overview-value">{overview.level || 1}</div>
             <div className="stats-overview-label">Level</div>
           </div>
           <div className="stats-overview-card">
-            <div className="stats-overview-value">{(stats.totalHandsPlayed || 0).toLocaleString()}</div>
+            <div className="stats-overview-value">{totalHands.toLocaleString()}</div>
             <div className="stats-overview-label">Hands Played</div>
           </div>
           <div className="stats-overview-card">
             <div className="stats-overview-value">
-              {stats.totalHandsPlayed > 0
-                ? ((stats.handsWon / stats.totalHandsPlayed) * 100).toFixed(1) + '%'
-                : '0%'}
+              {totalHands > 0 ? `${(Math.min(handsWon, totalHands) / totalHands * 100).toFixed(1)}%` : '0%'}
             </div>
             <div className="stats-overview-label">Win Rate</div>
           </div>
           <div className="stats-overview-card">
-            <div className="stats-overview-value">{(stats.biggestPot || 0).toLocaleString()}</div>
+            <div className="stats-overview-value">{(Number(overview.biggestPot) || 0).toLocaleString()}</div>
             <div className="stats-overview-label">Biggest Pot</div>
           </div>
           <div className="stats-overview-card">
-            <div className="stats-overview-value">{stats.bestStreak || 0}</div>
+            <div className="stats-overview-value">{Number(overview.bestStreak) || 0}</div>
             <div className="stats-overview-label">Best Streak</div>
           </div>
           <div className="stats-overview-card">
-            <div className="stats-overview-value">{(stats.chips || 0).toLocaleString()}</div>
+            <div className="stats-overview-value">{(Number(overview.chips) || 0).toLocaleString()}</div>
             <div className="stats-overview-label">Chips</div>
           </div>
         </div>
 
         {/* Advanced Stats */}
-        <div className="stats-section-title">Advanced Stats</div>
+        <div className="stats-section-title">Advanced Stats{status === 'ready' && tracked > 0 ? ` (${tracked.toLocaleString()} hands tracked)` : ''}</div>
         <div className="stats-advanced-grid">
           {getAdvancedStats(stats).map((stat) => {
             const indicator = getStatIndicator(stat.value, stat.goodMin, stat.goodMax);
@@ -287,7 +296,7 @@ export default function StatsPanel({ onClose }) {
                   />
                 </div>
                 <div className="stats-advanced-value">
-                  {stat.value}{stat.unit}
+                  {stat.value}{stat.value === '-' ? '' : stat.unit}
                 </div>
                 <div className="stats-advanced-desc">{stat.description}</div>
                 <div className="stats-advanced-range">
@@ -299,14 +308,14 @@ export default function StatsPanel({ onClose }) {
         </div>
 
         {/* Session Graph */}
-        <div className="stats-section-title">Session Graph (Last 20 Hands)</div>
+        <div className="stats-section-title">Chip Count (Last 20 Hands)</div>
         <SessionGraph chipHistory={chipHistory} />
 
         {/* Hand Distribution */}
         <div className="stats-section-title">Hand Distribution</div>
         <div className="stats-bars">
           {HAND_RANKS.map((rank, i) => {
-            const count = handsPerRank[rank] || 0;
+            const count = Number(handsPerRank[rank]) || 0;
             const pct = (count / maxRankCount) * 100;
             return (
               <div key={rank} className="stats-bar-row">
@@ -332,38 +341,35 @@ export default function StatsPanel({ onClose }) {
         <div className="stats-position-grid">
           {['early', 'middle', 'late', 'blind'].map((pos) => {
             const data = positionWins[pos] || { wins: 0, total: 0 };
-            const winRate = data.total > 0 ? ((data.wins / data.total) * 100).toFixed(1) : '0.0';
+            const total = Number(data.total ?? data.played) || 0;
+            const wins = Number(data.wins ?? data.won) || 0;
+            const winRate = total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0';
             return (
               <div key={pos} className="stats-position-card">
                 <div className="stats-position-label">{pos}</div>
                 <div className="stats-position-value">{winRate}%</div>
-                <div className="stats-position-count">{data.wins}/{data.total} hands</div>
+                <div className="stats-position-count">{wins}/{total} hands</div>
               </div>
             );
           })}
         </div>
 
-        {/* Achievements */}
-        <div className="stats-section-title">Achievements</div>
+        {/* Achievements — the server's ids and names */}
+        <div className="stats-section-title">Achievements ({achievements.filter((a) => a.unlocked).length}/{achievements.length})</div>
         <div className="stats-achievements-grid">
-          {ALL_ACHIEVEMENTS.map((ach) => {
-            const unlocked = achievements.includes(ach.id);
-            return (
-              <div key={ach.id} className={`stats-achievement-card ${unlocked ? 'unlocked' : ''}`}>
-                <div className="stats-achievement-name">
-                  {unlocked ? '\u2605 ' : '\u2606 '}{ach.name}
-                </div>
-                <div className="stats-achievement-desc">{ach.description}</div>
-                {unlocked ? (
-                  <div className="stats-achievement-status">Unlocked</div>
-                ) : (
-                  <div className="stats-achievement-progress-bar">
-                    <div className="stats-achievement-progress-fill" style={{ width: '0%' }} />
-                  </div>
-                )}
+          {achievements.map((ach) => (
+            <div key={ach.id} className={`stats-achievement-card ${ach.unlocked ? 'unlocked' : ''}`}>
+              <div className="stats-achievement-name">
+                {ach.unlocked ? '★ ' : '☆ '}{ach.name}
               </div>
-            );
-          })}
+              <div className="stats-achievement-desc">{ach.description}</div>
+              {ach.unlocked ? (
+                <div className="stats-achievement-status">Unlocked</div>
+              ) : (
+                <div className="stats-achievement-status stats-achievement-status--locked">Locked</div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
     </div>, document.body);

@@ -6,7 +6,13 @@ import './HandHistoryImporter.css';
 // Parser
 // ---------------------------------------------------------------------------
 
-function parseHandHistory(text) {
+/** An amount from a hand history — whole chips as 1,234; decimals kept (no currency sign). */
+function fmtAmount(n) {
+  const v = Number(n) || 0;
+  return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(2);
+}
+
+export function parseHandHistory(text) {
   const blocks = text.split(/(?=PokerStars Hand #)/);
   const hands = [];
 
@@ -27,15 +33,17 @@ function parseBlock(block) {
 
   // ── Header line ──────────────────────────────────────────────────────────
   // PokerStars Hand #123456: Hold'em No Limit ($0.25/$0.50) - 2024/01/15 20:30:00
-  const headerMatch = lines[0].match(
-    /PokerStars Hand #(\d+).*?\(\$?([\d.]+)\/\$?([\d.]+)\).*?-\s*([\d/]+ [\d:]+)/
-  );
+  // R2 (APPUI-51) — stakes and date are optional: the app's own export and
+  // other trackers write them differently.
+  const headerMatch = lines[0].match(/PokerStars Hand #(\d+)/);
   if (!headerMatch) return null;
+  const stakesMatch = lines[0].match(/\(\$?([\d.]+)\/\$?([\d.]+)[^)]*\)/);
+  const dateMatch = lines[0].match(/-\s*(\d{4}\/\d{2}\/\d{2} [\d:]+)/);
 
   const handId = headerMatch[1];
-  const sb = parseFloat(headerMatch[2]);
-  const bb = parseFloat(headerMatch[3]);
-  const date = headerMatch[4];
+  const sb = stakesMatch ? parseFloat(stakesMatch[1]) : 0;
+  const bb = stakesMatch ? parseFloat(stakesMatch[2]) : 0;
+  const date = dateMatch ? dateMatch[1] : '';
 
   // ── Seats ─────────────────────────────────────────────────────────────────
   const players = [];
@@ -58,10 +66,14 @@ function parseBlock(block) {
   const positionMap = buildPositionMap(seatOrder, btnSeat);
 
   // ── Hero cards ────────────────────────────────────────────────────────────
+  // R2 (APPUI-51) — the hero is the player the file deals cards to ("Dealt
+  // to <name> [..]"); a file without one falls back to the name "Hero".
   let heroCards = null;
-  const holeMatch = block.match(/Dealt to Hero \[([^\]]+)\]/);
+  let hero = 'Hero';
+  const holeMatch = block.match(/Dealt to (.+?) \[([^\]]+)\]/);
   if (holeMatch) {
-    heroCards = holeMatch[1].split(' ').map(c => c.trim()).filter(Boolean);
+    hero = holeMatch[1].trim();
+    heroCards = holeMatch[2].split(' ').map(c => c.trim()).filter(Boolean);
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -92,15 +104,18 @@ function parseBlock(block) {
     if (line.startsWith('*** SUMMARY ***') || line.startsWith('*** SHOW DOWN ***')) continue;
 
     // Action lines: "PlayerName: folds/calls/raises/checks/bets $X"
-    const actMatch = line.match(/^(.+?): (folds|calls|raises|checks|bets|posts)(?: \$?([\d.]+))?/);
+    const actMatch = line.match(/^(.+?): (folds|calls|raises|checks|bets|posts)(?: (?:small blind |big blind |the ante )?\$?([\d.]+))?(?: to \$?([\d.]+))?/);
     if (actMatch && currentStreet !== 'SUMMARY') {
       actions.push({
         street: currentStreet,
         player: actMatch[1].trim(),
         action: actMatch[2],
         amount: actMatch[3] ? parseFloat(actMatch[3]) : 0,
+        to: actMatch[4] ? parseFloat(actMatch[4]) : null,
       });
     }
+    const uncalled = line.match(/^Uncalled bet \(\$?([\d.]+)\) returned to (.+)$/);
+    if (uncalled) actions.push({ street: currentStreet, player: uncalled[2].trim(), action: 'returned', amount: parseFloat(uncalled[1]) });
   }
 
   // ── Summary ───────────────────────────────────────────────────────────────
@@ -123,25 +138,33 @@ function parseBlock(block) {
 
   // ── Hero net ──────────────────────────────────────────────────────────────
   let heroNet = 0;
-  const heroActions = actions.filter(a => a.player === 'Hero');
-  const contributed = heroActions
-    .filter(a => ['calls', 'raises', 'bets', 'posts'].includes(a.action))
-    .reduce((sum, a) => sum + a.amount, 0);
+  const perStreet = {};
+  let returned = 0;
+  for (const a of actions) {
+    if (a.player !== hero) continue;
+    const cur = perStreet[a.street] || 0;
+    if (a.action === 'posts' || a.action === 'calls') perStreet[a.street] = cur + a.amount;
+    else if (a.action === 'bets') perStreet[a.street] = cur + a.amount;
+    else if (a.action === 'raises') perStreet[a.street] = a.to != null ? Math.max(cur, a.to) : cur + a.amount;
+    else if (a.action === 'returned') returned += a.amount;
+  }
+  const contributed = Object.values(perStreet).reduce((x, y) => x + y, 0) - returned;
 
-  if (winner === 'Hero') {
+  if (winner === hero) {
     heroNet = pot - contributed;
   } else if (contributed > 0) {
     heroNet = -contributed;
   }
 
   // ── Hero position ─────────────────────────────────────────────────────────
-  const heroPosition = positionMap['Hero'] || 'Unknown';
+  const heroPosition = positionMap[hero] || 'Unknown';
 
   return {
     handId,
     date,
     sb,
     bb,
+    hero,
     heroCards,
     players,
     actions,
@@ -250,12 +273,12 @@ function PotProgressionBar({ actions, pot }) {
               key={s}
               className={`pot-progression__segment pot-progression__segment--${s.toLowerCase()}`}
               style={{ width: `${pct}%` }}
-              title={`${s}: $${cumulative[i].toFixed(2)}`}
+              title={`${s}: ${fmtAmount(cumulative[i])}`}
             />
           );
         })}
       </div>
-      <div className="pot-progression__final">Total: ${pot.toFixed(2)}</div>
+      <div className="pot-progression__final">Total: {fmtAmount(pot)}</div>
     </div>
   );
 }
@@ -268,15 +291,15 @@ const POSITIONS = ['BTN', 'CO', 'HJ', 'MP', 'UTG', 'BB', 'SB'];
 
 function StatsSidebar({ hands }) {
   const totalNet = hands.reduce((s, h) => s + h.heroNet, 0);
-  const wins = hands.filter(h => h.winner === 'Hero').length;
+  const wins = hands.filter(h => h.winner === h.hero).length;
   const winRate = hands.length ? Math.round((wins / hands.length) * 100) : 0;
 
   const vpipHands = hands.filter(h =>
-    h.actions.some(a => a.player === 'Hero' && a.street === 'PREFLOP' &&
-      ['calls', 'raises'].includes(a.action))
+    h.actions.some(a => a.player === h.hero && a.street === 'PREFLOP' &&
+      ['calls', 'raises', 'bets'].includes(a.action))
   ).length;
   const pfrHands = hands.filter(h =>
-    h.actions.some(a => a.player === 'Hero' && a.street === 'PREFLOP' &&
+    h.actions.some(a => a.player === h.hero && a.street === 'PREFLOP' &&
       a.action === 'raises')
   ).length;
 
@@ -295,7 +318,7 @@ function StatsSidebar({ hands }) {
       <div className="hhi-sidebar__stat">
         <span className="hhi-sidebar__label">Net chips</span>
         <span className={`hhi-sidebar__value ${totalNet >= 0 ? 'positive' : 'negative'}`}>
-          {totalNet >= 0 ? '+' : ''}${totalNet.toFixed(2)}
+          {totalNet >= 0 ? '+' : ''}{fmtAmount(totalNet)}
         </span>
       </div>
       <div className="hhi-sidebar__stat">
@@ -322,7 +345,7 @@ function StatsSidebar({ hands }) {
             <tr key={pos}>
               <td className="hhi-pos-table__pos">{pos}</td>
               <td className={`hhi-pos-table__net ${netByPos[pos] >= 0 ? 'positive' : 'negative'}`}>
-                {netByPos[pos] >= 0 ? '+' : ''}${netByPos[pos].toFixed(2)}
+                {netByPos[pos] >= 0 ? '+' : ''}{fmtAmount(netByPos[pos])}
               </td>
             </tr>
           ))}
@@ -377,7 +400,7 @@ function HandDetailDrawer({ hand, onClose }) {
                   <span className="hhi-drawer__action-player">{a.player}</span>
                   <span className="hhi-drawer__action-type">{a.action}</span>
                   {a.amount > 0 && (
-                    <span className="hhi-drawer__action-amount">${a.amount.toFixed(2)}</span>
+                    <span className="hhi-drawer__action-amount">{fmtAmount(a.to != null ? a.to : a.amount)}</span>
                   )}
                 </div>
               ))}
@@ -390,8 +413,8 @@ function HandDetailDrawer({ hand, onClose }) {
 
       <div className={`hhi-drawer__result ${hand.heroNet >= 0 ? 'positive' : 'negative'}`}>
         {hand.heroNet >= 0
-          ? `Hero won $${hand.heroNet.toFixed(2)}`
-          : `Hero lost $${Math.abs(hand.heroNet).toFixed(2)}`}
+          ? `${hand.hero} won ${fmtAmount(hand.heroNet)}`
+          : `${hand.hero} lost ${fmtAmount(Math.abs(hand.heroNet))}`}
       </div>
     </div>
   );
@@ -486,7 +509,7 @@ export default function HandHistoryImporter({ onClose }) {
       // ({ players:[{seatIndex,name}], actionLog:[{seatIndex,action,street}] }).
       const players = hand.players.map((p, i) => ({ seatIndex: i, name: p.name }));
       const seatOf = (name) => players.findIndex(p => p.name === name);
-      const mySeatIndex = seatOf('Hero');
+      const mySeatIndex = seatOf(hand.hero);
       const record = {
         handNumber: hand.handNumber ?? count,
         players,
@@ -564,7 +587,7 @@ export default function HandHistoryImporter({ onClose }) {
                       <th>Hand #</th>
                       <th>Date</th>
                       <th>Stakes</th>
-                      <th>Hero Hand</th>
+                      <th>Your Hand</th>
                       <th>Result</th>
                       <th>Winner</th>
                     </tr>
@@ -578,14 +601,14 @@ export default function HandHistoryImporter({ onClose }) {
                       >
                         <td className="hhi-table__hand-id">#{hand.handId.slice(-6)}</td>
                         <td>{formatDate(hand.date)}</td>
-                        <td>NL${(hand.bb * 2).toFixed(2)}</td>
+                        <td>{hand.bb > 0 ? `${fmtAmount(hand.sb)}/${fmtAmount(hand.bb)}` : '—'}</td>
                         <td className="hhi-table__cards">
                           {hand.heroCards
                             ? hand.heroCards.map((c, i) => <CardGlyph key={i} card={c} />)
                             : <span className="hhi-muted">—</span>}
                         </td>
                         <td className={hand.heroNet >= 0 ? 'positive' : 'negative'}>
-                          {hand.heroNet >= 0 ? '+' : ''}${hand.heroNet.toFixed(2)}
+                          {hand.heroNet >= 0 ? '+' : ''}{fmtAmount(hand.heroNet)}
                         </td>
                         <td>{hand.winner || '—'}</td>
                       </tr>

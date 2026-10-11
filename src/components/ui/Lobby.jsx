@@ -6,6 +6,8 @@ import ProgressBar from './ProgressBar';
 import MissionsPanel, { missionIcon } from './MissionsPanel';
 import { formatCountdown, nextDenverMidnightMs, denverDateKey } from '../../utils/denverTime';
 import { PROFILE_BGS } from '../../utils/economyCatalog';
+import { ownHandResult } from '../../utils/handLog';
+import { lifetimeAchievementRows, sortAchievementRows } from '../../utils/achievementCatalog';
 import StatsPanel from './StatsPanel';
 import BattlePass from './BattlePass';
 import ShopTab from './ShopTab';
@@ -76,18 +78,8 @@ const VARIANT_BADGE_COLORS = {
   'razz': '#EC4899',
 };
 
-const ALL_ACHIEVEMENTS = [
-  { id: 'first_win', name: 'First Blood', description: 'Win your first hand', icon: '\u{1F3AF}' },
-  { id: 'high_roller', name: 'High Roller', description: 'Win a pot over 50,000', icon: '\u{1F4B0}' },
-  { id: 'streak_5', name: 'Hot Streak', description: 'Win 5 hands in a row', icon: '\u{1F525}' },
-  { id: 'streak_10', name: 'Unstoppable', description: 'Win 10 hands in a row', icon: '\u{26A1}' },
-  { id: 'hands_100', name: 'Card Shark', description: 'Play 100 hands', icon: '\u{1F3B4}' },
-  { id: 'hands_1000', name: 'Veteran', description: 'Play 1000 hands', icon: '\u{1F396}' },
-  { id: 'royal_flush', name: 'Royal Flush!', description: 'Get a Royal Flush', icon: '\u{1F451}' },
-  { id: 'bluff_master', name: 'Bluff Master', description: 'Win 10 hands with less than a pair', icon: '\u{1F3AD}' },
-  { id: 'all_in_warrior', name: 'All-In Warrior', description: 'Go all-in and win 20 times', icon: '\u{2694}' },
-  { id: 'social_butterfly', name: 'Social Butterfly', description: 'Send 50 chat messages', icon: '\u{1F98B}' },
-];
+// R2 (APPUI-49) — achievements are the server's (utils/achievementCatalog);
+// the lobby's own list used ids the server never awards.
 
 const VIP_TIERS = [
   { name: 'Bronze', minXP: 0, color: '#CD7F32', xpRate: '1x' },
@@ -1043,7 +1035,6 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const quickAllInOrFold = useTableStore((s) => s.quickAllInOrFold);
   const spectateTable = useTableStore((s) => s.spectateTable);
   const gameState = useTableStore((s) => s.gameState);
-  const handHistories = useTableStore((s) => s.handHistories);
 
   const progress = useProgressStore((s) => s.progress);
   // Authoritative chip balance comes from gameStore, which is set from
@@ -1195,43 +1186,17 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     return () => socket.off('refillResult', onRefill);
   }, []);
 
-  // Session tracker
-  const sessionStartRef = useRef(Date.now());
-  const sessionStartChipsRef = useRef(null);
-  const [sessionHands, setSessionHands] = useState(0);
-  const [sessionNet, setSessionNet] = useState(0);
-  const prevHandCountRef = useRef(0);
-  useEffect(() => {
-    const count = handHistories?.length || 0;
-    if (count > prevHandCountRef.current) setSessionHands(s => s + (count - prevHandCountRef.current));
-    prevHandCountRef.current = count;
-  }, [handHistories]);
+  // Session tracker — R2 (APPUI-15): "This Session" counts his own LIVE
+  // hands (progressStore.session: hands / wins / net from his row of each
+  // hand), not the length of the table store's list (cleared when he leaves
+  // a table, refilled from the server at sign-in) or wallet swings (buy-ins).
+  const session = useProgressStore((s) => s.session);
+  const handLog = useProgressStore((s) => s.handLog);
+  const sessionHands = session?.hands || 0;
+  const sessionNet = session?.net || 0;
 
-  // Track session net chips (initialise once chips are known)
-  useEffect(() => {
-    if (sessionStartChipsRef.current === null && chipCount > 0) {
-      sessionStartChipsRef.current = chipCount;
-    } else if (sessionStartChipsRef.current !== null) {
-      setSessionNet(chipCount - sessionStartChipsRef.current);
-    }
-  }, [chipCount]);
-
-  // Achievement toast
-  const [achievementToast, setAchievementToast] = useState(null);
-  const prevAchievementsRef = useRef(null);
-  useEffect(() => {
-    const current = progress?.achievements || [];
-    if (prevAchievementsRef.current === null) { prevAchievementsRef.current = current; return; }
-    const newOnes = current.filter(id => !prevAchievementsRef.current.includes(id));
-    if (newOnes.length > 0) {
-      const achData = ALL_ACHIEVEMENTS.find(a => a.id === newOnes[0]);
-      if (achData) {
-        setAchievementToast(achData);
-        setTimeout(() => setAchievementToast(null), 4000);
-      }
-    }
-    prevAchievementsRef.current = current;
-  }, [progress?.achievements]);
+  // (R2 — the lobby's own achievement toast is gone: it duplicated the
+  // server-driven "Achievement Unlocked!" toast.)
 
   // Return player detection (last session > 24h ago)
   const [isReturningPlayer] = useState(() => {
@@ -1638,9 +1603,19 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // #9 — chip tier for avatar glow
   const chipTier = chipCount >= 1000000 ? 'legendary' : chipCount >= 100000 ? 'gold' : chipCount >= 10000 ? 'silver' : 'bronze';
 
+  // R2 (APPUI-15) — his own result in each of his last hands (newest first).
+  const recentOwn = useMemo(() => {
+    const out = [];
+    for (let i = handLog.length - 1; i >= 0 && out.length < 3; i--) {
+      const r = ownHandResult(handLog[i], playerName);
+      if (r) out.push({ rec: handLog[i], r });
+    }
+    return out;
+  }, [handLog, playerName]);
+
   // Achievements
   const unlockedAchievements = progress?.achievements || [];
-  const achievementsWithStatus = ALL_ACHIEVEMENTS.map((a) => ({
+  const achievementsWithStatus = sortAchievementRows(lifetimeAchievementRows(null, unlockedAchievements)).map((a) => ({
     ...a,
     unlocked: unlockedAchievements.includes(a.id),
   }));
@@ -1741,13 +1716,13 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
             <div className="session-stat-label">Hands</div>
           </div>
           <div className="session-stat">
-            <div className="session-stat-val" style={{ color: sessionNet >= 0 ? '#4ADE80' : '#EF4444' }}>
+            <div className="session-stat-val" style={{ color: sessionNet >= 0 ? '#4ADE80' : '#93C5FD' }}>
               {sessionNet >= 0 ? '+' : ''}{sessionNet.toLocaleString()}
             </div>
             <div className="session-stat-label">Net chips</div>
           </div>
           <div className="session-stat">
-            <div className="session-stat-val">{Math.floor((Date.now() - sessionStartRef.current) / 60000)}m</div>
+            <div className="session-stat-val">{Math.floor((Date.now() - (session?.startedAt || Date.now())) / 60000)}m</div>
             <div className="session-stat-label">Played</div>
           </div>
         </div>
@@ -1757,18 +1732,6 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
     return (
     <div className="lobby-tab-content lobby-tab-fade lobby-home-layout" key="home">
-      {/* Achievement toast (upgrade #6) */}
-      {achievementToast && (
-        <div className="achievement-toast">
-          <span className="achievement-toast-icon">{achievementToast.icon}</span>
-          <div className="achievement-toast-body">
-            <div className="achievement-toast-title">Achievement Unlocked!</div>
-            <div className="achievement-toast-name">{achievementToast.name}</div>
-          </div>
-          <button className="achievement-toast-close" onClick={() => setAchievementToast(null)}>✕</button>
-        </div>
-      )}
-
       {/* ── LEFT COLUMN ── */}
       <div className="lobby-home-main">
 
@@ -1833,27 +1796,23 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <div className="recent-hands-widget">
           <div className="recent-hands-header">
             <span className="recent-hands-title">🕐 Recent Hands</span>
-            {handHistories && handHistories.length > 0 && (
-              <span className="recent-hands-count">{handHistories.length} played</span>
+            {recentOwn.length > 0 && (
+              <span className="recent-hands-count">{recentOwn.length} shown</span>
             )}
           </div>
-          {handHistories && handHistories.length > 0 ? (
+          {recentOwn.length > 0 ? (
             <div className="recent-hands-list">
-              {handHistories.slice().reverse().slice(0, 3).map((h, i) => {
-                const myResult = h.winners?.find(w => w.seatIndex === h.yourSeat);
-                const won = !!myResult;
-                const amount = myResult?.chipsWon || 0;
-                const handName = myResult?.handName || (won ? 'Winner' : 'Folded');
+              {recentOwn.map(({ rec, r }, i) => {
+                const label = r.won ? (r.handName || 'Won') : r.folded ? 'Folded' : (r.handName || 'Lost');
+                const amount = r.won ? `+${r.chipsWon.toLocaleString()}` : (typeof r.net === 'number' && r.net < 0 ? r.net.toLocaleString() : '—');
                 return (
-                  <div key={i} className={`recent-hand-item ${won ? 'rhi--win' : 'rhi--loss'}`}>
-                    <span className="rhi-icon">{won ? '🏆' : '📉'}</span>
+                  <div key={`${rec.handNumber}-${i}`} className={`recent-hand-item ${r.won ? 'rhi--win' : 'rhi--loss'}`} onClick={() => setReplayHand(rec)} role="button" tabIndex={0}>
+                    <span className="rhi-icon">{r.won ? '🏆' : r.folded ? '🃏' : '📉'}</span>
                     <div className="rhi-info">
-                      <span className="rhi-hand">{handName}</span>
-                      <span className="rhi-table">{h.tableName || 'Table'}</span>
+                      <span className="rhi-hand">{label}</span>
+                      <span className="rhi-table">{rec.tableName || `Hand #${rec.handNumber ?? '—'}`}</span>
                     </div>
-                    <span className="rhi-amount" style={{ color: won ? '#4ADE80' : '#EF4444' }}>
-                      {won ? `+${amount.toLocaleString()}` : '—'}
-                    </span>
+                    <span className="rhi-amount" style={{ color: r.won ? '#4ADE80' : '#93C5FD' }}>{amount}</span>
                   </div>
                 );
               })}
@@ -2371,9 +2330,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           className="btn-accent"
           style={{ flex: 1 }}
           onClick={() => {
-            const hh = useTableStore.getState().handHistories || [];
-            if (!hh.length) { alert('No hands recorded yet — play some hands first.'); return; }
-            setReplayHand(hh[hh.length - 1]);
+            const last = recentOwn[0]?.rec || handLog[handLog.length - 1];
+            if (!last) { setJoinError('No hands recorded yet — play some hands first.'); setTimeout(() => setJoinError(null), 3500); return; }
+            setReplayHand(last);
           }}
         >
           Hand History
@@ -2660,7 +2619,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {showExportData && <ExportData onClose={() => setShowExportData(false)} />}
         {replayHand && <HandReplayViewer history={replayHand} onClose={() => setReplayHand(null)} />}
         {showHandQuiz && <HandQuiz onClose={() => setShowHandQuiz(false)} />}
-        {showAdvancedAnalytics && <AdvancedAnalytics progress={progress} handHistories={handHistories || []} onClose={() => setShowAdvancedAnalytics(false)} />}
+        {showAdvancedAnalytics && <AdvancedAnalytics progress={progress} handLog={handLog} myName={playerName} onClose={() => setShowAdvancedAnalytics(false)} />}
         {/* 2026-10-09 (D3) — refusal handling passed in (see StakingMarketplace). */}
         {showStakingMarketplace && (
           <StakingMarketplace

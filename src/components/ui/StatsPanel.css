@@ -344,3 +344,15 @@
   border-radius: 2px;
   transition: width 0.3s;
 }
+
+/* R2 (C10) — where the numbers come from + locked achievements. */
+.stats-source-note {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: #dbe6ff;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(120, 160, 255, 0.35);
+}
+.stats-achievement-status--locked { color: #8fa8d8; }

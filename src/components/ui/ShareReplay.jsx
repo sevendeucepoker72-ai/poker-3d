@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { buildReplaySteps } from '../../utils/handLog';
 import './ShareReplay.css';
 
 const SUIT_SYM = ['♥','♦','♣','♠'];
@@ -20,53 +21,15 @@ function CardSprite({ card, faceDown = false }) {
   );
 }
 
+// 2026-10-11 (.online R2 — APPUI-52). Steps come from the hand's real
+// chronological actionLog (utils/handLog buildReplaySteps): the server's
+// streets ('PreFlop' / 'Flop' / …) are matched, a fold ('folded') marks the
+// seat, the board is dealt street by street (all-in runouts included), the pot
+// grows with every bet and ends at the hand's real pot. The old builder looked
+// for 'preflop' / 'fold' / history.pot (never sent) and showed a blank replay.
 function buildSteps(history) {
-  const steps = [];
-  const players = (history.players || []).map(p => ({ ...p, folded: false, revealed: false }));
-  const numSeats = players.length;
-
-  // Start
-  steps.push({ type: 'start', community: [], pot: 0, players: players.map(p => ({ ...p })), label: 'Hand Start' });
-
-  // Blinds
-  steps.push({ type: 'blinds', community: [], pot: history.pot || 0, players: players.map(p => ({ ...p })), label: 'Blinds Posted' });
-
-  // Each street
-  const streets = ['preflop', 'flop', 'turn', 'river'];
-  const communityProgression = [
-    [],
-    (history.communityCards || []).slice(0, 3),
-    (history.communityCards || []).slice(0, 4),
-    (history.communityCards || []).slice(0, 5),
-  ];
-
-  streets.forEach((street, si) => {
-    const community = communityProgression[si];
-    // collect actions for this street from action log
-    const streetActions = (history.actionLog || []).filter(a => a.street === street);
-    if (si > 0 || streetActions.length) {
-      streetActions.forEach(a => {
-        const statePlayers = players.map(p => {
-          if (p.seatIndex === a.seatIndex && a.action === 'fold') return { ...p, folded: true };
-          return { ...p };
-        });
-        steps.push({
-          type: 'action', community, pot: a.potAfter || history.pot || 0,
-          players: statePlayers, label: `${a.playerName}: ${a.action}${a.amount ? ` ${a.amount}` : ''}`,
-          activeSeat: a.seatIndex,
-        });
-      });
-      if (si > 0 && si <= 3) {
-        steps.push({ type: 'deal', community, pot: history.pot || 0, players: players.map(p => ({ ...p })), label: street.charAt(0).toUpperCase() + street.slice(1) });
-      }
-    }
-  });
-
-  // Showdown
-  const showdownPlayers = players.map(p => ({ ...p, revealed: true }));
-  steps.push({ type: 'showdown', community: history.communityCards || [], pot: history.pot || 0, players: showdownPlayers, label: 'Showdown' });
-
-  return steps;
+  const steps = buildReplaySteps(history);
+  return steps.length > 0 ? steps : [{ type: 'start', community: [], pot: 0, players: [], label: 'This hand cannot be replayed' }];
 }
 
 // 2026-06-19 Phase 5: encode with encodeURIComponent BEFORE btoa to match the
@@ -90,7 +53,7 @@ export function getShareURL(history) {
 }
 
 export default function ShareReplay({ history, onClose }) {
-  const steps = buildSteps(history);
+  const steps = useMemo(() => buildSteps(history), [history]);
   const [stepIdx, setStepIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -166,7 +129,7 @@ export default function ShareReplay({ history, onClose }) {
 
         {/* Progress */}
         <div className="sr-progress-bar">
-          <div className="sr-progress-fill" style={{ width: `${(stepIdx / (steps.length - 1)) * 100}%` }} />
+          <div className="sr-progress-fill" style={{ width: `${(stepIdx / Math.max(1, steps.length - 1)) * 100}%` }} />
         </div>
         <div className="sr-step-count">{stepIdx + 1} / {steps.length}</div>
 
