@@ -799,3 +799,20 @@ Signup times have not been announced yet
 you won a championship seat
 poker_qual_reg_v1
 Qualifier complete!
+
+# 2026-10-11 R2 K3 (C4 / APPUI-22 / TOURNEY-8 client): sell only in a tournament from
+#     myStakeableTournaments (no free text); createStake { tournamentId, percent, pricePerPercent };
+#     escrow / refund states shown; the Buy control is hidden for the account's OWN offers by account
+#     (never by display name).
+getStakeableTournaments
+myStakeableTournaments
+pricePerPercent
+staking-mine-badge
+held in escrow until the tournament
+# 2026-10-11 R2 K3 (C12 / APPUI-20): a private table's invite code is shown with Copy / Share before
+#     the host sits; the host joins by invite code; Create settles on invalid_table_config (and
+#     private_table_limit / rate_limited).
+home-game-invite-code
+invalid_table_config
+private_table_limit
+Take your seat
