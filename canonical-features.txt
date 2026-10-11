@@ -795,4 +795,22 @@ Last hand replay
 #     off on phones and for reduced motion.
 allin-shimmer-x
 hud-waiting-dot
-#     P3: pot presets are raise-TO totals that include the hero's own bet.
+#     P3: pot presets are raise-TO totals that include the hero's own bet; the
+#     insurance panel counts down the server's decision window (expiresAt, on
+#     the server clock), sapphire + gold with no red Decline.
+insurance-countdown__text
+
+# 2026-10-11 .online R2 K1 (table screen, part 2): C11 + the S2 engine notes
+#     Straddle only when the server's isFirstActor says so (a pill above the
+#     bar on phones); Bomb Pot only where canBombPot; fast mode is sent only by
+#     the toggle and follows fastModeSet (never on mount); refused actions are
+#     toasts (stable codes), 'Hand already in progress' is silent, the
+#     sit-out-limit stand-up explains itself, the fixed-limit raise cap is
+#     explained; no card backs for a seat not dealt in (hasCards).
+isFirstActor
+canBombPot
+fastModeSet
+straddle_not_allowed
+bomb_pot_not_allowed
+Tap Sit Here on an open seat to play again.
+Raising is capped this round

@@ -481,7 +481,13 @@ const SeatPod = memo(function SeatPod({
   const showCardsFaceUp =
     isMyPlayer ||
     (canRevealAtShowdown && holeCards?.length > 0 && holeCards[0]?.rank != null);
-  const showCardBacks   = !isFolded && !isMyPlayer && phase !== 'WaitingForPlayers' && phase !== 'HandComplete';
+  // R2 (P3) — backs only for a seat DEALT IN to this hand: a player who sat
+  // down mid-hand or sits out holds no cards (`hasCards`, sent with every
+  // seat; a payload without it falls back to the seat's own cards).
+  const dealtIn = typeof serverSeat?.hasCards === 'boolean'
+    ? serverSeat.hasCards
+    : (Array.isArray(serverSeat?.holeCards) ? serverSeat.holeCards.length > 0 : true);
+  const showCardBacks   = dealtIn && !isFolded && !isMyPlayer && phase !== 'WaitingForPlayers' && phase !== 'HandComplete';
 
   // Derive timer % from server timestamp (timerTick forces re-render each second)
   const timerPct = (() => {

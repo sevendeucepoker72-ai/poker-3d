@@ -70,6 +70,81 @@
 /* Presets carry a full and a short label; desktop shows the full one. */
 .ab-preset .ab-preset-short { display: none; }
 
+/* R2 (C11) — the Straddle (shown only when the server's `isFirstActor` says
+   so): gold with navy text (it was lavender text on gold, unreadable). */
+.hud .action-btn.straddle {
+  background: linear-gradient(180deg, #ffe08a, #d9a92a) !important;
+  color: #0c1a44 !important;
+  border: 1px solid rgba(255, 236, 170, 0.9) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45) !important;
+  font-weight: 800 !important;
+}
+
+/* R2 (Addendum) — the insurance decision: sapphire + gold, the server's
+   window as a live countdown bar, and no red Decline. */
+.hud .insurance-panel.insurance-panel--server-quote {
+  background: linear-gradient(180deg, rgba(16, 40, 96, 0.97), rgba(8, 20, 52, 0.97));
+  border: 1px solid rgba(246, 220, 138, 0.75);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55);
+}
+.hud .insurance-panel--server-quote .insurance-title { color: #ffd24a; }
+.hud .insurance-panel--server-quote .insurance-details { color: #c9d6f2; }
+.hud .insurance-countdown {
+  position: relative;
+  height: 22px;
+  margin: 0 0 10px;
+  border-radius: 11px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(246, 220, 138, 0.25);
+}
+.hud .insurance-countdown__bar {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgba(246, 220, 138, 0.55), rgba(255, 210, 74, 0.3));
+  transition: transform 0.25s linear;
+}
+.hud .insurance-countdown__text {
+  position: relative;
+  display: block;
+  line-height: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #f6dc8a;
+  font-variant-numeric: tabular-nums;
+}
+.hud .insurance-btn.insurance-accept {
+  background: linear-gradient(180deg, #ffe08a, #d9a92a);
+  color: #0c1a44;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+.hud .insurance-btn.insurance-decline {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8eefc;
+  border: 1px solid rgba(246, 220, 138, 0.45);
+  box-shadow: none;
+}
+
+/* Toasts wrap: a long server message (the sit-out-limit notice, a refused
+   action) used to run off both edges of a phone on one line. */
+.hud .toast-stack { max-width: calc(100vw - 24px); }
+.hud .toast-item {
+  white-space: normal;
+  text-align: center;
+  overflow-wrap: anywhere;
+  max-width: min(calc(100vw - 24px), 520px);
+  box-sizing: border-box;
+}
+/* Portrait phones: centred under the top bar (it sat over Sit Out / Options),
+   as wide as the screen allows (left:50% capped it at half the width). */
+@media (max-width: 600px) and (orientation: portrait) {
+  html.table-geometry .hud .toast-stack {
+    top: calc(var(--hud-top-h, 100px) + 8px) !important;
+    width: max-content;
+  }
+}
+
 /* The hand-strength pill renders INSIDE the HUD now (it was a <body> portal
    at z 180), so menus, the all-in confirm, the showdown panel and toasts
    (z 200-900 inside .hud) always cover it — never the other way round. */
@@ -177,6 +252,45 @@
     bottom: calc(var(--hud-bar-h, 180px) + 8px) !important;
   }
 
+  /* R2 (C11) — the Straddle sits above the bar's right end, the mirror of
+     the Emote button on the left (touch devices hide the right rail; the
+     hero's nameplate is between them): the one-row bar never grows or
+     clips for it. */
+  .hud .hud-bottom .hud-actions-inner .action-btn.straddle {
+    position: fixed !important;
+    left: auto !important;
+    top: auto !important;
+    right: calc(8px + env(safe-area-inset-right, 0px)) !important;
+    bottom: calc(var(--hud-bar-h, 150px) + 8px) !important;
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    height: 47px !important;
+    min-height: 44px !important;
+    padding: 2px 4px !important;
+    margin: 0 !important;
+    flex: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 1px !important;
+    border-radius: 10px !important;
+    line-height: 1.05 !important;
+    z-index: 505 !important;
+  }
+  .hud .hud-bottom .action-btn.straddle .action-verb {
+    font-size: 0.62rem !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.03em !important;
+  }
+  .hud .hud-bottom .action-btn.straddle .action-amount-sub {
+    font-size: 0.8rem !important;
+    font-weight: 800 !important;
+    color: #0c1a44 !important;
+    opacity: 1 !important;
+  }
 
 }
 
@@ -477,6 +591,20 @@
 @media (max-width: 360px) and (orientation: portrait) {
   .table2d-scene { --sp: 0.56 !important; }
 }
+/* The smallest phones (320 wide): Emote and Straddle hug the edges, 60px
+   wide, so they clear the open seats flanking the hero. */
+@media (max-width: 340px) and (orientation: portrait) {
+  html.table-geometry .left-rail-btns { left: 4px !important; width: 60px !important; }
+  html.table-geometry .right-rail-btns { right: 4px !important; width: 60px !important; }
+  .hud .hud-bottom .hud-actions-inner .action-btn.straddle {
+    right: calc(4px + env(safe-area-inset-right, 0px)) !important;
+    width: 60px !important;
+    min-width: 60px !important;
+    max-width: 60px !important;
+  }
+  .hud .hud-bottom .action-btn.straddle .action-verb { font-size: 0.56rem !important; letter-spacing: 0 !important; }
+}
+
 /* ═══════════════ R2 (TABLEUI-17) — the table's animation budget ═══════════════
    An idle table ran 15-16 infinite animations, most of them box-shadow pulses
    that repaint every frame: 65-72% of the main thread at 4x CPU on a phone.

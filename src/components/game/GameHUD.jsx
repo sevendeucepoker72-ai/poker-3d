@@ -147,6 +147,18 @@ const ChatPanel = React.memo(function ChatPanel({ chatOpen, setChatOpen, chatUnr
 
 const haptic = (pattern) => { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (_) {} };
 
+// R2 (S2) — what a refused table action means when the server sends only its
+// stable code (every current server message is shown verbatim instead).
+const ACTION_ERROR_TEXT = {
+  straddle_not_allowed: 'Straddles are only available at cash tables.',
+  bomb_pot_not_allowed: 'Bomb pots are only available at Hold\'em and Omaha cash tables.',
+  invalid_draw: 'That draw is not allowed right now.',
+  no_seat_available: 'No seat is free at this table right now.',
+  sit_out_limit: 'You were sitting out for a while, so your seat was released and your chips went back to your balance.',
+};
+// The fixed-limit variants (the server's bettingStructure 'fixed-limit').
+const FIXED_LIMIT_VARIANT = /^(seven-card-stud|seven-card-stud-hi-lo|razz|triple-draw)$/;
+
 // R1 (TABLEUI-2) — the ONLY surface a touch gesture may start on: the table
 // felt (PokerTable2D's oval, drawn under the HUD). Anything interactive, a
 // seat, or any HUD layer drawn over the felt is never a gesture surface.
@@ -979,12 +991,18 @@ export default function GameHUD() {
     return 'marginal';
   })();
 
-  // Straddle: player is UTG (first to act after big blind) in PreFlop
+  // Straddle — R2 (C11 / TABLEUI-19): the SERVER says when this seat may
+  // straddle right now (`isFirstActor`: preflop, first to act, nothing
+  // voluntary yet, a cash table, the stack covers it — always present, false
+  // for spectators). The button was gated on that key while no server sent
+  // it, so it never showed. An older server (no key) shows nothing.
   const bigBlind = gameState?.bigBlind || 50;
   const straddleAmount = 2 * bigBlind;
-  // Determine if player is UTG: in PreFlop, activeSeat === yourSeat means it's our turn,
-  // and we check if we are the first actor (UTG position)
-  const isUTG = phase === 'PreFlop' && isMyTurn && gameState?.isFirstActor;
+  const isUTG = gameState?.isFirstActor === true && seatedHere;
+  // Bomb Pot — R2 (C11 / GAME-12): offered only where the server runs one
+  // (`canBombPot`: Hold'em / Omaha cash tables); elsewhere it dealt Stud /
+  // Draw / Short Deck hands wrong. An older server (no key): not offered.
+  const canBombPot = gameState?.canBombPot === true && seatedHere;
 
   // Insurance — R1 (TABLEUI-1 / ECON-1, CONTRACTS R1 #1). The panel is driven
   // ONLY by the server's quote for this seat and this hand
@@ -1000,10 +1018,14 @@ export default function GameHUD() {
   // a live countdown, and the panel closes when it runs out (the server
   // releases the runout then; Accept after that is refused anyway).
   const [insuranceNow, setInsuranceNow] = useState(() => serverNow());
+  // the window's full length as first seen (the bar's 100%)
+  const [insuranceWindowMs, setInsuranceWindowMs] = useState(7000);
   const insuranceExpiresAt = insuranceQuote ? insuranceQuote.expiresAt : null;
   useEffect(() => {
     if (!insuranceExpiresAt) return undefined;
-    setInsuranceNow(serverNow());
+    const now = serverNow();
+    setInsuranceNow(now);
+    setInsuranceWindowMs(Math.max(1000, insuranceExpiresAt - now));
     const id = setInterval(() => setInsuranceNow(serverNow()), 250);
     return () => clearInterval(id);
   }, [insuranceExpiresAt]);
@@ -2051,13 +2073,23 @@ export default function GameHUD() {
     };
   }, [autoDeal, phase, isSpectating, startHand, onTournamentSeat]);
 
-  // Fast Mode: emit to server when toggled (#12)
+  // Fast Mode (#12) — R2 (P3 / GAME-11): fast mode is the PLAYER's own
+  // setting on the server (`fastModeSet { enabled }`), so it is sent only
+  // when he flips the toggle. The old effect also sent it on every mount — a
+  // `setFastMode false` that switched fast mode off whenever the table opened.
+  const toggleFastMode = useCallback(() => {
+    const next = !fastMode;
+    setFastMode(next);
+    const socket = getSocket();
+    if (socket?.connected) socket.emit('setFastMode', { enabled: next });
+  }, [fastMode]);
   useEffect(() => {
     const socket = getSocket();
-    if (socket?.connected) {
-      socket.emit('setFastMode', { enabled: fastMode });
-    }
-  }, [fastMode]);
+    if (!socket) return undefined;
+    const onSet = (d) => { if (d && typeof d.enabled === 'boolean') setFastMode(d.enabled); };
+    socket.on('fastModeSet', onSet);
+    return () => socket.off('fastModeSet', onSet);
+  }, []);
 
   // Persist Quick Showdown preference (#13)
   useEffect(() => {
@@ -2164,12 +2196,39 @@ export default function GameHUD() {
       // went wrong from their side, the table just advanced. Real errors (not
       // your turn, invalid amount, insufficient chips) still surface.
       if (data?.code === 'STALE_STATE') return;
+      // R2 (P3) — Auto Deal: the late startHand of two clients (or of a client
+      // racing the server's own auto-start) is answered "Hand already in
+      // progress". Nothing went wrong for anyone, so no toast.
+      if (data?.message === 'Hand already in progress') return;
       // 2026-10-07 — a play refusal (suspended / no account, e.g. on rebuy or
       // a career start) is shown by the shared PlayRefusalNotice, verbatim and
       // without the 3s auto-hide. Don't toast it a second time.
       if (reportPlayRefusal(data)) return;
-      if (data?.message) {
-        try { addToast(data.message, 'warn', 3000); } catch {}
+      // R2 (S2 sit-out limit) — a ring seat sat out 30 hands was released and
+      // its stack went back to the wallet; the server already made him a
+      // spectator of the table (full state + `spectating`). Say why, longer.
+      if (data?.code === 'sit_out_limit') {
+        const why = (typeof data.message === 'string' && data.message) || ACTION_ERROR_TEXT.sit_out_limit;
+        const gs = useTableStore.getState().gameState;
+        const kind = gs?.tableKind;
+        const canSit = !(gs?.isTournament === true || gs?.tournamentId != null) && (kind == null || kind === 'cash');
+        const next = canSit ? ' You are watching the table now. Tap Sit Here on an open seat to play again.' : ' You are watching the table now.';
+        try { addToast(`${why}${next}`, 'info', 9000); } catch { /* ignore */ }
+        return;
+      }
+      // R2 (S2, GAME-9) — fixed limit (Stud, Razz, Triple Draw) allows a bet
+      // and three raises a round; the server refuses the next raise with only
+      // "Invalid action: raise" (no state key says the round is capped), so
+      // say what it means there.
+      if (data?.message === 'Invalid action: raise' && FIXED_LIMIT_VARIANT.test(String(useTableStore.getState().gameState?.variant || ''))) {
+        try { addToast('Raising is capped this round (a bet and three raises). You can call or fold.', 'warn', 3500); } catch { /* ignore */ }
+        return;
+      }
+      // R2 — every refusal is a toast, never a crash: the server's own words,
+      // else a plain sentence for the stable code.
+      const text = (typeof data?.message === 'string' && data.message) || ACTION_ERROR_TEXT[data?.code] || '';
+      if (text) {
+        try { addToast(text, 'warn', 3500); } catch { /* ignore */ }
       }
     };
     socket.on('missedBlinds', handler);
@@ -3110,7 +3169,7 @@ export default function GameHUD() {
                   <span className="options-label">Fast Mode</span>
                   <button
                     className={`options-toggle ${fastMode ? 'options-on' : 'options-off'}`}
-                    onClick={() => setFastMode(!fastMode)}
+                    onClick={toggleFastMode}
                   >{fastMode ? 'ON' : 'OFF'}</button>
                 </div>
                 <div className="options-row">
@@ -3131,6 +3190,8 @@ export default function GameHUD() {
                 </div>
                 )}
                 <div className="options-divider" />
+                {/* R2 (C11) — offered only where the server runs bomb pots. */}
+                {canBombPot && (
                 <button className="options-action-btn options-bomb"
                   onClick={() => {
                     const socket = getSocket();
@@ -3142,12 +3203,16 @@ export default function GameHUD() {
                   }}>
                   💣 Bomb Pot
                 </button>
+                )}
                 {/* Hard dismiss for the banner. Forces local suppression
-                    regardless of whatever the server-side flag says. */}
-                <button className="options-action-btn"
+                    regardless of whatever the server-side flag says.
+                    R2 — offered while there is a bomb pot banner to dismiss. */}
+                {isBombPot && (
+                <button className="options-action-btn options-bomb-dismiss"
                   onClick={() => { setBombPotSuppressed(true); setShowOptions(false); }}>
                   ✕ Dismiss Bomb Pot Banner
                 </button>
+                )}
                 <button className="options-action-btn" onClick={() => { setShowRangeChart(true); setShowOptions(false); }}>
                   📊 Range Chart
                 </button>
@@ -4173,17 +4238,23 @@ export default function GameHUD() {
 
               {/* raise row moved to raise-panel-float below hud-bottom */}
 
-              {/* STRADDLE (UTG only, active turn) */}
+              {/* STRADDLE — R2 (C11): when the server's `isFirstActor` says
+                  this seat may straddle right now (its own turn, preflop). */}
               {isUTG && isMyTurn && (
                 <button
                   className="action-btn straddle"
                   onClick={() => {
+                    // (No action-sent lock: the server answers a refused
+                    // straddle with nothing, which would lock the turn. A
+                    // second tap is refused server-side — no longer first.)
                     const socket = getSocket();
-                    if (socket?.connected) socket.emit('straddle');
+                    if (!socket?.connected) return;
+                    socket.emit('straddle');
                     playSound('bet');
                   }}
                 >
-                  Straddle {straddleAmount.toLocaleString()}
+                  <span className="action-verb">Straddle</span>
+                  <span className="action-amount-sub">{straddleAmount.toLocaleString()}</span>
                 </button>
               )}
 
@@ -4484,7 +4555,7 @@ export default function GameHUD() {
           <div className="insurance-title">{'\uD83D\uDEE1\uFE0F'} Insurance</div>
           {insuranceSecsLeft !== null && (
             <div className="insurance-countdown" role="timer" aria-live="off" aria-label={`${insuranceSecsLeft} seconds to decide`}>
-              <span className="insurance-countdown__bar" style={{ transform: `scaleX(${Math.max(0, Math.min(1, (insuranceExpiresAt - insuranceNow) / 7000))})` }} />
+              <span className="insurance-countdown__bar" style={{ transform: `scaleX(${Math.max(0, Math.min(1, (insuranceExpiresAt - insuranceNow) / insuranceWindowMs))})` }} />
               <span className="insurance-countdown__text">Decide in {insuranceSecsLeft}s</span>
             </div>
           )}
