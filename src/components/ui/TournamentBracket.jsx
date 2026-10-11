@@ -64,7 +64,38 @@ function PlayerCard({ player, isChipLeader, isFinalTable, justEliminated }) {
   );
 }
 
-export default function TournamentBracket({ tournament, onClose }) {
+export const BRACKET_NONE_TEXT = 'No tournament running';
+
+/**
+ * R2 (APPUI-42): the bracket of ONE tournament (the lobby asks the server for
+ * the id of the card that opened it). `tournament` null after the server
+ * answered = there is no such running tournament: says so instead of an empty
+ * "Live" bracket; `loading` while the first answer is pending.
+ */
+export default function TournamentBracket({ tournament, loading = false, onClose }) {
+  if (!tournament) {
+    return (
+      <div className="tb-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+        <div className="tb-modal tb-modal--empty">
+          <div className="tb-header">
+            <div className="tb-header-left">
+              <h2 className="tb-title">{loading ? 'Live Bracket' : BRACKET_NONE_TEXT}</h2>
+            </div>
+            <button className="tb-close-btn" onClick={onClose} aria-label="Close">✕</button>
+          </div>
+          <div className="tb-content">
+            <div className="tb-empty">
+              {loading ? 'Loading the bracket…' : 'There is no tournament in progress right now. The bracket opens here while one is running.'}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return <TournamentBracketView tournament={tournament} onClose={onClose} />;
+}
+
+function TournamentBracketView({ tournament, onClose }) {
   const {
     name = 'Tournament',
     players = [],

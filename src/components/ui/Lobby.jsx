@@ -44,9 +44,19 @@ import SpinWheel from './SpinWheel';
 import ScratchCards from './ScratchCards';
 import MultiTableView from './MultiTableView';
 import PlayerProfile from './PlayerProfile';
+import SeatPicker from './SeatPicker';
 import { getSocket } from '../../services/socketService';
 import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
 import { openLiveTableOverlay } from '../../store/liveTableOverlayStore';
+// R2 (C1, 2026-10-11) — the server's cash-table list: real seats / phase /
+// pot, family filters, contiguous stakes, joinable-only Best Match.
+import {
+  VARIANT_FILTERS, STAKES_FILTERS, SEATS_FILTERS, variantFamily,
+  matchesVariantFilter, matchesStakesFilter, matchesSeatsFilter,
+  normalizeTableList, pickBestMatch, pickFeaturedTable, seatDots, phaseLabel,
+  isTableFull, canAffordTable, TABLE_NOT_JOINABLE_TEXT,
+} from '../../utils/tableList';
+import { useTournamentRegistrationStore } from '../../store/tournamentRegistrationStore';
 // 2026-10-10 (round 3) — the join-error toast stacks below the fixed
 // "Return to tournament" banner (the banner reports its bottom edge in the
 // tournament-seat store field `bannerBottom`; TournamentSeatNotice.jsx).
@@ -54,24 +64,14 @@ import { useTournamentSeatStore } from '../../store/tournamentSeatStore';
 import { PlayerAvatar } from '../../hooks/useAvatar';
 import './Lobby.css';
 
-const VARIANT_FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'holdem', label: "Hold'em" },
-  { key: 'omaha', label: 'Omaha' },
-  { key: 'short-deck', label: 'Short Deck' },
-  { key: 'draw', label: 'Draw' },
-  { key: 'stud', label: 'Stud' },
-];
-
-const VARIANT_BADGE_COLORS = {
-  'texas-holdem': '#4ADE80',
-  'omaha': '#F59E0B',
-  'omaha-hi-lo': '#F97316',
-  'short-deck': '#3B82F6',
-  'five-card-draw': '#A855F7',
-  'triple-draw': '#8B5CF6',
-  'seven-card-stud': '#EF4444',
-  'razz': '#EC4899',
+// Variant badge colour by game FAMILY (every server variant id has one; no red).
+const VARIANT_FAMILY_COLORS = {
+  holdem: '#2E9E6B',
+  omaha: '#C98A12',
+  'short-deck': '#2563EB',
+  draw: '#7C3AED',
+  stud: '#0E8F8A',
+  other: '#475569',
 };
 
 const ALL_ACHIEVEMENTS = [
@@ -101,16 +101,6 @@ function getVIPTier(xp) {
   return VIP_TIERS[0];
 }
 
-function matchesFilter(variant, filter) {
-  if (filter === 'all') return true;
-  if (filter === 'holdem') return variant === 'texas-holdem';
-  if (filter === 'omaha') return variant === 'omaha' || variant === 'omaha-hi-lo';
-  if (filter === 'short-deck') return variant === 'short-deck';
-  if (filter === 'draw') return variant === 'five-card-draw' || variant === 'triple-draw';
-  if (filter === 'stud') return variant === 'seven-card-stud' || variant === 'razz';
-  return true;
-}
-
 // ─── Animated counter hook ───
 function useAnimatedCounter(target, duration = 700) {
   const [display, setDisplay] = useState(target);
@@ -135,61 +125,40 @@ function useAnimatedCounter(target, duration = 700) {
 }
 
 // ─── Featured Table Banner ───
+// R2 (C1, APPUI-39) — only from REAL live data: a server that lists phase / pot
+// / seats (pickFeaturedTable); no table qualifies → no banner (it used to show
+// "Pre-Flop" and a 0 pot for any table the old list could not describe).
 function FeaturedTableBanner({ tables, onSpectate }) {
-  const SUIT_SYMBOLS = { s: '♠', h: '♥', d: '♦', c: '♣' };
-  const SUIT_COLORS = { s: '#fff', h: '#EF4444', d: '#EF4444', c: '#fff' };
+  const featured = useMemo(() => pickFeaturedTable(tables), [tables]);
+  if (!featured) return null;
 
-  // Recompute featured table whenever any table's pot or playerCount changes
-  // — not just when the list reference changes. Previously an in-place delta
-  // that mutated { pot, playerCount } on an existing table element wouldn't
-  // invalidate the memo, so the banner showed stale numbers until the next
-  // full list replacement.
-  const tablesSignature = useMemo(
-    () => (tables || []).map(t => `${t.tableId}:${t.pot || 0}:${t.playerCount || 0}:${t.phase || ''}`).join('|'),
-    [tables]
-  );
-  const featured = useMemo(() => {
-    if (!tables || tables.length === 0) return null;
-    return tables.reduce((best, t) => {
-      const score = (t.pot || 0) * 2 + (t.playerCount || 0) * 500;
-      const bScore = (best.pot || 0) * 2 + (best.playerCount || 0) * 500;
-      return score > bScore ? t : best;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tables, tablesSignature]);
-
-  if (!featured || (featured.playerCount || 0) < 2) return null;
-
+  const names = (featured.seats || []).filter((s) => s.occupied).map((s) => s.name || '?');
+  const phase = phaseLabel(featured.phase);
   const cards = featured.communityCards || [];
-  const seatedPlayers = (featured.seats || []).filter(s => s?.playerName);
 
   return (
     <div className="featured-table-banner">
       <div className="ftb-top">
         <span className="ftb-label">🔥 FEATURED TABLE</span>
-        <span className="ftb-phase">{featured.phase || 'Pre-Flop'}</span>
+        {phase && <span className="ftb-phase">{phase}</span>}
       </div>
-      <div className="ftb-name">{featured.tableName || `Table ${featured.tableId?.slice(0,8)}`}</div>
+      <div className="ftb-name">{featured.tableName}</div>
       <div className="ftb-meta">
-        <span className="ftb-meta-item">💰 {(featured.pot || 0).toLocaleString()} pot</span>
-        <span className="ftb-meta-item">👥 {featured.playerCount}/{featured.maxSeats}</span>
+        {featured.pot !== null && <span className="ftb-meta-item">💰 {featured.pot.toLocaleString()} pot</span>}
+        <span className="ftb-meta-item">👥 {featured.seatsTaken}/{featured.maxSeats}</span>
         <span className="ftb-meta-item">🃏 {featured.smallBlind}/{featured.bigBlind} blinds</span>
       </div>
       <div className="ftb-bottom">
-        {cards.length > 0 ? (
+        {cards.length > 0 && (
           <div className="ftb-cards">
-            {cards.map((c, i) => {
-              const suit = c?.slice(-1);
-              const rank = c?.slice(0, -1);
-              return <span key={i} className="ftb-card" style={{ color: SUIT_COLORS[suit] || '#fff' }}>{rank}{SUIT_SYMBOLS[suit] || suit}</span>;
-            })}
+            {cards.map((c, i) => <span key={i} className="ftb-card">{c}</span>)}
           </div>
-        ) : <div className="ftb-no-cards">Waiting for cards…</div>}
+        )}
         <div className="ftb-avatars">
-          {seatedPlayers.slice(0, 6).map((s, i) => (
-            <div key={i} className="ftb-avatar" title={s.playerName}>{s.playerName.charAt(0).toUpperCase()}</div>
+          {names.slice(0, 6).map((n, i) => (
+            <div key={i} className="ftb-avatar" title={n}>{n.charAt(0).toUpperCase()}</div>
           ))}
-          {seatedPlayers.length > 6 && <div className="ftb-avatar ftb-avatar--more">+{seatedPlayers.length - 6}</div>}
+          {names.length > 6 && <div className="ftb-avatar ftb-avatar--more">+{names.length - 6}</div>}
         </div>
         <button className="ftb-spectate-btn" onClick={() => onSpectate(featured.tableId)}>👁 Spectate</button>
       </div>
@@ -327,26 +296,18 @@ function SwipeCards({ cards }) {
 
 // ─── Smart Table Recommendation ───
 function RecommendCard({ tables, playerChips, nameInput, connected, onJoin }) {
-  const rec = useMemo(() => {
-    if (!tables.length || !playerChips) return null;
-    const ideal = playerChips / 20;
-    const open = tables.filter(t => (t.playerCount || 0) < (t.maxSeats || 9));
-    if (!open.length) return null;
-    return open.reduce((best, t) => {
-      const diff = Math.abs((t.bigBlind || 0) - ideal);
-      const bDiff = Math.abs((best.bigBlind || 0) - ideal);
-      return diff < bDiff ? t : best;
-    });
-  }, [tables, playerChips]);
+  // R2 (C1) — joinable tables only: never a full one, never one the wallet
+  // cannot cover (pickBestMatch).
+  const rec = useMemo(() => pickBestMatch(tables, playerChips), [tables, playerChips]);
 
   if (!rec) return null;
-  const open = (rec.maxSeats || 9) - (rec.playerCount || 0);
+  const open = rec.maxSeats - rec.seatsTaken;
   return (
     <div className="recommend-card">
       <div className="recommend-card-label">💡 Recommended for you</div>
       <div className="recommend-card-body">
         <div className="recommend-card-info">
-          <div className="recommend-card-name">{rec.tableName || `Table ${rec.tableId?.slice(0,6)}`}</div>
+          <div className="recommend-card-name">{rec.tableName}</div>
           <div className="recommend-card-sub">{rec.smallBlind}/{rec.bigBlind} blinds · {open} seat{open !== 1 ? 's' : ''} open · {(rec.minBuyIn || 0).toLocaleString()} min</div>
         </div>
         <button className="recommend-card-btn" onClick={() => onJoin(rec)} disabled={!nameInput.trim() || !connected}>
@@ -363,165 +324,6 @@ function SectionHeader({ children }) {
     <div className="lobby-section-header">
       <h2 className="lobby-section-title">{children}</h2>
       <div className="lobby-section-divider" />
-    </div>
-  );
-}
-
-// ─── Seat Selection Overlay Component ───
-function SeatPicker({ table, playerName, avatar, onJoin, onClose }) {
-  const maxSeats = table.maxSeats || 9;
-  const seats = table.seats || [];
-
-  const seatElements = Array.from({ length: maxSeats }, (_, i) => {
-    const angle = (Math.PI / 2) - (i * (2 * Math.PI / maxSeats));
-    const rx = 140;
-    const ry = 100;
-    const cx = 200;
-    const cy = 150;
-    const x = cx + Math.cos(angle) * rx;
-    const y = cy - Math.sin(angle) * ry;
-
-    const seatInfo = seats[i];
-    const isOccupied = seatInfo && seatInfo.playerName;
-
-    return (
-      <div
-        key={i}
-        onClick={() => !isOccupied && onJoin(i)}
-        style={{
-          position: 'absolute',
-          left: x - 36,
-          top: y - 22,
-          width: 72,
-          height: 44,
-          borderRadius: '10px',
-          border: isOccupied ? '2px solid #555' : '2px solid #4ADE80',
-          background: isOccupied ? 'rgba(60,60,60,0.8)' : 'rgba(34,197,94,0.15)',
-          color: isOccupied ? '#999' : '#4ADE80',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: isOccupied ? 'not-allowed' : 'pointer',
-          fontSize: '0.7rem',
-          fontWeight: 600,
-          transition: 'all 0.2s',
-          userSelect: 'none',
-        }}
-        onMouseEnter={(e) => {
-          if (!isOccupied) {
-            e.currentTarget.style.background = 'rgba(34,197,94,0.35)';
-            e.currentTarget.style.transform = 'scale(1.08)';
-            e.currentTarget.style.boxShadow = '0 0 12px rgba(74,222,128,0.4)';
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!isOccupied) {
-            e.currentTarget.style.background = 'rgba(34,197,94,0.15)';
-            e.currentTarget.style.transform = 'scale(1)';
-            e.currentTarget.style.boxShadow = 'none';
-          }
-        }}
-      >
-        <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>Seat {i + 1}</span>
-        {isOccupied ? (
-          <span style={{ fontSize: '0.65rem', color: '#bbb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 64 }}>
-            {seatInfo.playerName}
-          </span>
-        ) : (
-          <span style={{ fontSize: '0.65rem' }}>Open</span>
-        )}
-      </div>
-    );
-  });
-
-  return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 1000,
-      background: 'rgba(0,0,0,0.75)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-    }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #1a1a4e, #0d0d2a)',
-          border: '2px solid #4ADE80',
-          borderRadius: '20px',
-          padding: '30px',
-          width: 440,
-          position: 'relative',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 style={{ color: '#E0E0E0', margin: '0 0 8px', textAlign: 'center', fontSize: '1.1rem' }}>
-          Choose Your Seat
-        </h3>
-        <p style={{ color: '#8888AA', margin: '0 0 16px', textAlign: 'center', fontSize: '0.8rem' }}>
-          {table.tableName || `Table ${table.tableId}`} &mdash; Blinds {table.smallBlind}/{table.bigBlind}
-        </p>
-
-        <div style={{
-          position: 'relative',
-          width: 400,
-          height: 300,
-          margin: '0 auto',
-        }}>
-          <div style={{
-            position: 'absolute',
-            left: 80,
-            top: 60,
-            width: 240,
-            height: 180,
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, #1e5e3a, #0d3a20)',
-            border: '4px solid #7B5230',
-            boxShadow: 'inset 0 0 30px rgba(0,0,0,0.3), 0 0 20px rgba(0,0,0,0.4)',
-          }}>
-            <div style={{
-              position: 'absolute',
-              inset: 15,
-              borderRadius: '50%',
-              border: '1px solid rgba(255,215,0,0.15)',
-            }} />
-            <div style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              color: 'rgba(255,215,0,0.2)',
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              letterSpacing: 2,
-            }}>
-              AMERICAN PUB POKER
-            </div>
-          </div>
-
-          {seatElements}
-        </div>
-
-        <button
-          onClick={onClose}
-          style={{
-            display: 'block',
-            margin: '12px auto 0',
-            padding: '8px 24px',
-            border: '1px solid #666',
-            borderRadius: '8px',
-            background: 'transparent',
-            color: '#999',
-            cursor: 'pointer',
-            fontSize: '0.85rem',
-          }}
-        >
-          Cancel
-        </button>
-      </div>
     </div>
   );
 }
@@ -549,10 +351,26 @@ function InlineFriendsList() {
   const order = { online: 0, 'in-game': 1, offline: 2 };
   const sortedFriends = [...friends].sort((a, b) => (order[a.presence] ?? 3) - (order[b.presence] ?? 3));
   const onlineCount = friends.filter((f) => f.presence === 'online' || f.presence === 'in-game').length;
+  const friendName = (f) => {
+    const v = f?.displayName ?? f?.username;
+    const t = v === null || v === undefined ? '' : String(v).trim();
+    return t || 'Player';
+  };
+
+  // R2 (CLUBS-5 / APPUI-47) — an invite carries the table the player is SEATED
+  // at (the friend's toast offers to join it); from the lobby without a seat
+  // there is nothing to invite to, so Invite is not offered (it used to send no
+  // table and the friend got a dead toast).
+  const seatedTableId = useTableStore((s) => {
+    const gs = s.gameState;
+    if (gs && gs.tableId != null && Number(gs.yourSeat) >= 0 && !gs.isSpectator) return String(gs.tableId);
+    return s.currentTableId ? String(s.currentTableId) : null;
+  });
 
   const handleInvite = (friend) => {
+    if (!seatedTableId) return;
     const s = getSocket();
-    if (s?.connected) s.emit('inviteFriendToTable', { userId: friend.userId });
+    if (s?.connected) s.emit('inviteFriendToTable', { userId: friend.userId, tableId: seatedTableId });
     setInviteSent(friend.userId);
     setTimeout(() => setInviteSent(null), 2000);
   };
@@ -567,19 +385,22 @@ function InlineFriendsList() {
           No friends yet — add some in the Friends panel.
         </div>
       )}
+      {sortedFriends.length > 0 && !seatedTableId && onlineCount > 0 && (
+        <div className="inline-friends-hint">Sit at a table to invite online friends to it.</div>
+      )}
       {sortedFriends.map((friend) => (
         <div key={friend.userId} className="inline-friend-card">
           <div className="inline-friend-avatar" style={{ borderColor: statusColors[friend.presence] }}>
-            {friend.username.charAt(0).toUpperCase()}
+            {friendName(friend).charAt(0).toUpperCase()}
             <span className="inline-friend-dot" style={{ background: statusColors[friend.presence] }} />
           </div>
           <div className="inline-friend-info">
-            <div className="inline-friend-name">{friend.username}</div>
+            <div className="inline-friend-name">{friendName(friend)}</div>
             <div className="inline-friend-status" style={{ color: statusColors[friend.presence] }}>
               {statusLabels[friend.presence]}
             </div>
           </div>
-          {friend.presence === 'online' && (
+          {friend.presence === 'online' && seatedTableId && (
             <button
               className="inline-friend-invite-btn"
               onClick={() => handleInvite(friend)}
@@ -696,7 +517,13 @@ function QuickGamesGrid({ nameInput, connected, onHeadsUp, onSpinGo, onAllIn }) 
   );
 }
 
-// ─── Table List with Filters ───
+/// ─── Table List with Filters ───
+// R2 (C1, 2026-10-11 — APPUI-39 / APPUI-41 / TOURNEY-11): rows are the
+// server's joinable public cash tables (normalized in utils/tableList): real
+// seat dots, phase and pot when the server sends them; variant chips by game
+// FAMILY (omaha-5/6, seven-stud, stud hi-lo, badugi, pineapple... all land in
+// one), contiguous stakes / seat bands, and a Best Match that is always
+// joinable (an open seat the wallet can cover).
 const TABLE_PAGE_SIZE = 20;
 
 function TableListSection({ tables, connected, nameInput, variantFilter, setVariantFilter, searchText, setSearchText, stakesFilter, setStakesFilter, seatsFilter, setSeatsFilter, onJoinTable, onWatch, playerChips }) {
@@ -713,38 +540,24 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
   // Reset visible count when filters change
   useEffect(() => { setVisibleCount(TABLE_PAGE_SIZE); }, [variantFilter, stakesFilter, seatsFilter, searchText, sortBy, sortDir]);
 
-  // Find best-match table for player's stack (#5) — memoized
-  const recommendedTable = useMemo(() => {
-    if (!playerChips || tables.length === 0) return null;
-    const ideal = playerChips / 20;
-    let best = null, bestDiff = Infinity;
-    tables.forEach(t => {
-      const diff = Math.abs((t.bigBlind || 0) - ideal);
-      if (diff < bestDiff) { bestDiff = diff; best = t; }
-    });
-    return best;
-  }, [playerChips, tables]);
+  // Best match for the player's stack — joinable tables only.
+  const recommendedTable = useMemo(() => pickBestMatch(tables, playerChips), [playerChips, tables]);
+  // The 'Mixed & Other' chip only when a listed table needs it.
+  const variantChips = useMemo(() => {
+    const hasOther = tables.some((t) => variantFamily(t.variant) === 'other');
+    return VARIANT_FILTERS.filter((f) => f.key !== 'other' || hasOther || variantFilter === 'other');
+  }, [tables, variantFilter]);
+  const hasPots = useMemo(() => tables.some((t) => t.pot !== null), [tables]);
 
   // Memoize filtering — only recomputes when tables or filter values change
   const filteredTables = useMemo(() => tables.filter((t) => {
-    if (!matchesFilter(t.variant || 'texas-holdem', variantFilter)) return false;
+    if (!matchesVariantFilter(t.variant, variantFilter)) return false;
     if (searchText.trim()) {
-      const name = (t.tableName || `Table ${t.tableId}`).toLowerCase();
+      const name = (t.tableName || '').toLowerCase();
       if (!name.includes(searchText.trim().toLowerCase())) return false;
     }
-    if (stakesFilter !== 'all') {
-      const bb = t.bigBlind || 0;
-      if (stakesFilter === 'micro' && (bb < 2 || bb > 10)) return false;
-      if (stakesFilter === 'low' && (bb < 20 || bb > 50)) return false;
-      if (stakesFilter === 'medium' && (bb < 100 || bb > 200)) return false;
-      if (stakesFilter === 'high' && bb < 400) return false;
-    }
-    if (seatsFilter !== 'all') {
-      const max = t.maxSeats || 9;
-      if (seatsFilter === 'full' && (max < 7 || max > 9)) return false;
-      if (seatsFilter === 'short' && (max < 5 || max > 6)) return false;
-      if (seatsFilter === 'headsup' && max !== 2) return false;
-    }
+    if (!matchesStakesFilter(t.bigBlind, stakesFilter)) return false;
+    if (!matchesSeatsFilter(t.maxSeats, seatsFilter)) return false;
     return true;
   }), [tables, variantFilter, searchText, stakesFilter, seatsFilter]);
 
@@ -753,7 +566,7 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
     const copy = [...filteredTables];
     copy.sort((a, b) => {
       let va, vb;
-      if (sortBy === 'players') { va = a.playerCount || 0; vb = b.playerCount || 0; }
+      if (sortBy === 'players') { va = a.seatsTaken || 0; vb = b.seatsTaken || 0; }
       else if (sortBy === 'pot') { va = a.pot || 0; vb = b.pot || 0; }
       else { va = a.bigBlind || 0; vb = b.bigBlind || 0; }
       return sortDir === 'desc' ? vb - va : va - vb;
@@ -764,6 +577,8 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
   // Only render the first N tables — "Show more" loads the next page
   const visibleTables = sortedTables.slice(0, visibleCount);
   const hasMore = visibleCount < filteredTables.length;
+  const filtersOn = variantFilter !== 'all' || stakesFilter !== 'all' || seatsFilter !== 'all' || !!searchText.trim();
+  const sortKeys = hasPots ? [['players', '👥'], ['pot', '💰'], ['blinds', '🃏']] : [['players', '👥'], ['blinds', '🃏']];
 
   return (
     <div className="table-list">
@@ -776,30 +591,15 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
           />
-          <select className="table-filter-select" value={variantFilter} onChange={(e) => setVariantFilter(e.target.value)}>
-            <option value="all">All Variants</option>
-            <option value="holdem">Texas Hold'em</option>
-            <option value="omaha">Omaha</option>
-            <option value="short-deck">Short Deck</option>
-            <option value="draw">Draw</option>
-            <option value="stud">Stud</option>
+          <select className="table-filter-select" aria-label="Stakes" value={stakesFilter} onChange={(e) => setStakesFilter(e.target.value)}>
+            {STAKES_FILTERS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
-          <select className="table-filter-select" value={stakesFilter} onChange={(e) => setStakesFilter(e.target.value)}>
-            <option value="all">All Stakes</option>
-            <option value="micro">Micro (1/2-5/10)</option>
-            <option value="low">Low (10/20-25/50)</option>
-            <option value="medium">Medium (50/100-100/200)</option>
-            <option value="high">High (200/400+)</option>
-          </select>
-          <select className="table-filter-select" value={seatsFilter} onChange={(e) => setSeatsFilter(e.target.value)}>
-            <option value="all">All Seats</option>
-            <option value="full">Full (7-9)</option>
-            <option value="short">Short (5-6)</option>
-            <option value="headsup">Heads-Up (2)</option>
+          <select className="table-filter-select" aria-label="Table size" value={seatsFilter} onChange={(e) => setSeatsFilter(e.target.value)}>
+            {SEATS_FILTERS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </div>
         <div className="table-filters-tabs">
-          {VARIANT_FILTERS.map((f) => (
+          {variantChips.map((f) => (
             <button
               key={f.key}
               onClick={() => setVariantFilter(f.key)}
@@ -809,7 +609,7 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
             </button>
           ))}
           <div className="table-sort-group">
-            {[['players','👥'],['pot','💰'],['blinds','🃏']].map(([key, icon]) => (
+            {sortKeys.map(([key, icon]) => (
               <button
                 key={key}
                 className={`table-sort-btn ${sortBy === key ? 'active' : ''}`}
@@ -828,20 +628,31 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
         </div>
       )}
       {connected && filteredTables.length === 0 && (
-        <div className="table-card" style={{ justifyContent: 'center', color: '#8888AA' }}>
-          No tables available{(variantFilter !== 'all' || stakesFilter !== 'all' || seatsFilter !== 'all' || searchText.trim()) ? ' matching your filters' : ''}. Try Quick Play!
+        <div className="table-card table-list-empty" style={{ justifyContent: 'center', color: '#8888AA' }}>
+          No tables available{filtersOn ? ' matching your filters' : ''}. Try Quick Play!
+          {filtersOn && (
+            <button
+              type="button"
+              className="table-filters-clear"
+              onClick={() => { setVariantFilter('all'); setStakesFilter('all'); setSeatsFilter('all'); setSearchText(''); }}
+            >
+              Clear filters
+            </button>
+          )}
         </div>
       )}
       {visibleTables.map((table) => {
         const isRecommended = recommendedTable?.tableId === table.tableId;
         const isHovered = hoveredTableId === table.tableId;
-        const communityCards = table.communityCards || [];
-        const SUIT_SYMBOLS = { s: '♠', h: '♥', d: '♦', c: '♣' };
-        const SUIT_COLORS = { s: '#E0E0E0', h: '#EF4444', d: '#EF4444', c: '#E0E0E0' };
+        const full = isTableFull(table);
+        const affordable = canAffordTable(table, playerChips);
+        const family = variantFamily(table.variant);
+        const dots = seatDots(table);
+        const phase = phaseLabel(table.phase);
         return (
           <div
             key={table.tableId}
-            className={`table-card ${isRecommended ? 'table-card--recommended' : ''} ${table.variant ? `table-card--${table.variant}` : 'table-card--texas-holdem'}`}
+            className={`table-card ${isRecommended ? 'table-card--recommended' : ''} table-card--family-${family}`}
             onMouseEnter={() => setHoveredTableId(table.tableId)}
             onMouseLeave={() => setHoveredTableId(null)}
             style={{ position: 'relative' }}
@@ -851,18 +662,9 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
             )}
             <div className="table-info">
               <h3>
-                {table.tableName || `Table ${table.tableId}`}
+                <span className="table-card-name">{table.tableName}</span>
                 {table.variantName && (
-                  <span style={{
-                    marginLeft: '8px',
-                    padding: '2px 8px',
-                    borderRadius: '10px',
-                    fontSize: '0.7rem',
-                    fontWeight: 600,
-                    background: VARIANT_BADGE_COLORS[table.variant] || '#666',
-                    color: '#fff',
-                    verticalAlign: 'middle',
-                  }}>
+                  <span className="table-variant-badge" style={{ background: VARIANT_FAMILY_COLORS[family] || VARIANT_FAMILY_COLORS.other }}>
                     {table.variantName}
                   </span>
                 )}
@@ -870,83 +672,52 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
               <div className="table-details">
                 <span>Blinds: {table.smallBlind}/{table.bigBlind}</span>
                 <span>Min Buy: {(table.minBuyIn || 0).toLocaleString()}</span>
-                <span>Players: {table.playerCount}/{table.maxSeats}</span>
+                <span>Players: {table.seatsTaken}/{table.maxSeats}</span>
                 {table.spectatorCount > 0 && (
-                  <span style={{ color: '#B388FF' }}>
-                    Watching: {table.spectatorCount}
-                  </span>
+                  <span style={{ color: '#9db8ff' }}>Watching: {table.spectatorCount}</span>
                 )}
               </div>
-              {/* Mini seat visualization */}
-              <div className="table-seat-preview">
-                {Array.from({ length: table.maxSeats || 9 }, (_, i) => {
-                  const s = (table.seats || [])[i];
-                  const isOccupied = !!s?.playerName;
-                  return (
-                    <div
-                      key={i}
-                      className={`table-seat-dot ${isOccupied ? 'table-seat-dot--occupied' : ''}`}
-                      title={s?.playerName || `Seat ${i + 1} (empty)`}
-                    />
-                  );
-                })}
-              </div>
-              {/* Hover preview */}
-              {isHovered && (
-                <div className="table-hover-preview">
-                  <div className="thp-row">
-                    <span className="thp-label">Phase</span>
-                    <span className="thp-val">{table.phase || 'Waiting'}</span>
-                    {table.pot > 0 && <><span className="thp-label" style={{marginLeft:8}}>Pot</span><span className="thp-val" style={{color:'#4ADE80'}}>{(table.pot||0).toLocaleString()}</span></>}
-                  </div>
-                  {/* Seat occupancy bar */}
-                  <div className="thp-seats-bar">
-                    {Array.from({ length: table.maxSeats || 9 }, (_, i) => {
-                      const s = (table.seats || [])[i];
-                      return <div key={i} className={`thp-seat-slot ${s?.playerName ? 'thp-seat-slot--taken' : ''}`} title={s?.playerName || 'Empty'}>
-                        {s?.playerName ? s.playerName.charAt(0).toUpperCase() : ''}
-                      </div>;
-                    })}
-                  </div>
-                  {communityCards.length > 0 ? (
-                    <div className="thp-cards">
-                      {communityCards.map((c, i) => {
-                        const suit = c?.slice(-1);
-                        const rank = c?.slice(0, -1);
-                        return (
-                          <span key={i} className="thp-card" style={{ color: SUIT_COLORS[suit] || '#ffffff' }}>
-                            {rank}{SUIT_SYMBOLS[suit] || suit}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="thp-no-cards">No cards dealt yet</div>
-                  )}
+              {(phase || table.pot !== null) && (
+                <div className="table-live-line">
+                  {phase && <span>{phase}</span>}
+                  {table.pot !== null && table.pot > 0 && <span>Pot {table.pot.toLocaleString()}</span>}
                 </div>
               )}
+              {/* Seat dots — real positions when the server lists them, else the count */}
+              <div className="table-seat-preview" title={`${table.seatsTaken} of ${table.maxSeats} seats taken`}>
+                {dots.map((s) => (
+                  <div
+                    key={s.index}
+                    className={`table-seat-dot ${s.occupied ? 'table-seat-dot--occupied' : ''}`}
+                    title={table.seatsKnown ? (s.occupied ? (s.name || `Seat ${s.index + 1} (taken)`) : `Seat ${s.index + 1} (open)`) : undefined}
+                  />
+                ))}
+              </div>
+              {/* Hover preview (desktop) — the seated players by seat */}
+              {isHovered && table.seatsKnown && (
+                <div className="table-hover-preview">
+                  <div className="thp-seats-bar">
+                    {(table.seats || []).map((s) => (
+                      <div key={s.index} className={`thp-seat-slot ${s.occupied ? 'thp-seat-slot--taken' : ''}`} title={s.occupied ? (s.name || 'Taken') : 'Empty'}>
+                        {s.occupied && s.name ? s.name.charAt(0).toUpperCase() : ''}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!affordable && !full && (
+                <div className="table-need-chips">Needs {(table.minBuyIn || 0).toLocaleString()} chips to sit</div>
+              )}
             </div>
-            <div style={{ display: 'flex', gap: '6px' }}>
+            <div className="table-card-actions">
               <button
                 className="btn-primary"
                 onClick={() => onJoinTable(table)}
-                disabled={!nameInput.trim() || table.playerCount >= table.maxSeats}
+                disabled={!nameInput.trim() || full || !affordable}
               >
-                {table.playerCount >= table.maxSeats ? 'Full' : 'Join'}
+                {full ? 'Full' : 'Join'}
               </button>
-              <button
-                style={{
-                  padding: '8px 14px',
-                  border: '1px solid #B388FF',
-                  borderRadius: '8px',
-                  background: 'transparent',
-                  color: '#B388FF',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                  transition: 'all 0.2s',
-                }}
-                onClick={() => onWatch(table.tableId)}
-              >
+              <button className="table-watch-btn" onClick={() => onWatch(table.tableId)}>
                 Watch
               </button>
             </div>
@@ -984,6 +755,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
   const connected = useTableStore((s) => s.connected);
   const tables = useTableStore((s) => s.tables);
+  // R2 (C1) — the server's raw list → the rows the lobby renders (joinable
+  // cash tables only; real seats / phase / pot when the server sends them).
+  const listTables = useMemo(() => normalizeTableList(tables), [tables]);
+  const isAdminUser = useGameStore((s) => !!s.isAdmin);
   const requestTableList = useTableStore((s) => s.requestTableList);
   const joinTable = useTableStore((s) => s.joinTable);
   const quickPlay = useTableStore((s) => s.quickPlay);
@@ -1041,12 +816,18 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     lobbyMountedRef.current = true;
     return () => { lobbyMountedRef.current = false; };
   }, []);
-  const beginJoin = (label, action) => {
+  // `meta` (R2 C1): { tableId, wantSeat } of a seat-picker join, so a seat
+  // taken a moment before ours is SAID (the server seats us elsewhere).
+  const beginJoin = (label, action, meta = null) => {
     setJoinError(null);
-    setJoining({ since: Date.now(), label, fromSig: seatSig(gameState) });
+    setJoining({
+      since: Date.now(), label, fromSig: seatSig(gameState),
+      tableId: meta && meta.tableId != null ? String(meta.tableId) : null,
+      wantSeat: meta && Number.isInteger(meta.wantSeat) && meta.wantSeat >= 0 ? meta.wantSeat : null,
+    });
     try {
       runPlayFlow(() => {
-        if (lobbyMountedRef.current && beginJoinRef.current) beginJoinRef.current(label, action);
+        if (lobbyMountedRef.current && beginJoinRef.current) beginJoinRef.current(label, action, meta);
       }, action);
     } catch (e) {
       setJoining(null);
@@ -1066,6 +847,17 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     // that OLD table, orphaning the new join.
     const sig = seatSig(gameState);
     if (sig && sig !== joining.fromSig) {
+      // The picked seat was taken just before ours reached the server: it
+      // seated us at another open seat — say so (once, at the table).
+      if (joining.wantSeat !== null && joining.tableId && String(gameState.tableId) === joining.tableId
+        && Number(gameState.yourSeat) !== joining.wantSeat) {
+        try {
+          useProgressStore.getState().addNotification({
+            type: 'mission',
+            message: `Seat ${joining.wantSeat + 1} was taken just before you — you are in seat ${Number(gameState.yourSeat) + 1}.`,
+          });
+        } catch { /* best-effort */ }
+      }
       setJoining(null);
       setJoinError(null);
       setScreen('table');
@@ -1097,6 +889,15 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       // the shared PlayRefusalNotice, which also offers sign-in. Don't show it
       // a second time in the banner below.
       if (reportPlayRefusal(err)) { setJoinError(null); return; }
+      // R2 (C1) — a table the lobby may not seat anyone at (a quick game,
+      // tournament, private or club table an older list still showed): say so
+      // and refresh the list. A variant change refreshes it too.
+      if (err.code === 'table_not_joinable') {
+        setJoinError(TABLE_NOT_JOINABLE_TEXT);
+        try { requestTableList(); } catch { /* next poll */ }
+        return;
+      }
+      if (err.code === 'variant_mismatch') { try { requestTableList(); } catch { /* next poll */ } }
       setJoinError(err.message || 'Server rejected the join.');
     };
     socket.on('error', onServerError);
@@ -1105,7 +906,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       socket.off('error', onServerError);
       socket.off('joinError', onServerError);
     };
-  }, [joining]);
+  }, [joining, requestTableList]);
 
   // Broke-refill claim. The refilled balance itself arrives via the normal
   // playerProgress → gameStore.chips sync (App.jsx), so we only drive the
@@ -1273,7 +1074,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const [searchText, setSearchText] = useState('');
   const [stakesFilter, setStakesFilter] = useState('all');
   const [seatsFilter, setSeatsFilter] = useState('all');
-  const [seatPickerTable, setSeatPickerTable] = useState(null);
+  // The seat picker follows the LIVE list row (by id): a seat taken while it
+  // is open turns occupied, a table that left the list says so.
+  const [seatPickerTableId, setSeatPickerTableId] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showEquityCalc, setShowEquityCalc] = useState(false);
   const [showRangeChart, setShowRangeChart] = useState(false);
@@ -1288,34 +1091,79 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const [replayHand, setReplayHand] = useState(null);
   const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [showStakingMarketplace, setShowStakingMarketplace] = useState(false);
-  const [showTournamentBracket, setShowTournamentBracket] = useState(false);
+  // R2 (APPUI-42) — the Live Bracket shows ONE tournament: the one whose card
+  // opened it (`tournamentId`), or — from the general button — the player's
+  // own running tournament, else the first running one. null request = closed.
+  // The server answers `tournamentStandings` (null when it has no such
+  // tournament): the bracket then says "No tournament running" (it used to
+  // show an empty "Live" bracket).
+  const [bracketRequest, setBracketRequest] = useState(null); // null | { tournamentId|null }
   const [bracketTournament, setBracketTournament] = useState(null);
-  // Live Bracket: while the modal is open, fetch the running tournament's
-  // standings (the server defaults to the first running one) and poll for
-  // updates. TournamentBracket renders empty without this `tournament` prop.
+  const [bracketAnswered, setBracketAnswered] = useState(false);
+  const showTournamentBracket = !!bracketRequest;
+  const openBracket = useCallback((tournamentId = null) => {
+    let id = tournamentId != null ? String(tournamentId) : null;
+    if (!id) {
+      const st = useTournamentRegistrationStore.getState();
+      const running = (st.tournaments || []).filter((t) => t.status === 'running');
+      const mine = running.find((t) => st.registered[String(t.tournamentId)]);
+      id = (mine || running[0])?.tournamentId != null ? String((mine || running[0]).tournamentId) : null;
+    }
+    setBracketTournament(null);
+    setBracketAnswered(false);
+    setBracketRequest({ tournamentId: id });
+  }, []);
   useEffect(() => {
-    if (!showTournamentBracket) { setBracketTournament(null); return; }
+    if (!bracketRequest) { setBracketTournament(null); setBracketAnswered(false); return undefined; }
     const socket = getSocket();
-    if (!socket) return;
-    const onStandings = (data) => setBracketTournament(data || null);
+    if (!socket) { setBracketAnswered(true); return undefined; }
+    const wanted = bracketRequest.tournamentId;
+    const onStandings = (data) => {
+      // A frame for another tournament (an older server's default pick, or a
+      // late answer of an earlier bracket) is not this bracket's.
+      if (data && wanted && String(data.tournamentId) !== wanted) return;
+      setBracketTournament(data || null);
+      setBracketAnswered(true);
+    };
     socket.on('tournamentStandings', onStandings);
-    const fetchStandings = () => socket.emit('getTournamentStandings', {});
+    const fetchStandings = () => socket.emit('getTournamentStandings', wanted ? { tournamentId: wanted } : {});
     fetchStandings();
     const iv = setInterval(fetchStandings, 3000);
-    return () => { clearInterval(iv); socket.off('tournamentStandings', onStandings); };
-  }, [showTournamentBracket]);
+    const answerWatch = setTimeout(() => setBracketAnswered(true), 8000);
+    return () => { clearInterval(iv); clearTimeout(answerWatch); socket.off('tournamentStandings', onStandings); };
+  }, [bracketRequest]);
   const [showTournamentDirector, setShowTournamentDirector] = useState(false);
   // Success toast surfaced when the server acks a custom tournament create
   // (`customTournamentCreated { tournamentId, name }`). null | { text }.
   const [tdNotice, setTdNotice] = useState(null);
-  // Emitted by the TournamentDirector wizard's Create button. The server
-  // handler is admin-gated; non-admins get a `socialBracketError`-style
-  // rejection there (surfaced via the generic error toast). We just fire the
-  // event and close the director — success is confirmed by the listener below.
-  const handleCreateCustomTournament = useCallback((config) => {
-    getSocket()?.emit('createCustomTournament', { config });
-    setShowTournamentDirector(false);
-  }, []);
+  // R2 (TOURNEY-15 / APPUI-18) — the TD wizard stays open until the server
+  // ANSWERS: resolves on `customTournamentCreated`, rejects with the server's
+  // refusal (admin-only handler: 'Access denied', 'Failed to create
+  // tournament') or after 15s with no answer. It used to close at once and a
+  // refusal reached only the console.
+  const handleCreateCustomTournament = useCallback((config) => new Promise((resolve, reject) => {
+    const socket = getSocket();
+    if (!socket || !socket.connected) { reject(new Error(GAME_SERVER_UNREACHABLE_TEXT)); return; }
+    let done = false;
+    let timer = null;
+    const finish = (fn, arg) => {
+      if (done) return;
+      done = true;
+      socket.off('customTournamentCreated', onOk);
+      socket.off('error', onErr);
+      clearTimeout(timer);
+      fn(arg);
+    };
+    function onOk(data) { finish(resolve, data); }
+    function onErr(err) {
+      if (reportPlayRefusal(err)) { finish(reject, new Error('')); return; }
+      finish(reject, new Error((err && err.message) || 'Could not create the tournament.'));
+    }
+    timer = setTimeout(() => finish(reject, new Error(GAME_SERVER_UNREACHABLE_TEXT)), 15000);
+    socket.on('customTournamentCreated', onOk);
+    socket.on('error', onErr);
+    socket.emit('createCustomTournament', { config });
+  }), []);
   // Listen for the create ack + refresh the tournament list so the new event
   // shows up immediately.
   useEffect(() => {
@@ -1433,48 +1281,44 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     return () => window.removeEventListener('bottomNavAction', handler);
   }, [onTabChange]);
 
-  const handleJoinTable = (table) => {
-    if (!nameInput.trim()) return;
-    // Try preferred seat first (#14)
+  // The player's usual seat at a table (#14) — highlighted in the picker,
+  // never taken without his tap.
+  const prefSeatKey = (table) => `app_poker_prefSeat_${table.tableId}`;
+  const readPrefSeat = (table) => {
     try {
-      const prefKey = `app_poker_prefSeat_${table.tableName || table.tableId}`;
-      const savedSeat = sessionStorage.getItem(prefKey);
-      if (savedSeat !== null) {
-        const seatIdx = parseInt(savedSeat, 10);
-        const seats = table.seats || [];
-        const isTaken = seats[seatIdx] && seats[seatIdx].playerName;
-        if (!isTaken && seatIdx >= 0 && seatIdx < (table.maxSeats || 9)) {
-          setPlayerName(nameInput.trim());
-          beginJoin('Joining table…', () => {
-            // Pass expectedVariant so the server rejects the join (instead of
-            // silently seating) if the table's variant has drifted from the
-            // list view the user tapped.
-            joinTable(table.tableId, nameInput.trim(), seatIdx, table.minBuyIn || 1000, avatar, table.variant || 'texas-holdem');
-          });
-          return;
-        }
-      }
-    } catch { /* ignore, fall through to seat picker */ }
-    setSeatPickerTable(table);
+      const v = sessionStorage.getItem(prefSeatKey(table));
+      const n = v === null ? NaN : parseInt(v, 10);
+      return Number.isInteger(n) && n >= 0 ? n : null;
+    } catch { return null; }
+  };
+
+  // R2 (C1 / APPUI-39) — the picker shows the server's REAL occupancy; a
+  // table listed without seat positions (an older server) is joined with
+  // seatIndex -1 (the server picks an open seat) instead of a picker that
+  // would show every seat as open.
+  const joinListedTable = (tbl, seatIndex) => {
+    setPlayerName(nameInput.trim());
+    beginJoin('Joining table…', () => {
+      // expectedVariant: the server refuses (variant_mismatch) instead of
+      // seating us at a table whose variant changed since the list was drawn.
+      joinTable(tbl.tableId, nameInput.trim(), seatIndex, tbl.minBuyIn || 1000, avatar, tbl.variant || 'texas-holdem');
+    }, { tableId: tbl.tableId, wantSeat: seatIndex });
+  };
+
+  const handleJoinTable = (table) => {
+    if (!nameInput.trim() || !table) return;
+    if (!table.seatsKnown) { joinListedTable(table, -1); return; }
+    setSeatPickerTableId(table.tableId);
   };
 
   const handleSeatSelected = (seatIndex) => {
-    if (!nameInput.trim() || !seatPickerTable) return;
-    setPlayerName(nameInput.trim());
-    // Save preferred seat for this table (#14)
-    try {
-      const prefKey = `app_poker_prefSeat_${seatPickerTable.tableName || seatPickerTable.tableId}`;
-      sessionStorage.setItem(prefKey, String(seatIndex));
-    } catch { /* ignore */ }
-    const tbl = seatPickerTable;
-    setSeatPickerTable(null);
-    beginJoin('Joining table…', () => {
-      // 2026-06-19 fix: pass the table's variant as expectedVariant (6th arg) so
-      // the server's variant-mismatch guard fires on the seat-picker path too —
-      // previously omitted here, so a tableId that converted variant server-side
-      // could seat you at the wrong game.
-      joinTable(tbl.tableId, nameInput.trim(), seatIndex, tbl.minBuyIn || 1000, avatar, tbl.variant);
-    });
+    const tbl = seatPickerTableId ? listTables.find((t) => t.tableId === seatPickerTableId) : null;
+    if (!nameInput.trim() || !tbl) return;
+    if (seatIndex >= 0) {
+      try { sessionStorage.setItem(prefSeatKey(tbl), String(seatIndex)); } catch { /* ignore */ }
+    }
+    setSeatPickerTableId(null);
+    joinListedTable(tbl, seatIndex);
   };
 
   // Auto-trigger PWA shortcut action once connected + name is set
@@ -1560,7 +1404,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   }, [progress]);
 
   // Live total players online across all tables
-  const totalPlayersOnline = useMemo(() => tables.reduce((sum, t) => sum + (t.playerCount || 0), 0), [tables]);
+  const totalPlayersOnline = useMemo(() => listTables.reduce((sum, t) => sum + (t.seatsTaken || 0), 0), [listTables]);
 
   // #8 — resume: player is still seated
   const isSeated = gameState?.yourSeat >= 0 && gameState?.seats?.[gameState.yourSeat]?.playerName;
@@ -1686,7 +1530,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     );
 
     return (
-    <div className="lobby-tab-content lobby-tab-fade lobby-home-layout" key="home">
+    // R2 (APPUI-28) — while the sticky Quick Play bar is up, the tab keeps
+    // room below its content for it (it sits ABOVE the bottom nav).
+    <div className={`lobby-tab-content lobby-tab-fade lobby-home-layout${showStickyPlay && !isSeated ? ' lobby-home--sticky-play' : ''}`} key="home">
       {/* Achievement toast (upgrade #6) */}
       {achievementToast && (
         <div className="achievement-toast">
@@ -1715,7 +1561,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         )}
 
         {/* Featured Table Banner */}
-        <FeaturedTableBanner tables={tables} onSpectate={handleWatch} />
+        <FeaturedTableBanner tables={listTables} onSpectate={handleWatch} />
 
         {/* Daily Bonus Banner */}
         {!dailyBonusClaimed && (
@@ -1745,7 +1591,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <SwipeCards cards={[playerCard, rankCard, sessionCard]} />
 
         {/* Smart recommendation (upgrade #3) */}
-        <RecommendCard tables={tables} playerChips={chipCount} nameInput={nameInput} connected={connected} onJoin={handleJoinTable} />
+        <RecommendCard tables={listTables} playerChips={chipCount} nameInput={nameInput} connected={connected} onJoin={handleJoinTable} />
 
         {/* Hero CTA block */}
         <div className="lobby-cta-block" ref={quickPlayRef}>
@@ -1804,7 +1650,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
         {/* Tournaments */}
         <SectionHeader>Tournaments</SectionHeader>
-        <TournamentLobby />
+        <TournamentLobby onOpenBracket={openBracket} />
         <MissionsPanel />
       </div>
 
@@ -1838,7 +1684,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       <SectionHeader>Cash Games</SectionHeader>
       <div className="table-list-grid">
       <TableListSection
-        tables={tables}
+        tables={listTables}
         connected={connected}
         nameInput={nameInput}
         variantFilter={variantFilter}
@@ -1867,22 +1713,26 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
       {/* Tournaments */}
       <SectionHeader>Tournaments</SectionHeader>
-      <TournamentLobby />
+      <TournamentLobby onOpenBracket={openBracket} />
       <div style={{ display: 'flex', gap: '10px', marginTop: '12px', marginBottom: '8px' }}>
         <button
           className="btn-accent"
           style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #3b82f6, #38BDF8)', color: '#0a0a1a' }}
-          onClick={() => setShowTournamentBracket(true)}
+          onClick={() => openBracket(null)}
         >
           🏆 Live Bracket
         </button>
-        <button
-          className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)', color: '#fff' }}
-          onClick={() => setShowTournamentDirector(true)}
-        >
-          🎬 TD Suite
-        </button>
+        {/* R2 (TOURNEY-15 / APPUI-18) — the TD Suite creates real tournaments
+            and the server lets only admins do that: admins only. */}
+        {isAdminUser && (
+          <button
+            className="btn-accent lobby-td-suite-btn"
+            style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)', color: '#fff' }}
+            onClick={() => setShowTournamentDirector(true)}
+          >
+            🎬 TD Suite
+          </button>
+        )}
       </div>
       <button
         className="btn-accent lobby-full-width-btn"
@@ -1960,7 +1810,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <input
           type="text"
           className="table-search-input"
-          placeholder="Search by username..."
+          placeholder="Search by display name..."
           style={{ width: '100%', marginBottom: '8px' }}
           value={playerSearchQuery}
           onChange={(e) => handlePlayerSearch(e.target.value)}
@@ -1973,13 +1823,17 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         )}
         {playerSearchResults.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {playerSearchResults.map((p) => (
-              <div key={p.id} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            {/* R2 (Addendum) — public names only, and no wallet balances:
+                another player's chips are not search results. */}
+            {playerSearchResults.map((p, i) => (
+              <div key={p.id ?? p.userId ?? i} className="player-search-row" style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                 background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '8px 12px',
               }}>
-                <span style={{ color: '#e0e0ff', fontWeight: 600 }}>{p.username}</span>
-                <span style={{ color: '#888', fontSize: '0.8rem' }}>Lv.{p.level} · {(p.chips || 0).toLocaleString()} chips</span>
+                <span style={{ color: '#e0e0ff', fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {String(p.displayName ?? p.username ?? 'Player')}
+                </span>
+                {Number.isFinite(Number(p.level)) && <span style={{ color: '#9fb4d8', fontSize: '0.8rem', flexShrink: 0 }}>Lv.{Number(p.level)}</span>}
               </div>
             ))}
           </div>
@@ -3059,10 +2913,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
             🪙 {animatedChips.toLocaleString()}
           </span>
           {/* Live tables + live player count */}
-          {tables.length > 0 && (
+          {listTables.length > 0 && (
             <span className="lobby-live-badge">
               <span className="lobby-live-dot" />
-              {tables.length} live
+              {listTables.length} live
             </span>
           )}
           {totalPlayersOnline > 0 && (
@@ -3161,13 +3015,12 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           autoOpened={loginRewardsAutoOpened}
         />
       )}
-      {seatPickerTable && (
+      {seatPickerTableId && (
         <SeatPicker
-          table={seatPickerTable}
-          playerName={nameInput.trim()}
-          avatar={avatar}
-          onJoin={handleSeatSelected}
-          onClose={() => setSeatPickerTable(null)}
+          table={listTables.find((t) => t.tableId === seatPickerTableId) || null}
+          preferredSeat={readPrefSeat({ tableId: seatPickerTableId })}
+          onPick={handleSeatSelected}
+          onClose={() => setSeatPickerTableId(null)}
         />
       )}
       {/* Lazy-mounted modal panels share a single Suspense boundary so
@@ -3187,7 +3040,6 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {/* 2026-10-09 (D3) — refusal handling passed in (see StakingMarketplace). */}
         {showStakingMarketplace && (
           <StakingMarketplace
-            playerName={playerName}
             chips={progress?.chips ?? chipCount ?? 0}
             onClose={() => setShowStakingMarketplace(false)}
             onPlayRefusal={reportPlayRefusal}
@@ -3195,8 +3047,8 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
             unreachableText={GAME_SERVER_UNREACHABLE_TEXT}
           />
         )}
-        {showTournamentBracket && <TournamentBracket tournament={bracketTournament} onClose={() => setShowTournamentBracket(false)} />}
-        {showTournamentDirector && <TournamentDirector onClose={() => setShowTournamentDirector(false)} onCreateTournament={handleCreateCustomTournament} playerName={playerName} />}
+        {showTournamentBracket && <TournamentBracket tournament={bracketTournament} loading={!bracketAnswered} onClose={() => setBracketRequest(null)} />}
+        {showTournamentDirector && isAdminUser && <TournamentDirector onClose={() => setShowTournamentDirector(false)} onCreateTournament={handleCreateCustomTournament} playerName={playerName} />}
         {showHandHistoryImporter && <HandHistoryImporter onClose={() => setShowHandHistoryImporter(false)} />}
         {/* 2026-10-09 — side-bet refusals: handling passed in (see SocialBracket). */}
         {showSocialBracket && (
@@ -3213,7 +3065,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       {/* Eagerly-loaded panels that live inside the default Lobby view
           or are opened so frequently that the lazy round-trip wouldn't
           help. */}
-      {showClubs && <ClubsPanel onClose={() => setShowClubs(false)} />}
+      {showClubs && <ClubsPanel onClose={() => setShowClubs(false)} onJoinTable={(label, action) => beginJoin(label, action)} />}
       {showSpinWheel && <SpinWheel onClose={() => setShowSpinWheel(false)} />}
       {showScratchCards && <ScratchCards onClose={() => setShowScratchCards(false)} />}
       {showMultiTable && <MultiTableView onClose={() => setShowMultiTable(false)} />}

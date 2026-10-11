@@ -755,3 +755,36 @@ declineInsurance
 
 # 2026-10-11 R1 client review (R1C-REV-1): Tap to reconnect reuses the SAME socket so every listener keeps working
 forceReconnectSameInstance
+
+# 2026-10-11 R2 K3 (C1 / APPUI-39 / APPUI-41 / TOURNEY-11 client): the cash-table list renders the
+#     server's seats / phase / pot / kind (utils/tableList); the seat picker shows real occupancy, is
+#     responsive (no 440px canvas) and is skipped (the server picks) when the list has no seat
+#     positions; variant chips by game family; contiguous stakes / seat bands; Best Match only ever a
+#     joinable table; a table_not_joinable refusal is said and refreshes the list.
+seat-picker-seat--open
+Any open seat
+table-card--family-
+Mixed & Other
+Micro (BB under 20)
+That table is not open to join from the lobby any more.
+was taken just before you
+#     APPUI-28: the sticky Quick Play bar sits above the bottom nav (safe area included).
+lobby-home--sticky-play
+# 2026-10-11 R2 K3 (C2 / TOURNEY-5 / TOURNEY-7 / APPUI-19): one shared tournament registration store
+#     hydrated from the server list (registered / entryId), per account, survives remounts + reloads;
+#     tournamentCancelled shown with its refund; already_registered handled.
+poker_tourney_reg_v1
+tournamentCancelled
+tournament-cancelled-notice
+already_registered
+#     APPUI-42: Live Bracket per tournament id from its card; "No tournament running" when none.
+btn-tournament-bracket
+No tournament running
+#     TOURNEY-15 / APPUI-18: TD Suite for admins only; the wizard waits for the server's answer and
+#     shows refusals; rebuys / add-on / late registration shown disabled (not supported).
+lobby-td-suite-btn
+custom tournaments are freezeouts.
+#     APPUI-24: a Career Mode stage result is shown on the lobby; its table session ends on
+#     careerGameComplete. APPUI-53: a club challenge auto-join is followed to the table screen.
+career-result-notice
+try again from the Clubs panel.

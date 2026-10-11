@@ -638,3 +638,16 @@
   .td-templates { gap: 6px; }
   .td-template-btn { font-size: 0.62rem; padding: 4px 8px; }
 }
+
+/* R2 (TOURNEY-15) — options the server does not support are shown disabled. */
+.td-toggle-unsupported,
+.td-toggle-unsupported:hover {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.td-btn-create:disabled,
+.td-btn-cancel:disabled,
+.td-close-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

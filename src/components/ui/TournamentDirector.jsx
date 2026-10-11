@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import './TournamentDirector.css';
 
 // ── Blind schedule templates ──────────────────────────────────────────────────
@@ -120,7 +120,7 @@ function ICMCalculator() {
               </select>
             </label>
             <label className="td-label">
-              Prize Pool ($)
+              Prize Pool (chips)
               <input className="td-input td-input-sm" type="number" value={prizePool} onChange={e => setPrizePool(e.target.value)} />
             </label>
           </div>
@@ -162,14 +162,14 @@ function ICMCalculator() {
               <div className="td-icm-results-header">
                 <span>Player</span>
                 <span>Chips</span>
-                <span>ICM Equity ($)</span>
+                <span>ICM Equity (chips)</span>
                 <span>Equity %</span>
               </div>
               {results.map(r => (
                 <div key={r.seat} className="td-icm-result-row">
                   <span className="td-icm-seat">P{r.seat}</span>
                   <span>{r.chips.toLocaleString()}</span>
-                  <span className="td-icm-equity">${r.equity.toFixed(2)}</span>
+                  <span className="td-icm-equity">{Math.round(r.equity).toLocaleString()}</span>
                   <span className="td-icm-pct">{r.pct.toFixed(1)}%</span>
                 </div>
               ))}
@@ -279,85 +279,74 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
   // Format options
   const [isPKO, setIsPKO] = useState(false);
   const [bountyAmount, setBountyAmount] = useState(50);
-
-  const [rebuysAllowed, setRebuysAllowed] = useState(false);
-  const [maxRebuys, setMaxRebuys] = useState(2);
-  const [rebuyCost, setRebuyCost] = useState(100);
-  const [rebuyUpTo, setRebuyUpTo] = useState(startingChips);
-
-  const [addonAllowed, setAddonAllowed] = useState(false);
-  const [addonCost, setAddonCost] = useState(100);
-  const [addonChips, setAddonChips] = useState(5000);
-  const [addonBeforeLevel, setAddonBeforeLevel] = useState(6);
-
-  const [lateReg, setLateReg] = useState(3);
+  // (Rebuys, add-on and late registration: not supported by the server's
+  // createCustomTournament — shown disabled below, never sent.)
 
   // Blind schedule
   const [schedule, setSchedule] = useState(() => generateSchedule(15));
 
-  // Feedback when there's no launch backend wired (planning/export mode).
-  const [notice, setNotice] = useState(null);
+  // Feedback: the server's refusal / no answer (stays open), or the export notice.
+  const [notice, setNotice] = useState(null); // null | { ok, text }
+  const [submitting, setSubmitting] = useState(false);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
-  // Close on Escape
+  // Close on Escape (not while the server is answering a Create)
   useEffect(() => {
-    const fn = e => { if (e.key === 'Escape') onClose?.(); };
+    const fn = e => { if (e.key === 'Escape' && !submitting) onClose?.(); };
     window.addEventListener('keydown', fn);
     return () => window.removeEventListener('keydown', fn);
-  }, [onClose]);
+  }, [onClose, submitting]);
 
   const handleCreate = useCallback(() => {
+    if (submitting) return;
+    // R2 (TOURNEY-15 / APPUI-18) — only what poker-server's
+    // createCustomTournament builds: name, buy-in, max players, starting chips,
+    // the knockout bounty and the blind schedule (minutes per level). Rebuys,
+    // add-on and late registration are not supported by the server, so their
+    // controls are disabled and nothing is sent for them.
     const config = {
       name,
       buyIn,
       maxPlayers,
       isPKO,
       bountyAmount: isPKO ? bountyAmount : 0,
-      rebuys: {
-        allowed: rebuysAllowed,
-        maxPerPlayer: maxRebuys,
-        upTo: rebuyUpTo,
-        cost: rebuyCost,
-      },
-      addon: {
-        allowed: addonAllowed,
-        cost: addonCost,
-        chips: addonChips,
-        beforeLevel: addonBeforeLevel,
-      },
       blindSchedule: schedule.map(({ sb, bb, ante, duration }) => ({ sb, bb, ante, duration })),
-      lateReg,
       startingChips,
     };
-    // 2026-06-19 fix: previously this always called `onCreateTournament?.(config)`
-    // then closed — but the Lobby mounts this without that prop, so clicking
-    // "Create" silently discarded the entire wizard. There is no server endpoint
-    // to launch an ad-hoc custom tournament, so when no launch handler is wired
-    // this acts as a planning/export tool: copy the structure to the clipboard
-    // (genuinely useful for a TD running a home game) and confirm, instead of
-    // vanishing. If a launch handler is ever provided, it's used.
     if (onCreateTournament) {
-      onCreateTournament(config);
-      onClose?.();
+      // The wizard stays open until the server ANSWERS: success closes it, a
+      // refusal (or no answer) is shown here and the wizard keeps its values.
+      setSubmitting(true);
+      setNotice(null);
+      Promise.resolve(onCreateTournament(config)).then(() => {
+        if (!mountedRef.current) return;
+        setSubmitting(false);
+        onClose?.();
+      }).catch((err) => {
+        if (!mountedRef.current) return;
+        setSubmitting(false);
+        const text = err && typeof err.message === 'string' ? err.message : '';
+        if (text) setNotice({ ok: false, text });
+      });
       return;
     }
     try {
       navigator.clipboard?.writeText(JSON.stringify(config, null, 2));
-      setNotice('✓ Tournament structure copied to clipboard');
+      setNotice({ ok: true, text: '✓ Tournament structure copied to clipboard' });
     } catch {
-      setNotice('Tournament structure ready (clipboard unavailable)');
+      setNotice({ ok: true, text: 'Tournament structure ready (clipboard unavailable)' });
     }
-    setTimeout(() => setNotice(null), 4000);
+    setTimeout(() => { if (mountedRef.current) setNotice(null); }, 4000);
   }, [
     name, buyIn, maxPlayers, isPKO, bountyAmount,
-    rebuysAllowed, maxRebuys, rebuyCost, rebuyUpTo,
-    addonAllowed, addonCost, addonChips, addonBeforeLevel,
-    lateReg, schedule, startingChips, onCreateTournament, onClose,
+    schedule, startingChips, onCreateTournament, onClose, submitting,
   ]);
 
   const estimatedPrizePool = buyIn * maxPlayers;
 
   return (
-    <div className="td-overlay" onClick={e => e.target === e.currentTarget && onClose?.()}>
+    <div className="td-overlay" onClick={e => e.target === e.currentTarget && !submitting && onClose?.()}>
       <div className="td-modal">
         {/* Header */}
         <div className="td-header">
@@ -365,7 +354,7 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
             <span className="td-icon">♠</span>
             <h2 className="td-title">Tournament Director</h2>
           </div>
-          <button className="td-close-btn" onClick={onClose}>✕</button>
+          <button className="td-close-btn" onClick={onClose} disabled={submitting} aria-label="Close">✕</button>
         </div>
 
         <div className="td-body">
@@ -381,8 +370,8 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
               </label>
 
               <label className="td-label">
-                Buy-In ($)
-                <input className="td-input" type="number" min={1} value={buyIn} onChange={e => setBuyIn(Number(e.target.value))} />
+                Buy-In (chips, 0 = free)
+                <input className="td-input" type="number" inputMode="numeric" min={0} value={buyIn} onChange={e => setBuyIn(Math.max(0, Number(e.target.value) || 0))} />
               </label>
 
               <label className="td-label">
@@ -401,14 +390,14 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
                   max={50000}
                   step={1000}
                   value={startingChips}
-                  onChange={e => { setStartingChips(Number(e.target.value)); setRebuyUpTo(Number(e.target.value)); }}
+                  onChange={e => setStartingChips(Number(e.target.value))}
                 />
                 <div className="td-range-labels"><span>1,000</span><span>50,000</span></div>
               </label>
 
             </div>
             <div className="td-prize-preview">
-              Est. prize pool: <strong>${estimatedPrizePool.toLocaleString()}</strong>
+              Prize pool if full: <strong>{estimatedPrizePool.toLocaleString()} chips</strong> (the entry fees collected)
             </div>
           </div>
 
@@ -419,8 +408,8 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
             {/* PKO */}
             <div className="td-toggle-row">
               <div className="td-toggle-info">
-                <span className="td-toggle-label">Progressive Knockout (PKO)</span>
-                <span className="td-toggle-sub">Half the bounty goes to the eliminator, half carries forward on the eliminated player's head.</span>
+                <span className="td-toggle-label">Knockout Bounty</span>
+                <span className="td-toggle-sub">Each knockout adds this many tournament chips to the eliminator's stack.</span>
               </div>
               <button
                 className={`td-toggle-btn ${isPKO ? 'td-toggle-on' : ''}`}
@@ -432,12 +421,12 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
             {isPKO && (
               <div className="td-sub-options">
                 <label className="td-label">
-                  Starting Bounty per Player ($)
-                  <input className="td-input td-input-sm" type="number" min={1} value={bountyAmount}
-                    onChange={e => setBountyAmount(Number(e.target.value))} />
+                  Bounty per knockout (chips)
+                  <input className="td-input td-input-sm" type="number" inputMode="numeric" min={1} value={bountyAmount}
+                    onChange={e => setBountyAmount(Math.max(0, Number(e.target.value) || 0))} />
                 </label>
                 <span className="td-hint">
-                  Total bounty pool: ${(bountyAmount * maxPlayers).toLocaleString()}
+                  Up to {(bountyAmount * Math.max(0, maxPlayers - 1)).toLocaleString()} chips in bounties over the tournament
                 </span>
               </div>
             )}
@@ -446,88 +435,40 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
             <div className="td-toggle-row">
               <div className="td-toggle-info">
                 <span className="td-toggle-label">Rebuys</span>
-                <span className="td-toggle-sub">Allow players to re-enter during early levels.</span>
+                <span className="td-toggle-sub">Not available yet — custom tournaments are freezeouts.</span>
               </div>
               <button
-                className={`td-toggle-btn ${rebuysAllowed ? 'td-toggle-on' : ''}`}
-                onClick={() => setRebuysAllowed(v => !v)}
+                className="td-toggle-btn td-toggle-unsupported"
+                disabled
+                title="Rebuys are not supported yet"
               >
-                {rebuysAllowed ? 'ON' : 'OFF'}
+                OFF
               </button>
             </div>
-            {rebuysAllowed && (
-              <div className="td-sub-options td-sub-options-row">
-                <label className="td-label">
-                  Max per player
-                  <select className="td-select td-select-sm" value={maxRebuys} onChange={e => setMaxRebuys(Number(e.target.value))}>
-                    {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                </label>
-                <label className="td-label">
-                  Rebuy cost ($)
-                  <input className="td-input td-input-sm" type="number" min={1} value={rebuyCost}
-                    onChange={e => setRebuyCost(Number(e.target.value))} />
-                </label>
-                <label className="td-label">
-                  Rebuy up to (chips)
-                  <input className="td-input td-input-sm" type="number" min={1} value={rebuyUpTo}
-                    onChange={e => setRebuyUpTo(Number(e.target.value))} />
-                </label>
-              </div>
-            )}
 
             {/* Add-on */}
             <div className="td-toggle-row">
               <div className="td-toggle-info">
                 <span className="td-toggle-label">Add-on</span>
-                <span className="td-toggle-sub">One-time chip purchase available at the end of the rebuy period.</span>
+                <span className="td-toggle-sub">Not available yet.</span>
               </div>
               <button
-                className={`td-toggle-btn ${addonAllowed ? 'td-toggle-on' : ''}`}
-                onClick={() => setAddonAllowed(v => !v)}
+                className="td-toggle-btn td-toggle-unsupported"
+                disabled
+                title="Add-ons are not supported yet"
               >
-                {addonAllowed ? 'ON' : 'OFF'}
+                OFF
               </button>
             </div>
-            {addonAllowed && (
-              <div className="td-sub-options td-sub-options-row">
-                <label className="td-label">
-                  Cost ($)
-                  <input className="td-input td-input-sm" type="number" min={1} value={addonCost}
-                    onChange={e => setAddonCost(Number(e.target.value))} />
-                </label>
-                <label className="td-label">
-                  Chips received
-                  <input className="td-input td-input-sm" type="number" min={1} value={addonChips}
-                    onChange={e => setAddonChips(Number(e.target.value))} />
-                </label>
-                <label className="td-label">
-                  Available before level
-                  <input className="td-input td-input-sm" type="number" min={1} max={12} value={addonBeforeLevel}
-                    onChange={e => setAddonBeforeLevel(Number(e.target.value))} />
-                </label>
-              </div>
-            )}
 
             {/* Late Registration */}
             <div className="td-toggle-row td-toggle-row-inline">
               <div className="td-toggle-info">
                 <span className="td-toggle-label">Late Registration</span>
-                <span className="td-toggle-sub">Allow new players to join through level {lateReg}</span>
+                <span className="td-toggle-sub">Not available yet — registration closes when the tournament starts.</span>
               </div>
               <div className="td-late-reg-control">
-                <input
-                  className="td-range td-range-sm"
-                  type="range"
-                  min={0}
-                  max={6}
-                  step={1}
-                  value={lateReg}
-                  onChange={e => setLateReg(Number(e.target.value))}
-                />
-                <span className="td-late-reg-val">
-                  {lateReg === 0 ? 'Disabled' : `Level ${lateReg}`}
-                </span>
+                <span className="td-late-reg-val">Off</span>
               </div>
             </div>
           </div>
@@ -539,11 +480,16 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
           <ICMCalculator />
 
           {/* ── Create / export button ── */}
-          {notice && <div className="td-notice" style={{ textAlign: 'center', color: '#27e0a0', margin: '8px 0', fontWeight: 600 }}>{notice}</div>}
+          {notice && (
+            <div className={`td-notice ${notice.ok ? '' : 'td-notice--error'}`} role={notice.ok ? 'status' : 'alert'}
+              style={{ textAlign: 'center', color: notice.ok ? '#ffd24a' : '#cfe0ff', margin: '8px 0', fontWeight: 600, padding: '8px 10px', borderRadius: 8, background: notice.ok ? 'transparent' : 'rgba(12,28,72,0.85)', border: notice.ok ? 'none' : '1px solid rgba(255,210,74,0.45)' }}>
+              {notice.text}
+            </div>
+          )}
           <div className="td-footer">
-            <button className="td-btn-cancel" onClick={onClose}>Cancel</button>
-            <button className="td-btn-create" onClick={handleCreate}>
-              {onCreateTournament ? 'Create Tournament' : 'Export Structure'}
+            <button className="td-btn-cancel" onClick={onClose} disabled={submitting}>Cancel</button>
+            <button className="td-btn-create" onClick={handleCreate} disabled={submitting}>
+              {submitting ? 'Creating…' : (onCreateTournament ? 'Create Tournament' : 'Export Structure')}
             </button>
           </div>
 
