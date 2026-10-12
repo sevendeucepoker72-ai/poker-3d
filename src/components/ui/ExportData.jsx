@@ -1,6 +1,20 @@
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useTableStore } from '../../store/tableStore';
-import { useProgressStore } from '../../store/progressStore';
+import { useProgressStore, serverWinRate } from '../../store/progressStore';
+import { useGameStore } from '../../store/gameStore';
+import { ownHandResult, cardText } from '../../utils/handLog';
+// The panel uses the Leak Finder's panel styles (it never loaded them itself).
+import './LeakFinder.css';
+
+// 2026-10-11 (.online R2 — APPUI-51). Exports are the player's OWN data:
+// - hand history = his row of each hand in the lobby hand log (the hands the
+//   server keeps for him + this session's; his seat per hand from
+//   utils/handLog), never another player's row matched by name or the seat he
+//   happens to hold now;
+// - stats = the server's playerProgress counters, plus the server's recent
+//   chip counts (chipHistory: numbers, one per hand).
+// Nothing is exported that the app does not actually have; amounts are
+// play-money chips.
 
 function downloadCSV(filename, csvContent) {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -15,114 +29,82 @@ function downloadCSV(filename, csvContent) {
   URL.revokeObjectURL(url);
 }
 
-function cardsToStr(cards) {
-  if (!Array.isArray(cards)) return '';
-  return cards
-    .map((c) => (c && (c.display || (c.rank != null && c.suit != null ? `${c.rank}${c.suit}` : ''))) || '')
-    .filter(Boolean)
-    .join(' ');
-}
+const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+const cardsStr = (cards) => (Array.isArray(cards) ? cards.map(cardText).filter(Boolean).join(' ') : '');
 
-function exportHandHistory() {
-  // Read the REAL hand history from the table store (hydrated from the server).
-  // Each record is a full multi-player HandHistoryRecord — the player's own
-  // cards / seat / net result live inside players[], NOT at the top level, and
-  // the board is `communityCards`. The previous flat field names (h.holeCards,
-  // h.board, h.chipsWon…) never matched the record, so every column was blank.
-  let history = [];
-  let myName = '';
-  let mySeat = -1;
-  try { history = useTableStore.getState().handHistories || []; } catch { /* ignore */ }
-  try { mySeat = useTableStore.getState().mySeat ?? -1; } catch { /* ignore */ }
-  try {
-    const p = useProgressStore.getState().progress || {};
-    myName = p.playerName || p.displayName || p.name || '';
-  } catch { /* ignore */ }
-
-  if (!Array.isArray(history) || history.length === 0) {
-    alert('No hand history yet — play some hands first.');
-    return;
+/** CSV text of his own hands (null when he has none). Exported for tests. */
+export function ownHandsCsv(handLog, myName) {
+  const rows = [];
+  for (const h of Array.isArray(handLog) ? handLog : []) {
+    const r = ownHandResult(h, myName);
+    if (!r) continue;
+    const when = h.timestamp || h.receivedAt;
+    rows.push([
+      h.handNumber ?? '',
+      when ? new Date(when).toLocaleString() : '',
+      h.tableName || '',
+      r.seat + 1,
+      cardsStr(r.holeCards),
+      cardsStr(h.communityCards),
+      r.handName || '',
+      r.pot,
+      r.won ? 'Won' : (r.folded ? 'Folded' : 'Lost'),
+      r.won ? r.chipsWon : 0,
+      typeof r.net === 'number' ? r.net : '',
+    ]);
   }
-
-  // Build CSV — one row per hand, from this player's perspective.
-  const headers = ['Hand #', 'Seat', 'Hole Cards', 'Board', 'Hand Rank', 'Pot', 'Result', 'Net Chips'];
-  const rows = history.map((h, i) => {
-    const players = Array.isArray(h.players) ? h.players : [];
-    // Prefer a name match; fall back to the current seat if names are absent.
-    const me = (myName && players.find((p) => p && p.name === myName))
-      || (mySeat >= 0 && players.find((p) => p && p.seatIndex === mySeat))
-      || null;
-    const board = cardsToStr(h.communityCards);
-    const pot = Array.isArray(h.pots)
-      ? h.pots.reduce((s, pt) => s + (pt?.amount || 0), 0)
-      : (h.pot || 0);
-    const winners = Array.isArray(h.winners) ? h.winners : [];
-    const iWon = me ? winners.some((w) => w && w.seatIndex === me.seatIndex) : false;
-    const net = me && typeof me.endChips === 'number' && typeof me.startChips === 'number'
-      ? me.endChips - me.startChips
-      : '';
-    return [
-      h.handNumber ?? (i + 1),
-      me ? me.seatIndex + 1 : '',
-      me ? cardsToStr(me.holeCards) : '',
-      board,
-      me ? (me.handName || '') : '',
-      pot,
-      me ? (iWon ? 'Won' : (me.folded ? 'Folded' : 'Lost')) : '',
-      net,
-    ];
-  });
-
-  const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  downloadCSV(`poker_hand_history_${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  if (rows.length === 0) return null;
+  const headers = ['Hand #', 'Played', 'Table', 'Your Seat', 'Your Cards', 'Board', 'Your Hand', 'Pot', 'Result', 'Chips Won', 'Net Chips'];
+  return [headers, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
 }
 
-function exportSessionStats() {
-  // Batch 5d: build from the REAL progress store (server-authoritative), not the
-  // never-written sessionStorage keys.
-  let p = {};
-  try { p = useProgressStore.getState().progress || {}; } catch { /* ignore */ }
-  const totalHands = p.totalHandsPlayed ?? p.totalHands ?? 0;
-  const handsWon = p.handsWon ?? p.wins ?? 0;
+/** CSV text of his server stats. Exported for tests. */
+export function statsCsv(p) {
+  const totalHands = Number(p.totalHandsPlayed) || 0;
+  const handsWon = Math.min(totalHands, Number(p.handsWon) || 0);
   const playerStats = {
     Level: p.level ?? 1,
+    'XP into level': p.xp ?? 0,
+    'Season XP': p.totalXp ?? 0,
     Chips: p.chips ?? 0,
     Stars: p.stars ?? 0,
-    XP: p.xp ?? 0,
     'Total Hands': totalHands,
     'Hands Won': handsWon,
-    'Win Rate %': totalHands > 0 ? ((handsWon / totalHands) * 100).toFixed(1) : '0.0',
+    'Win Rate %': serverWinRate(p),
     'Biggest Pot': p.biggestPot ?? 0,
     'Best Streak': p.bestStreak ?? 0,
     ELO: p.elo ?? 500,
-    'Daily Login Streak': p.dailyLoginStreak ?? p.loginStreak ?? 0,
+    'Peak ELO': p.peakElo ?? p.elo ?? 500,
+    'Daily Login Streak': p.loginStreak ?? 0,
   };
-  // Bankroll history from the progress chipHistory (server-hydrated) if present.
-  const bankrollHistory = Array.isArray(p.chipHistory) ? p.chipHistory : [];
-
   const lines = [];
-  lines.push(['Session Stats Export']);
+  lines.push(['American Pub Poker — stats export (play money)']);
   lines.push(['Generated', new Date().toLocaleString()]);
   lines.push([]);
   lines.push(['Stat', 'Value']);
-  for (const [key, value] of Object.entries(playerStats)) {
-    lines.push([key, String(value)]);
-  }
+  for (const [key, value] of Object.entries(playerStats)) lines.push([key, String(value)]);
+  const history = (Array.isArray(p.chipHistory) ? p.chipHistory : []).map(Number).filter(Number.isFinite);
   lines.push([]);
-  lines.push(['Bankroll History']);
-  lines.push(['Timestamp', 'Chips']);
-  for (const point of bankrollHistory) {
-    lines.push([
-      point.timestamp ? new Date(point.timestamp).toLocaleString() : (point.t ? new Date(point.t).toLocaleString() : ''),
-      String(point.chips ?? point.c ?? point.balance ?? ''),
-    ]);
-  }
-
-  const csv = lines.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  downloadCSV(`poker_session_stats_${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  lines.push(['Chip count after each of your last hands (oldest first)']);
+  lines.push(['Hand', 'Chips']);
+  history.forEach((c, i) => lines.push([`-${history.length - i}`, String(c)]));
+  if (history.length === 0) lines.push(['(none recorded yet)', '']);
+  return lines.map((r) => r.map(csvCell).join(',')).join('\n');
 }
 
 export default function ExportData({ onClose }) {
+  const [note, setNote] = useState(null);
+  const exportHandHistory = () => {
+    const { handLog } = useProgressStore.getState();
+    const csv = ownHandsCsv(handLog, useGameStore.getState().playerName);
+    if (!csv) { setNote('No hands of yours recorded yet — play some hands first.'); return; }
+    downloadCSV(`poker_hand_history_${new Date().toISOString().slice(0, 10)}.csv`, csv);
+    setNote(null);
+  };
+  const exportSessionStats = () => {
+    downloadCSV(`poker_stats_${new Date().toISOString().slice(0, 10)}.csv`, statsCsv(useProgressStore.getState().progress || {}));
+    setNote(null);
+  };
   return createPortal(
     <div className="leak-finder-overlay" onClick={onClose}>
       <div
@@ -153,7 +135,7 @@ export default function ExportData({ onClose }) {
             onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)')}
           >
             <div style={{ fontWeight: 700, marginBottom: '4px' }}>Export Hand History</div>
-            <div style={{ fontSize: '0.78rem', color: '#8888AA' }}>Download all recorded hands as CSV</div>
+            <div style={{ fontSize: '0.78rem', color: '#8888AA' }}>Your recent hands (from your seat) as CSV</div>
           </button>
 
           <button
@@ -172,14 +154,15 @@ export default function ExportData({ onClose }) {
             onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
             onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)')}
           >
-            <div style={{ fontWeight: 700, marginBottom: '4px' }}>Export Session Stats</div>
-            <div style={{ fontSize: '0.78rem', color: '#8888AA' }}>Download bankroll history and stats as CSV</div>
+            <div style={{ fontWeight: 700, marginBottom: '4px' }}>Export My Stats</div>
+            <div style={{ fontSize: '0.78rem', color: '#8888AA' }}>Your server stats and recent chip counts as CSV</div>
           </button>
         </div>
 
         <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '0.75rem', color: '#555' }}>
           Files will download automatically to your default downloads folder.
         </div>
+        {note && <div className="export-data-note">{note}</div>}
       </div>
     </div>,
     document.body

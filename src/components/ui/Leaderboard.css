@@ -245,7 +245,8 @@
 }
 
 .win-rate-low {
-  color: #EF4444;
+  /* R2 — no red (brand): a muted blue for the low band. */
+  color: #8fa8d8;
 }
 
 /* Summary bar at the bottom */
@@ -386,4 +387,19 @@
   .leaderboard-table tbody td:nth-child(4) {
     display: none;
   }
+}
+
+/* R2 (C9 / APPUI-50) — what each period ranks, season badges, profile rows. */
+.leaderboard-ranks-by {
+  margin: -4px 0 12px;
+  font-size: 0.78rem;
+  color: #9fb3d9;
+}
+.leaderboard-empty { padding: 40px; text-align: center; color: #9fb3d9; }
+.lb-badges { margin-left: 6px; display: inline-flex; gap: 2px; vertical-align: middle; }
+.lb-badge { font-size: 0.95rem; }
+.leaderboard-row-link { cursor: pointer; }
+.leaderboard-row-link:hover td { background: rgba(120, 160, 255, 0.06); }
+@media (max-width: 400px) {
+  .lb-col-hands { display: none; }
 }

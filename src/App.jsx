@@ -18,7 +18,7 @@ import {
   setTabSession, markTicketSignIn, RESUME_INVALID, RESUME_EVENT,
   masterIdFromLoginResult, resumeRecordMasterId, getTabSession,
 } from './services/sessionResume';
-import { stashGuestCredential, oidcSubject, deviceHoldsOtherOidcSignIn } from './services/tokenStorage';
+import { stashGuestCredential, oidcSubject, deviceHoldsOtherOidcSignIn, getHttpBearer } from './services/tokenStorage';
 // 2026-10-10 (S3) — a bridged link kept to THIS tab (the browser holds
 // another account's sign-in): the boot reads / wipes only the tab's own copies.
 import {
@@ -139,9 +139,10 @@ class ErrorBoundary extends Component {
     return this.props.children;
   }
 }
-import { useProgressStore } from './store/progressStore';
+import { useProgressStore, dailyLoginClaimable } from './store/progressStore';
 import { connectToServer, getSocket, subscribeConnectionStatus } from './services/socketService';
-import { initPersistence, syncToServer, installBeforeUnloadSync } from './services/persistenceService';
+import { initPersistence, syncToServer, installBeforeUnloadSync, restoreClientDataFromServer, applyServerPreferences } from './services/persistenceService';
+import { formatReward, purchaseResultText, itemName, setServerShopCatalog } from './utils/economyCatalog';
 import LoadingScreen from './components/ui/LoadingScreen';
 import LoginScreen from './components/ui/LoginScreen';
 // 2026-05-04 unified-push phase 3 — cross-site notification banner.
@@ -462,7 +463,9 @@ function App() {
   const [activeNavTab, setActiveNavTab] = useState(() => {
     try {
       const saved = sessionStorage.getItem('poker_active_nav_tab');
-      const KNOWN = new Set(['home', 'play', 'friends', 'shop', 'profile']);
+      // R2 (APPUI P3) — the Social tab's id is 'social' (the list said
+      // 'friends', so a reload on Social always reopened Home).
+      const KNOWN = new Set(['home', 'play', 'social', 'shop', 'profile']);
       return KNOWN.has(saved) ? saved : 'home';
     } catch { return 'home'; }
   });
@@ -563,10 +566,11 @@ function App() {
     setActiveNavTab(tabId);
   };
 
-  // Show loading screen for 2 seconds, then fade out
+  // A short brand splash, then fade out. R2 (APPUI P3): it held every launch
+  // for 2.2s behind made-up "Connecting / Fetching tables" stages.
   useEffect(() => {
-    const exitTimer = setTimeout(() => setLoadingExiting(true), 1700);
-    const doneTimer = setTimeout(() => setLoading(false), 2200);
+    const exitTimer = setTimeout(() => setLoadingExiting(true), 450);
+    const doneTimer = setTimeout(() => setLoading(false), 950);
     return () => { clearTimeout(exitTimer); clearTimeout(doneTimer); };
   }, []);
 
@@ -604,13 +608,25 @@ function App() {
 
     const refreshUserRolesFromMe = async () => {
       try {
+        // R2 (APPUI-27) — the master API's `:id` is the MASTER user id: the
+        // OIDC subject of this tab's own bearer. It used to send poker-
+        // server's LOCAL id (useGameStore.userId), which names a different
+        // master account — this tab merged THAT account's roles / VIP. No
+        // provable master id (e.g. a Play Online tab without its own OIDC
+        // sign-in) → no refresh; the server stays the authority either way.
+        let masterId = null;
+        try {
+          const sub = oidcSubject(getHttpBearer());
+          masterId = sub && /^\d+$/.test(sub) ? sub : null;
+        } catch { masterId = null; }
+        if (!masterId) return;
         // /users/:id/me is fetched unauthenticated (Pattern A contract:
         // the public-safe shape always contains `roles`, `isVip`,
         // `vipLevel`, `vipExpiration` for this exact use case). The
         // auth-server's extraTokenClaims uses the same path; we are a
         // peer caller.
         const resp = await fetch(
-          `${API_BASE}/users/${encodeURIComponent(userId)}/me`,
+          `${API_BASE}/users/${encodeURIComponent(masterId)}/me`,
           { method: 'GET', credentials: 'omit' },
         );
         if (cancelled || !resp.ok) return;
@@ -662,9 +678,8 @@ function App() {
     const notifyDailyBonusIfClaimable = () => {
       try {
         if (typeof document === 'undefined' || document.visibilityState !== 'hidden') return;
-        const progress = useProgressStore.getState().progress;
-        const today = new Date().toISOString().slice(0, 10);
-        if (progress && progress.lastLoginClaimDate !== today) {
+        // R2 (APPUI-36) — the server's Denver claim date, not the UTC date.
+        if (dailyLoginClaimable(useProgressStore.getState().progress)) {
           notify.dailyBonus();
         }
       } catch { /* best-effort */ }
@@ -1034,6 +1049,9 @@ function App() {
 
     // Progression events — also restore client-only data on first load
     socket.on('playerProgress', (progress) => {
+      if (!progress || typeof progress !== 'object') return;
+      // R2 — a different account in this tab starts with empty local logs.
+      try { useProgressStore.getState().noteAccount(useGameStore.getState().userId); } catch { /* ignore */ }
       useProgressStore.getState().setProgress(progress);
       initPersistence(progress);
       // 2026-06-10 audit (Pattern B self-heal for the wallet): keep the
@@ -1061,12 +1079,41 @@ function App() {
       if (!socket.__durableFetched) {
         socket.__durableFetched = true;
         socket.emit('getDurableState', { seasonId: 'season_1_the_river' });
+        // R2 (APPUI-26) — the saved settings + player notes (users.stats
+        // clientData) come back with the account's own row: they used to be
+        // written on every change and never read back on another device.
+        socket.emit('loadProgress', {});
+        // R2 (C7) — the server's price list (an older server does not answer).
+        socket.emit('getShopCatalog');
       }
     });
+
+    // R2 (APPUI-26) — the account row (loadProgress): restore clientData
+    // (settings, notes, bet sizes…) the first time this tab sees it.
+    const onProgressLoaded = (result) => {
+      try {
+        const stats = result?.userData?.stats;
+        const blob = stats && typeof stats === 'object' ? stats.clientData : null;
+        if (blob && typeof blob === 'object') restoreClientDataFromServer(blob);
+      } catch { /* best-effort */ }
+    };
+    socket.on('progressLoaded', onProgressLoaded);
+    const onShopCatalog = (payload) => {
+      try { setServerShopCatalog(payload); } catch { /* ignore */ }
+    };
+    socket.on('shopCatalog', onShopCatalog);
 
     // Full durable-state snapshot (inventory + BP claims + customization + prefs + stars)
     socket.on('durableState', (payload) => {
       useProgressStore.getState().setDurableState(payload || {});
+      // R2 (APPUI-26) — settings / notes saved on another device (S3 may send
+      // them here; the loadProgress answer above covers an older server).
+      if (payload?.clientData && typeof payload.clientData === 'object') {
+        try { restoreClientDataFromServer(payload.clientData); } catch { /* best-effort */ }
+      }
+      if (payload?.preferences && typeof payload.preferences === 'object') {
+        try { applyServerPreferences(payload.preferences); } catch { /* best-effort */ }
+      }
       // Also hydrate the avatar store from server customization so the user's
       // look follows them across devices.
       const c = payload?.customization;
@@ -1087,6 +1134,8 @@ function App() {
         const oldestFirst = usable.slice().reverse().slice(-20);
         useTableStore.setState({ handHistories: oldestFirst });
       }
+      // R2 (APPUI-15) — the lobby's own hand log (kept after leaving a table).
+      try { useProgressStore.getState().hydrateHandLog(usable); } catch { /* best-effort */ }
     });
 
     // Partial inventory update after buy/equip
@@ -1094,11 +1143,15 @@ function App() {
       useProgressStore.getState().setInventory(payload?.inventory || []);
     });
 
+    // R2 (APPUI P3) — every toast carries its own title (AchievementPopup used
+    // to call EVERY non-achievement toast "Mission Complete!").
     socket.on('achievementUnlocked', (data) => {
       useProgressStore.getState().addNotification({
         type: 'achievement',
-        message: `${data.name} - ${data.description}`,
-        reward: data.reward,
+        kind: 'achievement_unlocked',
+        title: 'Achievement Unlocked!',
+        message: `${String(data?.name ?? 'Achievement')} - ${String(data?.description ?? '')}`,
+        reward: data?.reward,
       });
     });
 
@@ -1109,31 +1162,71 @@ function App() {
     socket.on('missionComplete', (data) => {
       useProgressStore.getState().addNotification({
         type: 'mission',
-        message: data.description,
-        reward: data.reward,
+        kind: 'mission_complete',
+        title: 'Mission Complete!',
+        message: `${String(data?.description ?? 'Daily mission')} — claim it in Daily Missions.`,
+        reward: data?.reward,
       });
     });
 
     socket.on('dailyBonusClaimed', (data) => {
       useProgressStore.getState().addNotification({
-        type: 'mission',
-        message: `Daily Bonus (Day ${data.streak})`,
-        reward: { chips: data.chips, xp: 0, stars: data.stars },
+        type: 'reward',
+        title: 'Daily Bonus',
+        message: `Daily Bonus (Day ${Number(data?.streak) || 1})`,
+        reward: { chips: data?.chips || 0, xp: 0, stars: data?.stars || 0 },
       });
     });
 
+    // R2 (C6) — the server paid a claimed mission (the claim itself was sent
+    // by MissionsPanel; the balance arrives in the playerProgress that follows).
     socket.on('missionClaimed', (data) => {
-      // Progress update will come via playerProgress event
+      useProgressStore.getState().addNotification({
+        type: 'reward',
+        title: 'Mission Reward',
+        message: `Mission reward collected: ${formatReward(data?.reward)}.`,
+      });
     });
+
+    // R2 (APPUI-38) — the server banked a scratch card (every 20 hands). The
+    // count arrives in playerProgress (C5); an older server only tells us, so
+    // re-read the durable state for the count.
+    const onScratchCardEarned = () => {
+      useProgressStore.getState().addNotification({
+        type: 'reward',
+        title: 'Scratch Card',
+        message: 'You earned a scratch card! Reveal it in the Shop.',
+      });
+      try { socket.emit('getDurableState', { seasonId: 'season_1_the_river' }); } catch { /* ignore */ }
+    };
+    socket.on('scratchCardEarned', onScratchCardEarned);
+
+    // R2 (C9) — the month-end season award paid this account (top 3 by chips
+    // won): chips + a season badge. The balance and the badge arrive in the
+    // playerProgress that follows.
+    const onSeasonRewardAwarded = (data) => {
+      const place = Number(data?.place);
+      const chips = Math.max(0, Math.round(Number(data?.chips) || 0));
+      const badge = typeof data?.badge === 'string' && data.badge ? itemName('badge', data.badge) : null;
+      const placeText = place === 1 ? '1st' : place === 2 ? '2nd' : place === 3 ? '3rd' : (Number.isInteger(place) && place > 0 ? `#${place}` : 'in the top 3');
+      const paid = [chips > 0 ? `${chips.toLocaleString()} chips` : null, badge ? `the ${badge} badge` : null].filter(Boolean).join(' and ');
+      useProgressStore.getState().addNotification({
+        type: 'reward',
+        kind: 'season_reward',
+        title: 'Season Reward',
+        message: `You finished ${placeText} last season${paid ? ` — ${paid} added to your account` : ''}!`,
+      });
+    };
+    socket.on('seasonRewardAwarded', onSeasonRewardAwarded);
 
     // Batch 5 (2026-07-01): admin broadcast / maintenance / kick / table-close.
     // These make the AdminDashboard actions visible to players.
     socket.on('serverAnnouncement', (data) => {
-      if (data?.message) useProgressStore.getState().addNotification({ type: 'mission', message: String(data.message).slice(0, 280) });
+      if (data?.message) useProgressStore.getState().addNotification({ type: 'system', title: 'Announcement', message: String(data.message).slice(0, 280) });
     });
     socket.on('maintenanceMode', (data) => {
       try { noteMaintenanceMode(!!data?.enabled); } catch { /* ignore */ }
-      if (data?.enabled) useProgressStore.getState().addNotification({ type: 'mission', message: 'Server maintenance in progress — play may be briefly interrupted.' });
+      if (data?.enabled) useProgressStore.getState().addNotification({ type: 'system', title: 'Maintenance', message: 'Server maintenance in progress — play may be briefly interrupted.' });
     });
     const handleTableClosed = (data) => {
       if (!data || data.tableId == null) return;
@@ -1150,7 +1243,7 @@ function App() {
       } catch { /* ignore */ }
     };
     socket.on('tableClosedByAdmin', () => {
-      useProgressStore.getState().addNotification({ type: 'mission', message: 'This table was closed by an administrator.' });
+      useProgressStore.getState().addNotification({ type: 'system', title: 'Table Closed', message: 'This table was closed by an administrator.' });
     });
     // R2 (S1) — `tableClosed { tableId, reason }`: the server removed a table
     // (private_table_idle / quick_game_over / tournament_finished). Whatever
@@ -1161,12 +1254,13 @@ function App() {
     socket.on('tableClosed', handleTableClosed);
     socket.on('kickedByAdmin', (data) => {
       // The server disconnects this socket right after; just surface why.
-      useProgressStore.getState().addNotification({ type: 'mission', message: data?.reason || 'You were removed by an administrator.' });
+      useProgressStore.getState().addNotification({ type: 'system', title: 'Removed', message: data?.reason || 'You were removed by an administrator.' });
     });
     // Batch 5c: staking payout — a player you backed cashed in a tournament.
     socket.on('stakingPayout', (data) => {
       useProgressStore.getState().addNotification({
-        type: 'mission',
+        type: 'reward',
+        title: 'Staking Payout',
         message: `Staking payout${data?.sellerName ? ` from ${data.sellerName}` : ''}!`,
         reward: { chips: data?.amount || 0, xp: 0, stars: 0 },
       });
@@ -1177,26 +1271,28 @@ function App() {
     // table rebalance/break, friend + table invites, and shop purchase feedback.
     socket.on('bountyAwarded', (data) => {
       useProgressStore.getState().addNotification({
-        type: 'mission',
+        type: 'tournament',
+        title: 'Bounty',
         message: `Bounty collected${data?.eliminated ? ` — knocked out ${data.eliminated}` : ''}!`,
         reward: { chips: data?.amount || 0, xp: 0, stars: 0 },
       });
     });
     socket.on('friendRequestReceived', (data) => {
-      useProgressStore.getState().addNotification({ type: 'mission', message: `${data?.from || 'Someone'} sent you a friend request.` });
+      useProgressStore.getState().addNotification({ type: 'friend', title: 'Friend Request', message: `${String(data?.from || 'Someone')} sent you a friend request.` });
     });
     socket.on('tableInvite', (data) => {
       // Carry the inviter's tableId so the toast can render an actionable "Join"
       // button (handled in AchievementPopup). Falls back to a plain toast when
       // no tableId is present (older senders that didn't include one).
       useProgressStore.getState().addNotification({
-        type: 'mission',
-        message: `${data?.from || 'A friend'} invited you to their table.`,
+        type: 'friend',
+        title: 'Table Invite',
+        message: `${String(data?.from || 'A friend')} invited you to their table.`,
         inviteTableId: data?.tableId || null,
       });
     });
     socket.on('tableBroken', () => {
-      useProgressStore.getState().addNotification({ type: 'mission', message: 'Your tournament table is combining with another.' });
+      useProgressStore.getState().addNotification({ type: 'tournament', title: 'Table Move', message: 'Your tournament table is combining with another.' });
     });
     socket.on('playerMoved', (data) => {
       const toTable = data?.toTable || data?.tableId;
@@ -1228,12 +1324,12 @@ function App() {
         message: `You've been moved to a new table${data?.toSeat != null ? `, seat ${Number(data.toSeat) + 1}` : ''}.`,
       });
     });
+    // R2 (APPUI-38 / C7) — shop results in words: a mystery box names what it
+    // rolled ({kind, amount|itemType+itemId}; it used to print "[object
+    // Object]"), boosters / VIP / bundles say what they did.
     socket.on('purchaseResult', (data) => {
-      if (data?.success) {
-        useProgressStore.getState().addNotification({ type: 'mission', message: data?.mysteryReward ? `Mystery box: ${data.mysteryReward}!` : 'Purchase complete.' });
-      } else if (data?.error) {
-        useProgressStore.getState().addNotification({ type: 'mission', message: `Purchase failed: ${data.error}` });
-      }
+      const text = purchaseResultText(data);
+      if (text) useProgressStore.getState().addNotification({ type: 'purchase', title: data?.success ? 'Shop' : 'Purchase Failed', message: text });
     });
 
     // Club challenge accepted — the server spawned a heads-up table (stakes =
@@ -1333,6 +1429,25 @@ function App() {
     // sessionStorage mirror per the "no sessionStorage" policy.
     socket.on('handHistory', (history) => {
       useTableStore.getState().addHandHistory(history);
+      // R2 (APPUI-15) — the lobby's own log: the record does not say which
+      // seat was his, so stamp the seat he holds at that table now (the
+      // server sends this event only to seated sessions), plus the table.
+      try {
+        if (history && typeof history === 'object' && Array.isArray(history.players)) {
+          const ts = useTableStore.getState();
+          const gs = ts.gameState;
+          const seated = gs && gs.isSpectator !== true && Number.isInteger(gs.yourSeat) && gs.yourSeat >= 0;
+          const yourSeat = seated ? gs.yourSeat : (Number.isInteger(ts.mySeat) && ts.mySeat >= 0 ? ts.mySeat : -1);
+          const stamped = {
+            ...history,
+            yourSeat,
+            tableId: gs && gs.tableId != null ? gs.tableId : null,
+            tableName: (gs && (gs.tableName || gs.name)) || null,
+            receivedAt: Date.now(),
+          };
+          useProgressStore.getState().noteHandRecord(stamped, useGameStore.getState().playerName);
+        }
+      } catch { /* best-effort */ }
     });
 
     // Provably fair
@@ -1384,9 +1499,9 @@ function App() {
     // Theme purchase/equip
     socket.on('themePurchased', (data) => {
       useProgressStore.getState().addNotification({
-        type: 'mission',
-        message: `Theme "${data.themeId}" purchased!`,
-        reward: { chips: 0, xp: 0 },
+        type: 'purchase',
+        title: 'Shop',
+        message: `${itemName('theme', data?.themeId)} table theme is yours — equip it in the Shop.`,
       });
     });
     socket.on('themeEquipped', (data) => {
@@ -1689,6 +1804,10 @@ function App() {
       socket.off('missionComplete');
       socket.off('dailyBonusClaimed');
       socket.off('missionClaimed');
+      socket.off('progressLoaded', onProgressLoaded);
+      socket.off('shopCatalog', onShopCatalog);
+      socket.off('scratchCardEarned', onScratchCardEarned);
+      socket.off('seasonRewardAwarded', onSeasonRewardAwarded);
       socket.off('handHistory');
       socket.off('durableState');
       socket.off('inventoryUpdated');
@@ -3103,7 +3222,9 @@ function App() {
           }}>
             <div style={{
               pointerEvents: 'auto',
-              background: connStatus === 'error' ? 'rgba(220,38,38,0.97)' : 'rgba(234,88,12,0.97)',
+              // R2 (APPUI P3) — blue + gold, never red / orange (owner preference).
+              background: connStatus === 'error' ? 'rgba(12,28,72,0.97)' : 'rgba(29,78,216,0.97)',
+              border: '1px solid rgba(255,210,74,0.6)', borderTop: 'none',
               color: '#fff', fontSize: '0.92rem', fontWeight: 700,
               padding: '10px 18px', letterSpacing: '0.03em',
               borderRadius: '0 0 12px 12px',
@@ -3120,7 +3241,8 @@ function App() {
             zIndex: 99999, pointerEvents: 'none',
           }}>
             <div style={{
-              background: connStatus === 'error' ? 'rgba(220,38,38,0.95)' : 'rgba(234,88,12,0.95)',
+              background: connStatus === 'error' ? 'rgba(12,28,72,0.95)' : 'rgba(29,78,216,0.95)',
+              border: '1px solid rgba(255,210,74,0.6)',
               color: '#fff', fontSize: '0.78rem', fontWeight: 700,
               padding: '6px 14px', borderRadius: '999px',
               boxShadow: '0 2px 10px rgba(0,0,0,0.5)',

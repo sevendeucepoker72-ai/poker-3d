@@ -184,8 +184,8 @@
 
 /* Error message */
 .login-error {
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(120, 160, 255, 0.4);
   border-radius: 10px;
   padding: 10px 14px;
   color: #F87171;
@@ -395,7 +395,7 @@
 }
 
 .login-field-hint--ok    { color: #4ADE80; }
-.login-field-hint--error { color: #EF4444; }
+.login-field-hint--error { color: #93c5fd; }
 
 /* ── Password strength meter (upgrade #4) ── */
 .login-strength {
@@ -458,7 +458,7 @@
 
 /* ── Input error border ── */
 .login-input-wrap--error .login-input {
-  border-color: rgba(239, 68, 68, 0.5) !important;
+  border-color: rgba(255, 210, 74, 0.6) !important;
 }
 
 /* ── Lockout banner ── */
@@ -466,8 +466,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(120, 160, 255, 0.4);
   border-radius: 10px;
   padding: 10px 14px;
   color: #F87171;

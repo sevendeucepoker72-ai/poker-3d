@@ -2,170 +2,198 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { getSocket } from '../../services/socketService';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
+import { useGameStore } from '../../store/gameStore';
+import { useProgressStore } from '../../store/progressStore';
+import { DEFAULT_SPIN_SEGMENTS, normalizeSpinSegments, segmentForSpinResult, formatReward, shopErrorText } from '../../utils/economyCatalog';
+import { denverDateKey, nextDenverMidnightMs, formatCountdown } from '../../utils/denverTime';
 import './SpinWheel.css';
 
-const SEGMENTS = [
-  { label: '100', value: 100, type: 'chips', color: '#3B82F6', icon: '\uD83D\uDCB0' },
-  { label: '250', value: 250, type: 'chips', color: '#8B5CF6', icon: '\uD83D\uDCB0' },
-  { label: '500', value: 500, type: 'chips', color: '#22C55E', icon: '\uD83D\uDCB0' },
-  { label: '1,000', value: 1000, type: 'chips', color: '#EF4444', icon: '\uD83D\uDCB0' },
-  { label: '2,500', value: 2500, type: 'chips', color: '#F97316', icon: '\uD83D\uDCB0' },
-  { label: '5,000', value: 5000, type: 'chips', color: '#EC4899', icon: '\uD83D\uDCB0' },
-  { label: '2x XP', value: 2, type: 'xp_multiplier', color: '#3b82f6', icon: '\u2B50' },
-  { label: 'Mystery', value: 0, type: 'mystery', color: '#A855F7', icon: '\uD83C\uDF81' },
-];
+// 2026-10-11 (.online R2 — APPUI-37). The wheel shows the server's REAL prize
+// table — each prize once, its slice sized by its odds — and stops on the
+// prize the server paid (claimDailySpinServer → dailySpinClaimed { success,
+// reward, segmentId? }). It used to draw eight made-up prizes (100 / 250 /
+// 2x XP / Mystery …) the server never pays and "Double XP for your next 10
+// hands!" copy. The server's `spinWheelConfig` answer to getSpinWheel
+// ({ segments, claimedToday, resetsAt }) replaces the built-in table and says
+// whether today's spin is used (so is playerProgress.dailySpinClaimed). One
+// spin per Denver day.
+
+const SPIN_SEEN_KEY = 'app_poker_spin_seen';
+const SEGMENT_COLORS = ['#1d4ed8', '#7c3aed', '#0f766e', '#b45309', '#2563eb', '#6d28d9'];
+
+function seenKey(userId) {
+  return `${SPIN_SEEN_KEY}:${userId == null ? 'anon' : String(userId)}`;
+}
+/** Has this account's daily spin been auto-shown / used today (Denver)? */
+export function spinSeenToday(userId) {
+  try { return localStorage.getItem(seenKey(userId)) === denverDateKey(); } catch { return false; }
+}
+export function markSpinSeenToday(userId) {
+  try { localStorage.setItem(seenKey(userId), denverDateKey()); } catch { /* ignore */ }
+}
+
+function segIcon(seg) {
+  return seg.stars > 0 && !(seg.chips > 0) ? '⭐' : '🪙';
+}
 
 export default function SpinWheel({ onClose }) {
+  const userId = useGameStore((s) => s.userId);
+  const usedToday = useProgressStore((s) => s.progress?.dailySpinClaimed === true);
+  const [segments, setSegments] = useState(DEFAULT_SPIN_SEGMENTS);
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
-  const [prize, setPrize] = useState(null);
-  const [canSpin, setCanSpin] = useState(true); // server is source of truth; optimistic
+  const [prize, setPrize] = useState(null); // { icon, text }
+  const [canSpin, setCanSpin] = useState(!usedToday);
+  const [resetsAt, setResetsAt] = useState(null); // the server's next Denver midnight
   const [errMsg, setErrMsg] = useState(null);
-  const discRef = useRef(null);
-  // Track pending listener + timeouts so unmount mid-spin cleans up, AND a
-  // response that never arrives doesn't leave a ghost handler on the socket.
   const activeListenerRef = useRef(null);
   const timeoutIdsRef = useRef(new Set());
   const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
+    const sock = getSocket();
+    const onWheel = (payload) => {
+      if (!mountedRef.current) return;
+      const list = normalizeSpinSegments(Array.isArray(payload) ? payload : payload?.segments);
+      if (list) setSegments(list);
+      const r = Number(payload?.resetsAt);
+      if (Number.isFinite(r) && r > Date.now()) setResetsAt(r);
+      if (payload?.claimedToday === true) {
+        setCanSpin(false);
+        markSpinSeenToday(userId);
+      }
+    };
+    if (sock) {
+      sock.on('spinWheelConfig', onWheel);
+      try { sock.emit('getSpinWheel'); } catch { /* an older server has no table to send */ }
+    }
     return () => {
       mountedRef.current = false;
-      const sock = getSocket();
-      if (sock && activeListenerRef.current) {
-        sock.off('dailySpinClaimed', activeListenerRef.current);
+      if (sock) {
+        sock.off('spinWheelConfig', onWheel);
+        if (activeListenerRef.current) sock.off('dailySpinClaimed', activeListenerRef.current);
       }
       timeoutIdsRef.current.forEach(clearTimeout);
       timeoutIdsRef.current.clear();
     };
   }, []);
 
-  // Hardware back button closes the modal
   useBackButtonClose(true, onClose);
 
-  const segAngle = 360 / SEGMENTS.length;
+  // The server's playerProgress says today's spin is used (another tab / device).
+  useEffect(() => { if (usedToday && !spinning && !prize) setCanSpin(false); }, [usedToday, spinning, prize]);
+  const nextSpinAt = resetsAt && resetsAt > Date.now() ? resetsAt : nextDenverMidnightMs();
+
+  // Slice angles by odds (weight).
+  const total = segments.reduce((s, x) => s + (x.weight || 1), 0) || 1;
+  const arcs = [];
+  let acc = 0;
+  for (const seg of segments) {
+    const span = ((seg.weight || 1) / total) * 360;
+    arcs.push({ start: acc, end: acc + span });
+    acc += span;
+  }
+
+  const later = (fn, ms) => {
+    const t = setTimeout(() => { timeoutIdsRef.current.delete(t); if (mountedRef.current) fn(); }, ms);
+    timeoutIdsRef.current.add(t);
+  };
 
   const doSpin = useCallback(() => {
     if (spinning || !canSpin) return;
+    const socket = getSocket();
+    if (!socket || !socket.connected) { setErrMsg('Not connected — try again in a moment.'); return; }
     setErrMsg(null);
     setSpinning(true);
+    // Keep the wheel moving while the server decides.
+    setRotation((r) => r + 720);
 
-    const socket = getSocket();
-    if (!socket) { setSpinning(false); return; }
-
-    // Hard fail-safe: if the server response never arrives, unblock the UI
-    // after 15s so the user can retry instead of being stuck spinning.
-    const timeoutGuard = setTimeout(() => {
-      if (!mountedRef.current) return;
-      if (activeListenerRef.current) {
-        socket.off('dailySpinClaimed', activeListenerRef.current);
-        activeListenerRef.current = null;
-      }
-      setSpinning(false);
-      setErrMsg('Spin timed out — please try again.');
-      timeoutIdsRef.current.delete(timeoutGuard);
-    }, 15000);
-    timeoutIdsRef.current.add(timeoutGuard);
-
-    // Server determines the prize + rate-limits. We animate visually while waiting.
+    let answered = false;
     const onResult = (res) => {
+      if (answered) return;
+      answered = true;
       socket.off('dailySpinClaimed', onResult);
       if (activeListenerRef.current === onResult) activeListenerRef.current = null;
-      clearTimeout(timeoutGuard);
-      timeoutIdsRef.current.delete(timeoutGuard);
       if (!mountedRef.current) return;
-
       if (!res?.success) {
-        const t1 = setTimeout(() => {
-          timeoutIdsRef.current.delete(t1);
-          if (!mountedRef.current) return;
+        later(() => {
           setSpinning(false);
-          setCanSpin(false);
-          setErrMsg(res?.error === 'already_claimed' ? 'You already used your daily spin!' : 'Could not claim spin');
-          // Mark locally so the auto-open effect doesn't pester the
-          // user after the server says they've already claimed.
           if (res?.error === 'already_claimed') {
-            try { localStorage.setItem('app_poker_last_spin_date', new Date().toISOString().slice(0, 10)); } catch { /* ignore */ }
+            setCanSpin(false);
+            markSpinSeenToday(userId);
+            setErrMsg(`You already used today's spin — the next one opens in ${formatCountdown(nextSpinAt)}.`);
+          } else {
+            setErrMsg(shopErrorText(res, 'Could not spin — try again.'));
           }
-        }, 800);
-        timeoutIdsRef.current.add(t1);
+        }, 600);
         return;
       }
-
-      // Map server reward → closest SEGMENTS index for the visual stop.
+      markSpinSeenToday(userId);
       const reward = res.reward || {};
-      let winnerIndex = 5; // default fallback
-      if (reward.stars && reward.stars >= 50) winnerIndex = 6;
-      else if (reward.stars) winnerIndex = 7;
-      else if (reward.chips >= 10000) winnerIndex = 5;
-      else if (reward.chips >= 5000) winnerIndex = 5;
-      else if (reward.chips >= 2500) winnerIndex = 4;
-      else if (reward.chips >= 1000) winnerIndex = 3;
-      else if (reward.chips >= 500)  winnerIndex = 2;
-      else if (reward.chips >= 250)  winnerIndex = 1;
-      else                           winnerIndex = 0;
-
-      const segMiddle = winnerIndex * segAngle + segAngle / 2;
-      const extraSpins = 5 + Math.floor(Math.random() * 3);
-      setRotation((prev) => prev + extraSpins * 360 + (360 - segMiddle));
-
-      const t2 = setTimeout(() => {
-        timeoutIdsRef.current.delete(t2);
-        if (!mountedRef.current) return;
+      const idx = segmentForSpinResult(segments, res);
+      setRotation((prev) => {
+        const turns = 5 + Math.floor(Math.random() * 3);
+        if (idx < 0) return prev + turns * 360; // a prize this wheel does not show: no fake stop
+        const mid = (arcs[idx].start + arcs[idx].end) / 2;
+        const base = prev - (prev % 360);
+        return base + turns * 360 + (360 - mid);
+      });
+      later(() => {
         setSpinning(false);
-        setPrize({ ...SEGMENTS[winnerIndex], serverLabel: reward.label });
         setCanSpin(false);
-        // Persist "spun today" so the Lobby auto-open effect doesn't
-        // re-pop the wheel on the next page refresh within the same day.
-        try { localStorage.setItem('app_poker_last_spin_date', new Date().toISOString().slice(0, 10)); } catch { /* ignore */ }
+        setPrize({ icon: idx >= 0 ? segIcon(segments[idx]) : '🎁', text: formatReward(reward) });
       }, 4200);
-      timeoutIdsRef.current.add(t2);
     };
-
     activeListenerRef.current = onResult;
     socket.on('dailySpinClaimed', onResult);
+    later(() => {
+      if (answered) return;
+      answered = true;
+      socket.off('dailySpinClaimed', onResult);
+      setSpinning(false);
+      setErrMsg('The game server did not answer — try again.');
+    }, 15000);
     socket.emit('claimDailySpinServer');
-  }, [spinning, canSpin, segAngle]);
+  }, [spinning, canSpin, segments, arcs, userId, nextSpinAt]);
 
   const closePrize = () => setPrize(null);
 
-  // Build SVG wheel segments
-  const segmentElements = SEGMENTS.map((seg, i) => {
-    const startAngle = i * segAngle;
-    const endAngle = (i + 1) * segAngle;
-    const startRad = (startAngle - 90) * (Math.PI / 180);
-    const endRad = (endAngle - 90) * (Math.PI / 180);
+  // SVG slices (sized by odds)
+  const segmentElements = segments.map((seg, i) => {
+    const { start, end } = arcs[i];
+    const startRad = (start - 90) * (Math.PI / 180);
+    const endRad = (end - 90) * (Math.PI / 180);
     const x1 = 140 + 130 * Math.cos(startRad);
     const y1 = 140 + 130 * Math.sin(startRad);
     const x2 = 140 + 130 * Math.cos(endRad);
     const y2 = 140 + 130 * Math.sin(endRad);
-    const largeArc = segAngle > 180 ? 1 : 0;
-
-    const midAngle = ((startAngle + endAngle) / 2 - 90) * (Math.PI / 180);
+    const largeArc = end - start > 180 ? 1 : 0;
+    const midAngle = ((start + end) / 2 - 90) * (Math.PI / 180);
     const labelX = 140 + 85 * Math.cos(midAngle);
     const labelY = 140 + 85 * Math.sin(midAngle);
-    const labelRotation = (startAngle + endAngle) / 2;
-
+    const labelRotation = (start + end) / 2;
+    const pct = Math.round(((seg.weight || 1) / total) * 100);
     return (
-      <g key={i}>
+      <g key={seg.id}>
         <path
           d={`M 140 140 L ${x1} ${y1} A 130 130 0 ${largeArc} 1 ${x2} ${y2} Z`}
-          fill={seg.color}
-          stroke="rgba(0,0,0,0.3)"
-          strokeWidth="1"
+          fill={SEGMENT_COLORS[i % SEGMENT_COLORS.length]}
+          stroke="rgba(255,210,74,0.55)"
+          strokeWidth="1.5"
         />
         <text
           x={labelX}
           y={labelY}
           fill="#fff"
-          fontSize="11"
+          fontSize={end - start < 30 ? 9 : 11}
           fontWeight="700"
           textAnchor="middle"
           dominantBaseline="middle"
           transform={`rotate(${labelRotation}, ${labelX}, ${labelY})`}
           style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}
         >
-          {seg.label}
+          {seg.label}{end - start >= 40 ? ` · ${pct}%` : ''}
         </text>
       </g>
     );
@@ -174,7 +202,7 @@ export default function SpinWheel({ onClose }) {
   return createPortal(
     <>
       <div className="spin-wheel-overlay" onClick={onClose}>
-        <div className="spin-wheel-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="spin-wheel-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Daily spin">
           <div className="spin-wheel-header">
             <div className="spin-wheel-title">Daily Spin</div>
             <button className="spin-wheel-close" onClick={onClose}>Close</button>
@@ -183,7 +211,6 @@ export default function SpinWheel({ onClose }) {
           <div className="spin-wheel-container">
             <div className="spin-wheel-pointer" />
             <div
-              ref={discRef}
               className={`spin-wheel-disc ${spinning ? 'spinning' : ''}`}
               style={{ transform: `rotate(${rotation}deg)` }}
             >
@@ -194,6 +221,12 @@ export default function SpinWheel({ onClose }) {
             <div className="spin-wheel-center">SPIN</div>
           </div>
 
+          <div className="spin-wheel-odds">
+            {segments.map((s) => (
+              <span key={s.id}>{segIcon(s)} {s.label} — {Math.round(((s.weight || 1) / total) * 100)}%</span>
+            ))}
+          </div>
+
           <button
             className="spin-wheel-btn"
             onClick={doSpin}
@@ -202,13 +235,9 @@ export default function SpinWheel({ onClose }) {
             {spinning ? 'Spinning...' : canSpin ? 'SPIN FREE!' : 'Come Back Tomorrow'}
           </button>
 
-          {!canSpin && !spinning && (
-            <div className="spin-wheel-cooldown">
-              You have already used your free daily spin.
-            </div>
-          )}
-          {errMsg && (
-            <div className="spin-wheel-cooldown" style={{ color: '#F59E0B' }}>{errMsg}</div>
+          {errMsg && <div className="spin-wheel-cooldown">{errMsg}</div>}
+          {!canSpin && !spinning && !errMsg && (
+            <div className="spin-wheel-cooldown">Next free spin in {formatCountdown(nextSpinAt)} (midnight, Denver time).</div>
           )}
         </div>
       </div>
@@ -217,18 +246,8 @@ export default function SpinWheel({ onClose }) {
         <div className="spin-prize-popup" onClick={closePrize}>
           <div className="spin-prize-card" onClick={(e) => e.stopPropagation()}>
             <span className="spin-prize-icon">{prize.icon}</span>
-            <div className="spin-prize-label">
-              {prize.serverLabel || (
-                prize.type === 'chips' ? `${prize.value.toLocaleString()} Chips!` :
-                prize.type === 'xp_multiplier' ? '2x XP Boost!' :
-                'Mystery Prize!'
-              )}
-            </div>
-            <div className="spin-prize-desc">
-              {prize.type === 'chips' && 'Chips have been added to your balance.'}
-              {prize.type === 'xp_multiplier' && 'Double XP for your next 10 hands!'}
-              {prize.type === 'mystery' && 'A random bonus has been added to your account!'}
-            </div>
+            <div className="spin-prize-label">You won {prize.text}!</div>
+            <div className="spin-prize-desc">Added to your balance.</div>
             <button className="spin-prize-claim-btn" onClick={closePrize}>Awesome!</button>
           </div>
         </div>

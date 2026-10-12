@@ -2,278 +2,173 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import './LoginRewards.css';
 import { getSocket } from '../../services/socketService';
-import { useProgressStore } from '../../store/progressStore';
+import { useProgressStore, dailyLoginClaimable, nextLoginRewardDay, vipPassActive } from '../../store/progressStore';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
+import { denverDateKey, nextDenverMidnightMs, formatCountdown } from '../../utils/denverTime';
+import { formatReward, shopErrorText } from '../../utils/economyCatalog';
 
-// 2026-07-05 audit P3 fix: mirror the server's authoritative reward table EXACTLY
-// (poker-server/src/index.ts claimDailyLogin: CHIPS_BY_DAY=[_,1000,2000,3000,5000,
-// 7500,10000,20000], STARS_BY_DAY=[_,0,0,0,5,10,20,50], indexed by day). The old
-// values (500/750/1000/1500/2000/3000/5000) were purely cosmetic and understated
-// what the server actually grants, so the promised amount never matched the payout.
+// 2026-10-11 (.online R2 — APPUI-36 / ECON-4). The daily login reward runs on
+// the SERVER's Denver calendar: claimable when playerProgress
+// .lastLoginClaimDate (Denver YYYY-MM-DD) is not today's Denver date; the day
+// of the 7-day cycle the next claim pays continues only after a claim
+// yesterday (Denver). The calendar used to read the browser's local date and
+// a sessionStorage copy, so an evening player was offered a reward the server
+// refused as already claimed (and the refusal was silent).
+//
+// Amounts mirror poker-server's LOGIN_CHIPS_BY_DAY / LOGIN_STARS_BY_DAY; an
+// active VIP pass adds +50% (C8); Day 7 also opens a Basic Mystery Box. The
+// claim answer (dailyLoginClaimed) is what was actually paid and is shown.
+
 const DAILY_REWARDS = [
-  { day: 1, chips: 1000, stars: 0, label: '1,000 chips' },
-  { day: 2, chips: 2000, stars: 0, label: '2,000 chips' },
-  { day: 3, chips: 3000, stars: 0, label: '3,000 chips' },
-  { day: 4, chips: 5000, stars: 5, label: '5,000 chips + 5 stars' },
-  { day: 5, chips: 7500, stars: 10, label: '7,500 chips + 10 stars' },
-  { day: 6, chips: 10000, stars: 20, label: '10,000 chips + 20 stars' },
-  { day: 7, chips: 20000, stars: 50, label: '20,000 chips + 50 stars' },
+  { day: 1, chips: 1000, stars: 0 },
+  { day: 2, chips: 2000, stars: 0 },
+  { day: 3, chips: 3000, stars: 0 },
+  { day: 4, chips: 5000, stars: 5 },
+  { day: 5, chips: 7500, stars: 10 },
+  { day: 6, chips: 10000, stars: 20 },
+  { day: 7, chips: 20000, stars: 50, box: 'Basic Mystery Box' },
 ];
 
-const LS_KEY = 'app_poker_login_rewards';
+const CLAIM_TIMEOUT_MS = 12000;
 
-function getStoredData() {
-  try {
-    const raw = sessionStorage.getItem(LS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  return null;
-}
-
-function getTodayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function getInitialState() {
-  const stored = getStoredData();
-  const today = getTodayStr();
-
-  if (!stored) {
-    return { streak: 1, currentDay: 1, lastClaimDate: null, claimedDays: [] };
-  }
-
-  // Check if already claimed today
-  if (stored.lastClaimDate === today) {
-    return stored;
-  }
-
-  // Check if the streak continues (claimed yesterday)
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-
-  if (stored.lastClaimDate === yesterdayStr) {
-    const nextDay = stored.currentDay >= 7 ? 1 : stored.currentDay + 1;
-    return {
-      streak: stored.streak + 1,
-      currentDay: nextDay,
-      lastClaimDate: stored.lastClaimDate,
-      claimedDays: nextDay === 1 ? [] : stored.claimedDays,
-    };
-  }
-
-  // Streak broken - reset
-  return { streak: 1, currentDay: 1, lastClaimDate: null, claimedDays: [] };
+function claimedText(res) {
+  const parts = [];
+  if (Number(res.chips) > 0) parts.push(`${Number(res.chips).toLocaleString()} chips`);
+  if (Number(res.stars) > 0) parts.push(`${Number(res.stars).toLocaleString()} stars`);
+  const box = res.mysteryReward || res.mysteryBox || res.box;
+  if (box && typeof box === 'object') parts.push(`a Mystery Box: ${formatReward(box)}`);
+  const d = Number(res.day);
+  const head = d > 0 ? `Claimed Day ${d}` : 'Claimed';
+  return parts.length ? `${head}: ${parts.join(' + ')}!` : `${head}!`;
 }
 
 export default function LoginRewards({ onClose, autoOpened, inline }) {
-  // Server-authoritative streak + last claim. Seed from store hydration; falls
-  // back to the legacy sessionStorage state so UI still works pre-hydration.
   const progress = useProgressStore((s) => s.progress);
-  const today = getTodayStr();
+  const hydrated = progress?.hydrated === true;
+  const [now, setNow] = useState(() => Date.now());
+  const claimable = dailyLoginClaimable(progress, now);
+  const day = nextLoginRewardDay(progress, now);
+  const streak = Math.max(0, Number(progress?.loginStreak) || 0);
+  const vip = vipPassActive(progress, now);
 
-  const [state, setState] = useState(() => {
-    // Prefer server-hydrated data if present
-    if (progress?.loginStreak != null || progress?.lastLoginClaimDate != null) {
-      const streak = progress.loginStreak || 0;
-      const lastClaim = progress.lastLoginClaimDate || null;
-      const day = streak === 0 ? 1 : ((streak - 1) % 7) + 1;
-      return {
-        streak,
-        currentDay: day,
-        lastClaimDate: lastClaim,
-        claimedDays: lastClaim === today ? [day] : [],
-      };
-    }
-    return getInitialState();
-  });
-
-  const canClaim = state.lastClaimDate !== today;
   const [claiming, setClaiming] = useState(false);
-  const [claimError, setClaimError] = useState(null);
+  const [message, setMessage] = useState(null); // { ok, text }
 
   // Hardware back-button closes the modal (not inline embed)
   useBackButtonClose(!inline && typeof onClose === 'function', onClose || (() => {}));
 
-  // Track active listener + timeouts so unmount mid-claim doesn't leak a
-  // handler on the shared socket or fire setState on an unmounted component.
   const activeListenerRef = useRef(null);
-  const timeoutIdsRef = useRef(new Set());
+  const timerRef = useRef(null);
   const mountedRef = useRef(true);
-  // Suppress playerProgress re-sync for a short window after a successful
-  // claim. Otherwise: user taps Claim → onResult updates local state →
-  // server pushes a fresh playerProgress a moment later → the re-sync
-  // useEffect below overwrites the local state with server values that
-  // might not yet reflect the claim (or that reflect it inconsistently
-  // while the animation is still running). Window fires either after
-  // 2.5s wall-clock or as soon as incoming progress confirms the claim
-  // (lastLoginClaimDate === today), whichever is first.
-  const suppressSyncUntilRef = useRef(0);
   useEffect(() => {
+    mountedRef.current = true;
+    const iv = setInterval(() => setNow(Date.now()), 60000);
     return () => {
       mountedRef.current = false;
+      clearInterval(iv);
       const sock = getSocket();
-      if (sock && activeListenerRef.current) {
-        sock.off('dailyLoginClaimed', activeListenerRef.current);
-      }
+      if (sock && activeListenerRef.current) sock.off('dailyLoginClaimed', activeListenerRef.current);
       activeListenerRef.current = null;
-      timeoutIdsRef.current.forEach(clearTimeout);
-      timeoutIdsRef.current.clear();
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
 
-  // Re-sync when store updates arrive from server
-  useEffect(() => {
-    if (progress?.loginStreak == null && progress?.lastLoginClaimDate == null) return;
-    const streak = progress.loginStreak || 0;
-    const lastClaim = progress.lastLoginClaimDate || null;
-    // Suppress if we're inside the post-claim window AND the inbound
-    // progress doesn't yet confirm today's claim. Once the server echoes
-    // back lastLoginClaimDate === today, we let the re-sync proceed —
-    // at that point server and local state agree so nothing flickers.
-    const now = Date.now();
-    if (now < suppressSyncUntilRef.current && lastClaim !== today) {
-      return;
-    }
-    const day = streak === 0 ? 1 : ((streak - 1) % 7) + 1;
-    setState({
-      streak,
-      currentDay: day,
-      lastClaimDate: lastClaim,
-      claimedDays: lastClaim === today ? [day] : [],
-    });
-  }, [progress?.loginStreak, progress?.lastLoginClaimDate, today]);
-
   const handleClaim = () => {
-    if (!canClaim || claiming) return;
+    if (!claimable || claiming) return;
     const socket = getSocket();
-    if (!socket) return;
+    if (!socket || !socket.connected) { setMessage({ ok: false, text: 'Not connected — try again in a moment.' }); return; }
     setClaiming(true);
-    setClaimError(null);
+    setMessage(null);
 
-    // Fail-safe: if the server never responds, unblock the UI after 12s.
-    const timeoutGuard = setTimeout(() => {
-      timeoutIdsRef.current.delete(timeoutGuard);
-      if (!mountedRef.current) return;
-      if (activeListenerRef.current) {
-        socket.off('dailyLoginClaimed', activeListenerRef.current);
-        activeListenerRef.current = null;
-      }
-      setClaiming(false);
-      setClaimError('Claim timed out — please try again.');
-    }, 12000);
-    timeoutIdsRef.current.add(timeoutGuard);
-
-    // Capture `onResult` as a local const — the activeListenerRef is used
-    // for cleanup-on-unmount, but the listener identity we .off() with must
-    // be this exact function, not whatever happens to be in the ref later
-    // (guards against a theoretical concurrent-claim overwriting the ref
-    // even though canClaim+claiming prevent that today).
     const onResult = (res) => {
       socket.off('dailyLoginClaimed', onResult);
       if (activeListenerRef.current === onResult) activeListenerRef.current = null;
-      clearTimeout(timeoutGuard);
-      timeoutIdsRef.current.delete(timeoutGuard);
+      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
       if (!mountedRef.current) return;
       setClaiming(false);
-      if (!res?.success) {
-        setClaimError(res?.error || 'Could not claim');
+      // The server's own Denver claim date when it sends one (R2), else today's.
+      const sentDate = typeof res?.lastLoginClaimDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(res.lastLoginClaimDate) ? res.lastLoginClaimDate.slice(0, 10) : null;
+      const today = sentDate || denverDateKey();
+      if (res?.success) {
+        // The server recorded today's claim (its ledger date is Denver's):
+        // reflect exactly that until its playerProgress arrives.
+        useProgressStore.getState().setProgress({
+          lastLoginClaimDate: today,
+          ...(Number.isFinite(Number(res.streak)) ? { loginStreak: Number(res.streak) } : {}),
+        });
+        setMessage({ ok: true, text: claimedText(res) });
         return;
       }
-      // Server awarded it — update UI optimistically. Set a 2.5s suppression
-      // window so a re-sync from playerProgress can't revert the optimistic
-      // state mid-animation. (See suppressSyncUntilRef in the re-sync
-      // useEffect above — it lets inbound progress through as soon as it
-      // confirms today's claim, so the window closes early in the common case.)
-      suppressSyncUntilRef.current = Date.now() + 2500;
-      setState((prev) => ({
-        ...prev,
-        streak: res.streak || prev.streak + 1,
-        currentDay: res.day || prev.currentDay,
-        lastClaimDate: today,
-        claimedDays: [...prev.claimedDays, res.day || prev.currentDay],
-      }));
-      // 2026-05-19 audit — also write back to the global progress store
-      // so subsequent re-mounts of this component (e.g. close modal +
-      // reopen from lobby's "Daily Bonus Ready" tile) see the updated
-      // streak. Pre-fix: re-mount would read `progress.loginStreak`
-      // which was 0 (server emits `playerProgress` with the field named
-      // `dailyLoginStreak`, but the client reads `loginStreak` — separate
-      // bug also being fixed in ProgressionManager.ts). User saw the
-      // modal flip back to "0 Day Streak / Day 1 / Claim button" after
-      // already claiming. SHOP tab read from durableState (correctly
-      // named loginStreak) so it was fine — this re-mount mismatch is
-      // specific to the LoginRewards modal.
-      try {
-        const store = useProgressStore.getState();
-        const prevProg = store.progress || {};
-        useProgressStore.setState({
-          progress: {
-            ...prevProg,
-            loginStreak: res.streak || (prevProg.loginStreak || 0) + 1,
-            lastLoginClaimDate: today,
-          },
-        });
-      } catch { /* non-fatal — local state still shows claimed */ }
+      if (res?.error === 'already_claimed' || res?.code === 'already_claimed') {
+        useProgressStore.getState().setProgress({ lastLoginClaimDate: today });
+        setMessage({ ok: true, text: 'Already claimed today — your next reward opens at midnight (Denver time).' });
+        return;
+      }
+      setMessage({ ok: false, text: shopErrorText(res, 'Could not claim — try again.') });
     };
     activeListenerRef.current = onResult;
     socket.on('dailyLoginClaimed', onResult);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      socket.off('dailyLoginClaimed', onResult);
+      activeListenerRef.current = null;
+      if (!mountedRef.current) return;
+      setClaiming(false);
+      setMessage({ ok: false, text: 'The game server did not answer — try again.' });
+    }, CLAIM_TIMEOUT_MS);
     socket.emit('claimDailyLogin');
   };
 
+  const shownStreak = claimable ? (day === 1 ? 0 : streak) : streak;
   const rewardsContent = (
     <>
       <div className="login-rewards-streak">
         <span className="streak-flame">{'\u{1F525}'}</span>
-        <span className="streak-count">{state.streak} Day Streak</span>
+        <span className="streak-count">{shownStreak} Day Streak</span>
+        {vip && <span className="login-rewards-vip">VIP +50%</span>}
       </div>
 
-      <div className="login-rewards-grid">
-        {DAILY_REWARDS.map((reward) => {
-          const isClaimed = state.claimedDays.includes(reward.day);
-          const isToday = reward.day === state.currentDay;
-          const isFuture = reward.day > state.currentDay;
-
-          let cardClass = 'reward-day-card';
-          if (isClaimed) cardClass += ' reward-day-claimed';
-          else if (isToday) cardClass += ' reward-day-today';
-          else if (isFuture) cardClass += ' reward-day-future';
-
-          return (
-            <div key={reward.day} className={cardClass}>
-              <div className="reward-day-number">Day {reward.day}</div>
-              <div className="reward-day-icon">
-                {/* U+1FA99 (🪙 coin) requires Unicode 13 — not all Chrome +
-                    Windows emoji fonts have the glyph and users saw an
-                    empty box. Switched to U+1F4B0 (💰 money bag) which is
-                    universally supported. 2026-04-22 audit fix. */}
-                {isClaimed ? '\u{2705}' : reward.day === 7 ? '\u{1F381}' : '\u{1F4B0}'}
+      {!hydrated ? (
+        <div className="login-rewards-hint">Loading your rewards…</div>
+      ) : (
+        <div className="login-rewards-grid">
+          {DAILY_REWARDS.map((reward) => {
+            const isToday = reward.day === day;
+            const isClaimed = reward.day < day || (isToday && !claimable);
+            const isFuture = reward.day > day;
+            let cardClass = 'reward-day-card';
+            if (isClaimed) cardClass += ' reward-day-claimed';
+            else if (isToday) cardClass += ' reward-day-today';
+            else if (isFuture) cardClass += ' reward-day-future';
+            return (
+              <div key={reward.day} className={cardClass}>
+                <div className="reward-day-number">Day {reward.day}</div>
+                <div className="reward-day-icon">
+                  {isClaimed ? '\u{2705}' : reward.box ? '\u{1F381}' : '\u{1F4B0}'}
+                </div>
+                <div className="reward-day-chips">{reward.chips.toLocaleString()}</div>
+                {reward.stars > 0 && <div className="reward-day-stars">+{reward.stars} stars</div>}
+                {reward.box && <div className="reward-day-bonus">+ {reward.box}</div>}
+                {isToday && claimable && (
+                  <button className="reward-claim-btn" onClick={handleClaim} disabled={claiming}>
+                    {claiming ? 'Claiming…' : 'Claim'}
+                  </button>
+                )}
+                {isToday && !claimable && <div className="reward-claimed-label">Claimed!</div>}
               </div>
-              <div className="reward-day-chips">{reward.chips.toLocaleString()}</div>
-              {reward.stars > 0 && (
-                <div className="reward-day-stars">+{reward.stars} stars</div>
-              )}
-              {reward.day === 7 && !isClaimed && (
-                <div className="reward-day-bonus">Mystery Box</div>
-              )}
-              {isToday && canClaim && (
-                <button className="reward-claim-btn" onClick={handleClaim}>
-                  Claim
-                </button>
-              )}
-              {isToday && !canClaim && (
-                <div className="reward-claimed-label">Claimed!</div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {autoOpened && canClaim && (
-        <div className="login-rewards-hint">
-          Your daily reward is ready to claim!
+            );
+          })}
         </div>
+      )}
+
+      {message && (
+        <div className={`login-rewards-message ${message.ok ? 'login-rewards-message--ok' : ''}`}>{message.text}</div>
+      )}
+      {hydrated && !claimable && !message && (
+        <div className="login-rewards-hint">Next reward in {formatCountdown(nextDenverMidnightMs(now), now)} (midnight, Denver time).</div>
+      )}
+      {autoOpened && claimable && !message && (
+        <div className="login-rewards-hint">Your daily reward is ready to claim!</div>
       )}
     </>
   );
@@ -289,7 +184,7 @@ export default function LoginRewards({ onClose, autoOpened, inline }) {
 
   return createPortal(
     <div className="login-rewards-overlay" onClick={onClose}>
-      <div className="login-rewards-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="login-rewards-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Daily login rewards">
         <div className="login-rewards-header">
           <div className="login-rewards-title">Daily Login Rewards</div>
           <button className="login-rewards-close" onClick={onClose}>Close</button>

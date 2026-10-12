@@ -64,9 +64,9 @@
   z-index: 10;
 }
 .nft-close-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  border-color: #ef4444;
+  background: rgba(255, 210, 74, 0.15);
+  color: #ffd24a;
+  border-color: #ffd24a;
 }
 
 /* ===== Header ===== */

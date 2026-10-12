@@ -50,18 +50,18 @@ export default class OverlayBoundary extends Component {
           left: '50%',
           transform: 'translate(-50%, -50%)',
           zIndex: 9000,
-          background: 'rgba(30,10,10,0.96)',
-          border: '1px solid rgba(239,68,68,0.5)',
+          background: 'rgba(8,20,52,0.97)',
+          border: '1px solid rgba(255,210,74,0.55)',
           borderRadius: 12,
           padding: '18px 22px',
-          color: '#fecaca',
+          color: '#ffd24a',
           maxWidth: 360,
           boxShadow: '0 8px 28px rgba(0,0,0,0.6)',
           fontFamily: 'system-ui',
         }}
       >
         <div style={{ fontWeight: 700, marginBottom: 6 }}>⚠ Failed to load</div>
-        <div style={{ fontSize: 13, lineHeight: 1.45, color: '#fee2e2' }}>
+        <div style={{ fontSize: 13, lineHeight: 1.45, color: '#dbe6ff' }}>
           {name} couldn't load. Your connection may have dropped briefly.
           Try again, or refresh the page.
         </div>
@@ -85,7 +85,7 @@ export default class OverlayBoundary extends Component {
             onClick={() => window.location.reload()}
             style={{
               padding: '6px 14px', borderRadius: 8,
-              background: 'linear-gradient(135deg,#ef4444,#b91c1c)',
+              background: 'linear-gradient(135deg,#1d4ed8,#2563eb)',
               border: 'none', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600,
             }}
           >

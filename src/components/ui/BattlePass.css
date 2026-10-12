@@ -287,3 +287,17 @@
   .bp-upgrade-cta { flex-direction: column; align-items: flex-start; }
   .bp-upgrade-btn { width: 100%; text-align: center; }
 }
+
+/* R2 (APPUI-6) — claim answers on their tier + the Premium purchase answer. */
+.bp-reward-cell { flex-wrap: wrap; }
+.bp-claim-pending { color: #ffd24a; font-weight: 700; }
+.bp-claim-error {
+  flex-basis: 100%;
+  font-size: 0.68rem;
+  line-height: 1.25;
+  color: #9fc2ff;
+}
+.bp-buy-note { display: block; margin-top: 4px; font-size: 0.78rem; color: #c8d6f5; }
+.bp-buy-note--done { color: #ffd24a; }
+.bp-buy-note--error { color: #9fc2ff; }
+.bp-upgrade-btn:disabled { opacity: 0.6; cursor: default; }

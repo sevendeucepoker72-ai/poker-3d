@@ -370,7 +370,7 @@ export default function StakingMarketplace({
           <span className="staking-explainer-icon">💡</span>
           <span>
             Players sell action (%) in tournaments they are registered for. Backers receive that % of the player's
-            winnings — buy 10% of a player who wins 10,000 chips and you get 1,000 chips. {STAKE_ESCROW_TEXT}
+            winnings — buy 10% of a player who wins 10,000 chips and you get 1,000 chips. {STAKE_ESCROW_TEXT} Play money only.
           </span>
         </div>
 

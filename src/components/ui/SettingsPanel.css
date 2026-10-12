@@ -398,3 +398,9 @@
   background: rgba(184, 134, 11, 0.08);
   color: #3b82f6;
 }
+
+/* R2 (APPUI-26) — hints under a setting + the equip pickers' note. */
+.settings-row-hint { display: block; font-size: 0.75rem; color: #8fa8d8; margin-top: 2px; font-weight: 400; }
+.settings-hint { font-size: 0.75rem; color: #8fa8d8; }
+.settings-hint-error { color: #93c5fd; margin-left: 4px; }
+.settings-radio-item input:disabled + .settings-radio-label { opacity: 0.6; }

@@ -1,0 +1,18 @@
+/*
+ * Player settings that change the table (2026-10-11, .online R2 — APPUI-26).
+ * The root classes are set by services/settingsPrefs.js from the Settings
+ * panel. Selectors name the table elements that carry the information:
+ *   hand strength — the top-center strength pill, the old strength box and the
+ *                   "Eq" line on the Call button;
+ *   pot odds      — the pot-odds badge on the felt and the odds line on Call.
+ */
+html.pref-hide-hand-strength .hand-strength-portal,
+html.pref-hide-hand-strength .hand-strength-container,
+html.pref-hide-hand-strength .action-equity-sub {
+  display: none !important;
+}
+
+html.pref-hide-pot-odds .table-pot-odds,
+html.pref-hide-pot-odds .action-odds-sub {
+  display: none !important;
+}

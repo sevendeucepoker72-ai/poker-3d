@@ -83,7 +83,23 @@ const COLOR_BLIND_INDEX_COLORS = {
  */
 export function getCardColor(suit, colorBlindMode) {
   if (typeof suit === 'number') {
-    return colorBlindMode ? COLOR_BLIND_INDEX_COLORS[suit] : SUIT_INDEX_TO_COLOR[suit];
+    if (colorBlindMode) return COLOR_BLIND_INDEX_COLORS[suit];
+    return fourColorDeckOn() ? FOUR_COLOR_INDEX_COLORS[suit] : SUIT_INDEX_TO_COLOR[suit];
   }
-  return colorBlindMode ? COLOR_BLIND_COLORS[suit] : SUIT_COLORS[suit];
+  if (colorBlindMode) return COLOR_BLIND_COLORS[suit];
+  return fourColorDeckOn() ? FOUR_COLOR_COLORS[suit] : SUIT_COLORS[suit];
+}
+
+// 2026-10-11 (R2, APPUI-26) — the Settings "Four-color deck" toggle: hearts
+// red, diamonds blue, clubs green, spades black. On when the root carries
+// `pref-four-color-deck` (services/settingsPrefs.js); colour-blind mode wins.
+const FOUR_COLOR_COLORS = { hearts: '#E63946', diamonds: '#2F6FEB', clubs: '#1E9E5A', spades: '#2D2D3F' };
+const FOUR_COLOR_INDEX_COLORS = { 0: '#E63946', 1: '#2F6FEB', 2: '#1E9E5A', 3: '#2D2D3F' };
+function fourColorDeckOn() {
+  try {
+    return typeof document !== 'undefined' && !!document.documentElement
+      && document.documentElement.classList.contains('pref-four-color-deck');
+  } catch {
+    return false;
+  }
 }

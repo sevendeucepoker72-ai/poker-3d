@@ -50,7 +50,7 @@
 }
 .sr-player-name { font-size: 0.68rem; color: #aaa; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sr-player-cards { display: flex; gap: 2px; }
-.sr-player-fold { font-size: 0.6rem; color: #EF4444; font-weight: 700; }
+.sr-player-fold { font-size: 0.6rem; color: #93c5fd; font-weight: 700; }
 
 .sr-action-label {
   text-align: center; font-size: 0.85rem; color: #fff;

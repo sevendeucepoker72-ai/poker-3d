@@ -258,9 +258,9 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  background: rgba(239, 68, 68, 0.05);
-  color: #EF4444;
+  border: 1px solid rgba(120, 160, 255, 0.35);
+  background: rgba(120, 160, 255, 0.06);
+  color: #93c5fd;
   font-size: 0.7rem;
   font-weight: 700;
   cursor: pointer;
@@ -276,8 +276,8 @@
 }
 
 .friends-remove-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: #EF4444;
+  background: rgba(120, 160, 255, 0.2);
+  border-color: #93c5fd;
 }
 
 @media (max-width: 480px) {
@@ -315,3 +315,8 @@
   font-size: 0.8rem;
   text-align: center;
 }
+
+/* R2 (APPUI-14) — errors readable, names open the profile. */
+.friends-notice--error { color: #dbe6ff; border-color: rgba(120, 160, 255, 0.5); background: rgba(59, 130, 246, 0.12); }
+.friends-info--link { cursor: pointer; }
+.friends-info--link:hover .friends-name { text-decoration: underline; }

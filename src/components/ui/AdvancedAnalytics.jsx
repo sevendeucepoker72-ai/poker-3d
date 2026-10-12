@@ -1,7 +1,16 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useDetailedStats } from '../../hooks/useDetailedStats';
+import { serverWinRate } from '../../store/progressStore';
+import { summarizeOwnHands, recordToPokerStarsText } from '../../utils/handLog';
 import './AdvancedAnalytics.css';
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// 2026-10-11 (.online R2 — APPUI-51 / C10). Everything here is the player's
+// OWN data: his rows of the lobby hand log (utils/handLog — his seat in each
+// hand; other players' rows are never counted), the server's playerProgress
+// counters, and the server's tracked stats (getDetailedStats). It used to sum
+// EVERY player's chip delta (always ~0), count every winner as his win, and
+// grade leaks from this browser's own counters. A number the server does not
+// track is shown as "not tracked", never invented.
 
 function gradeFromRatio(value, threshold, higherIsBad) {
   if (value == null || isNaN(value)) return 'N/A';
@@ -15,8 +24,8 @@ function gradeFromRatio(value, threshold, higherIsBad) {
 }
 
 function gradeColor(grade) {
-  const map = { A: '#00FF88', B: '#88FF00', C: '#FFFF00', D: '#FF8800', E: '#FF4400', F: '#FF0000', 'N/A': '#888' };
-  return map[grade] || '#888';
+  const map = { A: '#4ADE80', B: '#86EFAC', C: '#FDE68A', D: '#FBBF24', E: '#93C5FD', F: '#60A5FA', 'N/A': '#8fa8d8' };
+  return map[grade] || '#8fa8d8';
 }
 
 function fmt(n, decimals = 1) {
@@ -35,57 +44,28 @@ function fmtChips(n) {
 
 // ── Overview tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ progress, handHistories }) {
-  const stats = useMemo(() => {
-    const totalHands = handHistories.length;
-
-    let netChips = 0;
-    let totalPotWon = 0;
-    let winCount = 0;
-    let bestHandName = '—';
-    let bestChipsWon = 0;
-
-    handHistories.forEach(h => {
-      h.winners?.forEach(w => {
-        if (w.chipsWon > bestChipsWon) {
-          bestChipsWon = w.chipsWon;
-          bestHandName = w.handName || '—';
-        }
-        totalPotWon += w.chipsWon;
-        winCount++;
-      });
-      h.players?.forEach(p => {
-        if (p.endChips != null && p.startChips != null) {
-          netChips += p.endChips - p.startChips;
-        }
-      });
-    });
-
-    const avgPotWon = winCount > 0 ? totalPotWon / winCount : 0;
-    const winRate = progress?.winRate ?? (totalHands > 0 ? (winCount / totalHands) * 100 : 0);
-
-    return { totalHands, netChips, avgPotWon, winRate, bestHandName };
-  }, [handHistories, progress]);
-
+function OverviewTab({ progress, summary }) {
   const cards = [
-    { label: 'Total Hands', value: stats.totalHands, unit: '' },
-    { label: 'Win Rate', value: fmt(stats.winRate), unit: '%' },
-    { label: 'Net Chips', value: fmtChips(stats.netChips), unit: '' },
-    { label: 'Avg Pot Won', value: fmt(stats.avgPotWon, 0), unit: ' chips' },
-    { label: 'Best Hand', value: stats.bestHandName, unit: '' },
-    { label: 'ELO', value: progress?.elo ?? '—', unit: '' },
-    { label: 'Rank', value: progress?.rank ?? '—', unit: '' },
-    { label: 'Level', value: progress?.level ?? '—', unit: '' },
+    { label: 'Win Rate (all hands)', value: `${serverWinRate(progress)}%` },
+    { label: 'Hands Played (all)', value: (Number(progress?.totalHandsPlayed) || 0).toLocaleString() },
+    { label: `Recent Hands Logged`, value: summary.hands },
+    { label: 'Won (recent)', value: `${summary.wins} (${fmt(summary.winRate)}%)` },
+    { label: 'Net (recent)', value: summary.netKnown > 0 ? fmtChips(summary.net) : '—' },
+    { label: 'Avg Pot Won (recent)', value: summary.wins > 0 ? `${summary.avgPotWon.toLocaleString()} chips` : '—' },
+    { label: 'Best Win (recent)', value: summary.biggestWin > 0 ? `${summary.biggestWin.toLocaleString()}${summary.bestHandName ? ` · ${summary.bestHandName}` : ''}` : '—' },
+    { label: 'ELO', value: progress?.elo ?? '—' },
+    { label: 'Level', value: progress?.level ?? '—' },
   ];
 
   return (
     <div className="aa-section">
       <h3 className="aa-section-title">Performance Overview</h3>
+      <p className="aa-section-sub">"Recent" = your hands in the history the server keeps for you (up to 100) plus this session.</p>
       <div className="aa-stats-grid">
         {cards.map(c => (
           <div key={c.label} className="aa-stat-card">
             <span className="aa-stat-label">{c.label}</span>
-            <span className="aa-stat-value">{c.value}{c.unit}</span>
+            <span className="aa-stat-value">{c.value}</span>
           </div>
         ))}
       </div>
@@ -93,114 +73,59 @@ function OverviewTab({ progress, handHistories }) {
   );
 }
 
-// ── Leaks tab ─────────────────────────────────────────────────────────────────
+// ── Leaks tab (server-tracked stats only) ────────────────────────────────────
 
-function LeaksTab({ progress }) {
-  const vpip = (progress?.vpip != null && progress.vpip > 0) ? progress.vpip : null;
-  const pfr = (progress?.pfr != null && progress.pfr > 0) ? progress.pfr : null;
+function LeaksTab({ detailed, status }) {
+  const num = (v) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
+  const tracked = Number(detailed?.handsTracked ?? detailed?.totalHandsPlayed) || 0;
+  const enough = tracked >= 20;
+  const vpip = enough ? num(detailed?.vpip) : null;
+  const pfr = enough ? num(detailed?.pfr) : null;
+  const afRaw = enough ? num(detailed?.af) : null;
+  const af = afRaw != null && afRaw < 99 ? afRaw : null;
+  const handsWon = Number(detailed?.handsWon) || 0;
+  const bluffPct = enough && handsWon >= 5 && num(detailed?.bluffWins) != null ? Math.round((Number(detailed.bluffWins) / handsWon) * 100) : null;
 
-  // Aggression factor from street action counts: (bets+raises) / calls
-  const aggFactor = useMemo(() => {
-    const sa = progress?.streetActions;
-    if (!sa) return null;
-    let bets = 0, raises = 0, calls = 0;
-    for (const s of Object.values(sa)) {
-      bets += s.bets || 0;
-      raises += s.raises || 0;
-      calls += s.calls || 0;
-    }
-    if (calls === 0) return bets + raises > 0 ? 999 : null;
-    return +((bets + raises) / calls).toFixed(1);
-  }, [progress]);
-
-  // Bluff %, computed from bluffWins / handsWon
-  const bluffPct = useMemo(() => {
-    const hw = progress?.handsWon;
-    const bw = progress?.bluffWins;
-    if (!hw || hw < 5) return null;
-    return Math.round(((bw || 0) / hw) * 100);
-  }, [progress]);
-
-  // Fold to steal, computed from blind fold tracking
-  const foldToSteal = useMemo(() => {
-    const bh = progress?.blindHands;
-    const bf = progress?.blindFolded;
-    if (!bh || bh < 10) return null;
-    return Math.round(((bf || 0) / bh) * 100);
-  }, [progress]);
+  if (status !== 'ready') {
+    return (
+      <div className="aa-section">
+        <h3 className="aa-section-title">Leak Finder</h3>
+        <p className="aa-empty">{status === 'loading' ? 'Loading your tracked stats from the server…' : 'Your tracked stats are not available right now — try again in a moment.'}</p>
+      </div>
+    );
+  }
 
   const leaks = [
     {
-      name: 'VPIP (Voluntarily Put $ In Pot)',
-      value: vpip,
-      threshold: 35,
-      unit: '%',
-      higherIsBad: true,
-      grade: gradeFromRatio(vpip, 35, true),
-      advice: vpip == null
-        ? 'No data yet. Play more hands to generate stats.'
-        : vpip > 35
-          ? 'You are playing too many hands pre-flop. Tighten your opening ranges, especially in early position. Fold suited connectors and weak aces from UTG/UTG+1.'
-          : 'Good range discipline. Maintain selective aggression in late position.',
+      name: 'VPIP (voluntarily put chips in the pot)', value: vpip, threshold: 35, unit: '%', higherIsBad: true,
+      advice: vpip == null ? 'Not enough tracked hands yet.' : vpip > 35
+        ? 'You are playing too many hands pre-flop. Tighten your opening ranges, especially in early position.'
+        : 'Good range discipline. Keep selective aggression in late position.',
     },
     {
-      name: 'PFR (Pre-Flop Raise %)',
-      value: pfr,
-      threshold: 12,
-      unit: '%',
-      higherIsBad: false,
-      grade: gradeFromRatio(pfr, 12, false),
-      advice: pfr == null
-        ? 'No data yet.'
-        : pfr < 12
-          ? 'You are limping too often. Open-raise or fold — limping leaks chips and gives opponents cheap flops. Target PFR of 15-22% for a balanced TAG style.'
-          : 'Solid pre-flop aggression. Ensure your 3-bet range is balanced.',
+      name: 'PFR (pre-flop raise %)', value: pfr, threshold: 12, unit: '%', higherIsBad: false,
+      advice: pfr == null ? 'Not enough tracked hands yet.' : pfr < 12
+        ? 'You are limping too often. Open-raise or fold — target a PFR of 15-22%.'
+        : 'Solid pre-flop aggression.',
     },
     {
-      name: 'Aggression Factor',
-      value: aggFactor,
-      threshold: 1.5,
-      unit: '',
-      higherIsBad: false,
-      grade: gradeFromRatio(aggFactor, 1.5, false),
-      advice: aggFactor == null
-        ? 'No data yet.'
-        : aggFactor < 1.5
-          ? 'You are calling too passively. Replace cold-calls with 3-bets or folds. On the flop, bet your strong hands and draws instead of check-calling.'
-          : 'Good aggression. Ensure you are not over-bluffing on river spots.',
+      name: 'Aggression Factor', value: af, threshold: 1.5, unit: '', higherIsBad: false,
+      advice: af == null ? 'Not enough calls tracked yet.' : af < 1.5
+        ? 'You call more than you bet or raise. Bet your strong hands and draws instead of check-calling.'
+        : 'Good aggression. Make sure you are not over-bluffing river spots.',
     },
     {
-      name: 'Bluff % (of all hands)',
-      value: bluffPct,
-      threshold: 40,
-      unit: '%',
-      higherIsBad: true,
-      grade: gradeFromRatio(bluffPct, 40, true),
-      advice: bluffPct == null
-        ? 'No data yet.'
-        : bluffPct > 40
-          ? 'You are over-bluffing. Bluffs should be polarized to strong draws or blockers. Reduce river bluffs vs calling stations and nit regulars.'
-          : 'Balanced bluffing frequency. Keep villain tendencies in mind when choosing bluff candidates.',
+      name: 'Bluff wins (of hands won)', value: bluffPct, threshold: 40, unit: '%', higherIsBad: true,
+      advice: bluffPct == null ? 'Not enough wins tracked yet.' : bluffPct > 40
+        ? 'A lot of your wins come without a pair — keep bluffs to good spots.'
+        : 'Balanced bluffing frequency.',
     },
-    {
-      name: 'Fold to Steal %',
-      value: foldToSteal,
-      threshold: 75,
-      unit: '%',
-      higherIsBad: true,
-      grade: gradeFromRatio(foldToSteal, 75, true),
-      advice: foldToSteal == null
-        ? 'No data yet.'
-        : foldToSteal > 75
-          ? 'You are over-folding in the blinds. Defend with suited connectors, medium pairs, and broadway hands. Re-steal with 3-bets against loose openers.'
-          : 'Good blind defense. Continue adjusting based on the open-raiser\'s position and tendencies.',
-    },
-  ];
+  ].map((l) => ({ ...l, grade: gradeFromRatio(l.value, l.threshold, l.higherIsBad) }));
 
   return (
     <div className="aa-section">
       <h3 className="aa-section-title">Leak Finder</h3>
-      <p className="aa-section-sub">Stats sourced from your tracked play history.</p>
+      <p className="aa-section-sub">From the server's tracked stats ({tracked.toLocaleString()} hands). Fold-to-steal is not tracked yet.</p>
       <div className="aa-leaks-list">
         {leaks.map(leak => (
           <div key={leak.name} className="aa-leak-card">
@@ -237,177 +162,97 @@ function LeaksTab({ progress }) {
   );
 }
 
-// ── Sessions / SVG Chart tab ──────────────────────────────────────────────────
+// ── Results chart (his own net per hand) ─────────────────────────────────────
 
-function SessionsTab({ handHistories }) {
-  const { points, minY, maxY } = useMemo(() => {
-    if (!handHistories || handHistories.length === 0) return { points: [], minY: 0, maxY: 0 };
-
-    let cumulative = 0;
-    const pts = handHistories.map((h, i) => {
-      let delta = 0;
-      h.players?.forEach(p => {
-        if (p.endChips != null && p.startChips != null) delta += p.endChips - p.startChips;
-      });
-      cumulative += delta;
-      return { x: i + 1, y: cumulative };
-    });
-
-    const ys = pts.map(p => p.y);
-    return { points: pts, minY: Math.min(0, ...ys), maxY: Math.max(0, ...ys) };
-  }, [handHistories]);
+function SessionsTab({ summary }) {
+  const points = summary.series.map((s) => ({ x: s.n, y: s.cumulative }));
+  const ys = points.map((p) => p.y);
+  const minY = Math.min(0, ...ys);
+  const maxY = Math.max(0, ...ys);
 
   const W = 560;
   const H = 220;
   const PAD = { top: 20, right: 20, bottom: 30, left: 55 };
   const chartW = W - PAD.left - PAD.right;
   const chartH = H - PAD.top - PAD.bottom;
-
   const yRange = maxY - minY || 1;
-  const xRange = points.length - 1 || 1;
-
-  const toSVG = pt => ({
-    x: PAD.left + (pt.x - 1) / xRange * chartW,
+  const xMin = points.length ? points[0].x : 1;
+  const xRange = (points.length ? points[points.length - 1].x - xMin : 0) || 1;
+  const toSVG = (pt) => ({
+    x: PAD.left + ((pt.x - xMin) / xRange) * chartW,
     y: PAD.top + (1 - (pt.y - minY) / yRange) * chartH,
   });
-
   const svgPoints = points.map(toSVG);
-  const pathD = svgPoints.length > 0
-    ? svgPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-    : '';
-
+  const pathD = svgPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const zeroY = PAD.top + (1 - (0 - minY) / yRange) * chartH;
   const areaD = svgPoints.length > 1
     ? `${pathD} L${svgPoints[svgPoints.length - 1].x.toFixed(1)},${zeroY.toFixed(1)} L${svgPoints[0].x.toFixed(1)},${zeroY.toFixed(1)} Z`
     : '';
-
   const yTicks = 5;
   const yTickValues = Array.from({ length: yTicks + 1 }, (_, i) => minY + (yRange / yTicks) * i);
+  const final = points.length ? points[points.length - 1].y : 0;
 
   return (
     <div className="aa-section">
-      <h3 className="aa-section-title">Bankroll Chart</h3>
-      {points.length === 0 ? (
-        <p className="aa-empty">No hand history data to chart.</p>
+      <h3 className="aa-section-title">Results Chart</h3>
+      <p className="aa-section-sub">Your chips won or lost per hand, added up (your recent hands).</p>
+      {points.length < 2 ? (
+        <p className="aa-empty">Play a few more hands to see your results chart.</p>
       ) : (
         <div className="aa-chart-wrap">
           <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="aa-svg-chart">
             <defs>
-              <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="aaChartGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#ffd24a" stopOpacity="0.35" />
                 <stop offset="100%" stopColor="#ffd24a" stopOpacity="0.02" />
               </linearGradient>
             </defs>
-
-            {/* Grid lines */}
             {yTickValues.map((v, i) => {
               const sy = PAD.top + (1 - (v - minY) / yRange) * chartH;
               return (
                 <g key={i}>
-                  <line x1={PAD.left} y1={sy} x2={PAD.left + chartW} y2={sy} stroke="#1a2a2a" strokeWidth="1" />
+                  <line x1={PAD.left} y1={sy} x2={PAD.left + chartW} y2={sy} stroke="#1a2a44" strokeWidth="1" />
                   <text x={PAD.left - 6} y={sy + 4} fill="#6688aa" fontSize="9" textAnchor="end">
-                    {v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toFixed(0)}
+                    {Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toFixed(0)}
                   </text>
                 </g>
               );
             })}
-
-            {/* Zero line */}
-            <line x1={PAD.left} y1={zeroY} x2={PAD.left + chartW} y2={zeroY} stroke="#334455" strokeWidth="1.5" strokeDasharray="4,3" />
-
-            {/* Area fill */}
-            {areaD && <path d={areaD} fill="url(#chartGrad)" />}
-
-            {/* Line */}
+            <line x1={PAD.left} y1={zeroY} x2={PAD.left + chartW} y2={zeroY} stroke="#334466" strokeWidth="1.5" strokeDasharray="4,3" />
+            {areaD && <path d={areaD} fill="url(#aaChartGrad)" />}
             {pathD && <path d={pathD} fill="none" stroke="#ffd24a" strokeWidth="2" strokeLinejoin="round" />}
-
-            {/* Dots */}
-            {svgPoints.map((p, i) => (
-              <circle key={i} cx={p.x} cy={p.y} r="3" fill="#ffd24a" opacity="0.7" />
-            ))}
-
-            {/* Axes */}
+            {svgPoints.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="3" fill="#ffd24a" opacity="0.7" />)}
             <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + chartH} stroke="#334" strokeWidth="1" />
             <line x1={PAD.left} y1={PAD.top + chartH} x2={PAD.left + chartW} y2={PAD.top + chartH} stroke="#334" strokeWidth="1" />
-
-            {/* X labels */}
-            {points.filter((_, i) => i % Math.max(1, Math.floor(points.length / 8)) === 0).map((pt, i) => {
-              const sx = PAD.left + (pt.x - 1) / xRange * chartW;
-              return (
-                <text key={i} x={sx} y={H - 8} fill="#6688aa" fontSize="9" textAnchor="middle">#{pt.x}</text>
-              );
-            })}
-
-            <text x={PAD.left + chartW / 2} y={H - 1} fill="#4466aa" fontSize="9" textAnchor="middle">Hand #</text>
+            <text x={PAD.left + chartW / 2} y={H - 4} fill="#4466aa" fontSize="9" textAnchor="middle">Your hands (oldest → newest)</text>
           </svg>
         </div>
       )}
       <div className="aa-sessions-summary">
-        <span>Total Hands: <strong>{points.length}</strong></span>
+        <span>Hands: <strong>{points.length}</strong></span>
         <span>Peak: <strong>{fmtChips(maxY)}</strong></span>
-        <span>Lowest: <strong style={{ color: minY < 0 ? '#FF4444' : '#00FF88' }}>{fmtChips(minY)}</strong></span>
-        <span>Final: <strong style={{ color: points[points.length - 1]?.y >= 0 ? '#00FF88' : '#FF4444' }}>
-          {fmtChips(points[points.length - 1]?.y ?? 0)}
-        </strong></span>
+        <span>Lowest: <strong style={{ color: minY < 0 ? '#93C5FD' : '#4ADE80' }}>{fmtChips(minY)}</strong></span>
+        <span>Total: <strong style={{ color: final >= 0 ? '#4ADE80' : '#93C5FD' }}>{fmtChips(final)}</strong></span>
       </div>
     </div>
   );
 }
 
-// ── Export tab ────────────────────────────────────────────────────────────────
+// ── Export tab (his own seat, play-money chips) ──────────────────────────────
 
-function ExportTab({ handHistories }) {
+function ExportTab({ handLog, myName }) {
   const [count, setCount] = useState(20);
   const [exported, setExported] = useState(false);
-
-  function buildPokerStarsFormat(histories) {
-    return histories.slice(-count).map((h, idx) => {
-      const handNum = idx + 1;
-      let txt = `PokerStars Hand #${handNum}: Hold'em No Limit\n`;
-      txt += `Table '${h.tableName || 'Unknown'}' ${h.players?.length || 9}-max Seat #${h.yourSeat ?? 1} is the button\n`;
-
-      h.players?.forEach(p => {
-        txt += `Seat ${p.seatIndex + 1}: ${p.name} (${p.startChips ?? 0} chips)\n`;
-      });
-
-      txt += `*** HOLE CARDS ***\n`;
-
-      h.players?.forEach(p => {
-        if (p.actions && p.actions.length > 0) {
-          p.actions.forEach(action => {
-            txt += `${p.name}: ${action}\n`;
-          });
-        }
-      });
-
-      if (h.winners && h.winners.length > 0) {
-        txt += `*** SHOWDOWN ***\n`;
-        h.winners.forEach(w => {
-          const player = h.players?.find(p => p.seatIndex === w.seatIndex);
-          const name = player?.name ?? `Seat ${w.seatIndex + 1}`;
-          txt += `${name} shows [? ?] (${w.handName || 'a hand'})\n`;
-          txt += `${name} collected ${w.chipsWon} from pot\n`;
-        });
-      }
-
-      txt += `*** SUMMARY ***\n`;
-      h.players?.forEach(p => {
-        const delta = (p.endChips ?? 0) - (p.startChips ?? 0);
-        const deltaStr = delta >= 0 ? `+${delta}` : `${delta}`;
-        txt += `Seat ${p.seatIndex + 1}: ${p.name} (${deltaStr})\n`;
-      });
-
-      return txt;
-    }).join('\n\n');
-  }
+  const own = useMemo(() => handLog.map((h) => ({ h, txt: recordToPokerStarsText(h, myName) })).filter((x) => x.txt), [handLog, myName]);
 
   function handleExport() {
-    const content = buildPokerStarsFormat(handHistories);
+    const n = Math.max(1, Math.min(own.length, Number(count) || 1));
+    const content = own.slice(-n).map((x) => x.txt).join('\n\n\n');
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `hand_history_${Date.now()}.txt`;
+    a.download = `american_pub_poker_hands_${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
     setExported(true);
@@ -417,7 +262,7 @@ function ExportTab({ handHistories }) {
   return (
     <div className="aa-section">
       <h3 className="aa-section-title">Export Hand History</h3>
-      <p className="aa-section-sub">Download hand histories in PokerStars .txt format for use with tracking software.</p>
+      <p className="aa-section-sub">Your hands in PokerStars-style text (amounts are play-money chips), from your seat. The Hand History Importer reads this file back.</p>
       <div className="aa-export-controls">
         <label className="aa-label">
           Hands to export
@@ -425,23 +270,23 @@ function ExportTab({ handHistories }) {
             type="number"
             className="aa-input"
             min={1}
-            max={handHistories.length || 100}
+            max={Math.max(1, own.length)}
             value={count}
             onChange={e => setCount(Number(e.target.value))}
           />
         </label>
-        <span className="aa-export-info">{Math.min(count, handHistories.length)} / {handHistories.length} hands selected</span>
+        <span className="aa-export-info">{Math.min(count, own.length)} / {own.length} of your hands selected</span>
       </div>
       <div className="aa-export-preview">
-        <span className="aa-export-preview-label">Preview (first hand):</span>
+        <span className="aa-export-preview-label">Preview (latest hand):</span>
         <pre className="aa-export-pre">
-          {handHistories.length > 0 ? buildPokerStarsFormat(handHistories.slice(-1)) : 'No hand history available.'}
+          {own.length > 0 ? own[own.length - 1].txt : 'No hands of yours recorded yet.'}
         </pre>
       </div>
       <button
         className={`aa-btn-primary ${exported ? 'aa-btn-success' : ''}`}
         onClick={handleExport}
-        disabled={handHistories.length === 0}
+        disabled={own.length === 0}
       >
         {exported ? 'Downloaded!' : 'Download Hand History (.txt)'}
       </button>
@@ -451,10 +296,13 @@ function ExportTab({ handHistories }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-const TABS = ['Overview', 'Leaks', 'Sessions', 'Export'];
+const TABS = ['Overview', 'Leaks', 'Results', 'Export'];
 
-export default function AdvancedAnalytics({ progress, handHistories = [], onClose }) {
+export default function AdvancedAnalytics({ progress, handLog = [], myName = '', onClose }) {
   const [activeTab, setActiveTab] = useState('Overview');
+  // loading | ready | unavailable (a still-loading record is asked again, never graded as zeros)
+  const { stats: detailed, status } = useDetailedStats();
+  const summary = useMemo(() => summarizeOwnHands(handLog, myName), [handLog, myName]);
 
   useEffect(() => {
     const handleKey = e => { if (e.key === 'Escape') onClose?.(); };
@@ -462,10 +310,12 @@ export default function AdvancedAnalytics({ progress, handHistories = [], onClos
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
+  const xp = Number(progress?.xp) || 0;
+  const xpNext = Number(progress?.xpToNextLevel) || 0;
+
   return (
     <div className="aa-overlay" onClick={e => e.target === e.currentTarget && onClose?.()}>
-      <div className="aa-modal">
-        {/* Header */}
+      <div className="aa-modal" role="dialog" aria-label="Advanced analytics">
         <div className="aa-header">
           <div className="aa-header-left">
             <span className="aa-icon">◈</span>
@@ -475,24 +325,19 @@ export default function AdvancedAnalytics({ progress, handHistories = [], onClos
           <button className="aa-close-btn" onClick={onClose}>✕</button>
         </div>
 
-        {/* Progress bar */}
         {progress && (
           <div className="aa-progress-bar-wrap">
             <div className="aa-progress-meta">
               <span>Level {progress.level}</span>
-              <span>{progress.xp ?? 0} XP</span>
+              <span>{xp.toLocaleString()} / {xpNext > 0 ? xpNext.toLocaleString() : '—'} XP</span>
               <span>{(progress.chips ?? 0).toLocaleString()} chips</span>
             </div>
             <div className="aa-progress-track">
-              <div
-                className="aa-progress-fill"
-                style={{ width: `${Math.min(100, ((progress.xp ?? 0) % 1000) / 10)}%` }}
-              />
+              <div className="aa-progress-fill" style={{ width: `${xpNext > 0 ? Math.min(100, (xp / xpNext) * 100) : 0}%` }} />
             </div>
           </div>
         )}
 
-        {/* Tabs */}
         <div className="aa-tabs">
           {TABS.map(tab => (
             <button
@@ -505,12 +350,11 @@ export default function AdvancedAnalytics({ progress, handHistories = [], onClos
           ))}
         </div>
 
-        {/* Content */}
         <div className="aa-content">
-          {activeTab === 'Overview' && <OverviewTab progress={progress} handHistories={handHistories} />}
-          {activeTab === 'Leaks' && <LeaksTab progress={progress} />}
-          {activeTab === 'Sessions' && <SessionsTab handHistories={handHistories} />}
-          {activeTab === 'Export' && <ExportTab handHistories={handHistories} />}
+          {activeTab === 'Overview' && <OverviewTab progress={progress} summary={summary} />}
+          {activeTab === 'Leaks' && <LeaksTab detailed={detailed} status={status} />}
+          {activeTab === 'Results' && <SessionsTab summary={summary} />}
+          {activeTab === 'Export' && <ExportTab handLog={handLog} myName={myName} />}
         </div>
       </div>
     </div>

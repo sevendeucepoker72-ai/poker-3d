@@ -97,7 +97,7 @@ export default function PWAInstallPrompt() {
           <div className="pwa-install-banner-text">
             <div className="pwa-install-banner-title">Install American Pub Poker</div>
             <div className="pwa-install-banner-sub">
-              {isIOS ? 'Tap here for Home-Screen instructions' : 'Play offline · No app store needed'}
+              {isIOS ? 'Tap here for Home-Screen instructions' : 'Opens from your home screen · No app store needed'}
             </div>
           </div>
           <button

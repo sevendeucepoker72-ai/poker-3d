@@ -1,17 +1,21 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
-import { useProgressStore, serverWinRate } from '../../store/progressStore';
+import { useProgressStore, serverWinRate, vipPassActive, equippedIdFor, dailyLoginClaimable } from '../../store/progressStore';
 import ProgressBar from './ProgressBar';
-import MissionsPanel from './MissionsPanel';
+import MissionsPanel, { missionIcon } from './MissionsPanel';
+import { formatCountdown, nextDenverMidnightMs, denverDateKey } from '../../utils/denverTime';
+import { PROFILE_BGS } from '../../utils/economyCatalog';
+import { ownHandResult } from '../../utils/handLog';
+import { lifetimeAchievementRows, sortAchievementRows } from '../../utils/achievementCatalog';
 import StatsPanel from './StatsPanel';
-import ThemeShop from './ThemeShop';
 import BattlePass from './BattlePass';
+import ShopTab from './ShopTab';
 import RankBadge, { getRankInfo, getNextRankInfo, RANK_TIERS } from './RankBadge';
 import CreateTableModal from './CreateTableModal';
 import TournamentLobby from './TournamentLobby';
 import QualifierLobby from './QualifierLobby';
-import Leaderboard from './Leaderboard';
+import Leaderboard, { BadgeIcons } from './Leaderboard';
 import FriendSystem from './FriendSystem';
 import UnlocksPanel from './UnlocksPanel';
 import VIPPanel from './VIPPanel';
@@ -40,7 +44,7 @@ const ExportData          = lazy(() => import('./ExportData'));
 const HandReplayViewer    = lazy(() => import('../replay/HandReplayViewer'));
 // Kept eager — rendered in the default lobby view, not gated behind a modal.
 import ClubsPanel from './ClubsPanel';
-import SpinWheel from './SpinWheel';
+import SpinWheel, { spinSeenToday, markSpinSeenToday } from './SpinWheel';
 import ScratchCards from './ScratchCards';
 import MultiTableView from './MultiTableView';
 import PlayerProfile from './PlayerProfile';
@@ -62,6 +66,7 @@ import { useTournamentRegistrationStore } from '../../store/tournamentRegistrati
 // tournament-seat store field `bannerBottom`; TournamentSeatNotice.jsx).
 import { useTournamentSeatStore } from '../../store/tournamentSeatStore';
 import { PlayerAvatar } from '../../hooks/useAvatar';
+import { profileTargetOf, profileTargetFromParam } from '../../utils/profileTarget';
 import './Lobby.css';
 
 // Variant badge colour by game FAMILY (every server variant id has one; no red).
@@ -74,18 +79,8 @@ const VARIANT_FAMILY_COLORS = {
   other: '#475569',
 };
 
-const ALL_ACHIEVEMENTS = [
-  { id: 'first_win', name: 'First Blood', description: 'Win your first hand', icon: '\u{1F3AF}' },
-  { id: 'high_roller', name: 'High Roller', description: 'Win a pot over 50,000', icon: '\u{1F4B0}' },
-  { id: 'streak_5', name: 'Hot Streak', description: 'Win 5 hands in a row', icon: '\u{1F525}' },
-  { id: 'streak_10', name: 'Unstoppable', description: 'Win 10 hands in a row', icon: '\u{26A1}' },
-  { id: 'hands_100', name: 'Card Shark', description: 'Play 100 hands', icon: '\u{1F3B4}' },
-  { id: 'hands_1000', name: 'Veteran', description: 'Play 1000 hands', icon: '\u{1F396}' },
-  { id: 'royal_flush', name: 'Royal Flush!', description: 'Get a Royal Flush', icon: '\u{1F451}' },
-  { id: 'bluff_master', name: 'Bluff Master', description: 'Win 10 hands with less than a pair', icon: '\u{1F3AD}' },
-  { id: 'all_in_warrior', name: 'All-In Warrior', description: 'Go all-in and win 20 times', icon: '\u{2694}' },
-  { id: 'social_butterfly', name: 'Social Butterfly', description: 'Send 50 chat messages', icon: '\u{1F98B}' },
-];
+// R2 (APPUI-49) — achievements are the server's (utils/achievementCatalog);
+// the lobby's own list used ids the server never awards.
 
 const VIP_TIERS = [
   { name: 'Bronze', minXP: 0, color: '#CD7F32', xpRate: '1x' },
@@ -166,44 +161,65 @@ function FeaturedTableBanner({ tables, onSpectate }) {
   );
 }
 
+// R2 (C7) — the equipped profile background as the profile banner's style.
+function profileBannerStyle(progress) {
+  const id = equippedIdFor(progress, 'profile_bg');
+  const bg = id && id !== 'default' ? PROFILE_BGS.find((b) => b.id === id)?.bg : null;
+  return bg ? { background: bg } : undefined;
+}
+
 // ─── Mission Strip ───
-const PLACEHOLDER_MISSIONS = [
-  { name: 'Win 3 Hands', progress: 1, target: 3, icon: '🏆', xp: 100 },
-  { name: 'Play 10 Hands', progress: 4, target: 10, icon: '🃏', xp: 75 },
-  { name: 'Raise 5 Times', progress: 2, target: 5, icon: '⚡', xp: 50 },
-];
+// 2026-10-11 (R2, C6 / APPUI-3) — the server's missions (playerProgress
+// .missions); tapping any of them opens the Missions panel, where they are
+// claimed. No placeholder missions: before the server answers it says so.
+function missionRewardShort(r) {
+  if (!r) return '';
+  if (r.chips > 0) return `+${r.chips >= 1000 ? `${(r.chips / 1000).toFixed(r.chips % 1000 ? 1 : 0)}k` : r.chips}`;
+  if (r.stars > 0) return `+${r.stars}⭐`;
+  if (r.xp > 0) return `+${r.xp} XP`;
+  return '';
+}
 
 function MissionStrip({ missions, onOpenMissions }) {
-  const now = new Date();
-  const midnight = new Date(now); midnight.setHours(24, 0, 0, 0);
-  const hoursLeft = Math.floor((midnight - now) / 3600000);
-  const minsLeft = Math.floor(((midnight - now) % 3600000) / 60000);
-  const timeStr = hoursLeft > 0 ? `${hoursLeft}h ${minsLeft}m` : `${minsLeft}m`;
-
-  const displayMissions = (missions && missions.length > 0) ? missions.slice(0, 3) : PLACEHOLDER_MISSIONS;
+  const timeStr = formatCountdown(nextDenverMidnightMs());
+  const list = Array.isArray(missions) ? missions.slice(0, 3) : null;
+  const ready = (list || []).filter((m) => m.completed && !m.claimed).length;
 
   return (
     <div className="mission-strip">
-      <div className="mission-strip-header">
-        <span className="mission-strip-title">📋 Daily Missions</span>
-        <span className="mission-strip-refresh">Resets in {timeStr}</span>
-      </div>
+      <button type="button" className="mission-strip-header mission-strip-open" onClick={onOpenMissions}>
+        <span className="mission-strip-title">📋 Daily Missions{ready > 0 ? ` · ${ready} to claim` : ''}</span>
+        <span className="mission-strip-refresh">New in {timeStr}</span>
+      </button>
       <div className="mission-strip-scroll">
-        {displayMissions.map((m, i) => {
-          const pct = Math.min(100, ((m.progress || 0) / (m.target || 1)) * 100);
-          const done = pct >= 100;
+        {list === null && (
+          <div className="mission-chip mission-chip--loading" onClick={onOpenMissions}>
+            <span className="mission-chip-icon">🎯</span>
+            <div className="mission-chip-body"><div className="mission-chip-name">Loading today's missions…</div></div>
+          </div>
+        )}
+        {(list || []).map((m) => {
+          const pct = Math.min(100, (m.progress / Math.max(1, m.target)) * 100);
+          const claimable = m.completed && !m.claimed;
           return (
-            <div key={i} className={`mission-chip ${done ? 'mission-chip--done' : ''}`} onClick={onOpenMissions}>
-              <span className="mission-chip-icon">{m.icon || '🎯'}</span>
+            <div
+              key={m.id}
+              role="button"
+              tabIndex={0}
+              className={`mission-chip ${m.completed ? 'mission-chip--done' : ''} ${claimable ? 'mission-chip--claimable' : ''} ${m.claimed ? 'mission-chip--claimed' : ''}`}
+              onClick={onOpenMissions}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenMissions(); } }}
+            >
+              <span className="mission-chip-icon">{missionIcon(m)}</span>
               <div className="mission-chip-body">
-                <div className="mission-chip-name">{m.name}</div>
+                <div className="mission-chip-name">{m.description}</div>
                 <div className="mission-chip-bar-track">
                   <div className="mission-chip-bar-fill" style={{ width: `${pct}%` }} />
                 </div>
-                <div className="mission-chip-prog">{m.progress || 0}/{m.target || 1}</div>
+                <div className="mission-chip-prog">{m.claimed ? 'Claimed' : claimable ? 'Tap to claim' : `${m.progress}/${m.target}`}</div>
               </div>
-              <div className="mission-chip-xp">+{m.xp || 0}<span style={{fontSize:'0.6rem'}}> XP</span></div>
-              {done && <div className="mission-chip-check">✓</div>}
+              <div className="mission-chip-xp">{missionRewardShort(m.reward)}</div>
+              {m.completed && <div className="mission-chip-check">✓</div>}
             </div>
           );
         })}
@@ -224,7 +240,7 @@ function Sparkline({ data, width = 120, height = 36, color = '#ffd24a' }) {
   }).join(' ');
   const last = data[data.length - 1];
   const isUp = last >= data[0];
-  const lineColor = isUp ? '#4ADE80' : '#EF4444';
+  const lineColor = isUp ? '#4ADE80' : '#60A5FA';
   const fillId = `sf${Math.random().toString(36).slice(2,6)}`;
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible' }}>
@@ -329,10 +345,18 @@ function SectionHeader({ children }) {
 }
 
 // ─── Inline Friends List (simplified, non-overlay) ───
-function InlineFriendsList() {
+function InlineFriendsList({ onOpenProfile }) {
   // 2026-06-18 Phase 3b — real friends from poker-server (was sessionStorage mock).
   const [friends, setFriends] = useState([]);
   const [inviteSent, setInviteSent] = useState(null);
+  // R2 (APPUI-47) — an invite names the table he is SEATED at (never a
+  // spectated or stale one); with no seat there is nothing to invite to, so
+  // Invite is not offered (it used to send an invite with no table).
+  const inviteTableId = useTableStore((s) => {
+    const gs = s.gameState;
+    const seated = gs && gs.isSpectator !== true && !s.isSpectating && Number.isInteger(gs.yourSeat) && gs.yourSeat >= 0;
+    return seated && gs.tableId != null ? gs.tableId : null;
+  });
 
   useEffect(() => {
     const s = getSocket();
@@ -357,20 +381,10 @@ function InlineFriendsList() {
     return t || 'Player';
   };
 
-  // R2 (CLUBS-5 / APPUI-47) — an invite carries the table the player is SEATED
-  // at (the friend's toast offers to join it); from the lobby without a seat
-  // there is nothing to invite to, so Invite is not offered (it used to send no
-  // table and the friend got a dead toast).
-  const seatedTableId = useTableStore((s) => {
-    const gs = s.gameState;
-    if (gs && gs.tableId != null && Number(gs.yourSeat) >= 0 && !gs.isSpectator) return String(gs.tableId);
-    return s.currentTableId ? String(s.currentTableId) : null;
-  });
-
   const handleInvite = (friend) => {
-    if (!seatedTableId) return;
+    if (!inviteTableId) return;
     const s = getSocket();
-    if (s?.connected) s.emit('inviteFriendToTable', { userId: friend.userId, tableId: seatedTableId });
+    if (s?.connected) s.emit('inviteFriendToTable', { userId: friend.userId, tableId: inviteTableId });
     setInviteSent(friend.userId);
     setTimeout(() => setInviteSent(null), 2000);
   };
@@ -385,26 +399,33 @@ function InlineFriendsList() {
           No friends yet — add some in the Friends panel.
         </div>
       )}
-      {sortedFriends.length > 0 && !seatedTableId && onlineCount > 0 && (
+      {sortedFriends.length > 0 && !inviteTableId && onlineCount > 0 && (
         <div className="inline-friends-hint">Sit at a table to invite online friends to it.</div>
       )}
-      {sortedFriends.map((friend) => (
+      {sortedFriends.map((friend) => {
+        const name = friendName(friend);
+        const target = onOpenProfile ? profileTargetOf(friend, name) : null;
+        return (
         <div key={friend.userId} className="inline-friend-card">
           <div className="inline-friend-avatar" style={{ borderColor: statusColors[friend.presence] }}>
-            {friendName(friend).charAt(0).toUpperCase()}
+            {name.charAt(0).toUpperCase()}
             <span className="inline-friend-dot" style={{ background: statusColors[friend.presence] }} />
           </div>
-          <div className="inline-friend-info">
-            <div className="inline-friend-name">{friendName(friend)}</div>
+          <div
+            className={`inline-friend-info ${target ? 'inline-friend-info--link' : ''}`}
+            onClick={target ? () => onOpenProfile(target) : undefined}
+          >
+            <div className="inline-friend-name">{name}</div>
             <div className="inline-friend-status" style={{ color: statusColors[friend.presence] }}>
               {statusLabels[friend.presence]}
             </div>
           </div>
-          {friend.presence === 'online' && seatedTableId && (
+          {friend.presence === 'online' && inviteTableId && (
             <button
               className="inline-friend-invite-btn"
               onClick={() => handleInvite(friend)}
               disabled={inviteSent === friend.userId}
+              title="Invite to the table you are seated at"
             >
               {inviteSent === friend.userId ? 'Sent!' : 'Invite'}
             </button>
@@ -413,20 +434,23 @@ function InlineFriendsList() {
             <span style={{ fontSize: '0.65rem', color: '#ffd24a' }}>Playing…</span>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
 // ─── Inline Leaderboard (simplified, non-overlay) ───
-function InlineLeaderboard() {
-  const playerName = useGameStore((s) => s.playerName);
-  const [entries, setEntries] = useState([]);
+function InlineLeaderboard({ onOpenProfile }) {
+  const [entries, setEntries] = useState(null);
   // 2026-06-18 Phase 3b — real leaderboard from poker-server (was MOCK_NAMES).
+  // R2 (APPUI-50 / addendum) — only the ALL-TIME answer is shown here (the
+  // full board's Weekly / Daily / Season answers arrive on the same event and
+  // used to replace it under an all-time look), "you" is the server's isYou.
   useEffect(() => {
     const s = getSocket();
     if (!s) return undefined;
-    const onData = (d) => setEntries(Array.isArray(d?.entries) ? d.entries : []);
+    const onData = (d) => { if (d && d.period === 'alltime') setEntries(Array.isArray(d.entries) ? d.entries : []); };
     s.on('leaderboardData', onData);
     if (s.connected) s.emit('getLeaderboard', { period: 'alltime' });
     const t = setTimeout(() => { if (s.connected) s.emit('getLeaderboard', { period: 'alltime' }); }, 600);
@@ -440,29 +464,43 @@ function InlineLeaderboard() {
     return `#${rank}`;
   };
 
-  const data = entries.slice(0, 8).map((e, i) => ({
-    name: e.username,
-    chipsWon: e.chips || 0,
-    rank: e.rank || i + 1,
-    isCurrentPlayer: !!playerName && e.username === playerName,
-  }));
+  const data = (entries || []).slice(0, 8).map((e, i) => {
+    const name = String(e.displayName ?? e.username ?? 'Player');
+    return {
+      name,
+      chips: Number(e.chips) || 0,
+      rank: Number(e.rank) || i + 1,
+      isYou: e.isYou === true,
+      // R2 — the row's opaque public id (or his own row): opens that profile exactly.
+      target: profileTargetOf(e, name),
+      badges: e.badges,
+    };
+  });
 
   return (
     <div className="inline-leaderboard">
-      {data.length === 0 && (
+      <div className="inline-lb-caption">All-time · ranked by chip balance</div>
+      {entries === null && (
         <div className="inline-lb-row" style={{ opacity: 0.6, justifyContent: 'center' }}>Loading leaderboard…</div>
       )}
-      {data.map((entry) => (
-        <div
-          key={entry.rank}
-          className={`inline-lb-row ${entry.isCurrentPlayer ? 'inline-lb-row-current' : ''} ${entry.rank <= 3 ? 'inline-lb-row-top' : ''}`}
-        >
-          <span className="inline-lb-rank">{getRankIcon(entry.rank)}</span>
-          <PlayerAvatar playerId={entry.name} name={entry.name} size={24} style={{ flexShrink: 0 }} />
-          <span className="inline-lb-name">{entry.name}</span>
-          <span className="inline-lb-chips">{entry.chipsWon.toLocaleString()}</span>
-        </div>
-      ))}
+      {entries !== null && data.length === 0 && (
+        <div className="inline-lb-row" style={{ opacity: 0.6, justifyContent: 'center' }}>No ranked players yet.</div>
+      )}
+      {data.map((entry) => {
+        const canOpen = typeof onOpenProfile === 'function' && entry.target != null;
+        return (
+          <div
+            key={`${entry.rank}-${entry.name}`}
+            className={`inline-lb-row ${entry.isYou ? 'inline-lb-row-current' : ''} ${entry.rank <= 3 ? 'inline-lb-row-top' : ''} ${canOpen ? 'inline-lb-row-link' : ''}`}
+            onClick={canOpen ? () => onOpenProfile(entry.target) : undefined}
+          >
+            <span className="inline-lb-rank">{getRankIcon(entry.rank)}</span>
+            <PlayerAvatar playerId={entry.name} name={entry.name} size={24} style={{ flexShrink: 0 }} />
+            <span className="inline-lb-name">{entry.name}{entry.isYou ? ' (you)' : ''}<BadgeIcons badges={entry.badges} /></span>
+            <span className="inline-lb-chips">{entry.chips.toLocaleString()}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -767,7 +805,6 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const quickAllInOrFold = useTableStore((s) => s.quickAllInOrFold);
   const spectateTable = useTableStore((s) => s.spectateTable);
   const gameState = useTableStore((s) => s.gameState);
-  const handHistories = useTableStore((s) => s.handHistories);
 
   const progress = useProgressStore((s) => s.progress);
   // Authoritative chip balance comes from gameStore, which is set from
@@ -937,6 +974,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       } else if (res?.error === 'not_broke') {
         // Balance already recovered (a hand paid out / grant landed) — silently clear.
         setRefillToast(null);
+      } else if (res?.error === 'chips_on_table') {
+        // R2 (addendum / ECON-19) — the server's own sentence: he still has
+        // chips at a table, so the refill is not for him right now.
+        setRefillToast({ ok: false, text: typeof res.message === 'string' && res.message ? res.message : 'You still have chips at a table — the refill is only for an empty bankroll.' });
       } else {
         setRefillToast({ ok: false, text: 'Could not add chips — try again.' });
       }
@@ -945,43 +986,17 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     return () => socket.off('refillResult', onRefill);
   }, []);
 
-  // Session tracker
-  const sessionStartRef = useRef(Date.now());
-  const sessionStartChipsRef = useRef(null);
-  const [sessionHands, setSessionHands] = useState(0);
-  const [sessionNet, setSessionNet] = useState(0);
-  const prevHandCountRef = useRef(0);
-  useEffect(() => {
-    const count = handHistories?.length || 0;
-    if (count > prevHandCountRef.current) setSessionHands(s => s + (count - prevHandCountRef.current));
-    prevHandCountRef.current = count;
-  }, [handHistories]);
+  // Session tracker — R2 (APPUI-15): "This Session" counts his own LIVE
+  // hands (progressStore.session: hands / wins / net from his row of each
+  // hand), not the length of the table store's list (cleared when he leaves
+  // a table, refilled from the server at sign-in) or wallet swings (buy-ins).
+  const session = useProgressStore((s) => s.session);
+  const handLog = useProgressStore((s) => s.handLog);
+  const sessionHands = session?.hands || 0;
+  const sessionNet = session?.net || 0;
 
-  // Track session net chips (initialise once chips are known)
-  useEffect(() => {
-    if (sessionStartChipsRef.current === null && chipCount > 0) {
-      sessionStartChipsRef.current = chipCount;
-    } else if (sessionStartChipsRef.current !== null) {
-      setSessionNet(chipCount - sessionStartChipsRef.current);
-    }
-  }, [chipCount]);
-
-  // Achievement toast
-  const [achievementToast, setAchievementToast] = useState(null);
-  const prevAchievementsRef = useRef(null);
-  useEffect(() => {
-    const current = progress?.achievements || [];
-    if (prevAchievementsRef.current === null) { prevAchievementsRef.current = current; return; }
-    const newOnes = current.filter(id => !prevAchievementsRef.current.includes(id));
-    if (newOnes.length > 0) {
-      const achData = ALL_ACHIEVEMENTS.find(a => a.id === newOnes[0]);
-      if (achData) {
-        setAchievementToast(achData);
-        setTimeout(() => setAchievementToast(null), 4000);
-      }
-    }
-    prevAchievementsRef.current = current;
-  }, [progress?.achievements]);
+  // (R2 — the lobby's own achievement toast is gone: it duplicated the
+  // server-driven "Achievement Unlocked!" toast.)
 
   // Return player detection (last session > 24h ago)
   const [isReturningPlayer] = useState(() => {
@@ -995,16 +1010,11 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   });
   const [returnBannerDismissed, setReturnBannerDismissed] = useState(false);
 
-  // Daily bonus claimed state
-  const [dailyBonusClaimed, setDailyBonusClaimed] = useState(() => {
-    try {
-      const raw = sessionStorage.getItem('app_poker_login_rewards');
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-      const stored = raw ? JSON.parse(raw) : null;
-      return !!(stored && stored.lastClaimDate === todayStr);
-    } catch { return false; }
-  });
+  // R2 (APPUI-36) — the daily reward is claimable when the SERVER's Denver
+  // claim date (playerProgress.lastLoginClaimDate) is not today's Denver date.
+  // (The banner used to read a sessionStorage key nothing wrote, so it showed
+  // "Daily Bonus Ready!" for a reward already claimed.)
+  const dailyClaimable = dailyLoginClaimable(progress);
 
   // #8 sticky quick play
   const quickPlayRef = useRef(null);
@@ -1061,7 +1071,6 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   }, [activityEvents.length]);
 
   const [showStats, setShowStats] = useState(false);
-  const [showShop, setShowShop] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
   const [showUnlocks, setShowUnlocks] = useState(false);
@@ -1086,6 +1095,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const [showBankrollGraph, setShowBankrollGraph] = useState(false);
   const [showSpinWheel, setShowSpinWheel] = useState(false);
   const [showScratchCards, setShowScratchCards] = useState(false);
+  // R2 (APPUI-38) — the Shop's "Reveal" opens the scratch panel and scratches
+  // one card right away, so the result is shown (it used to emit
+  // claimScratchCard with nobody listening).
+  const [scratchAutoStart, setScratchAutoStart] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [showExportData, setShowExportData] = useState(false);
   const [replayHand, setReplayHand] = useState(null);
@@ -1187,20 +1200,39 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     () => { try { return !!new URLSearchParams(window.location.search).get('bracket'); } catch { return false; } }
   );
   const [showBankrollAI, setShowBankrollAI] = useState(false);
-  const [showPlayerProfile, setShowPlayerProfile] = useState(false);
+  // R2 (APPUI-14) — the profile on screen: { own: true } (his own, by
+  // identity) or { publicId, userId, name } (another player, opened by id).
+  const [profileTarget, setProfileTarget] = useState(null);
+  const openProfile = useCallback((t) => { if (t) setProfileTarget(t); }, []);
+  // A shared `?profile=<public id>` link (or an older `?profile=<user id>`) opens that profile once.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      const id = url.searchParams.get('profile');
+      if (!id) return;
+      url.searchParams.delete('profile');
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+      const t = profileTargetFromParam(id);
+      if (t) setProfileTarget(t);
+    } catch { /* ignore */ }
+  }, []);
   const [showNFTBadges, setShowNFTBadges] = useState(false);
 
   // Player search state
   const [playerSearchQuery, setPlayerSearchQuery] = useState('');
   const [playerSearchResults, setPlayerSearchResults] = useState([]);
   const [playerSearchLoading, setPlayerSearchLoading] = useState(false);
+  const [playerSearchError, setPlayerSearchError] = useState(null);
   const playerSearchTimerRef = useRef(null);
 
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
-    const handleResults = ({ results }) => {
-      setPlayerSearchResults(results || []);
+    const handleResults = (payload) => {
+      const results = payload && Array.isArray(payload.results) ? payload.results : [];
+      setPlayerSearchResults(results);
+      setPlayerSearchError(payload && payload.error === 'login_required' ? 'Sign in to search for players.'
+        : payload && payload.error === 'rate_limited' ? 'Too many searches — wait a moment.' : null);
       setPlayerSearchLoading(false);
     };
     socket.on('playerSearchResults', handleResults);
@@ -1238,36 +1270,37 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // across navigations). The dismissed flag is sessionStorage-scoped so
   // it resets when the browser closes — by tomorrow the modal will
   // re-prompt (since the date rolls over too).
+  // R2 (APPUI-36) — opens once the server has said the reward is claimable
+  // (hydrated progress), at most once per lobby visit, and not again on a
+  // Denver day he closed it.
+  const loginRewardsAutoRef = useRef(false);
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem('app_poker_login_rewards');
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      const stored = raw ? JSON.parse(raw) : null;
-      const dismissedToday = sessionStorage.getItem('app_poker_login_rewards_dismissed') === todayStr;
-      if ((!stored || stored.lastClaimDate !== todayStr) && !dismissedToday) {
-        setShowLoginRewards(true);
-        setLoginRewardsAutoOpened(true);
-      }
-    } catch { /* ignore */ }
-  }, []);
+    if (loginRewardsAutoRef.current || !dailyClaimable) return;
+    loginRewardsAutoRef.current = true;
+    let dismissedToday = false;
+    try { dismissedToday = sessionStorage.getItem('app_poker_login_rewards_dismissed') === denverDateKey(); } catch { /* ignore */ }
+    if (dismissedToday) return;
+    setShowLoginRewards(true);
+    setLoginRewardsAutoOpened(true);
+  }, [dailyClaimable]);
 
-  // Auto-show daily spin wheel once per day until the user spins.
-  // Runs AFTER the login rewards timer (6s offset) so the two don't
-  // stack on top of each other on first login. Locks via localStorage
-  // so "once per day" survives refresh inside the day. Spin completion
-  // also writes this key (see SpinWheel) so a successful spin clears
-  // the auto-open for the rest of the day.
+  // Auto-show the daily spin once per Denver day until he spins (per
+  // account on this device — SpinWheel writes the same key), 6s after the
+  // lobby shows and never on top of the daily rewards.
+  const playerUserId = useGameStore((s) => s.userId);
+  const progressHydrated = progress?.hydrated === true;
+  const spinUsedToday = progress?.dailySpinClaimed === true; // C5 (the server's Denver day)
   useEffect(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    let spunToday = false;
-    try {
-      spunToday = localStorage.getItem('app_poker_last_spin_date') === todayStr;
-    } catch { /* ignore */ }
-    if (spunToday) return;
-    const t = setTimeout(() => setShowSpinWheel(true), 6000);
+    if (!progressHydrated || showLoginRewards || spinUsedToday) return undefined;
+    if (spinSeenToday(playerUserId)) return undefined;
+    const t = setTimeout(() => {
+      if (!spinSeenToday(playerUserId)) {
+        markSpinSeenToday(playerUserId);
+        setShowSpinWheel(true);
+      }
+    }, 6000);
     return () => clearTimeout(t);
-  }, []);
+  }, [progressHydrated, showLoginRewards, playerUserId, spinUsedToday]);
 
   // Listen for bottom nav actions (legacy support)
   useEffect(() => {
@@ -1376,7 +1409,10 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   const xpToNextLevel = progress?.xpToNextLevel ?? 140;
   const xpPercent = xpToNextLevel > 0 ? Math.min((currentXP / xpToNextLevel) * 100, 100) : 0;
   const starCount = progress?.stars || 0;
-  const vipTier = getVIPTier(currentXP);
+  // R2 (APPUI-33) — the XP-rate tier is by cumulative season XP (totalXp),
+  // the same number the server applies the perk on (not the per-level xp).
+  const seasonXp = Number(progress?.totalXp) || 0;
+  const vipTier = getVIPTier(seasonXp);
 
   // Animated chip counter
   const animatedChips = useAnimatedCounter(chipCount);
@@ -1412,9 +1448,19 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // #9 — chip tier for avatar glow
   const chipTier = chipCount >= 1000000 ? 'legendary' : chipCount >= 100000 ? 'gold' : chipCount >= 10000 ? 'silver' : 'bronze';
 
+  // R2 (APPUI-15) — his own result in each of his last hands (newest first).
+  const recentOwn = useMemo(() => {
+    const out = [];
+    for (let i = handLog.length - 1; i >= 0 && out.length < 3; i--) {
+      const r = ownHandResult(handLog[i], playerName);
+      if (r) out.push({ rec: handLog[i], r });
+    }
+    return out;
+  }, [handLog, playerName]);
+
   // Achievements
   const unlockedAchievements = progress?.achievements || [];
-  const achievementsWithStatus = ALL_ACHIEVEMENTS.map((a) => ({
+  const achievementsWithStatus = sortAchievementRows(lifetimeAchievementRows(null, unlockedAchievements)).map((a) => ({
     ...a,
     unlocked: unlockedAchievements.includes(a.id),
   }));
@@ -1460,7 +1506,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <div className="upc-sparkline">
           <span className="upc-sparkline-label">7-day</span>
           <Sparkline data={sparklineData} width={110} height={32} />
-          <span className="upc-sparkline-trend" style={{ color: sparklineData[6] >= sparklineData[0] ? '#4ADE80' : '#EF4444' }}>
+          <span className="upc-sparkline-trend" style={{ color: sparklineData[6] >= sparklineData[0] ? '#4ADE80' : '#60A5FA' }}>
             {sparklineData[6] >= sparklineData[0] ? '▲' : '▼'} {sparklineData[0] > 0 ? Math.abs(Math.round((sparklineData[6] - sparklineData[0]) / sparklineData[0] * 100)) : 0}%
           </span>
         </div>
@@ -1515,13 +1561,13 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
             <div className="session-stat-label">Hands</div>
           </div>
           <div className="session-stat">
-            <div className="session-stat-val" style={{ color: sessionNet >= 0 ? '#4ADE80' : '#EF4444' }}>
+            <div className="session-stat-val" style={{ color: sessionNet >= 0 ? '#4ADE80' : '#93C5FD' }}>
               {sessionNet >= 0 ? '+' : ''}{sessionNet.toLocaleString()}
             </div>
             <div className="session-stat-label">Net chips</div>
           </div>
           <div className="session-stat">
-            <div className="session-stat-val">{Math.floor((Date.now() - sessionStartRef.current) / 60000)}m</div>
+            <div className="session-stat-val">{Math.floor((Date.now() - (session?.startedAt || Date.now())) / 60000)}m</div>
             <div className="session-stat-label">Played</div>
           </div>
         </div>
@@ -1532,19 +1578,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     return (
     // R2 (APPUI-28) — while the sticky Quick Play bar is up, the tab keeps
     // room below its content for it (it sits ABOVE the bottom nav).
+    // (R2 K2 — the lobby's own achievement toast is gone: it duplicated the
+    // progress store's titled achievement notification.)
     <div className={`lobby-tab-content lobby-tab-fade lobby-home-layout${showStickyPlay && !isSeated ? ' lobby-home--sticky-play' : ''}`} key="home">
-      {/* Achievement toast (upgrade #6) */}
-      {achievementToast && (
-        <div className="achievement-toast">
-          <span className="achievement-toast-icon">{achievementToast.icon}</span>
-          <div className="achievement-toast-body">
-            <div className="achievement-toast-title">Achievement Unlocked!</div>
-            <div className="achievement-toast-name">{achievementToast.name}</div>
-          </div>
-          <button className="achievement-toast-close" onClick={() => setAchievementToast(null)}>✕</button>
-        </div>
-      )}
-
       {/* ── LEFT COLUMN ── */}
       <div className="lobby-home-main">
 
@@ -1563,28 +1599,23 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {/* Featured Table Banner */}
         <FeaturedTableBanner tables={listTables} onSpectate={handleWatch} />
 
-        {/* Daily Bonus Banner */}
-        {!dailyBonusClaimed && (
+        {/* Daily Bonus Banner — R2 (APPUI-36): shown while the server's
+            Denver claim date says today's reward is unclaimed. */}
+        {dailyClaimable && (
           <div className="daily-bonus-banner" onClick={() => { setShowLoginRewards(true); setLoginRewardsAutoOpened(false); }}>
             <span className="daily-bonus-icon">🎁</span>
             <div className="daily-bonus-text">
               <div className="daily-bonus-title">Daily Bonus Ready!</div>
               <div className="daily-bonus-sub">Tap to claim your reward</div>
             </div>
-            <button className="daily-bonus-btn" onClick={(e) => { e.stopPropagation(); setShowLoginRewards(true); setLoginRewardsAutoOpened(false); setDailyBonusClaimed(true); }}>Claim</button>
+            <button className="daily-bonus-btn" onClick={(e) => { e.stopPropagation(); setShowLoginRewards(true); setLoginRewardsAutoOpened(false); }}>Claim</button>
           </div>
         )}
 
-        {/* Mission Strip */}
+        {/* Mission Strip — the server's missions; opens the Missions panel (C6) */}
         <MissionStrip
-          missions={(progress?.dailyMissions || []).map((m) => ({
-            name: m.text,
-            icon: '🎯',
-            target: m.target,
-            xp: m.xp,
-            progress: progress?.[m.field] || 0,
-          }))}
-          onOpenMissions={() => {}}
+          missions={progress?.missions ?? null}
+          onOpenMissions={() => useProgressStore.getState().setMissionsExpanded(true)}
         />
 
         {/* Swipeable cards: player / rank / session (upgrades #1 #2 #4 #5 #9) */}
@@ -1614,27 +1645,23 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <div className="recent-hands-widget">
           <div className="recent-hands-header">
             <span className="recent-hands-title">🕐 Recent Hands</span>
-            {handHistories && handHistories.length > 0 && (
-              <span className="recent-hands-count">{handHistories.length} played</span>
+            {recentOwn.length > 0 && (
+              <span className="recent-hands-count">{recentOwn.length} shown</span>
             )}
           </div>
-          {handHistories && handHistories.length > 0 ? (
+          {recentOwn.length > 0 ? (
             <div className="recent-hands-list">
-              {handHistories.slice().reverse().slice(0, 3).map((h, i) => {
-                const myResult = h.winners?.find(w => w.seatIndex === h.yourSeat);
-                const won = !!myResult;
-                const amount = myResult?.chipsWon || 0;
-                const handName = myResult?.handName || (won ? 'Winner' : 'Folded');
+              {recentOwn.map(({ rec, r }, i) => {
+                const label = r.won ? (r.handName || 'Won') : r.folded ? 'Folded' : (r.handName || 'Lost');
+                const amount = r.won ? `+${r.chipsWon.toLocaleString()}` : (typeof r.net === 'number' && r.net < 0 ? r.net.toLocaleString() : '—');
                 return (
-                  <div key={i} className={`recent-hand-item ${won ? 'rhi--win' : 'rhi--loss'}`}>
-                    <span className="rhi-icon">{won ? '🏆' : '📉'}</span>
+                  <div key={`${rec.handNumber}-${i}`} className={`recent-hand-item ${r.won ? 'rhi--win' : 'rhi--loss'}`} onClick={() => setReplayHand(rec)} role="button" tabIndex={0}>
+                    <span className="rhi-icon">{r.won ? '🏆' : r.folded ? '🃏' : '📉'}</span>
                     <div className="rhi-info">
-                      <span className="rhi-hand">{handName}</span>
-                      <span className="rhi-table">{h.tableName || 'Table'}</span>
+                      <span className="rhi-hand">{label}</span>
+                      <span className="rhi-table">{rec.tableName || `Hand #${rec.handNumber ?? '—'}`}</span>
                     </div>
-                    <span className="rhi-amount" style={{ color: won ? '#4ADE80' : '#EF4444' }}>
-                      {won ? `+${amount.toLocaleString()}` : '—'}
-                    </span>
+                    <span className="rhi-amount" style={{ color: r.won ? '#4ADE80' : '#93C5FD' }}>{amount}</span>
                   </div>
                 );
               })}
@@ -1657,9 +1684,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       {/* ── RIGHT SIDEBAR (#9) ── */}
       <div className="lobby-home-sidebar">
         <SectionHeader>Leaderboard</SectionHeader>
-        <InlineLeaderboard />
+        <InlineLeaderboard onOpenProfile={openProfile} />
         <SectionHeader>Friends</SectionHeader>
-        <InlineFriendsList onJoinFriendTable={handleWatch} />
+        <InlineFriendsList onOpenProfile={openProfile} />
       </div>
 
       {/* Sticky Quick Play bar */}
@@ -1784,7 +1811,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
       {/* Friends */}
       <SectionHeader>Friends</SectionHeader>
-      <InlineFriendsList onJoinFriendTable={handleWatch} />
+      <InlineFriendsList onOpenProfile={openProfile} />
       <button
         className="btn-accent lobby-full-width-btn"
         style={{ marginTop: '8px', marginBottom: '24px' }}
@@ -1795,7 +1822,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
       {/* Leaderboard */}
       <SectionHeader>Leaderboard</SectionHeader>
-      <InlineLeaderboard />
+      <InlineLeaderboard onOpenProfile={openProfile} />
       <button
         className="btn-accent lobby-full-width-btn"
         style={{ marginTop: '8px', marginBottom: '24px' }}
@@ -1810,7 +1837,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <input
           type="text"
           className="table-search-input"
-          placeholder="Search by display name..."
+          placeholder="Search players by display name..."
           style={{ width: '100%', marginBottom: '8px' }}
           value={playerSearchQuery}
           onChange={(e) => handlePlayerSearch(e.target.value)}
@@ -1818,24 +1845,32 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {playerSearchLoading && (
           <p style={{ color: '#6b6b8a', fontSize: '0.8rem', margin: 0 }}>Searching…</p>
         )}
-        {!playerSearchLoading && playerSearchQuery.length >= 2 && playerSearchResults.length === 0 && (
+        {!playerSearchLoading && playerSearchError && (
+          <p style={{ color: '#9fb3d9', fontSize: '0.8rem', margin: 0 }}>{playerSearchError}</p>
+        )}
+        {!playerSearchLoading && !playerSearchError && playerSearchQuery.length >= 2 && playerSearchResults.length === 0 && (
           <p style={{ color: '#6b6b8a', fontSize: '0.8rem', margin: 0 }}>No players found.</p>
         )}
         {playerSearchResults.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {/* R2 (Addendum) — public names only, and no wallet balances:
-                another player's chips are not search results. */}
-            {playerSearchResults.map((p, i) => (
-              <div key={p.id ?? p.userId ?? i} className="player-search-row" style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '8px 12px',
-              }}>
-                <span style={{ color: '#e0e0ff', fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {String(p.displayName ?? p.username ?? 'Player')}
-                </span>
-                {Number.isFinite(Number(p.level)) && <span style={{ color: '#9fb4d8', fontSize: '0.8rem', flexShrink: 0 }}>Lv.{Number(p.level)}</span>}
-              </div>
-            ))}
+            {/* R2 (addendum / APPUI-14) — a public name and a level only
+                (never chips); a result with an id (the server's public id)
+                opens that profile. */}
+            {playerSearchResults.map((p, i) => {
+              const name = String(p.displayName ?? p.username ?? 'Player');
+              const target = profileTargetOf(p, name);
+              const canOpen = target != null;
+              return (
+                <div
+                  key={p.id ?? `${name}-${i}`}
+                  className={`player-search-row ${canOpen ? 'player-search-row--link' : ''}`}
+                  onClick={canOpen ? () => openProfile(target) : undefined}
+                >
+                  <span className="player-search-name">{name}</span>
+                  <span className="player-search-level">Lv.{Number(p.level) || 1}{canOpen ? ' · View profile' : ''}</span>
+                </div>
+              );
+            })}
           </div>
         )}
         {!playerSearchQuery && (
@@ -1849,7 +1884,8 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     <div className="lobby-tab-content lobby-tab-fade" key="profile">
       {/* Player Info Card with Banner */}
       <div className="lobby-profile-banner-wrap">
-        <div className="lobby-profile-banner" />
+        {/* R2 (C7) — the equipped profile background (Shop) is drawn here. */}
+        <div className="lobby-profile-banner" style={profileBannerStyle(progress)} />
         <div className="lobby-profile-card lobby-profile-card--with-banner">
           <div className="lobby-profile-avatar lobby-profile-avatar--overlap" style={{ background: 'transparent', overflow: 'hidden' }}>
             <PlayerAvatar playerId={nameInput || playerName} name={nameInput || playerName} size={72} style={{ border: '3px solid #16162e' }} />
@@ -2075,7 +2111,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <button
           className="btn-accent"
           style={toolBtnStyle}
-          onClick={() => setShowPlayerProfile(true)}
+          onClick={() => setProfileTarget({ own: true })}
         >
           👤 My Profile Page
         </button>
@@ -2113,15 +2149,19 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         ))}
       </div>
 
-      {/* VIP Status Inline Card */}
+      {/* VIP Status Inline Card — R2 (APPUI-33 / C8): the XP-rate tier by
+          cumulative season XP (totalXp, what the server uses), plus the VIP
+          pass state. */}
       <SectionHeader>VIP Status</SectionHeader>
       <div className="lobby-vip-inline-card" style={{ borderLeftColor: vipTier.color }}>
         <div className="lobby-vip-badge" style={{ background: vipTier.color, color: '#0a0a1a' }}>
           {vipTier.name}
         </div>
         <div className="lobby-vip-info">
-          <span style={{ color: vipTier.color, fontWeight: 600 }}>{currentXP.toLocaleString()} XP</span>
-          <span style={{ color: '#8888AA', fontSize: '0.8rem' }}>{vipTier.xpRate} XP rate</span>
+          <span style={{ color: vipTier.color, fontWeight: 600 }}>{seasonXp.toLocaleString()} season XP</span>
+          <span style={{ color: '#9fb3d9', fontSize: '0.8rem' }}>
+            {vipTier.xpRate} XP rate · {vipPassActive(progress) ? `VIP pass active (${formatCountdown(progress.vip.expiresAt)} left)` : 'no VIP pass'}
+          </span>
         </div>
         <button
           className="btn-accent"
@@ -2145,9 +2185,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           className="btn-accent"
           style={{ flex: 1 }}
           onClick={() => {
-            const hh = useTableStore.getState().handHistories || [];
-            if (!hh.length) { alert('No hands recorded yet — play some hands first.'); return; }
-            setReplayHand(hh[hh.length - 1]);
+            const last = recentOwn[0]?.rec || handLog[handLog.length - 1];
+            if (!last) { setJoinError('No hands recorded yet — play some hands first.'); setTimeout(() => setJoinError(null), 3500); return; }
+            setReplayHand(last);
           }}
         >
           Hand History
@@ -2156,621 +2196,21 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     </div>
   );
 
-  const renderShopTab = () => {
-    // Persistence-sweep helpers: ownership / equipped state from server-hydrated store.
-    const ownedBy = progress?.ownedBy || {};
-    const equippedBy = progress?.equippedBy || {};
-    const isOwned = (type, id) => !!ownedBy[type]?.has?.(id);
-    const isEquipped = (type, id) => equippedBy[type] === id;
-    const onBuy = (type, id) => {
-      const socket = getSocket();
-      if (!socket) return;
-      socket.emit('purchaseShopItem', { itemType: type, itemId: id });
-    };
-    const onEquip = (type, id) => {
-      const socket = getSocket();
-      if (!socket) return;
-      socket.emit('equipItem', { itemType: type, itemId: id });
-    };
-    const actionLabel = (type, id, price) => {
-      if (isEquipped(type, id)) return 'Equipped';
-      if (isOwned(type, id)) return 'Equip';
-      return price;
-    };
-    const actionClick = (type, id) => () => {
-      if (isEquipped(type, id)) return;
-      if (isOwned(type, id)) onEquip(type, id);
-      else                   onBuy(type, id);
-    };
-
-    return (
-    <div className="lobby-tab-content lobby-tab-fade" key="shop">
-      {/* Sticky currency balance — always visible at the top of the shop
-          so the user knows what they can afford before browsing. */}
-      <div className="lobby-shop-balance" style={{
-        position: 'sticky', top: 0, zIndex: 10,
-        display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 14px', marginBottom: '14px',
-        background: 'linear-gradient(135deg, rgba(14,14,36,0.95), rgba(26,16,46,0.95))',
-        border: '1px solid rgba(255, 215, 0, 0.35)',
-        borderRadius: '10px',
-        boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-      }}>
-        <span style={{ color: '#FFD700', fontWeight: 800, fontSize: '1.02rem', letterSpacing: '0.3px' }}>
-          ⭐ {(progress?.stars ?? 0).toLocaleString()} Stars
-        </span>
-        <span style={{ color: '#ffd24a', fontWeight: 700, fontSize: '0.95rem' }}>
-          🪙 {(progress?.chips ?? chipCount ?? 0).toLocaleString()} Chips
-        </span>
-      </div>
-
-      {/* Battle Pass */}
-      <SectionHeader>Battle Pass</SectionHeader>
-      <button
-        className="btn-accent lobby-full-width-btn lobby-bp-btn"
-        onClick={() => setShowBattlePass(true)}
-      >
-        ⚔️ Season 1: The River — View Battle Pass
-      </button>
-
-      {/* Daily Rewards */}
-      <SectionHeader>Daily Rewards</SectionHeader>
-      <div className="lobby-daily-rewards-inline">
-        <LoginRewards
-          onClose={() => {}}
-          autoOpened={false}
-          inline={true}
-        />
-      </div>
-      <button
-        className="btn-accent lobby-full-width-btn"
-        style={{ marginBottom: '12px', background: 'linear-gradient(135deg, #F59E0B, #D97706)', color: '#0a0a1a', borderColor: 'rgba(245,158,11,0.5)' }}
-        onClick={() => { setShowLoginRewards(true); setLoginRewardsAutoOpened(false); }}
-      >
-        Open Daily Rewards
-      </button>
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
-        <button
-          className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #EC4899, #F472B6)', color: '#fff' }}
-          onClick={() => setShowSpinWheel(true)}
-        >
-          Daily Spin
-        </button>
-        <button
-          className="btn-accent"
-          style={{ flex: 1, padding: '10px 16px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #A855F7, #C084FC)', color: '#fff' }}
-          onClick={() => setShowScratchCards(true)}
-        >
-          Scratch Cards
-        </button>
-      </div>
-
-      {/* Table Themes — inline grid. The previous "Browse Table Themes"
-          modal button opened a nested overlay that didn't work (click
-          was swallowed by something in the Lobby tree). Inline grid
-          using the same isOwned/isEquipped/actionClick pattern as the
-          other shop sections works directly. */}
-      <SectionHeader>Table Themes</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'classic_blue',     name: 'Classic Blue',     felt: '#2874a6', rail: '#8B5E3C', price: 0 },
-          { id: 'green_felt',       name: 'Green Felt',       felt: '#1a5c2a', rail: '#8B6914', price: 0 },
-          { id: 'midnight_purple',  name: 'Midnight Purple',  felt: '#4a1d6e', rail: '#C0C0C0', price: 300 },
-          { id: 'ocean_breeze',     name: 'Ocean Breeze',     felt: '#1a7a7a', rail: '#F5F5F5', price: 400 },
-          { id: 'casino_royale',    name: 'Casino Royale',    felt: '#1a5c2a', rail: '#B8860B', price: 500 },
-          { id: 'neon_vegas',       name: 'Neon Vegas',       felt: '#050c20', rail: '#0c1a44', price: 600 },
-          { id: 'carbon_black',     name: 'Carbon Black',     felt: '#18181b', rail: '#3f3f46', price: 700 },
-          { id: 'royal_gold',       name: 'Royal Gold',       felt: '#0a1a3a', rail: '#DAA520', price: 800 },
-          { id: 'cherry_wood',      name: 'Cherry Wood',      felt: '#3d1a1a', rail: '#7c2d12', price: 900 },
-          { id: 'cosmic_nebula',    name: 'Cosmic Nebula',    felt: '#312e81', rail: '#a78bfa', price: 1500 },
-        ].map((theme) => {
-          const owned = isOwned('theme', theme.id) || theme.price === 0;
-          const equipped = isEquipped('theme', theme.id);
-          return (
-            <div
-              key={theme.id}
-              onClick={actionClick('theme', theme.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: theme.felt, border: `3px solid ${theme.rail}` }}>
-                <span style={{ fontSize: '1.2rem' }}>♠</span>
-              </div>
-              <span className="lobby-card-back-name">{theme.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${theme.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Card Backs */}
-      <SectionHeader>Card Backs</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'classic_red',     name: 'Classic Red',     color: '#DC2626', price: 0 },
-          { id: 'royal_blue',      name: 'Royal Blue',      color: '#2563EB', price: 0 },
-          { id: 'silver_foil',     name: 'Silver Foil',     color: '#C0C0C0', price: 400 },
-          { id: 'gold_premium',    name: 'Gold Premium',    color: '#D97706', price: 500 },
-          { id: 'neon_green',      name: 'Neon Green',      color: '#16A34A', price: 500 },
-          { id: 'holographic',     name: 'Holographic',     color: '#A78BFA', price: 800 },
-          { id: 'dragon',          name: 'Dragon',          color: '#DC2626', price: 1200 },
-          { id: 'phoenix',         name: 'Phoenix',         color: '#F59E0B', price: 1500 },
-          { id: 'diamond_pattern', name: 'Diamond',         color: '#B9F2FF', price: 2000 },
-          { id: 'mythic',          name: 'Mythic',          color: '#FF1744', price: 5000 },
-        ].map((card) => {
-          const owned = isOwned('card_back', card.id) || card.price === 0;
-          const equipped = isEquipped('card_back', card.id);
-          return (
-            <div
-              key={card.id}
-              onClick={actionClick('card_back', card.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: `linear-gradient(135deg, ${card.color}, ${card.color}88)` }}>
-                <span style={{ fontSize: '1.5rem' }}>{'\u{1F0CF}'}</span>
-              </div>
-              <span className="lobby-card-back-name">{card.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : owned ? '#ffd24a' : '#ffd24a' }}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${card.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Chip Packs — stars → chips conversion */}
-      <SectionHeader>Chip Packs</SectionHeader>
-      <div className="lobby-vip-packages">
-        {[
-          { id: 'refill',  name: 'Refill Stack',  desc: '10,000 chips',     price: 50,    color: '#3B82F6' },
-          { id: 'small',   name: 'Small Stack',   desc: '25,000 chips',     price: 100,   color: '#3b82f6' },
-          { id: 'medium',  name: 'Medium Stack',  desc: '100,000 chips',    price: 300,   color: '#10B981' },
-          { id: 'big',     name: 'Big Stack',     desc: '250,000 chips',    price: 600,   color: '#84CC16' },
-          { id: 'pro',     name: 'Pro Stack',     desc: '750,000 chips',    price: 1500,  color: '#8B5CF6' },
-          { id: 'whale',   name: 'Whale Stack',   desc: '2,000,000 chips',  price: 3000,  color: '#F59E0B' },
-          { id: 'kingpin', name: 'Kingpin Stack', desc: '5,000,000 chips',  price: 6000,  color: '#EC4899' },
-          { id: 'emperor', name: 'Emperor Stack', desc: '15,000,000 chips', price: 12000, color: '#FFD700' },
-        ].map((pkg) => (
-          <div key={pkg.id} className="lobby-vip-package-card" style={{ borderLeftColor: pkg.color }}>
-            <div>
-              <div style={{ color: pkg.color, fontWeight: 700, fontSize: '0.95rem' }}>{pkg.name}</div>
-              <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{pkg.desc}</div>
-            </div>
-            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('chip_pack', pkg.id)}>
-              {pkg.price.toLocaleString()} ⭐
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Mystery Boxes — stars → random reward (chips / stars / cosmetic) */}
-      <SectionHeader>Mystery Boxes</SectionHeader>
-      <div className="lobby-vip-packages">
-        {[
-          { id: 'basic',     name: '📦 Basic Mystery Box',    desc: 'Roll: chips, stars, or common emote/sound',   price: 500,  color: '#A3A3A3' },
-          { id: 'premium',   name: '🎁 Premium Mystery Box',  desc: 'Roll: bigger chips, stars, or silver+ items', price: 2000, color: '#A78BFA' },
-          { id: 'legendary', name: '✨ Legendary Mystery Box', desc: 'Roll: huge chips, stars, or diamond+ items',  price: 8000, color: '#FFD700' },
-        ].map((box) => (
-          <div key={box.id} className="lobby-vip-package-card" style={{ borderLeftColor: box.color }}>
-            <div>
-              <div style={{ color: box.color, fontWeight: 700, fontSize: '0.95rem' }}>{box.name}</div>
-              <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{box.desc}</div>
-            </div>
-            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('mystery_box', box.id)}>
-              {box.price.toLocaleString()} ⭐
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Emotes */}
-      <SectionHeader>Emotes</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'nice_hand',   name: 'Nice Hand',   icon: '👍', price: 150 },
-          { id: 'good_game',   name: 'Good Game',   icon: '🤝', price: 150 },
-          { id: 'well_played', name: 'Well Played', icon: '🎯', price: 150 },
-          { id: 'thumbs_up',   name: 'Thumbs Up',   icon: '👍', price: 150 },
-          { id: 'clap',        name: 'Clap',        icon: '👏', price: 200 },
-          { id: 'love',        name: 'Love',        icon: '❤️', price: 250 },
-          { id: 'big_brain',   name: 'Big Brain',   icon: '🧠', price: 200 },
-          { id: 'money',       name: 'Money',       icon: '💰', price: 200 },
-          { id: 'fire',        name: 'Fire',        icon: '🔥', price: 250 },
-          { id: 'tears',       name: 'Tears',       icon: '😭', price: 250 },
-          { id: 'rocket',      name: 'Rocket',      icon: '🚀', price: 300 },
-          { id: 'crown',       name: 'Crown',       icon: '👑', price: 400 },
-          { id: 'sunglasses',  name: 'Cool',        icon: '😎', price: 200 },
-          { id: 'laughing',    name: 'Laughing',    icon: '😂', price: 200 },
-          { id: 'surprised',   name: 'Surprised',   icon: '😲', price: 200 },
-          { id: 'dead',        name: 'Dead',        icon: '💀', price: 300 },
-          { id: 'think',       name: 'Thinking',    icon: '🤔', price: 300 },
-          { id: 'poker_face',  name: 'Poker Face',  icon: '😐', price: 400 },
-          { id: 'mic_drop',    name: 'Mic Drop',    icon: '🎤', price: 500 },
-          { id: 'trophy',      name: 'Trophy',      icon: '🏆', price: 600 },
-        ].map((e) => {
-          const owned = isOwned('emote', e.id);
-          return (
-            <div
-              key={e.id}
-              onClick={owned ? undefined : () => onBuy('emote', e.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: owned ? 'default' : 'pointer' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #1f2937, #111827)' }}>
-                <span style={{ fontSize: '1.8rem' }}>{e.icon}</span>
-              </div>
-              <span className="lobby-card-back-name">{e.name}</span>
-              {owned
-                ? <span className="lobby-card-back-price" style={{ color: '#10B981' }}>Owned</span>
-                : <span className="lobby-card-back-price">{e.price} ⭐</span>}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Avatar Frames */}
-      <SectionHeader>Avatar Frames</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'bronze',   name: 'Bronze',   color: '#CD7F32', icon: '◯', price: 500 },
-          { id: 'silver',   name: 'Silver',   color: '#C0C0C0', icon: '◯', price: 1000 },
-          { id: 'gold',     name: 'Gold',     color: '#FFD700', icon: '◯', price: 2000 },
-          { id: 'flame',    name: 'Flame',    color: '#FF4500', icon: '🔥', price: 6000 },
-          { id: 'ice',      name: 'Ice',      color: '#60A5FA', icon: '❄', price: 6000 },
-          { id: 'platinum', name: 'Platinum', color: '#E5E7EB', icon: '◆', price: 8000 },
-          { id: 'crown',    name: 'Crown',    color: '#FFD700', icon: '👑', price: 10000 },
-          { id: 'diamond',  name: 'Diamond',  color: '#B9F2FF', icon: '◆', price: 5000 },
-          { id: 'mythic',   name: 'Mythic',   color: '#FF1744', icon: '★', price: 15000 },
-        ].map((f) => {
-          const owned = isOwned('frame', f.id);
-          const equipped = isEquipped('frame', f.id);
-          return (
-            <div
-              key={f.id}
-              onClick={actionClick('frame', f.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: `radial-gradient(circle, ${f.color}22 0%, transparent 70%)`, border: `2px solid ${f.color}` }}>
-                <span style={{ fontSize: '1.6rem', color: f.color }}>{f.icon}</span>
-              </div>
-              <span className="lobby-card-back-name">{f.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${f.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Win Celebrations */}
-      <SectionHeader>Win Celebrations</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'confetti',       name: 'Confetti',       icon: '🎉', price: 400 },
-          { id: 'chip_rain',      name: 'Chip Rain',      icon: '🪙', price: 800 },
-          { id: 'fireworks',      name: 'Fireworks',      icon: '🎆', price: 1200 },
-          { id: 'lightning',      name: 'Lightning',      icon: '⚡', price: 1500 },
-          { id: 'golden_shower',  name: 'Golden Rain',    icon: '💫', price: 2000 },
-          { id: 'dragon_breath',  name: 'Dragon Breath',  icon: '🐉', price: 3000 },
-          { id: 'cosmic_burst',   name: 'Cosmic Burst',   icon: '🌌', price: 4000 },
-          { id: 'supernova',      name: 'Supernova',      icon: '💥', price: 6000 },
-        ].map((w) => {
-          const owned = isOwned('celebration', w.id);
-          const equipped = isEquipped('celebration', w.id);
-          return (
-            <div
-              key={w.id}
-              onClick={actionClick('celebration', w.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #0e7490, #155e75)' }}>
-                <span style={{ fontSize: '1.8rem' }}>{w.icon}</span>
-              </div>
-              <span className="lobby-card-back-name">{w.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${w.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Mystery Boxes — handled as scratch cards server-side (surprise reveals) */}
-      <SectionHeader>Scratch Cards</SectionHeader>
-      <div className="lobby-vip-packages">
-        <div className="lobby-vip-package-card" style={{ borderLeftColor: '#D97706' }}>
-          <div>
-            <div style={{ color: '#D97706', fontWeight: 700, fontSize: '0.95rem' }}>🎟️ You have {progress?.scratchCardsAvailable || 0} scratch cards</div>
-            <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>Earn 1 card every 20 hands. Reveals chips, stars, or surprise items.</div>
-          </div>
-          <button
-            className="btn-accent"
-            style={{ padding: '6px 16px', fontSize: '0.8rem', opacity: (progress?.scratchCardsAvailable || 0) > 0 ? 1 : 0.4 }}
-            disabled={(progress?.scratchCardsAvailable || 0) === 0}
-            onClick={() => {
-              const socket = getSocket();
-              socket?.emit('claimScratchCard');
-            }}
-          >
-            Reveal
-          </button>
-        </div>
-      </div>
-
-      {/* Sound Packs */}
-      <SectionHeader>Sound Packs</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'silent_mode',    name: 'Silent Mode',    icon: '🔇', price: 100 },
-          { id: 'classic_casino', name: 'Classic Casino', icon: '🎵', price: 300 },
-          { id: 'vegas_casino',   name: 'Vegas Casino',   icon: '🎰', price: 300 },
-          { id: 'old_school',     name: 'Old School',     icon: '🎼', price: 500 },
-          { id: 'cyberpunk',      name: 'Cyberpunk',      icon: '🎧', price: 750 },
-          { id: 'fantasy',        name: 'Fantasy',        icon: '🎻', price: 1000 },
-        ].map((s) => {
-          const owned = isOwned('sound_pack', s.id);
-          const equipped = isEquipped('sound_pack', s.id);
-          return (
-            <div
-              key={s.id}
-              onClick={actionClick('sound_pack', s.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #581c87, #3b0764)' }}>
-                <span style={{ fontSize: '1.8rem' }}>{s.icon}</span>
-              </div>
-              <span className="lobby-card-back-name">{s.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Active' : owned ? 'Equip' : `${s.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Player Titles */}
-      <SectionHeader>Player Titles</SectionHeader>
-      <div className="lobby-vip-packages">
-        {[
-          { id: 'nitwit',             name: 'Nitwit',             desc: 'For the tightest of the tight',      price: 300,  color: '#A3A3A3' },
-          { id: 'calling_station',    name: 'Calling Station',    desc: 'Wear your call stats with pride',    price: 400,  color: '#94A3B8' },
-          { id: 'grinder',            name: 'Grinder',            desc: 'Earn it one hand at a time',         price: 500,  color: '#64748B' },
-          { id: 'river_rat',          name: 'River Rat',          desc: 'Miracle on the river specialist',    price: 600,  color: '#84CC16' },
-          { id: 'chip_leader',        name: 'Chip Leader',        desc: 'Stack the whole table',              price: 700,  color: '#22C55E' },
-          { id: 'degenerate',         name: 'Degenerate',         desc: 'No fold button here',                price: 700,  color: '#A78BFA' },
-          { id: 'the_shark',          name: 'The Shark',          desc: 'Dangerous waters',                   price: 800,  color: '#3b82f6' },
-          { id: 'bad_beat_survivor',  name: 'Bad Beat Survivor',  desc: 'Ran bad, kept playing',              price: 800,  color: '#F97316' },
-          { id: 'final_table',        name: 'Final Table',        desc: 'Tournament endgame',                 price: 1000, color: '#3B82F6' },
-          { id: 'bluff_master',       name: 'Bluff Master',       desc: 'Show cards, they fold',              price: 1200, color: '#EC4899' },
-          { id: 'all_in_legend',      name: 'All-In Legend',      desc: 'Every hand, all-in',                 price: 1500, color: '#F59E0B' },
-          { id: 'phantom',            name: 'Phantom',            desc: 'Disappearing act',                   price: 1500, color: '#8B5CF6' },
-          { id: 'tournament_champ',   name: 'Tournament Champ',   desc: 'Proven winner',                      price: 2000, color: '#10B981' },
-          { id: 'royal',              name: 'Royal',              desc: 'King of the felt',                   price: 3000, color: '#FFD700' },
-          { id: 'godmode',            name: 'God Mode',           desc: 'The apex predator',                  price: 8000, color: '#FF1744' },
-        ].map((t) => {
-          const owned = isOwned('title', t.id);
-          const equipped = isEquipped('title', t.id);
-          return (
-            <div key={t.id} className="lobby-vip-package-card" style={{ borderLeftColor: t.color, outline: equipped ? '2px solid #10B981' : 'none' }}>
-              <div>
-                <div style={{ color: t.color, fontWeight: 700, fontSize: '0.95rem' }}>{t.name}</div>
-                <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{t.desc}</div>
-              </div>
-              <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={actionClick('title', t.id)}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${t.price.toLocaleString()} ⭐`}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Chip Skins — how your chips look in the seat stack */}
-      <SectionHeader>Chip Skins</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'classic',      name: 'Classic',      bg: 'linear-gradient(135deg, #64748B, #475569)', emoji: '🪙', price: 0 },
-          { id: 'crimson',      name: 'Crimson',      bg: 'linear-gradient(135deg, #DC2626, #991B1B)', emoji: '🪙', price: 400 },
-          { id: 'cobalt',       name: 'Cobalt',       bg: 'linear-gradient(135deg, #2563EB, #1E40AF)', emoji: '🪙', price: 500 },
-          { id: 'emerald',      name: 'Emerald',      bg: 'linear-gradient(135deg, #059669, #047857)', emoji: '🪙', price: 600 },
-          { id: 'amethyst',     name: 'Amethyst',     bg: 'linear-gradient(135deg, #9333EA, #6B21A8)', emoji: '🪙', price: 800 },
-          { id: 'gold_rimmed',  name: 'Gold Rimmed',  bg: 'linear-gradient(135deg, #FFD700, #B8860B)', emoji: '🪙', price: 1200 },
-          { id: 'neon',         name: 'Neon',         bg: 'linear-gradient(135deg, #00FF88, #00CC6A)', emoji: '🪙', price: 1800 },
-          { id: 'holographic',  name: 'Holographic',  bg: 'linear-gradient(135deg, #A78BFA, #F472B6, #60A5FA)', emoji: '🪙', price: 2500 },
-          { id: 'mythic',       name: 'Mythic',       bg: 'linear-gradient(135deg, #FF1744, #FF5252)', emoji: '🪙', price: 4000 },
-        ].map((s) => {
-          const owned = isOwned('chip_skin', s.id) || s.price === 0;
-          const equipped = isEquipped('chip_skin', s.id);
-          return (
-            <div key={s.id} onClick={actionClick('chip_skin', s.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: s.bg }}>
-                <span style={{ fontSize: '1.8rem' }}>{s.emoji}</span>
-              </div>
-              <span className="lobby-card-back-name">{s.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${s.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Card Fronts — alt face designs for hero's cards */}
-      <SectionHeader>Card Fronts</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'standard',    name: 'Standard',    emoji: '🂱', price: 0 },
-          { id: 'minimal',     name: 'Minimal',     emoji: '♠', price: 400 },
-          { id: 'retro',       name: 'Retro',       emoji: '🃞', price: 600 },
-          { id: 'modern',      name: 'Modern',      emoji: '🂡', price: 800 },
-          { id: 'futuristic',  name: 'Futuristic',  emoji: '🂻', price: 1200 },
-          { id: 'luxury',      name: 'Luxury',      emoji: '👑', price: 1800 },
-          { id: 'hanafuda',    name: 'Hanafuda',    emoji: '🎴', price: 2200 },
-          { id: 'artistic',    name: 'Artistic',    emoji: '🖼', price: 2800 },
-        ].map((c) => {
-          const owned = isOwned('card_front', c.id) || c.price === 0;
-          const equipped = isEquipped('card_front', c.id);
-          return (
-            <div key={c.id} onClick={actionClick('card_front', c.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #fff, #e5e7eb)' }}>
-                <span style={{ fontSize: '1.8rem', color: '#050c20' }}>{c.emoji}</span>
-              </div>
-              <span className="lobby-card-back-name">{c.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Equipped' : owned ? 'Equip' : `${c.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Dealer Voices */}
-      <SectionHeader>Dealer Voices</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'standard',     name: 'Standard',       icon: '🎙', price: 0 },
-          { id: 'vegas_vet',    name: 'Vegas Veteran',  icon: '🎰', price: 600 },
-          { id: 'british_butler', name: 'British Butler', icon: '🎩', price: 800 },
-          { id: 'pirate',       name: 'Pirate',         icon: '🏴‍☠️', price: 900 },
-          { id: 'robot',        name: 'Robot',          icon: '🤖', price: 1100 },
-          { id: 'sportscaster', name: 'Sportscaster',   icon: '📢', price: 1400 },
-          { id: 'celebrity',    name: 'Celebrity',      icon: '⭐', price: 2200 },
-          { id: 'mythic_sage',  name: 'Mythic Sage',    icon: '🧙', price: 4000 },
-        ].map((v) => {
-          const owned = isOwned('dealer_voice', v.id) || v.price === 0;
-          const equipped = isEquipped('dealer_voice', v.id);
-          return (
-            <div key={v.id} onClick={actionClick('dealer_voice', v.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: 'linear-gradient(135deg, #7c2d12, #431407)' }}>
-                <span style={{ fontSize: '1.8rem' }}>{v.icon}</span>
-              </div>
-              <span className="lobby-card-back-name">{v.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Active' : owned ? 'Equip' : `${v.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Profile Backgrounds */}
-      <SectionHeader>Profile Backgrounds</SectionHeader>
-      <div className="lobby-card-backs-grid">
-        {[
-          { id: 'default',         name: 'Default',         bg: 'linear-gradient(135deg, #1e293b, #0f172a)', price: 0 },
-          { id: 'sunset',          name: 'Sunset',          bg: 'linear-gradient(135deg, #FB923C, #EF4444)', price: 200 },
-          { id: 'city_lights',     name: 'City Lights',     bg: 'linear-gradient(135deg, #1E3A8A, #312E81)', price: 350 },
-          { id: 'deep_space',      name: 'Deep Space',      bg: 'linear-gradient(135deg, #030712, #4C1D95)', price: 500 },
-          { id: 'aurora',          name: 'Aurora',          bg: 'linear-gradient(135deg, #14B8A6, #8B5CF6)', price: 700 },
-          { id: 'volcano',         name: 'Volcano',         bg: 'linear-gradient(135deg, #991B1B, #F59E0B)', price: 900 },
-          { id: 'underwater',      name: 'Underwater',      bg: 'linear-gradient(135deg, #0E7490, #1E3A8A)', price: 1100 },
-          { id: 'cherry_blossom',  name: 'Cherry Blossom',  bg: 'linear-gradient(135deg, #F472B6, #FBCFE8)', price: 1400 },
-          { id: 'diamond_rain',    name: 'Diamond Rain',    bg: 'linear-gradient(135deg, #B9F2FF, #60A5FA)', price: 2500 },
-        ].map((b) => {
-          const owned = isOwned('profile_bg', b.id) || b.price === 0;
-          const equipped = isEquipped('profile_bg', b.id);
-          return (
-            <div key={b.id} onClick={actionClick('profile_bg', b.id)}
-              className={`lobby-card-back ${owned ? 'owned' : 'locked'}`}
-              style={{ cursor: equipped ? 'default' : 'pointer', outline: equipped ? '2px solid #10B981' : 'none' }}
-            >
-              <div className="lobby-card-back-preview" style={{ background: b.bg }} />
-              <span className="lobby-card-back-name">{b.name}</span>
-              <span className="lobby-card-back-price" style={{ color: equipped ? '#10B981' : '#ffd24a' }}>
-                {equipped ? 'Applied' : owned ? 'Apply' : `${b.price} ⭐`}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Boosters — consumable XP / chip multipliers */}
-      <SectionHeader>Boosters</SectionHeader>
-      <div className="lobby-vip-packages">
-        {[
-          { id: 'xp_2x_15m',    name: '2× XP — 15 min',  desc: 'Doubles XP from wins for 15 minutes',   price: 200,  color: '#A78BFA' },
-          { id: 'xp_2x_1h',     name: '2× XP — 1 hour',  desc: 'Doubles XP from wins for 1 hour',       price: 600,  color: '#8B5CF6' },
-          { id: 'xp_2x_1d',     name: '2× XP — 1 day',   desc: 'Doubles XP from wins for 24 hours',     price: 2500, color: '#6D28D9' },
-          { id: 'chip_1p5x_1h', name: '1.5× Chips — 1h', desc: '+50% chip bonus on big wins (1 hour)',  price: 400,  color: '#F59E0B' },
-          { id: 'chip_1p5x_1d', name: '1.5× Chips — 1d', desc: '+50% chip bonus on big wins (1 day)',   price: 2000, color: '#D97706' },
-        ].map((b) => (
-          <div key={b.id} className="lobby-vip-package-card" style={{ borderLeftColor: b.color }}>
-            <div>
-              <div style={{ color: b.color, fontWeight: 700, fontSize: '0.95rem' }}>{b.name}</div>
-              <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{b.desc}</div>
-            </div>
-            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('booster', b.id)}>
-              {b.price.toLocaleString()} ⭐
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* VIP Passes */}
-      <SectionHeader>VIP Passes</SectionHeader>
-      <div className="lobby-vip-packages">
-        {[
-          { id: 'daily',    name: 'Daily VIP',    desc: '24 hours of premium perks',     price: 300,   color: '#3b82f6' },
-          { id: 'weekly',   name: 'Weekly VIP',   desc: '7 days of premium perks',       price: 1500,  color: '#3B82F6' },
-          { id: 'monthly',  name: 'Monthly VIP',  desc: '30 days of premium perks',      price: 5000,  color: '#8B5CF6' },
-          { id: 'lifetime', name: 'Lifetime VIP', desc: 'All premium perks, forever',    price: 50000, color: '#FFD700' },
-        ].map((v) => (
-          <div key={v.id} className="lobby-vip-package-card" style={{ borderLeftColor: v.color }}>
-            <div>
-              <div style={{ color: v.color, fontWeight: 700, fontSize: '0.95rem' }}>{v.name}</div>
-              <div style={{ color: '#8888AA', fontSize: '0.8rem' }}>{v.desc}</div>
-            </div>
-            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('vip_pass', v.id)}>
-              {v.price.toLocaleString()} ⭐
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Bundles — multi-item grants */}
-      <SectionHeader>Bundle Deals</SectionHeader>
-      <div className="lobby-vip-packages">
-        {[
-          { id: 'starter',       name: '🎁 Starter Bundle',    desc: '3 items — Silver Foil back, Nice Hand emote, Bronze frame',                price: 800,   color: '#84CC16' },
-          { id: 'collector',     name: '📦 Collector Bundle',  desc: '5 items — Gold back, Casino Royale, Silver frame, Crown emote, Chip Rain', price: 2500,  color: '#3b82f6' },
-          { id: 'tournament',    name: '🏆 Tournament Bundle', desc: '6 items — Tournament Champ title + premium cosmetics',                     price: 4000,  color: '#F59E0B' },
-          { id: 'whale_bundle',  name: '🐋 Whale Bundle',      desc: '8 items — Royal title, Cosmic Nebula, Diamond frame + more',               price: 10000, color: '#A78BFA' },
-          { id: 'mythic_bundle', name: '✨ Mythic Bundle',     desc: '9 items — Everything mythic-tier: God Mode title, Supernova, Mythic frame', price: 25000, color: '#FF1744' },
-        ].map((b) => (
-          <div key={b.id} className="lobby-vip-package-card" style={{ borderLeftColor: b.color }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ color: b.color, fontWeight: 700, fontSize: '0.95rem' }}>{b.name}</div>
-              <div style={{ color: '#8888AA', fontSize: '0.78rem', lineHeight: 1.35 }}>{b.desc}</div>
-            </div>
-            <button className="btn-accent" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => onBuy('bundle', b.id)}>
-              {b.price.toLocaleString()} ⭐
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ marginBottom: '24px', padding: '12px', textAlign: 'center', color: '#8888AA', fontSize: '0.8rem', background: 'rgba(120, 160, 255,0.05)', borderRadius: '8px', border: '1px solid rgba(120, 160, 255,0.15)' }}>
-        💡 Earn ⭐ stars by playing hands, winning pots, daily spins, leveling up, and completing missions/achievements.
-      </div>
-
-    </div>
+  // 2026-10-11 (R2, C7 / C8) — the Shop tab lives in ShopTab.jsx: what each
+  // item does, Equip / Unequip from the server's equipped / owned state, two-
+  // tap buying, the VIP pass + monthly bonus, boosters, Battle Pass Premium.
+  // The dead Theme Shop modal (a second, different price list) is gone.
+  const renderShopTab = () => (
+    <ShopTab
+      progress={progress}
+      chipCount={chipCount}
+      onOpenBattlePass={() => setShowBattlePass(true)}
+      onOpenDailyRewards={() => { setShowLoginRewards(true); setLoginRewardsAutoOpened(false); }}
+      onOpenSpin={() => setShowSpinWheel(true)}
+      onOpenScratch={(autoStart) => { setScratchAutoStart(!!autoStart); setShowScratchCards(true); }}
+      onOpenVip={() => setShowVIP(true)}
+    />
   );
-  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -2849,32 +2289,25 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       {/* Broke-refill banner — appears whenever the wallet can't cover the
           cheapest cash table (5,000 min buy-in). Unlimited free top-ups keep
           a busted player in the game; the server enforces the < 5,000 gate. */}
-      {Number.isFinite(chips) && chips < 5000 && !joining && (
-        <div style={{
-          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 3100, display: 'flex', flexDirection: 'column', alignItems: 'center',
-          gap: 6, background: 'linear-gradient(135deg, #065f46, #047857)', color: '#fff',
-          padding: '14px 22px', borderRadius: 14, maxWidth: 340, textAlign: 'center',
-          boxShadow: '0 6px 28px rgba(0,0,0,0.55)', border: '1px solid rgba(16,185,129,0.6)',
-        }}>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>Out of chips?</div>
-          <div style={{ fontSize: 12.5, opacity: 0.9, lineHeight: 1.35 }}>
-            You have {(chips || 0).toLocaleString()}. Grab 5,000 free to sit back down — as many times as you need.
+      {/* R2 (addendum / APPUI P3) — never while he is seated (his chips are on
+          the table, so "Out of chips?" was wrong), sits ABOVE the bottom nav
+          (safe area included — it used to cover the nav), and shows the
+          server's chips_on_table answer when he has chips at another table. */}
+      {Number.isFinite(chips) && chips < 5000 && !joining && !isSeated && (
+        <div className="lobby-refill-banner">
+          <div className="lobby-refill-title">Low on chips</div>
+          <div className="lobby-refill-text">
+            You have {(chips || 0).toLocaleString()} in your bankroll. Get 5,000 free chips to sit back down — whenever your bankroll runs out.
           </div>
           <button
+            className="lobby-refill-btn"
             onClick={handleClaimRefill}
             disabled={refilling}
-            style={{
-              marginTop: 4, padding: '10px 20px', fontSize: 14, fontWeight: 700,
-              color: '#064e3b', background: refilling ? '#a7f3d0' : '#34d399',
-              border: 'none', borderRadius: 10, cursor: refilling ? 'default' : 'pointer',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
-            }}
           >
             {refilling ? 'Adding…' : 'Get 5,000 free chips'}
           </button>
           {refillToast && (
-            <div style={{ fontSize: 12, marginTop: 2, color: refillToast.ok ? '#d1fae5' : '#fecaca' }}>
+            <div className={`lobby-refill-note ${refillToast.ok ? 'lobby-refill-note--ok' : ''}`}>
               {refillToast.text}
             </div>
           )}
@@ -2964,7 +2397,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
               style={signingOut
                 /* T9 — "Signing out…" is blue, never red (owner preference); the idle Logout keeps its HEAD colour. */
                 ? { fontSize: '0.75rem', color: '#cfe0ff', opacity: 0.75, cursor: 'default' }
-                : { fontSize: '0.75rem', color: '#F87171' }}
+                : { fontSize: '0.75rem', color: '#cfe0ff' }}
             >
               {signingOut ? 'Signing out…' : 'Logout'}
             </button>
@@ -2985,9 +2418,8 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
 
       {/* ─── Overlay components (preserved) ─── */}
       {showStats && <StatsPanel onClose={() => setShowStats(false)} />}
-      {showShop && <ThemeShop onClose={() => setShowShop(false)} />}
-      {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
-      {showFriends && <FriendSystem onClose={() => setShowFriends(false)} />}
+      {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} onOpenProfile={(t) => { setShowLeaderboard(false); openProfile(t); }} />}
+      {showFriends && <FriendSystem onClose={() => setShowFriends(false)} onOpenProfile={(t) => { setShowFriends(false); openProfile(t); }} />}
       {showUnlocks && <UnlocksPanel onClose={() => setShowUnlocks(false)} />}
       {showVIP && <VIPPanel onClose={() => setShowVIP(false)} />}
       {showBattlePass && <BattlePass onClose={() => setShowBattlePass(false)} />}
@@ -3003,13 +2435,11 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         <LoginRewards
           onClose={() => {
             setShowLoginRewards(false);
-            // Remember that we closed the modal TODAY so the auto-open
-            // effect doesn't re-show it on the next nav/re-mount.
-            // Scoped to sessionStorage so it naturally resets tomorrow.
+            // Remember that we closed the modal TODAY (Denver — the reward's
+            // calendar) so the auto-open doesn't re-show it on the next
+            // nav/re-mount. Scoped to sessionStorage; tomorrow's date differs.
             try {
-              const today = new Date();
-              const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-              sessionStorage.setItem('app_poker_login_rewards_dismissed', todayStr);
+              sessionStorage.setItem('app_poker_login_rewards_dismissed', denverDateKey());
             } catch { /* ignore */ }
           }}
           autoOpened={loginRewardsAutoOpened}
@@ -3036,7 +2466,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
         {showExportData && <ExportData onClose={() => setShowExportData(false)} />}
         {replayHand && <HandReplayViewer history={replayHand} onClose={() => setReplayHand(null)} />}
         {showHandQuiz && <HandQuiz onClose={() => setShowHandQuiz(false)} />}
-        {showAdvancedAnalytics && <AdvancedAnalytics progress={progress} handHistories={handHistories || []} onClose={() => setShowAdvancedAnalytics(false)} />}
+        {showAdvancedAnalytics && <AdvancedAnalytics progress={progress} handLog={handLog} myName={playerName} onClose={() => setShowAdvancedAnalytics(false)} />}
         {/* 2026-10-09 (D3) — refusal handling passed in (see StakingMarketplace). */}
         {showStakingMarketplace && (
           <StakingMarketplace
@@ -3067,9 +2497,9 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
           help. */}
       {showClubs && <ClubsPanel onClose={() => setShowClubs(false)} onJoinTable={(label, action) => beginJoin(label, action)} />}
       {showSpinWheel && <SpinWheel onClose={() => setShowSpinWheel(false)} />}
-      {showScratchCards && <ScratchCards onClose={() => setShowScratchCards(false)} />}
+      {showScratchCards && <ScratchCards autoStart={scratchAutoStart} onClose={() => { setShowScratchCards(false); setScratchAutoStart(false); }} />}
       {showMultiTable && <MultiTableView onClose={() => setShowMultiTable(false)} />}
-      {showPlayerProfile && <PlayerProfile username={nameInput || 'Player'} socket={getSocket()} onClose={() => setShowPlayerProfile(false)} onViewReplay={() => {}} />}
+      {profileTarget && <PlayerProfile target={profileTarget} socket={getSocket()} onClose={() => setProfileTarget(null)} onViewReplay={(h) => { setProfileTarget(null); setReplayHand(h); }} />}
 
       {/* Custom-tournament create confirmation toast (GAP 14). Root-level so it
           shows regardless of which lobby tab is active after the director closes. */}

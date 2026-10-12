@@ -5,7 +5,25 @@
  * the same backend and VAPID key.
  */
 
-import { getHttpBearer, isTicketTabWithoutOwnBearer } from '../services/tokenStorage';
+import { getHttpBearer, isTicketTabWithoutOwnBearer, oidcSubject } from '../services/tokenStorage';
+
+/**
+ * 2026-10-11 (.online R2 — APPUI-27). The master API's push endpoints know
+ * the caller from the bearer's subject (the MASTER user id); a body `userId`
+ * that differs is refused 403 "Identity mismatch". The callers pass the
+ * poker-server LOCAL id (a different number), so "Turn on" always failed.
+ * Now: no `userId` in a body (the server takes the bearer's), the status path
+ * uses the bearer's subject, and unsubscribe names this browser's endpoint +
+ * origin so it never removes the player app's subscription on other devices.
+ */
+function masterUserIdForPush() {
+  try {
+    const sub = oidcSubject(getHttpBearer());
+    return sub && /^\d+$/.test(sub) ? sub : null;
+  } catch {
+    return null;
+  }
+}
 import { fetchWithTimeout } from '../utils/fetchWithTimeout';
 import { API_BASE as MASTER_API } from '../config';
 
@@ -125,6 +143,7 @@ export async function subscribeToPush(userId) {
   try {
     if (!isPushSupported() || !userId) return false;
     if (skippedForTicketTab()) return false;
+    if (!getHttpBearer()) return false; // the master API needs his sign-in
     const permission = await requestPushPermission();
     if (permission !== 'granted') return false;
 
@@ -145,11 +164,11 @@ export async function subscribeToPush(userId) {
     // 2026-05-05 round-9 audit P2 fix: explicitly tag origin='online' so the
     // server stores the canonical short code instead of falling back to header
     // mapping (host americanpubpoker.online → 'online').
+    // R2 (APPUI-27) — no body userId: the server enrolls the bearer's account.
     const res = await fetchWithTimeout(`${MASTER_API}/notifications/push-subscribe`, {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
-        userId,
         subscription: subscription.toJSON(),
         origin: 'online',
       }),
@@ -168,12 +187,16 @@ export async function unsubscribeFromPush(userId) {
     if (skippedForTicketTab()) return false;
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
+    const endpoint = sub ? sub.endpoint : null;
     if (sub) await sub.unsubscribe();
-    if (userId) {
+    // R2 (APPUI-27) — scoped to THIS browser's subscription (endpoint) and
+    // .online (origin): a bare call removes every device's subscription,
+    // the player app's included. No body userId (the bearer's account).
+    if (userId && getHttpBearer()) {
       await fetchWithTimeout(`${MASTER_API}/notifications/push-unsubscribe`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify(endpoint ? { endpoint, origin: 'online' } : { origin: 'online' }),
       }, PUSH_FETCH_TIMEOUT_MS);
     }
     return true;
@@ -187,10 +210,15 @@ export async function unsubscribeFromPush(userId) {
 export async function getPushStatus(userId) {
   if (!userId) return { push_enabled: false, has_subscription: false };
   if (skippedForTicketTab()) return { push_enabled: false, has_subscription: false };
+  // R2 (APPUI-27) — the path names the MASTER id (the bearer's subject), and
+  // only .online's own subscriptions count (?origin=online).
+  const masterId = masterUserIdForPush();
+  if (!masterId) return { push_enabled: false, has_subscription: false };
   try {
-    const res = await fetchWithTimeout(`${MASTER_API}/notifications/push-status/${userId}`, {
+    const res = await fetchWithTimeout(`${MASTER_API}/notifications/push-status/${encodeURIComponent(masterId)}?origin=online`, {
       headers: authHeaders(),
     }, PUSH_FETCH_TIMEOUT_MS);
+    if (!res.ok) return { push_enabled: false, has_subscription: false };
     return await res.json();
   } catch {
     return { push_enabled: false, has_subscription: false };
@@ -222,7 +250,6 @@ export async function checkSubscriptionHealth(userId) {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
-            userId,
             subscription: browserSub.toJSON(),
             origin: 'online',
           }),

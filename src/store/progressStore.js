@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import { useTableStore } from './tableStore';
+import { denverDateKey, dateKeyOf, toEpochMs, addDaysToDateKey } from '../utils/denverTime';
+import { normalizeItemType, vipXpTierFor } from '../utils/economyCatalog';
+import { ownHandResult } from '../utils/handLog';
 
+// 2026-10-11 (R2, APPUI-48) — notification ids are unique ACROSS page loads:
+// NotificationCenter keeps the list (and its read ids) in sessionStorage, and a
+// counter that restarted at 1 on every load re-used ids already in that list,
+// so the new notifications were dropped as "already stored".
+const notificationIdPrefix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 let notificationIdCounter = 0;
 let loggedSpectatorSkip = false;
 
@@ -13,12 +21,209 @@ let loggedSpectatorSkip = false;
  * The server never has more wins than hands; a copy that does (cached by an
  * older build, which overwrote totalHandsPlayed with its local count) reads 0
  * until the server's next playerProgress replaces it.
+ * R2 (C5) — a server `winRate` (0-100, one decimal) is used as is.
  */
 export function serverWinRate(progress) {
+  const sent = progress && progress.winRateFromServer === true ? Number(progress.winRate) : NaN;
+  if (Number.isFinite(sent) && sent >= 0 && sent <= 100) return sent;
   const total = Number(progress && progress.totalHandsPlayed);
   const won = Number(progress && progress.handsWon);
   if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(won) || won <= 0 || won > total) return 0;
   return Math.round((won / total) * 100);
+}
+
+// ─── C5: the server's playerProgress is the source of truth ─────────────────
+// 2026-10-11 (.online R2 — C5). Every lobby action that changes chips / stars /
+// XP / level / inventory / claims answers with a `playerProgress` built from
+// the DB. The helpers below turn that payload (and the older server's field
+// names, so an old server still works) into the canonical client fields every
+// screen reads. Nothing on the client computes these values any more.
+
+const asInt = (v) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : null);
+
+/** One server mission → { id, templateId, description, progress, target, reward{chips,xp,stars}, completed, claimed }. */
+export function normalizeMission(m) {
+  if (!m || typeof m !== 'object' || m.id == null) return null;
+  const target = Math.max(1, asInt(m.target) || 1);
+  const progress = Math.max(0, Math.min(target, asInt(m.progress) || 0));
+  const r = m.reward && typeof m.reward === 'object' ? m.reward : {};
+  return {
+    id: String(m.id),
+    templateId: String(m.templateId ?? m.type ?? ''),
+    description: String(m.description ?? m.text ?? 'Mission'),
+    progress,
+    target,
+    reward: { chips: Math.max(0, asInt(r.chips) || 0), xp: Math.max(0, asInt(r.xp) || 0), stars: Math.max(0, asInt(r.stars) || 0) },
+    completed: m.completed === true || progress >= target,
+    claimed: m.claimed === true,
+  };
+}
+
+/** The mission list a payload carries (C5 `missions`, else the older `dailyMissions`), or null when it carries none. */
+export function missionsFromPayload(p) {
+  const list = Array.isArray(p?.missions) ? p.missions : (Array.isArray(p?.dailyMissions) ? p.dailyMissions : null);
+  if (!list) return null;
+  return list.map(normalizeMission).filter(Boolean);
+}
+
+/**
+ * C8 `vip` → { tier, expiresAt (ms|null), perks[], active, monthlyClaimed,
+ * monthKey, monthlyBonus, xpRate, loginMultiplier } (an older server sends
+ * only vipExpiresAt; the monthly fields are then unknown: false / null / 0).
+ */
+export function normalizeVip(p, nowMs = Date.now()) {
+  const v = p && typeof p.vip === 'object' && p.vip ? p.vip : null;
+  const expiresAt = toEpochMs(v ? v.expiresAt : p?.vipExpiresAt);
+  const active = expiresAt != null && expiresAt > nowMs;
+  const perks = v && Array.isArray(v.perks) ? v.perks.map(String) : [];
+  const tier = v && typeof v.tier === 'string' && v.tier ? v.tier : vipXpTierFor(p?.totalXp).name;
+  const num = (x) => (Number.isFinite(Number(x)) && Number(x) > 0 ? Number(x) : 0);
+  return {
+    tier,
+    expiresAt,
+    perks,
+    active,
+    monthlyClaimed: v ? v.monthlyClaimed === true : false,
+    monthKey: v && typeof v.monthKey === 'string' ? v.monthKey : null,
+    monthlyBonus: v ? num(v.monthlyBonus) : 0,
+    xpRate: v ? num(v.xpRate) : 0,
+    loginMultiplier: v ? num(v.loginMultiplier) : 0,
+  };
+}
+
+/** Is the VIP pass active NOW (its expiry checked at render time, not at receipt)? */
+export function vipPassActive(progress, nowMs = Date.now()) {
+  const exp = progress?.vip?.expiresAt;
+  return typeof exp === 'number' && exp > nowMs;
+}
+
+/** activeBoosters: C5 array [{type, multiplier, expiresAt}] or the older object {chip:{mult,expiresAt}} → array. */
+export function normalizeBoosters(raw) {
+  const out = [];
+  const push = (type, mult, exp) => {
+    const expiresAt = toEpochMs(exp);
+    const multiplier = Number(mult);
+    if (!type || !expiresAt || !(multiplier > 0)) return;
+    out.push({ type: String(type), multiplier, expiresAt });
+  };
+  if (Array.isArray(raw)) for (const b of raw) push(b?.type ?? b?.kind, b?.multiplier ?? b?.mult, b?.expiresAt);
+  else if (raw && typeof raw === 'object') for (const [k, b] of Object.entries(raw)) push(k, b?.multiplier ?? b?.mult, b?.expiresAt);
+  return out;
+}
+
+/** The boosters still running at `nowMs`. */
+export function activeBoostersAt(progress, nowMs = Date.now()) {
+  return (Array.isArray(progress?.boosters) ? progress.boosters : []).filter((b) => b.expiresAt > nowMs);
+}
+
+/**
+ * C7 `equipped` → { theme, cardBack, frame, title, profileBg, badge, emotes[] }
+ * (older server: equippedTableTheme / equippedCardBack). A slot the payload
+ * does not name is undefined (unknown), not null (nothing equipped).
+ */
+export function normalizeEquipped(p, prev) {
+  const e = p && typeof p.equipped === 'object' && p.equipped ? p.equipped : null;
+  if (e) {
+    const slot = (k) => (Object.prototype.hasOwnProperty.call(e, k) ? (e[k] ?? null) : undefined);
+    return {
+      theme: e.theme ?? null,
+      cardBack: e.cardBack ?? null,
+      frame: e.frame ?? null,
+      title: e.title ?? null,
+      profileBg: slot('profileBg'),
+      badge: slot('badge'),
+      emotes: Array.isArray(e.emotes) ? e.emotes.map(String) : [],
+    };
+  }
+  if (p && (p.equippedTableTheme !== undefined || p.equippedCardBack !== undefined)) {
+    const base = prev || { theme: null, cardBack: null, frame: null, title: null, emotes: [] };
+    const fix = (v) => (v && v !== 'default' ? v : null);
+    return { ...base, theme: fix(p.equippedTableTheme), cardBack: fix(p.equippedCardBack) };
+  }
+  return null;
+}
+
+/** C5 `owned` → ['type:id', …]; a bare id is kept as is (resolved by isItemOwned). */
+export function normalizeOwned(raw) {
+  if (!Array.isArray(raw)) return null;
+  return raw.map((x) => (typeof x === 'string' ? x : (x && x.itemType && x.itemId ? `${normalizeItemType(x.itemType)}:${x.itemId}` : null))).filter(Boolean);
+}
+
+/** DB inventory rows → { ownedBy: {type: Set<id>}, equippedBy: {type: id} } (legacy type aliases folded). */
+export function indexInventory(rows) {
+  const ownedBy = {};
+  const equippedBy = {};
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || typeof row !== 'object') continue;
+    const t = normalizeItemType(row.item_type || row.itemType);
+    const id = row.item_id || row.itemId;
+    if (!t || !id) continue;
+    if (!ownedBy[t]) ownedBy[t] = new Set();
+    ownedBy[t].add(id);
+    if (row.equipped) equippedBy[t] = id;
+  }
+  return { ownedBy, equippedBy };
+}
+
+/**
+ * Does the player own (type, id)? The DB inventory rows (durableState /
+ * inventoryUpdated) first, then the C5 `owned` keys ('type:id', or a bare id
+ * no other type uses). Free defaults (price 0) are owned by everyone — the
+ * caller passes `free`.
+ */
+export function isItemOwned(progress, type, id, { free = false } = {}) {
+  if (free) return true;
+  const t = normalizeItemType(type);
+  if (progress?.ownedBy?.[t]?.has?.(id)) return true;
+  const owned = Array.isArray(progress?.ownedKeys) ? progress.ownedKeys : [];
+  if (owned.includes(`${t}:${id}`)) return true;
+  return owned.includes(id) && !owned.some((k) => k.endsWith(`:${id}`) && !k.startsWith(`${t}:`));
+}
+
+/** The id the player has equipped for `type`, from C5 `equipped` (theme/card_back/frame/title/profile_bg/badge) else the inventory rows. */
+export function equippedIdFor(progress, type) {
+  const t = normalizeItemType(type);
+  const e = progress?.equipped;
+  const key = { theme: 'theme', card_back: 'cardBack', frame: 'frame', title: 'title', profile_bg: 'profileBg', badge: 'badge' }[t];
+  if (e && key && e[key] !== undefined) return e[key] || null;
+  return progress?.equippedBy?.[t] || null;
+}
+
+/**
+ * Is today's daily login reward claimable? The server's Denver date of the
+ * last claim (C5 lastLoginClaimDate) vs today's Denver date — never the
+ * browser's local date. Unknown (not hydrated yet) → false (no banner).
+ */
+export function dailyLoginClaimable(progress, nowMs = Date.now()) {
+  if (!progress || progress.hydrated !== true) return false;
+  const last = dateKeyOf(progress.lastLoginClaimDate);
+  return last !== denverDateKey(nowMs);
+}
+
+// ─── R2 (APPUI-15) — the lobby hand log ─────────────────────────────────────
+const HAND_LOG_MAX = 100;
+function freshSession() {
+  return { startedAt: Date.now(), hands: 0, wins: 0, net: 0 };
+}
+/** `<tableId>:<handNumber>` of a record (live: stamped tableId; stored: from its hand id), or null. */
+export function handKey(rec) {
+  if (!rec || rec.handNumber == null) return null;
+  if (rec.tableId != null && rec.tableId !== '') return `${rec.tableId}:${rec.handNumber}`;
+  if (typeof rec.handId === 'string') {
+    const parts = rec.handId.split('-');
+    if (parts.length >= 4) return `${parts.slice(0, -3).join('-')}:${parts[parts.length - 3]}`;
+  }
+  return null;
+}
+
+/** The streak day (1..7) the NEXT claim pays: continues after a claim yesterday (Denver), else restarts at 1. */
+export function nextLoginRewardDay(progress, nowMs = Date.now()) {
+  const streak = Math.max(0, asInt(progress?.loginStreak) || 0);
+  const last = dateKeyOf(progress?.lastLoginClaimDate);
+  const today = denverDateKey(nowMs);
+  if (last === today) return ((Math.max(1, streak) - 1) % 7) + 1; // already claimed: today's day
+  if (last && last === addDaysToDateKey(today, -1)) return (streak % 7) + 1;
+  return 1;
 }
 
 // ─── 1000-level XP system ───────────────────────────────────────────────────
@@ -203,34 +408,9 @@ export const ACHIEVEMENTS = [
 ];
 
 // ─── Daily Missions ──────────────────────────────────────────────────────────
-const MISSION_TEMPLATES = [
-  { id: 'win_hands',   text: 'Win {n} hands',     targets: [3, 5, 7],    field: 'missionsWinCount',   xp: 100 },
-  { id: 'play_hands',  text: 'Play {n} hands',    targets: [10, 15, 20], field: 'missionsPlayCount',  xp: 75 },
-  { id: 'raise_times', text: 'Raise {n} times',   targets: [5, 8, 12],   field: 'missionsRaiseCount', xp: 50 },
-  { id: 'win_streak',  text: 'Win {n} in a row',  targets: [2, 3],       field: 'currentStreak',      xp: 150 },
-  { id: 'big_pot',     text: 'Win a pot over {n}', targets: [500, 1000], field: 'sessionBiggestPot',  xp: 80 },
-];
-
-function generateDailyMissions(seed) {
-  const rng = (s) => { s = (s * 1664525 + 1013904223) & 0xffffffff; return Math.abs(s); };
-  let s = seed;
-  const picked = [];
-  const pool = [...MISSION_TEMPLATES];
-  for (let i = 0; i < 3 && pool.length > 0; i++) {
-    s = rng(s);
-    const idx = s % pool.length;
-    const tmpl = pool.splice(idx, 1)[0];
-    s = rng(s);
-    const target = tmpl.targets[s % tmpl.targets.length];
-    picked.push({ ...tmpl, target, text: tmpl.text.replace('{n}', target), progress: 0, claimed: false });
-  }
-  return picked;
-}
-
-function getDailySeed() {
-  const d = new Date();
-  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
-}
+// 2026-10-11 (R2, C6) — missions are the SERVER's (per account, per Denver
+// day; playerProgress.missions). The client no longer generates any: its old
+// local templates showed made-up missions that could never be claimed.
 
 /** Build a default progress object for a brand-new player.
  *
@@ -295,14 +475,15 @@ function defaultProgress() {
     handTypeStats: {},
     // Unlocked achievement IDs
     unlockedAchievements: [],
-    // Daily missions
-    dailyMissions: generateDailyMissions(getDailySeed()),
-    dailyMissionsSeed: getDailySeed(),
-    // Mission counters (reset daily)
-    missionsWinCount: 0,
-    missionsPlayCount: 0,
-    missionsRaiseCount: 0,
-    sessionBiggestPot: 0,
+    // R2 (C6) — the server's daily missions; null until a payload carries them.
+    missions: null,
+    dailyMissionsDate: null,
+    // R2 (C5/C8) — server economy state, normalised by setProgress.
+    vip: { tier: 'Bronze', expiresAt: null, perks: [], active: false },
+    boosters: [],
+    equipped: null,
+    ownedKeys: [],
+    battlePassPremium: false,
     // ─── Persistence-sweep durable fields (hydrated from server via durableState event) ───
     // Inventory: array of { item_type, item_id, equipped, acquired_at }
     inventory: [],
@@ -362,31 +543,115 @@ export const useProgressStore = create((set, get) => ({
     // level=5 by stale totalXp). Root cause of "level keeps resetting
     // every login".
     //
-    // Priority order now:
-    //   1. If server sent an explicit `level`, ADOPT IT and back-compute
-    //      totalXp from the client's level curve so the derived math
-    //      agrees going forward.
-    //   2. Else, if we have a totalXp (pre-server-auth flow), derive.
-    //   3. Else, keep previous values.
+    // 2026-10-11 (R2, C5) — every value the server sends is ADOPTED as is:
+    // level, xp, xpToNextLevel and totalXp (cumulative season XP — the Battle
+    // Pass and the VIP XP tier read it). Only a value the server did NOT send
+    // is derived (an older payload without totalXp / xpToNextLevel).
     if (incoming.level != null) {
       merged.level = incoming.level;
       merged.xp = incoming.xp != null ? incoming.xp : (merged.xp || 0);
-      // Reconcile totalXp so a subsequent XP gain on client lands on
-      // the correct curve position for this level.
-      merged.totalXp = totalXpForLevel(incoming.level) + (merged.xp || 0);
-      merged.xpToNextLevel = xpRequiredForLevel(incoming.level);
-    } else if (merged.totalXp != null) {
+      merged.totalXp = Number.isFinite(Number(incoming.totalXp))
+        ? Number(incoming.totalXp)
+        : totalXpForLevel(incoming.level) + (merged.xp || 0);
+      merged.xpToNextLevel = Number.isFinite(Number(incoming.xpToNextLevel)) && Number(incoming.xpToNextLevel) > 0
+        ? Number(incoming.xpToNextLevel)
+        : xpRequiredForLevel(incoming.level);
+    } else if (incoming.totalXp == null && merged.totalXp != null && prev.hydrated !== true) {
       const info = levelFromTotalXp(merged.totalXp);
       merged.level = info.level;
       merged.xp = info.xp;
       merged.xpToNextLevel = info.xpToNextLevel;
     }
 
-    // 2026-10-11 (APPUI-9) — derived from the server's counters only.
-    merged.winRate = serverWinRate(merged);
+    // R2 (C5) — the server's economy fields, normalised for every screen.
+    const missions = missionsFromPayload(incoming);
+    if (missions) merged.missions = missions;
+    if (incoming.dailyMissionsDate !== undefined) merged.dailyMissionsDate = dateKeyOf(incoming.dailyMissionsDate);
+    if (incoming.vip !== undefined || incoming.vipExpiresAt !== undefined) {
+      merged.vip = normalizeVip({ vip: incoming.vip, vipExpiresAt: incoming.vipExpiresAt, totalXp: merged.totalXp });
+    }
+    if (incoming.activeBoosters !== undefined) merged.boosters = normalizeBoosters(incoming.activeBoosters);
+    const equipped = normalizeEquipped(incoming, prev.equipped);
+    if (equipped) merged.equipped = equipped;
+    const owned = normalizeOwned(incoming.owned);
+    if (owned) merged.ownedKeys = owned;
+    if (typeof incoming.battlePassPremium === 'boolean') merged.battlePassPremium = incoming.battlePassPremium;
+    if (incoming.lastLoginClaimDate !== undefined) merged.lastLoginClaimDate = dateKeyOf(incoming.lastLoginClaimDate);
+    if (incoming.loginStreak === undefined && Number.isFinite(Number(incoming.dailyLoginStreak))) merged.loginStreak = Number(incoming.dailyLoginStreak);
+
+    // 2026-10-11 (APPUI-9) — derived from the server's counters only; R2 (C5)
+    // a winRate the server sends (0-100, one decimal) is used as is.
+    const sentWinRate = incoming.winRate != null && incoming.winRate !== '' ? Number(incoming.winRate) : NaN;
+    if (Number.isFinite(sentWinRate) && sentWinRate >= 0 && sentWinRate <= 100) {
+      merged.winRate = Math.round(sentWinRate * 10) / 10;
+      merged.winRateFromServer = true;
+    } else if (incoming.handsWon !== undefined || incoming.totalHandsPlayed !== undefined || prev.winRateFromServer !== true) {
+      // New counters without a rate (an older payload): derive from them.
+      merged.winRateFromServer = false;
+      merged.winRate = serverWinRate(merged);
+    } else {
+      // A partial payload that carries neither keeps the server's rate.
+      merged.winRate = prev.winRate;
+      merged.winRateFromServer = true;
+    }
 
     saveProgress(merged);
     set({ progress: merged });
+  },
+
+  /**
+   * R2 — the account this progress belongs to (gameStore.userId). A different
+   * account (sign-out + another sign-in in the same tab) starts with empty
+   * local logs: the previous player's recent hands / session counters are
+   * never shown to the next one.
+   */
+  accountId: null,
+  noteAccount: (userId) => {
+    const id = userId == null ? null : String(userId);
+    if (get().accountId === id) return;
+    set({ accountId: id, handLog: [], session: freshSession() });
+  },
+
+  // ─── R2 (APPUI-15) — the lobby's own hand log + "This Session" counters ───
+  // Kept here (not in the table store, which clears its list when he leaves a
+  // table) so Recent Hands, the session card, the bankroll graph and the
+  // exports keep his hands after he stands up. Hydrated from the server's
+  // per-user hand history (durableState.handHistory, newest first) and
+  // appended by every live `handHistory` event (stamped with his seat).
+  handLog: [],
+  session: freshSession(),
+
+  /** A live hand record (App.jsx stamps `yourSeat` / `tableId` / `tableName` / `receivedAt`). */
+  noteHandRecord: (rec, myName) => {
+    if (!rec || typeof rec !== 'object' || !Array.isArray(rec.players)) return;
+    const key = handKey(rec);
+    const log = get().handLog;
+    if (key && log.some((h) => handKey(h) === key)) return;
+    const next = [...log, rec].slice(-HAND_LOG_MAX);
+    const own = ownHandResult(rec, myName);
+    const s = get().session;
+    set({
+      handLog: next,
+      session: own
+        ? { ...s, hands: s.hands + 1, wins: s.wins + (own.won ? 1 : 0), net: s.net + (typeof own.net === 'number' ? own.net : 0) }
+        : s,
+    });
+  },
+
+  /** The server's stored hands (newest first) — merged under the live ones; never counted as this session. */
+  hydrateHandLog: (records) => {
+    if (!Array.isArray(records)) return;
+    const usable = records.filter((h) => h && Array.isArray(h.players) && h.players.length > 0);
+    const oldestFirst = usable.slice().reverse();
+    const seen = new Set();
+    const merged = [];
+    for (const h of [...oldestFirst, ...get().handLog]) {
+      const k = handKey(h);
+      if (k && seen.has(k)) continue;
+      if (k) seen.add(k);
+      merged.push(h);
+    }
+    set({ handLog: merged.slice(-HAND_LOG_MAX) });
   },
 
   /**
@@ -396,23 +661,17 @@ export const useProgressStore = create((set, get) => ({
    */
   setDurableState: (payload) => {
     const prev = get().progress || defaultProgress();
-    const inventory = Array.isArray(payload?.inventory) ? payload.inventory : [];
-    const ownedBy = {};
-    const equippedBy = {};
-    for (const row of inventory) {
-      const t = row.item_type || row.itemType;
-      const id = row.item_id || row.itemId;
-      if (!t || !id) continue;
-      if (!ownedBy[t]) ownedBy[t] = new Set();
-      ownedBy[t].add(id);
-      if (row.equipped) equippedBy[t] = id;
-    }
+    // R2 — a payload without an inventory array keeps the inventory we have
+    // (it used to wipe ownership to "nothing owned" until the next refresh).
+    const hasInventory = Array.isArray(payload?.inventory);
+    const inventory = hasInventory ? payload.inventory : (prev.inventory || []);
+    const { ownedBy, equippedBy } = hasInventory ? indexInventory(inventory) : { ownedBy: prev.ownedBy || {}, equippedBy: prev.equippedBy || {} };
     const merged = {
       ...prev,
       inventory,
       ownedBy,
       equippedBy,
-      battlePassClaimed: payload?.battlePassClaims || [],
+      battlePassClaimed: Array.isArray(payload?.battlePassClaims) ? payload.battlePassClaims : (prev.battlePassClaimed || []),
       // 2026-07-07 gap-fill — server-durable career progress (cross-device).
       // Keep-prev guard so a partial payload can't wipe it.
       careerProgress: Array.isArray(payload?.careerProgress) ? payload.careerProgress : (prev.careerProgress || []),
@@ -424,7 +683,7 @@ export const useProgressStore = create((set, get) => ({
       stars: typeof payload?.stars === 'number' ? payload.stars : prev.stars,
       scratchCardsAvailable: typeof payload?.scratchCardsAvailable === 'number' ? payload.scratchCardsAvailable : (prev.scratchCardsAvailable ?? 0),
       loginStreak: typeof payload?.loginStreak === 'number' ? payload.loginStreak : (prev.loginStreak ?? 0),
-      lastLoginClaimDate: payload?.lastLoginClaimDate !== undefined ? payload.lastLoginClaimDate : (prev.lastLoginClaimDate ?? null),
+      lastLoginClaimDate: payload?.lastLoginClaimDate !== undefined ? dateKeyOf(payload.lastLoginClaimDate) : (prev.lastLoginClaimDate ?? null),
     };
     saveProgress(merged);
     set({ progress: merged });
@@ -433,66 +692,15 @@ export const useProgressStore = create((set, get) => ({
   /** Called when server emits `inventoryUpdated` after a buy/equip. */
   setInventory: (inventory) => {
     const prev = get().progress || defaultProgress();
-    const ownedBy = {};
-    const equippedBy = {};
-    for (const row of inventory || []) {
-      const t = row.item_type || row.itemType;
-      const id = row.item_id || row.itemId;
-      if (!t || !id) continue;
-      if (!ownedBy[t]) ownedBy[t] = new Set();
-      ownedBy[t].add(id);
-      if (row.equipped) equippedBy[t] = id;
-    }
-    const merged = { ...prev, inventory, ownedBy, equippedBy };
+    const rows = Array.isArray(inventory) ? inventory : [];
+    const { ownedBy, equippedBy } = indexInventory(rows);
+    const merged = { ...prev, inventory: rows, ownedBy, equippedBy };
     saveProgress(merged);
     set({ progress: merged });
   },
 
-  /**
-   * Award XP and persist locally. Does NOT trigger the level-up popup or
-   * award bonus chips — those are server-driven via the `levelUp` socket
-   * event (see App.jsx) and the `playerProgress` chip update.
-   *
-   * 2026-05-19 audit — empirical bug observed in real Chrome play test:
-   * "LEVEL UP! 2" modal fired three times in a row for the same hand,
-   * with different reward amounts (200/0 → 200/0 → 1,000/10). Root
-   * cause: this method previously called set({ levelUpData: ... }) whenever
-   * `info.level > prev.level`, but `prev.totalXp` was frequently a stale
-   * client-side value (the server's `playerProgress` event hadn't yet
-   * landed when `recordHand` ran from the table HUD's HandComplete
-   * useEffect). Result: client computed a phantom level-up that did NOT
-   * match the server's authoritative state — the lobby/profile then
-   * correctly showed Level 1 while three Level-2 popups had fired (BUG 11
-   * "profile shows Level 1 despite Level Up modal").
-   *
-   * The server's progressionManager is the authoritative source for level
-   * + chips: it emits `playerProgress` (sets level/xp), then `levelUp`
-   * (triggers the popup with correct rewards). The client side just needs
-   * to mirror local stats (XP into level, totalXp) for instant UI
-   * feedback before the server round-trip — without firing UI events
-   * that would race the server.
-   */
-  awardXP: (amount) => {
-    const prev = get().progress || defaultProgress();
-    const newTotalXp = (prev.totalXp || 0) + amount;
-    const info = levelFromTotalXp(newTotalXp);
-
-    const updated = {
-      ...prev,
-      totalXp: newTotalXp,
-      // NOTE: we DO update level here for instant UI feedback (xp bar
-      // progress), but we DO NOT trigger the level-up popup. The server's
-      // `levelUp` socket event is the sole trigger for the popup, with
-      // correct reward amounts.
-      level: info.level,
-      xp: info.xp,
-      xpToNextLevel: info.xpToNextLevel,
-    };
-    saveProgress(updated);
-    set({ progress: updated });
-
-    return { levelsGained: info.level - prev.level, newLevel: info.level };
-  },
+  // 2026-10-11 (R2, C5) — the local `awardXP` (a client-side XP / level model)
+  // is gone: level, xp and totalXp are only ever the server's (playerProgress).
 
   /**
    * Record a completed hand in the LOCAL stats (VPIP/PFR, positions, hand
@@ -645,22 +853,9 @@ export const useProgressStore = create((set, get) => ({
     // (2026-10-11, APPUI-9: no ELO / ELO-history writes here — the server
     // sends elo + eloHistory in playerProgress.)
 
-    // Local daily mission counters, reset at local midnight. The mission LIST
-    // and its progress are the server's (playerProgress.dailyMissions) and are
-    // not touched here (2026-10-11, APPUI-9: this used to replace the server's
-    // missions at midnight and zero their progress after every hand).
-    const seed = getDailySeed();
-    if (prev.dailyMissionsSeed !== seed) {
-      updated.dailyMissionsSeed = seed;
-      updated.missionsWinCount = 0;
-      updated.missionsPlayCount = 0;
-      updated.missionsRaiseCount = 0;
-      updated.sessionBiggestPot = 0;
-    }
-    updated.missionsPlayCount = (updated.missionsPlayCount || 0) + 1;
-    if (won) updated.missionsWinCount = (updated.missionsWinCount || 0) + 1;
-    if (raiseCount > 0) updated.missionsRaiseCount = (updated.missionsRaiseCount || 0) + raiseCount;
-    updated.sessionBiggestPot = Math.max(updated.sessionBiggestPot || 0, potSize || 0);
+    // (2026-10-11, R2 C6: no local mission counters either — the missions and
+    // their progress are the server's, counted from hands he was dealt into.)
+    void raiseCount;
 
     // 2026-05-19 audit — REMOVED client-side achievement check.
     //
@@ -695,18 +890,10 @@ export const useProgressStore = create((set, get) => ({
     // came first).
   },
 
-  /** Claim a daily mission reward. */
-  claimMission: (missionId) => {
-    const prev = get().progress || defaultProgress();
-    const missions = [...(prev.dailyMissions || [])];
-    const m = missions.find(mi => mi.id === missionId);
-    if (!m || m.claimed || m.progress < m.target) return;
-    m.claimed = true;
-    const updated = { ...prev, dailyMissions: missions };
-    saveProgress(updated);
-    set({ progress: updated });
-    get().awardXP(m.xp);
-  },
+  // (2026-10-11, R2 C6: the local `claimMission` — which marked a mission
+  // claimed and awarded XP on the client — is gone. MissionsPanel sends
+  // `claimMission { missionId }`; the server answers `missionClaimed` and a
+  // fresh playerProgress.)
 
   /** Save a session to history. */
   saveSession: ({ duration, hands, netChips, startChips, endChips }) => {
@@ -766,7 +953,7 @@ export const useProgressStore = create((set, get) => ({
     set((state) => {
       const next = [
         ...state.notifications,
-        { ...notification, id: ++notificationIdCounter },
+        { ...notification, id: `${notificationIdPrefix}-${++notificationIdCounter}`, timestamp: Date.now() },
       ];
       return { notifications: next.length > 50 ? next.slice(-50) : next };
     }),

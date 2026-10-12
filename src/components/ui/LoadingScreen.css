@@ -99,13 +99,13 @@
   height: 64px;
   border-radius: 50%;
   background: conic-gradient(
-    #EF4444 0deg 45deg,
+    #1d4ed8 0deg 45deg,
     #0c1a44 45deg 90deg,
-    #EF4444 90deg 135deg,
+    #1d4ed8 90deg 135deg,
     #0c1a44 135deg 180deg,
-    #EF4444 180deg 225deg,
+    #1d4ed8 180deg 225deg,
     #0c1a44 225deg 270deg,
-    #EF4444 270deg 315deg,
+    #1d4ed8 270deg 315deg,
     #0c1a44 315deg 360deg
   );
   border: 4px solid #ffd24a;
@@ -219,6 +219,19 @@
   border-radius: 2px;
   box-shadow: 0 0 10px rgba(120, 160, 255, 0.5);
   transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* R2 — an indeterminate bar (the splash does not know real progress). */
+.loading-progress-fill--indeterminate {
+  width: 40%;
+  animation: loading-indeterminate 1.1s ease-in-out infinite;
+}
+@keyframes loading-indeterminate {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(260%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-progress-fill--indeterminate { animation: none; width: 100%; opacity: 0.5; }
 }
 
 /* ── Tip carousel ── */

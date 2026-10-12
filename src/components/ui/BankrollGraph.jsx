@@ -1,36 +1,35 @@
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useTableStore } from '../../store/tableStore';
+import { useProgressStore } from '../../store/progressStore';
 import { useGameStore } from '../../store/gameStore';
+import { summarizeOwnHands } from '../../utils/handLog';
 import './BankrollGraph.css';
 
-// 2026-06-19 fix: this graph used to read a `poker_bankroll_history`
-// sessionStorage key that NOTHING in the app ever wrote — so it was always
-// empty. It now derives the series from the DURABLE per-hand history the server
-// loads at login (tableStore.handHistories, sourced from loadHandHistory), using
-// the hero's end-of-hand table stack per hand. Real data, survives refresh.
+// 2026-10-11 (.online R2 — APPUI-51). The graph is HIS results: the chips he
+// won or lost in each of his own hands (his row of each record — utils/handLog
+// finds his seat), added up. It used to plot the end-of-hand TABLE STACK of a
+// row matched by name from the table store's last 20 (cleared when he left a
+// table), which jumps with every buy-in and is not a bankroll. Source: the
+// lobby hand log (the server's stored hands for him + this session's).
 
 export default function BankrollGraph({ onClose }) {
   const [view, setView] = useState('last50');
   const [tooltip, setTooltip] = useState(null);
-  const handHistories = useTableStore((s) => s.handHistories);
+  const handLog = useProgressStore((s) => s.handLog);
   const heroName = useGameStore((s) => s.playerName);
 
-  // Build a cumulative stack series: one point per hand the hero was dealt in.
-  const allData = useMemo(() => {
-    const out = [];
-    for (const rec of handHistories || []) {
-      const me = (rec?.players || []).find((p) => p.name === heroName);
-      if (!me || typeof me.endChips !== 'number') continue;
-      out.push({ chips: me.endChips, label: rec.handNumber != null ? `Hand #${rec.handNumber}` : `Hand ${out.length + 1}` });
-    }
-    return out;
-  }, [handHistories, heroName]);
+  // One point per hand of his: the running total of his chips won / lost.
+  const allData = useMemo(() => summarizeOwnHands(handLog, heroName).series.map((s) => ({
+    chips: s.cumulative,
+    label: `${s.label} (${s.net >= 0 ? '+' : ''}${s.net.toLocaleString()})`,
+  })), [handLog, heroName]);
 
+  // The shown window starts at zero (its own running total).
   const data = useMemo(() => {
-    if (view === 'last50') return allData.slice(-50);
-    if (view === 'session') return allData.slice(-15);
-    return allData; // all available
+    const n = view === 'last50' ? 50 : view === 'session' ? 15 : allData.length;
+    if (allData.length <= n) return allData;
+    const base = allData[allData.length - n - 1].chips;
+    return allData.slice(-n).map((d) => ({ ...d, chips: d.chips - base }));
   }, [view, allData]);
 
   if (data.length < 2) {
@@ -38,11 +37,11 @@ export default function BankrollGraph({ onClose }) {
       <div className="bankroll-overlay" onClick={onClose}>
         <div className="bankroll-panel" onClick={(e) => e.stopPropagation()}>
           <div className="bankroll-header">
-            <div className="bankroll-title">Bankroll Graph</div>
+            <div className="bankroll-title">Your Results</div>
             <button className="bankroll-close" onClick={onClose}>Close</button>
           </div>
           <div className="bankroll-empty">
-            Play more hands to see your bankroll graph. Data points are recorded after each hand.
+            Play a few more hands to see your results — each hand you play adds a point (chips won or lost, added up).
           </div>
         </div>
       </div>,
@@ -54,7 +53,7 @@ export default function BankrollGraph({ onClose }) {
   const min = Math.min(...chips);
   const max = Math.max(...chips);
   const range = max - min || 1;
-  const startingStack = data[0].chips;
+  const startingStack = 0;
 
   const w = 540;
   const h = 200;
@@ -90,7 +89,7 @@ export default function BankrollGraph({ onClose }) {
     <div className="bankroll-overlay" onClick={onClose}>
       <div className="bankroll-panel" onClick={(e) => e.stopPropagation()}>
         <div className="bankroll-header">
-          <div className="bankroll-title">Bankroll Graph</div>
+          <div className="bankroll-title">Your Results</div>
           <button className="bankroll-close" onClick={onClose}>Close</button>
         </div>
 
@@ -159,6 +158,7 @@ export default function BankrollGraph({ onClose }) {
                 strokeWidth="8"
                 style={{ cursor: 'pointer' }}
                 onMouseEnter={() => setTooltip({ ...p, index: i })}
+                onClick={() => setTooltip((t) => (t && t.index === i ? null : { ...p, index: i }))}
                 onMouseLeave={() => setTooltip(null)}
               />
             ))}
@@ -184,7 +184,7 @@ export default function BankrollGraph({ onClose }) {
                 top: `${(tooltip.y / h) * 100}%`,
               }}
             >
-              <div className="bankroll-tooltip-chips">{tooltip.chips.toLocaleString()} chips</div>
+              <div className="bankroll-tooltip-chips">{tooltip.chips >= 0 ? '+' : ''}{tooltip.chips.toLocaleString()} total</div>
               <div className="bankroll-tooltip-time">{tooltip.label}</div>
             </div>
           )}
@@ -195,7 +195,7 @@ export default function BankrollGraph({ onClose }) {
             <div className="bankroll-summary-value" style={{ color: lineColor }}>
               {netChange >= 0 ? '+' : ''}{netChange.toLocaleString()}
             </div>
-            <div className="bankroll-summary-label">Net Change</div>
+            <div className="bankroll-summary-label">Total (shown hands)</div>
           </div>
           <div className="bankroll-summary-card">
             <div className="bankroll-summary-value" style={{ color: '#27e0a0' }}>

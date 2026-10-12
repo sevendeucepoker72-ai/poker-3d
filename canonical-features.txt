@@ -930,3 +930,114 @@ sb-organizer-rule
 #     user drawer shows only fields the server sends, table blinds come from `blinds`.
 customizer-done-top
 admin-maintenance-toggle
+# 2026-10-11 .online R2 (K2 economy screens) — C5: the progress store adopts the
+#     server's playerProgress (missions, vip, boosters, equipped, owned, Denver
+#     claim date, winRate); unique notification ids (APPUI-48); titled toasts;
+#     scratch-card earned toast; clientData + preferences restored at sign-in
+#     (APPUI-26); four-colour deck / hand strength / pot odds settings work.
+poker:client-data-restored
+pref-hide-hand-strength
+pref-hide-pot-odds
+pref-four-color-deck
+Mission reward collected:
+You earned a scratch card! Reveal it in the Shop.
+
+# 2026-10-11 .online R2 (K2) — C6 / APPUI-3: the lobby mission strip shows the
+#     server's missions and opens the Missions panel; claims go to the server
+#     (claimMission, no seat) and show its answer; no placeholder missions.
+mission-strip-open
+mission-chip--claimable
+Loading today's missions
+The game server did not answer — try again.
+
+# 2026-10-11 .online R2 (K2) — C7 / C8 / APPUI-5 / APPUI-6 / APPUI-33 / APPUI-38:
+#     the Shop says what every item does, Equip / Unequip from the server's
+#     equipped / owned state, two-tap buying (no stray-tap spending), only
+#     drawn cosmetics are sold, the dead Theme Shop modal is gone; VIP pass
+#     perks are exactly the real ones + the monthly bonus claim; booster copy
+#     matches the server; Battle Pass Premium buyable from the lobby with
+#     visible answers, claims one at a time with per-tier errors; the Shop's
+#     scratch "Reveal" shows the result; the lobby VIP card uses season XP.
+shop-btn--confirm
+Changes the felt and rail you see at every table.
+claimVipMonthly
+Collect monthly VIP bonus
+Pot winnings are not boosted.
+Removing it is not available on this server yet.
+Premium only — get Premium to claim it.
+scratch-reveal-all
+season XP
+
+# 2026-10-11 .online R2 (K2) — APPUI-36 / APPUI-37: the daily reward banner,
+#     auto-open and calendar follow the server's Denver claim date
+#     (already_claimed shown, VIP +50% tag, Day 7 box); the spin wheel draws
+#     exactly the server's prizes sized by their odds and stops on the paid one;
+#     auto-open once per Denver day per account.
+login-rewards-message
+Already claimed today — your next reward opens at midnight (Denver time).
+spin-wheel-odds
+app_poker_spin_seen
+
+# 2026-10-11 .online R2 (K2) — C9 / APPUI-17 / APPUI-50 / APPUI-14 / APPUI-47 /
+#     addendum: every leaderboard period says what it ranks, the inline board
+#     shows only all-time, "you" is the server's isYou, the season tab shows
+#     seasonEndsAt + the rewards really paid, season badges drawn; profiles are
+#     opened by user id and his own is detected by identity; friend errors
+#     (friend_not_found / friend_name_ambiguous) shown; player search shows no
+#     chips; Invite only to the table he is seated at.
+leaderboard-ranks-by
+Chips won this month — top 3 are paid at month end
+Paid automatically when the month ends (Denver time)
+player-search-row
+Add friend by exact display name...
+No player has that exact display name — check the spelling.
+profile-season-badge
+Invite to the table you are seated at
+
+# 2026-10-11 .online R2 (K2) — C10 / APPUI-10 / APPUI-15 / APPUI-49 / APPUI-51 /
+#     APPUI-52: stats panels read the server's tracked stats only (no
+#     fabricated leaks); analytics / bankroll / exports compute from his own
+#     row of each hand; the importer reads the app's export (hero from "Dealt
+#     to"); Share Hand replays streets / folds / pot from the actionLog; lobby
+#     Recent Hands + This Session from his own live hands (kept after leaving a
+#     table); achievements are the server's ids.
+Loading your stats from the server
+Loading your tracked stats from the server
+Recent Hands Logged
+This hand cannot be replayed
+Your recent hands (from your seat) as CSV
+W@SD
+
+# 2026-10-11 .online R2 (K2) — APPUI-26 / APPUI-27 / APPUI-35 / APPUI P3:
+#     Settings controls all work (card back / felt = C7 equips; auto-muck and
+#     turn timer removed); push "Turn on" enrolls the bearer's account (no
+#     local id), unsubscribe is scoped to this browser; tutorial once per
+#     device with honest copy; offline Retry without inline JS; light mode on
+#     its own key; PNG + apple-touch icons; no "$" on play money; red removed
+#     (connection banner, Logout, AuthCallback spinner, OverlayBoundary …);
+#     honest splash; nav whitelist 'social'; refill banner above the nav and
+#     never while seated, with the server's chips_on_table sentence.
+app_poker_ui_mode
+apple-touch-icon.png
+poker-icon-maskable-512.png
+class="retry" href=""
+loading-progress-fill--indeterminate
+lobby-refill-banner
+Opens from your home screen · No app store needed
+The pot-odds badge and the odds line on Call
+login-keep-signed-in
+
+# 2026-10-11 .online R2 (K2) — aligned with poker-server R2 (S3) final names:
+#     profiles / Add Friend / shared links by the server's opaque publicId
+#     (leaderboard, search, friends rows; isYou = his own); Unequip is
+#     equipItem { itemId: null }; the spin wheel reads spinWheelConfig
+#     (claimedToday / resetsAt) and C5 dailySpinClaimed; Battle Pass reads the
+#     server's battlePassInfo table (premium milestones trophy / royal); the
+#     VIP monthly bonus reads vip.monthlyClaimed; the month-end season award
+#     toast (seasonRewardAwarded); a duplicate reward paid in stars says so;
+#     stats panels re-ask a still-loading record instead of drawing zeros.
+profile-friend-btn
+spinWheelConfig
+battlePassInfo
+seasonRewardAwarded
+stars (you already owned

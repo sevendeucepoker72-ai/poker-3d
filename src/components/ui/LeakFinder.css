@@ -89,7 +89,7 @@
 }
 
 .leak-card.severity-danger {
-  border-left-color: #EF4444;
+  border-left-color: #60A5FA;
 }
 
 .leak-card.severity-warning {
@@ -113,8 +113,8 @@
 }
 
 .leak-card-severity.danger {
-  background: rgba(239, 68, 68, 0.2);
-  color: #EF4444;
+  background: rgba(96, 165, 250, 0.2);
+  color: #93C5FD;
 }
 
 .leak-card-severity.warning {
@@ -165,4 +165,16 @@
   font-size: 3rem;
   display: block;
   margin-bottom: 12px;
+}
+
+/* R2 (APPUI-51) — Export Data reuses this panel; its "nothing to export" line. */
+.export-data-note {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  text-align: center;
+  color: #dbe6ff;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(120, 160, 255, 0.35);
 }
