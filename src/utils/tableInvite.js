@@ -58,9 +58,14 @@ export const INVITE_ERROR_TEXT = Object.freeze({
 /** The text for an inviter's friendError frame (null when it is not an invite refusal code). */
 export function inviteErrorText(frame) {
   const code = frame && typeof frame === 'object' ? frame.code : null;
-  return typeof code === 'string' && Object.prototype.hasOwnProperty.call(INVITE_ERROR_TEXT, code)
-    ? INVITE_ERROR_TEXT[code]
-    : null;
+  if (typeof code !== 'string' || !Object.prototype.hasOwnProperty.call(INVITE_ERROR_TEXT, code)) return null;
+  // R3 review (CLIENT-4) — invite_not_joinable: the server's own sentence when
+  // it sends one (e.g. "This club table cannot be joined by invite right
+  // now."); the generic kind hint only as a fallback.
+  if (code === 'invite_not_joinable' && typeof frame.message === 'string' && frame.message.trim()) {
+    return frame.message.trim().slice(0, 300);
+  }
+  return INVITE_ERROR_TEXT[code];
 }
 
 function idOrNull(v) {

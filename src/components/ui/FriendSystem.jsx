@@ -97,7 +97,7 @@ export default function FriendSystem({ onClose, onOpenProfile }) {
     const onErr = (d) => {
       // R3 (contract I1) — a refused invite is not "Sent!".
       if (inviteErrorText(d)) setInviteSent(null);
-      setNotice({ ok: false, text: FRIEND_ERRORS[d?.code] || d?.message || 'Something went wrong' });
+      setNotice({ ok: false, text: inviteErrorText(d) || FRIEND_ERRORS[d?.code] || d?.message || 'Something went wrong' });
     };
     const onInvited = () => { /* handled optimistically below */ };
     s.on('friendsList', onList);

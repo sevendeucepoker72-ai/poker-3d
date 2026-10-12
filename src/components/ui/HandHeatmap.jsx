@@ -102,10 +102,11 @@ export default function HandHeatmap({
         const magnitude  = Math.min(Math.abs(diff) / 100, 1); // 0-1
         const isAhead    = diff > 0;
 
-        // Color: red when opponent is ahead of hero, green when hero is ahead
-        const r = isAhead ? 239 : 34;
-        const g = isAhead ?  68 : 197;
-        const b = isAhead ?  68 :  94;
+        // Color: amber when opponent is ahead of hero, green when hero is ahead
+        // (R3 review CLIENT-2 — owner rule "no red, use blue": was #ef4444).
+        const r = isAhead ? 245 : 34;
+        const g = isAhead ? 158 : 197;
+        const b = isAhead ?  11 :  94;
 
         const glowOpacity  = 0.15 + magnitude * 0.55; // 0.15 – 0.70
         const labelOpacity = 0.7  + magnitude * 0.3;  // 0.70 – 1.00

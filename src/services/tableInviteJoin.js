@@ -13,7 +13,7 @@
  */
 import { getSocket } from './socketService';
 import { reportPlayRefusal, runPlayFlow } from './playRefusal';
-import { useTableStore } from '../store/tableStore';
+import { useTableStore, liveTableIds } from '../store/tableStore';
 import { useGameStore } from '../store/gameStore';
 import { useProgressStore } from '../store/progressStore';
 import {
@@ -34,6 +34,10 @@ function inviteNotice(message) {
 function watchAndJoin(socket, req) {
   if (_active) _active.cancel();
   const fromSig = seatSigOf(useTableStore.getState().gameState);
+  // R3 review (CLIENT-3) — multi-table: a frame for a table other than the one
+  // on screen only lands in activeTables (App.jsx), so "seated" is ALSO a NEW
+  // live entry there; the screen then switches to it.
+  const fromLive = new Set(liveTableIds(useTableStore.getState().activeTables).map(String));
   let done = false;
   let timer = null;
   let unsubscribe = null;
@@ -67,8 +71,20 @@ function watchAndJoin(socket, req) {
   unsubscribe = useTableStore.subscribe((state) => {
     if (done) return;
     const sig = seatSigOf(state.gameState);
-    if (!sig || sig === fromSig) return;
+    if (sig && sig !== fromSig) {
+      finish();
+      try { useGameStore.getState().setScreen('table'); } catch { /* ignore */ }
+      return;
+    }
+    const fresh = liveTableIds(state.activeTables).map(String).filter((id) => !fromLive.has(id));
+    if (!fresh.length) return;
+    const want = req.tableId != null ? String(req.tableId) : null;
+    const key = want && fresh.includes(want) ? want : fresh[0];
     finish();
+    try {
+      const ts = useTableStore.getState();
+      if (ts.currentTableId != null && String(ts.currentTableId) !== key) ts.switchActiveTable(key);
+    } catch { /* ignore */ }
     try { useGameStore.getState().setScreen('table'); } catch { /* ignore */ }
   });
   socket.on(req.errorEvent, onRefused);
