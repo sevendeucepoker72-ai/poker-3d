@@ -1,3 +1,4 @@
+/* R3 (K1-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 /* ============================================================
    NamePlate.css — Dark-glass 3D seat nameplates
    ============================================================ */
@@ -13,8 +14,8 @@
 }
 
 @keyframes allin-pulse {
-  0%,100% { background: #b91c1c; }
-  50%      { background: #ef4444; }
+  0%,100% { background: #d97706; }
+  50%      { background: #ffd24a; }
 }
 
 /* ── Base plate ─────────────────────────────────────────── */
@@ -122,7 +123,7 @@
 }
 
 .nameplate__timer-ring--danger .nameplate__timer-fill {
-  stroke: #ef4444;
+  stroke: #f59e0b;
   animation: nameplate-timer-danger-pulse 0.5s ease-in-out infinite alternate;
 }
 
@@ -134,13 +135,13 @@
   text-shadow: 0 1px 3px rgba(0,0,0,0.6);
 }
 .nameplate__timer-count--danger {
-  color: #ef4444;
+  color: #f59e0b;
   animation: nameplate-timer-danger-pulse 0.5s ease-in-out infinite alternate;
 }
 
 @keyframes nameplate-timer-danger-pulse {
-  from { stroke: #ef4444; }
-  to   { stroke: #fca5a5; }
+  from { stroke: #f59e0b; }
+  to   { stroke: #fcd34d; }
 }
 
 /* ── Main content area ─────────────────────────────────── */
@@ -292,7 +293,7 @@
   position: absolute;
   bottom: -1px;
   right: -1px;
-  background: #b91c1c;
+  background: #d97706;
   color: #fff;
   font-size: 7px;
   font-weight: 800;

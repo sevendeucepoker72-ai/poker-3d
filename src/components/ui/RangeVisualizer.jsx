@@ -156,8 +156,9 @@ export default function RangeVisualizer({
 
   if (!visible) return null;
 
+  // R3 (APPUI-P3-7) — no red: low equity is blue (amber is the middle tier).
   const equityColor =
-    equity >= 60 ? '#22C55E' : equity >= 40 ? '#F59E0B' : '#EF4444';
+    equity >= 60 ? '#22C55E' : equity >= 40 ? '#F59E0B' : '#60A5FA';
 
   const handleMouseEnter = (e, label, cat) => {
     const rect = e.currentTarget.getBoundingClientRect();

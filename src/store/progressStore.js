@@ -274,8 +274,9 @@ export function levelFromTotalXp(totalXp) {
  *  Mythic (900+) / Legendary (700+) / Master (500+) / Platinum (300+)
  *  / Diamond (150+) / Gold (75+) / Silver (25+) / Bronze (default) */
 export function getLevelTier(level) {
-  if (level >= 900) return { name: 'Mythic',     color: '#FF1744', glow: '#FF5252' };
-  if (level >= 700) return { name: 'Legendary',  color: '#FF4500', glow: '#FF6347' };
+  // R3 (APPUI-P3-7) — no red: Mythic is sapphire + gold, Legendary amber (were red / orange-red).
+  if (level >= 900) return { name: 'Mythic',     color: '#3B82F6', glow: '#FFD24A' };
+  if (level >= 700) return { name: 'Legendary',  color: '#F59E0B', glow: '#FCD34D' };
   if (level >= 500) return { name: 'Master',     color: '#E040FB', glow: '#CE93D8' };
   if (level >= 300) return { name: 'Platinum',   color: '#00E5FF', glow: '#00B8D4' };
   if (level >= 150) return { name: 'Diamond',    color: '#B9F2FF', glow: '#00E5FF' };

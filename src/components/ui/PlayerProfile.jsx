@@ -7,6 +7,7 @@ import { SEASON_BADGES, PROFILE_BGS, vipXpTierFor } from '../../utils/economyCat
 import { ownHandResult } from '../../utils/handLog';
 import { useDetailedStats } from '../../hooks/useDetailedStats';
 import { isPublicId, profileRequestOf, profileAnswerMatches, profileLink, friendRequestOf } from '../../utils/profileTarget';
+import { noRedHue } from '../../utils/noRedHue';
 import './PlayerProfile.css';
 
 // 2026-10-11 (.online R2 — APPUI-14 / APPUI-49 / C9 / C10).
@@ -41,7 +42,8 @@ function nameToColor(name = '') {
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const hue = Math.abs(hash) % 360;
+  // R3 (APPUI-P3-7) — no red: a hash that lands on red / rose moves to blue.
+  const hue = noRedHue(Math.abs(hash) % 360);
   return `hsl(${hue}, 65%, 45%)`;
 }
 

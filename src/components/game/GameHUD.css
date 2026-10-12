@@ -1,3 +1,4 @@
+/* R3 (K1-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 .hud {
   position: absolute;
   inset: 0;
@@ -486,13 +487,13 @@
 }
 
 .options-bomb {
-  color: #EF4444;
-  border-color: #7A2A2A;
+  color: #F59E0B;
+  border-color: #78350F;
 }
 
 .options-bomb:hover {
-  border-color: #EF4444;
-  background: rgba(239, 68, 68, 0.1);
+  border-color: #F59E0B;
+  background: rgba(245, 158, 11, 0.1);
 }
 
 /* Turn indicator with timer — inline inside hud-bottom, never floats over the table */
@@ -516,8 +517,8 @@
 }
 
 .hud-turn-indicator.timer-danger {
-  border-color: #EF4444;
-  background: rgba(239, 68, 68, 0.12);
+  border-color: #F59E0B;
+  background: rgba(245, 158, 11, 0.12);
   animation: pulse-danger 0.5s ease-in-out infinite;
 }
 
@@ -548,7 +549,7 @@
 }
 
 .timer-fill-danger {
-  stroke: #EF4444;
+  stroke: #F59E0B;
 }
 
 .timer-text {
@@ -563,7 +564,7 @@
 }
 
 .timer-text-danger {
-  color: #EF4444;
+  color: #F59E0B;
 }
 
 .turn-label {
@@ -576,8 +577,8 @@
 }
 
 @keyframes pulse-danger {
-  0%, 100% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.3); }
-  50% { box-shadow: 0 0 24px rgba(239, 68, 68, 0.7); }
+  0%, 100% { box-shadow: 0 0 8px rgba(245, 158, 11, 0.3); }
+  50% { box-shadow: 0 0 24px rgba(245, 158, 11, 0.7); }
 }
 
 /* Community cards overlay (HUD-based). Nudged up two hairs per user
@@ -887,9 +888,9 @@
 }
 
 .pot-odds-bad {
-  color: #EF4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  text-shadow: 0 0 6px rgba(239, 68, 68, 0.3);
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  text-shadow: 0 0 6px rgba(245, 158, 11, 0.3);
 }
 
 /* Action buttons */
@@ -947,9 +948,9 @@
 }
 
 .action-btn.fold {
-  background: linear-gradient(135deg, #7F1D1D, #991B1B);
-  color: #FCA5A5;
-  box-shadow: 0 2px 12px rgba(220, 38, 38, 0.2);
+  background: linear-gradient(135deg, #1E40AF, #1D4ED8);
+  color: #BFDBFE;
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.2);
 }
 
 .action-btn.check {
@@ -1718,10 +1719,10 @@
   background:
     repeating-linear-gradient(
       45deg,
-      #8B0000 0px,
-      #8B0000 8px,
-      #A50000 8px,
-      #A50000 16px
+      #0d2c53 0px,
+      #0d2c53 8px,
+      #164277 8px,
+      #164277 16px
     );
   border: 2px solid #ffd24a;
   box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 0 8px rgba(120, 160, 255,0.2);
@@ -2247,13 +2248,13 @@
 }
 
 .insurance-decline {
-  background: linear-gradient(135deg, #7F1D1D, #991B1B);
-  color: #FCA5A5;
-  box-shadow: 0 2px 12px rgba(220, 38, 38, 0.2);
+  background: linear-gradient(135deg, #1E40AF, #1D4ED8);
+  color: #BFDBFE;
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.2);
 }
 
 .insurance-decline:hover {
-  box-shadow: 0 4px 20px rgba(220, 38, 38, 0.4);
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
 }
 
 /* ===== Feature: Time Bank ===== */
@@ -2379,11 +2380,11 @@
   top: 48px;
   left: 50%;
   transform: translateX(-50%);
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(234, 88, 12, 0.25));
-  border: 2px solid #EF4444;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(234, 88, 12, 0.25));
+  border: 2px solid #F59E0B;
   border-radius: 12px;
   padding: 10px 32px;
-  color: #EF4444;
+  color: #F59E0B;
   font-size: 1.3rem;
   font-weight: 800;
   letter-spacing: 2px;
@@ -2391,12 +2392,12 @@
   z-index: 650;
   animation: bomb-pot-pulse 1s ease-in-out infinite;
   backdrop-filter: blur(8px);
-  text-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+  text-shadow: 0 0 12px rgba(245, 158, 11, 0.6);
 }
 
 @keyframes bomb-pot-pulse {
-  0%, 100% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.3), inset 0 0 12px rgba(239, 68, 68, 0.1); transform: translateX(-50%) scale(1); }
-  50% { box-shadow: 0 0 28px rgba(239, 68, 68, 0.6), inset 0 0 20px rgba(239, 68, 68, 0.2); transform: translateX(-50%) scale(1.03); }
+  0%, 100% { box-shadow: 0 0 12px rgba(245, 158, 11, 0.3), inset 0 0 12px rgba(245, 158, 11, 0.1); transform: translateX(-50%) scale(1); }
+  50% { box-shadow: 0 0 28px rgba(245, 158, 11, 0.6), inset 0 0 20px rgba(245, 158, 11, 0.2); transform: translateX(-50%) scale(1.03); }
 }
 
 /* ===== Dealer's Choice Labels ===== */
@@ -2923,9 +2924,9 @@
 .side-pot-tag {
   font-size: 0.52rem;
   font-weight: 700;
-  background: rgba(239, 68, 68, 0.2);
-  color: #F87171;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(245, 158, 11, 0.2);
+  color: #FBBF24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
   border-radius: 3px;
   padding: 0px 4px;
   letter-spacing: 0.3px;
@@ -3245,8 +3246,8 @@
 
 .bet-action-me .bet-action-player { color: #4ade80; }
 
-.bet-action-fold { border-color: rgba(239,68,68,0.35); }
-.bet-action-fold .bet-action-verb { color: #fca5a5; }
+.bet-action-fold { border-color: rgba(100,116,139,0.35); }
+.bet-action-fold .bet-action-verb { color: #94a3b8; }
 
 .bet-action-check { border-color: rgba(74,222,128,0.3); }
 .bet-action-check .bet-action-verb { color: #86efac; }
@@ -3481,11 +3482,11 @@
   flex-shrink: 0;
 }
 .quick-fold-label:hover {
-  border-color: rgba(239,68,68,0.4);
-  color: #ef9999;
+  border-color: rgba(96,165,250,0.4);
+  color: #93c5fd;
 }
 .quick-fold-label input[type="checkbox"] {
-  accent-color: #ef4444;
+  accent-color: #60a5fa;
   width: 12px;
   height: 12px;
   cursor: pointer;
@@ -3545,7 +3546,7 @@
   position: absolute;
   top: -4px;
   right: -4px;
-  background: #ef4444;
+  background: #3b82f6;
   color: #fff;
   font-size: 0.6rem;
   font-weight: 700;
@@ -3631,8 +3632,8 @@
 }
 /* Tier color variants — the accent colour drives the border, pill
    background + glow. Fill color is picked inline on .hsp-fill. */
-.hand-strength-portal--weak    { border-color: rgba(239, 68, 68, 0.55); box-shadow: 0 6px 24px rgba(220, 38, 38, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
-.hand-strength-portal--weak    .hsp-tier { color: #FCA5A5; background: rgba(239, 68, 68, 0.18); }
+.hand-strength-portal--weak    { border-color: rgba(96, 165, 250, 0.55); box-shadow: 0 6px 24px rgba(59, 130, 246, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+.hand-strength-portal--weak    .hsp-tier { color: #BFDBFE; background: rgba(96, 165, 250, 0.18); }
 .hand-strength-portal--light   { border-color: rgba(249, 115, 22, 0.55); box-shadow: 0 6px 24px rgba(234, 88, 12, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
 .hand-strength-portal--light   .hsp-tier { color: #FDBA74; background: rgba(249, 115, 22, 0.2); }
 .hand-strength-portal--medium  { border-color: rgba(234, 179, 8, 0.6); box-shadow: 0 6px 24px rgba(202, 138, 4, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
@@ -3831,12 +3832,12 @@
   transform: scale(1.06) translateY(-2px) !important;
 }
 .action-btn.fold {
-  background: linear-gradient(135deg, #3b0000 0%, #7f1d1d 60%, #991b1b 100%) !important;
-  color: #fca5a5 !important;
-  box-shadow: 0 3px 14px rgba(185,28,28,0.4), inset 0 1px 0 rgba(255,255,255,0.07) !important;
+  background: linear-gradient(135deg, #0b1433 0%, #1e3a8a 60%, #1e40af 100%) !important;
+  color: #bfdbfe !important;
+  box-shadow: 0 3px 14px rgba(37,99,235,0.4), inset 0 1px 0 rgba(255,255,255,0.07) !important;
 }
 .action-btn.fold:hover:not(:disabled) {
-  box-shadow: 0 5px 22px rgba(220,38,38,0.55), inset 0 1px 0 rgba(255,255,255,0.1) !important;
+  box-shadow: 0 5px 22px rgba(59,130,246,0.55), inset 0 1px 0 rgba(255,255,255,0.1) !important;
 }
 .action-btn.check,
 .action-btn.call {
@@ -3962,10 +3963,10 @@
   background: rgba(2,44,22,0.7);
 }
 .hud-chip-stack.chip-short {
-  border-color: rgba(239,68,68,0.35);
-  background: rgba(40,5,5,0.7);
+  border-color: rgba(96,165,250,0.35);
+  background: rgba(8,16,44,0.7);
 }
-.hud-chip-stack.chip-short .chip-amount { color: #f87171; }
+.hud-chip-stack.chip-short .chip-amount { color: #93c5fd; }
 
 /* ── #4: Card deal animation ────────────────────────────── */
 @keyframes card-deal-in {
@@ -4066,9 +4067,9 @@
   border: 1px solid rgba(34, 197, 94, 0.55);
 }
 .table-pot-odds--bad {
-  color: #fee2e2;
-  background: rgba(69, 10, 10, 0.82);
-  border: 1px solid rgba(239, 68, 68, 0.55);
+  color: #fef3c7;
+  background: rgba(69, 26, 3, 0.82);
+  border: 1px solid rgba(245, 158, 11, 0.55);
 }
 @media (max-width: 768px) {
   .table-pot-odds {
@@ -4767,8 +4768,8 @@
 
 /* ═══════════════════════════════════════════════════════════════════
    Action-button visual pass: premium casino palette, standard poker
-   color semantics (Fold red · Call green · Raise gold · All-In orange-
-   red), inset highlights for depth, consistent radius, better tap
+   color semantics (Fold blue · Call green · Raise gold · All-In
+   gold), inset highlights for depth, consistent radius, better tap
    feedback, stronger disabled dim. Audit findings #1 #3 #8 #10 #11 #13.
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -4794,14 +4795,14 @@
   letter-spacing: 0.02em;
   opacity: 0.82;
   text-transform: none;
-  color: rgba(255, 228, 230, 0.9);
+  color: rgba(219, 234, 254, 0.9);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
 }
 .action-btn.fold.fold-pending .fold-confirm-hint {
-  color: #FEE2E2;
+  color: #FEF3C7;
   opacity: 1;
   animation: foldHintPulse 0.9s ease-in-out infinite alternate;
 }
@@ -4817,22 +4818,22 @@
   }
 }
 
-/* FOLD — bright red (was muted dusty-rose; now reads as a real
+/* FOLD — sapphire (R3 K1-7: no red; was bright red, then garnet). Reads as a real
    destructive action matching iOS/Stripe/PokerStars conventions). */
 .action-btn.fold {
-  background: linear-gradient(135deg, #DC2626, #991B1B) !important;
-  color: #FFE4E6 !important;
+  background: linear-gradient(135deg, #3B82F6, #1D4ED8) !important;
+  color: #DBEAFE !important;
   box-shadow:
-    0 3px 10px rgba(153, 27, 27, 0.45),
+    0 3px 10px rgba(29, 78, 216, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.14),
     inset 0 -1px 0 rgba(0, 0, 0, 0.25) !important;
-  border: 1px solid rgba(220, 38, 38, 0.45) !important;
+  border: 1px solid rgba(59, 130, 246, 0.45) !important;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 .action-btn.fold:not(:disabled):hover {
-  background: linear-gradient(135deg, #EF4444, #B91C1C) !important;
+  background: linear-gradient(135deg, #60A5FA, #2563EB) !important;
   box-shadow:
-    0 4px 14px rgba(153, 27, 27, 0.55),
+    0 4px 14px rgba(29, 78, 216, 0.55),
     inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
 }
 
@@ -4868,7 +4869,7 @@
 .action-btn.call.call-ev-bad {
   box-shadow:
     0 3px 10px rgba(0,0,0,0.5),
-    0 0 14px rgba(239,68,68,0.35),
+    0 0 14px rgba(245,158,11,0.35),
     inset 0 1px 0 rgba(255,255,255,0.2) !important;
 }
 
@@ -4895,14 +4896,14 @@
     0 0 18px rgba(251, 191, 36, 0.4) !important;
 }
 
-/* ALL-IN — dramatic red-orange, shimmer overlay + pulse glow. */
+/* ALL-IN — gold (R3 K1-7: was red-orange), shimmer overlay + pulse glow. */
 .action-btn.allin {
-  background: linear-gradient(135deg, #F97316, #B91C1C) !important;
+  background: linear-gradient(135deg, #FFD24A, #D97706) !important;
   color: #FFF7ED !important;
   font-weight: 800 !important;
   letter-spacing: 0.02em;
   box-shadow:
-    0 3px 10px rgba(185, 28, 28, 0.5),
+    0 3px 10px rgba(180, 83, 9, 0.5),
     inset 0 1px 0 rgba(255, 237, 213, 0.4),
     inset 0 -1px 0 rgba(0, 0, 0, 0.3) !important;
   border: 1px solid rgba(249, 115, 22, 0.55) !important;
@@ -4912,15 +4913,15 @@
 @keyframes allin-pulse-glow {
   0%, 100% {
     box-shadow:
-      0 3px 10px rgba(185, 28, 28, 0.5),
+      0 3px 10px rgba(180, 83, 9, 0.5),
       0 0 10px rgba(249, 115, 22, 0.28),
       inset 0 1px 0 rgba(255, 237, 213, 0.4);
   }
   50% {
     box-shadow:
-      0 3px 18px rgba(185, 28, 28, 0.6),
+      0 3px 18px rgba(180, 83, 9, 0.6),
       0 0 26px rgba(249, 115, 22, 0.6),
-      0 0 48px rgba(220, 38, 38, 0.25),
+      0 0 48px rgba(217, 119, 6, 0.25),
       inset 0 1px 0 rgba(255, 237, 213, 0.55);
   }
 }
@@ -5084,14 +5085,14 @@
   border: 2px solid #4ade80;
   flex-shrink: 0;
 }
-.ab-timer--danger { border-color: #ef4444; }
+.ab-timer--danger { border-color: #f59e0b; }
 .ab-timer-num {
   font-size: 1.1rem;
   font-weight: 800;
   color: #4ade80;
   line-height: 1;
 }
-.ab-timer--danger .ab-timer-num { color: #ef4444; }
+.ab-timer--danger .ab-timer-num { color: #f59e0b; }
 .ab-timer-label {
   font-size: 0.5rem;
   font-weight: 600;
@@ -5116,7 +5117,7 @@
   white-space: nowrap;
 }
 .ab-pot-odds--good { color: #4ade80; background: rgba(34,197,94,0.15); }
-.ab-pot-odds--bad { color: #f87171; background: rgba(239,68,68,0.15); }
+.ab-pot-odds--bad { color: #fbbf24; background: rgba(245,158,11,0.15); }
 
 /* Preset buttons — flat text in a row */
 .ab-presets {
@@ -5298,7 +5299,7 @@
   background: linear-gradient(90deg, #EAB308, #FACC15);
 }
 .commitment-fill.commitment-danger {
-  background: linear-gradient(90deg, #EF4444, #F87171);
+  background: linear-gradient(90deg, #D97706, #F59E0B);
 }
 .commitment-label {
   position: absolute;
@@ -5364,8 +5365,8 @@
   animation: big-bet-pulse 0.8s ease infinite;
 }
 @keyframes big-bet-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
-  50% { box-shadow: 0 0 12px 2px rgba(239,68,68,0.4); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+  50% { box-shadow: 0 0 12px 2px rgba(245,158,11,0.4); }
 }
 
 /* ─── Upgrade 3: Turn pulse / glow ──────────────────────────────────────── */
@@ -5413,8 +5414,8 @@
 }
 
 .call-odds-bad {
-  background: rgba(239,68,68,0.2);
-  color: #f87171;
+  background: rgba(245,158,11,0.2);
+  color: #fbbf24;
 }
 
 /* ─── Upgrade 5: Raise slider full-width above presets ──────────────────── */
@@ -5432,9 +5433,9 @@
 
 /* ─── Upgrade 6: Fold confirmation micro-animation ──────────────────────── */
 .action-btn.fold-pending {
-  border-color: rgba(239,68,68,0.6) !important;
-  background: rgba(239,68,68,0.15) !important;
-  color: #f87171 !important;
+  border-color: rgba(245,158,11,0.6) !important;
+  background: rgba(245,158,11,0.15) !important;
+  color: #fbbf24 !important;
   opacity: 1 !important;
 }
 
@@ -5443,7 +5444,7 @@
   bottom: 0;
   left: 0;
   height: 2px;
-  background: #ef4444;
+  background: #f59e0b;
   border-radius: 0 0 inherit inherit;
   animation: fold-timer 1.5s linear forwards;
 }
@@ -5485,7 +5486,7 @@
 }
 .conn-dot--connected    { background: #4ade80; color: #4ade80; }
 .conn-dot--reconnecting { background: #f59e0b; color: #f59e0b; animation: conn-blink 0.8s infinite; }
-.conn-dot--disconnected { background: #ef4444; color: #ef4444; }
+.conn-dot--disconnected { background: #94a3b8; color: #94a3b8; }
 /* R1 (TABLEUI-12) — socketService also reports 'error' (connect_error while
    retrying) and 'failed' (retries exhausted); the dot had no style for them.
    Amber blink = retrying; steady blue = needs a tap (the table banner offers it). */
@@ -5527,7 +5528,7 @@
 .bh--check  { background: rgba(74,222,128,0.12);  border-color: rgba(74,222,128,0.4);  color: #4ade80; }
 .bh--call   { background: rgba(59,130,246,0.12);  border-color: rgba(59,130,246,0.4);  color: #93c5fd; }
 .bh--raise  { background: rgba(245,158,11,0.12);  border-color: rgba(245,158,11,0.4);  color: #fcd34d; }
-.bh--fold   { background: rgba(239,68,68,0.12);   border-color: rgba(239,68,68,0.4);   color: #fca5a5; }
+.bh--fold   { background: rgba(100,116,139,0.12);   border-color: rgba(100,116,139,0.4);   color: #cbd5e1; }
 .bh--allin  { background: rgba(168,85,247,0.15);  border-color: rgba(168,85,247,0.5);  color: #d8b4fe; }
 
 /* ── Hand quality badge ─────────────────────────────────── */
@@ -5543,7 +5544,7 @@
 }
 .hand-quality-badge--strong  { background: rgba(34,197,94,0.2);  color: #4ade80; border: 1px solid rgba(34,197,94,0.4); }
 .hand-quality-badge--marginal { background: rgba(234,179,8,0.2);  color: #fbbf24; border: 1px solid rgba(234,179,8,0.4); }
-.hand-quality-badge--weak    { background: rgba(239,68,68,0.2);  color: #f87171; border: 1px solid rgba(239,68,68,0.4); }
+.hand-quality-badge--weak    { background: rgba(96,165,250,0.2);  color: #93c5fd; border: 1px solid rgba(96,165,250,0.4); }
 
 /* ── Raise chevron ──────────────────────────────────────── */
 .raise-chevron {
@@ -5598,9 +5599,9 @@
   color: #fcd34d;
 }
 .toast-item--error {
-  background: rgba(239,68,68,0.15);
-  border: 1px solid #ef4444;
-  color: #fca5a5;
+  background: rgba(96,165,250,0.15);
+  border: 1px solid #60a5fa;
+  color: #bfdbfe;
 }
 
 /* ── Opponent stats popup ───────────────────────────────── */
@@ -5799,7 +5800,7 @@ html.kb-open .table-pot-odds {
   60%  { opacity: 0.6; }
   100% { opacity: 0; }
 }
-.gesture-flash-overlay--fold  { background: rgba(239,68,68,0.18); }
+.gesture-flash-overlay--fold  { background: rgba(96,165,250,0.18); }
 .gesture-flash-overlay--call  { background: rgba(74,222,128,0.15); }
 .gesture-flash-overlay--raise { background: rgba(251,191,36,0.15); }
 
@@ -5812,7 +5813,7 @@ html.kb-open .table-pot-odds {
   padding: 14px 32px;
   backdrop-filter: blur(6px);
 }
-.gesture-flash-overlay--fold  .gesture-flash-label { color: #ef4444; background: rgba(239,68,68,0.2); border: 2px solid rgba(239,68,68,0.5); }
+.gesture-flash-overlay--fold  .gesture-flash-label { color: #60a5fa; background: rgba(96,165,250,0.2); border: 2px solid rgba(96,165,250,0.5); }
 .gesture-flash-overlay--call  .gesture-flash-label { color: #4ade80; background: rgba(74,222,128,0.18); border: 2px solid rgba(74,222,128,0.45); }
 .gesture-flash-overlay--raise .gesture-flash-label { color: #fbbf24; background: rgba(251,191,36,0.18); border: 2px solid rgba(251,191,36,0.45); }
 /* R1 (TABLEUI-2) — a free-street swipe / tap says "Check" (it used to flash
@@ -5969,7 +5970,7 @@ html.kb-open .table-pot-odds {
   margin-left: 4px;
   text-transform: uppercase;
 }
-.bsb-tier--weak    { color: #EF4444; background: rgba(239,68,68,0.15); }
+.bsb-tier--weak    { color: #60A5FA; background: rgba(96,165,250,0.15); }
 .bsb-tier--medium  { color: #EAB308; background: rgba(234,179,8,0.15); }
 .bsb-tier--strong  { color: #22C55E; background: rgba(34,197,94,0.15); }
 .bsb-tier--monster { color: #FFD700; background: rgba(255,215,0,0.2); text-shadow: 0 0 6px rgba(255,215,0,0.5); }
@@ -6126,9 +6127,9 @@ html.kb-open .table-pot-odds {
   color: #C4B5FD !important;
 }
 .board-texture--monotone {
-  background: rgba(220,38,38,0.3) !important;
-  border-color: rgba(252,165,165,0.5) !important;
-  color: #FCA5A5 !important;
+  background: rgba(202,138,4,0.3) !important;
+  border-color: rgba(253,224,71,0.5) !important;
+  color: #FDE68A !important;
 }
 
 /* ── Upgrade 11: Sound toggle + icon labels ──────────────── */
@@ -6176,9 +6177,9 @@ html.kb-open .table-pot-odds {
   box-shadow: 0 0 8px rgba(74, 222, 128, 0.45);
 }
 .action-timer-strip--danger {
-  background: linear-gradient(90deg, #F97316, #EF4444) !important;
+  background: linear-gradient(90deg, #F97316, #F59E0B) !important;
   animation: timerStripPulse 0.45s ease-in-out infinite alternate;
-  box-shadow: 0 0 14px rgba(239, 68, 68, 0.75) !important;
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.75) !important;
 }
 @keyframes timerStripPulse {
   from { filter: brightness(0.85); transform: scaleY(1); }
@@ -6863,13 +6864,13 @@ html.kb-open .table-pot-odds {
   position: absolute;
   top: -6px;
   right: -6px;
-  background: linear-gradient(180deg, #DC2626, #991B1B);
-  color: #FEE2E2;
+  background: linear-gradient(180deg, #D97706, #92400E);
+  color: #FEF3C7;
   font-size: 0.62rem;
   font-weight: 700;
   padding: 2px 6px;
   border-radius: 999px;
-  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.45);
+  box-shadow: 0 2px 6px rgba(217, 119, 6, 0.45);
   z-index: 5;
   white-space: nowrap;
   letter-spacing: 0.02em;
@@ -6877,8 +6878,8 @@ html.kb-open .table-pot-odds {
   animation: owedBadgePulse 1.4s ease-in-out infinite alternate;
 }
 @keyframes owedBadgePulse {
-  from { box-shadow: 0 2px 6px rgba(220, 38, 38, 0.3); }
-  to   { box-shadow: 0 2px 12px rgba(220, 38, 38, 0.7); }
+  from { box-shadow: 0 2px 6px rgba(217, 119, 6, 0.3); }
+  to   { box-shadow: 0 2px 12px rgba(217, 119, 6, 0.7); }
 }
 
 /* U16 — timer-ring glow emphasis. Scoped to portrait phone only to
@@ -7091,9 +7092,9 @@ html.kb-open .table-pot-odds {
   margin-top: 4px;
   padding: 10px;
   background: transparent;
-  border: 1px dashed rgba(239, 68, 68, 0.35);
+  border: 1px dashed rgba(96, 165, 250, 0.35);
   border-radius: 10px;
-  color: rgba(252, 165, 165, 0.85);
+  color: rgba(191, 219, 254, 0.85);
   font-size: 0.78rem;
   cursor: pointer;
 }
@@ -7118,7 +7119,7 @@ html.kb-open .table-pot-odds {
 .stat-label { font-size: 0.62rem; color: rgba(229, 231, 235, 0.55); text-transform: uppercase; letter-spacing: 0.06em; }
 .stat-val { font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .stat-val--up   { color: #4ADE80; }
-.stat-val--down { color: #EF4444; }
+.stat-val--down { color: #F59E0B; }
 .stat-current-hand {
   display: flex;
   gap: 6px;
@@ -7310,14 +7311,14 @@ html.kb-open .table-pot-odds {
    !important layers. VISUAL ONLY (background / box-shadow /
    filter) — no padding/size/flex, so the carefully-tuned
    responsive action-bar layout is completely untouched.
-   Semantics kept: fold=garnet, call/check=emerald, all-in=gold;
+   Semantics kept: fold=sapphire (R3 K1-7: was garnet), call/check=emerald, all-in=gold;
    raise gets its own royal-violet so it no longer reads the same
    muddy orange as all-in.
    ============================================================ */
 .action-btn.fold {
-  background: linear-gradient(180deg, #8a1a26 0%, #5c0f18 55%, #3a0a10 100%) !important;
-  color: #ffd7d7 !important;
-  box-shadow: 0 5px 18px rgba(150,20,32,0.40), inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -3px 12px rgba(0,0,0,0.38) !important;
+  background: linear-gradient(180deg, #1e3a8a 0%, #172554 55%, #0b1433 100%) !important;
+  color: #dbeafe !important;
+  box-shadow: 0 5px 18px rgba(30,58,138,0.45), inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -3px 12px rgba(0,0,0,0.38) !important;
 }
 .action-btn.check,
 .action-btn.call {

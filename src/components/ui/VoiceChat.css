@@ -1,3 +1,4 @@
+/* R3 (APPUI-P3-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 .voice-chat-panel {
   position: fixed;
   bottom: 24px;
@@ -146,8 +147,8 @@
 
 .voice-muted-badge {
   font-size: 10px;
-  color: #ff6b6b;
-  background: #ff6b6b22;
+  color: #fbbf24;
+  background: #fbbf2422;
   border-radius: 4px;
   padding: 1px 5px;
   flex-shrink: 0;
@@ -188,14 +189,14 @@
 }
 
 .voice-btn.muted {
-  border-color: #ff6b6b66;
-  color: #ff6b6b;
-  background: #2a0a0a;
+  border-color: #fbbf2466;
+  color: #fbbf24;
+  background: #2a1f05;
 }
 
 .voice-btn.muted:hover {
-  background: #ff6b6b1a;
-  border-color: #ff6b6b;
+  background: #fbbf241a;
+  border-color: #fbbf24;
 }
 
 .voice-btn-join {
@@ -211,14 +212,14 @@
 }
 
 .voice-btn-leave {
-  border-color: #ff6b6b44;
-  color: #ff6b6b;
-  background: #1a0a0a;
+  border-color: #93c5fd44;
+  color: #93c5fd;
+  background: #0a1028;
   flex: 0 0 auto;
   padding: 6px 10px;
 }
 
 .voice-btn-leave:hover {
-  background: #ff6b6b1a;
-  border-color: #ff6b6b;
+  background: #93c5fd1a;
+  border-color: #93c5fd;
 }

@@ -2081,7 +2081,7 @@ export default function ClubsPanel({ onClose, onJoinTable = null }) {
                 </div>
                 <div className="club-profile-stat">
                   <span className="club-profile-label">Chips Lost</span>
-                  <span className="club-profile-value" style={{ color: '#f87171' }}>{memberProfile.chipsLost.toLocaleString()}</span>
+                  <span className="club-profile-value" style={{ color: '#fbbf24' }}>{memberProfile.chipsLost.toLocaleString()}</span>
                 </div>
                 <div className="club-profile-stat">
                   <span className="club-profile-label">Biggest Pot</span>

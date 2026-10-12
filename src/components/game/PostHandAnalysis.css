@@ -1,3 +1,4 @@
+/* R3 (K1-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 /* ===== Post Hand Analysis Panel ===== */
 .post-hand-analysis {
   position: fixed;
@@ -150,7 +151,7 @@
 }
 
 .pha-suggestion.pha-mistake {
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #EF4444;
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  color: #60A5FA;
 }

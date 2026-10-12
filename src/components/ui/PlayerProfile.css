@@ -1,3 +1,4 @@
+/* R3 (K2-4) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 /* ===== PlayerProfile.css ===== */
 
 /* Full-screen overlay */
@@ -275,7 +276,7 @@
   cursor: not-allowed;
 }
 .profile-name-error {
-  color: #fca5a5;
+  color: #93C5FD;
   font-size: 12px;
 }
 

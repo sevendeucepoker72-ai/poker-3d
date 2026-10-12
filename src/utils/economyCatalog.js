@@ -70,6 +70,8 @@ export function normalizeItemType(t) {
 
 // ── Sellable cosmetics ────────────────────────────────────────────────────────
 
+// R3 (K2-4) — a preview swatch shows what the TABLE draws (tableCosmetics): Cherry
+// Wood is a brown felt, not maroon.
 export const THEMES = [
   { id: 'classic_blue',    name: 'Classic Blue',    felt: '#2874a6', rail: '#8B5E3C', price: 0 },
   { id: 'green_felt',      name: 'Green Felt',      felt: '#1a5c2a', rail: '#8B6914', price: 0 },
@@ -79,18 +81,21 @@ export const THEMES = [
   { id: 'neon_vegas',      name: 'Neon Vegas',      felt: '#050c20', rail: '#0c1a44', price: 600, glow: true },
   { id: 'carbon_black',    name: 'Carbon Black',    felt: '#18181b', rail: '#3f3f46', price: 700 },
   { id: 'royal_gold',      name: 'Royal Gold',      felt: '#0a1a3a', rail: '#DAA520', price: 800 },
-  { id: 'cherry_wood',     name: 'Cherry Wood',     felt: '#3d1a1a', rail: '#7c2d12', price: 900 },
+  { id: 'cherry_wood',     name: 'Cherry Wood',     felt: '#553a22', rail: '#7c2d12', price: 900 },
   { id: 'cosmic_nebula',   name: 'Cosmic Nebula',   felt: '#312e81', rail: '#a78bfa', price: 1500 },
 ];
 
+// R3 (K2-4) — no red. classic_red (id kept: the server's default + every owned row)
+// is the house sapphire back the table draws, so its swatch is that blue and its
+// display name 'Classic'; Dragon's swatch is the jade the table draws.
 export const CARD_BACKS = [
-  { id: 'classic_red',     name: 'Classic Red',  color: '#B91C1C', price: 0 },
+  { id: 'classic_red',     name: 'Classic',      color: '#1A237E', price: 0 },
   { id: 'royal_blue',      name: 'Royal Blue',   color: '#2563EB', price: 0 },
   { id: 'silver_foil',     name: 'Silver Foil',  color: '#C0C0C0', price: 400 },
   { id: 'gold_premium',    name: 'Gold Premium', color: '#D97706', price: 500 },
   { id: 'neon_green',      name: 'Neon Green',   color: '#16A34A', price: 500 },
   { id: 'holographic',     name: 'Holographic',  color: '#A78BFA', price: 800 },
-  { id: 'dragon',          name: 'Dragon',       color: '#7C2D12', price: 1200 },
+  { id: 'dragon',          name: 'Dragon',       color: '#1F6F5C', price: 1200 },
   { id: 'phoenix',         name: 'Phoenix',      color: '#F59E0B', price: 1500 },
   { id: 'diamond_pattern', name: 'Diamond',      color: '#B9F2FF', price: 2000 },
   { id: 'mythic',          name: 'Mythic',       color: '#6D28D9', price: 5000 },
@@ -264,7 +269,7 @@ export const CHIP_PACKS = [
 ];
 
 export const MYSTERY_BOXES = [
-  { id: 'basic',     name: 'Basic Mystery Box',     icon: '📦', price: 500,  desc: '50%: 5,000-25,000 chips · 30%: 50-150 stars · 20%: an emote or sound pack' },
+  { id: 'basic',     name: 'Basic Mystery Box',     icon: '📦', price: 500,  desc: '50%: 5,000-25,000 chips · 30%: 50-150 stars · 20%: an emote' },
   { id: 'premium',   name: 'Premium Mystery Box',   icon: '🎁', price: 2000, desc: '50%: 25,000-150,000 chips · 30%: 200-600 stars · 20%: a frame, title or card back' },
   { id: 'legendary', name: 'Legendary Mystery Box', icon: '✨', price: 8000, desc: '50%: 150,000-1,000,000 chips · 30%: 800-2,500 stars · 20%: a top-tier frame, title or card back' },
 ];
@@ -344,12 +349,14 @@ export function vipXpTierFor(totalXp) {
   return tier;
 }
 
+// R3 (E1) — exactly poker-server's BUNDLE_CONTENTS: only kinds the table draws (no celebration /
+// sound pack / chip skin / card front / dealer voice / profile background — those rendered nowhere).
 export const BUNDLES = [
   { id: 'starter',       name: 'Starter Bundle',    icon: '🎁', price: 800,   contents: [['card_back', 'silver_foil'], ['emote', 'nice_hand'], ['frame', 'bronze']] },
-  { id: 'collector',     name: 'Collector Bundle',  icon: '📦', price: 2500,  contents: [['card_back', 'gold_premium'], ['theme', 'casino_royale'], ['frame', 'silver'], ['emote', 'crown'], ['celebration', 'chip_rain']] },
-  { id: 'tournament',    name: 'Tournament Bundle', icon: '🏆', price: 4000,  contents: [['title', 'tournament_champ'], ['theme', 'royal_gold'], ['frame', 'gold'], ['card_back', 'holographic'], ['celebration', 'fireworks'], ['emote', 'trophy']] },
-  { id: 'whale_bundle',  name: 'Whale Bundle',      icon: '🐋', price: 10000, contents: [['theme', 'cosmic_nebula'], ['card_back', 'diamond_pattern'], ['frame', 'diamond'], ['celebration', 'golden_shower'], ['emote', 'mic_drop'], ['title', 'royal'], ['sound_pack', 'fantasy'], ['dealer_voice', 'celebrity']] },
-  { id: 'mythic_bundle', name: 'Mythic Bundle',     icon: '✨', price: 25000, contents: [['card_back', 'mythic'], ['frame', 'mythic'], ['title', 'godmode'], ['celebration', 'supernova'], ['chip_skin', 'mythic'], ['card_front', 'artistic'], ['dealer_voice', 'mythic_sage'], ['profile_bg', 'diamond_rain'], ['theme', 'cosmic_nebula']] },
+  { id: 'collector',     name: 'Collector Bundle',  icon: '📦', price: 2500,  contents: [['card_back', 'gold_premium'], ['theme', 'casino_royale'], ['frame', 'silver'], ['emote', 'crown'], ['title', 'bad_beat_survivor']] },
+  { id: 'tournament',    name: 'Tournament Bundle', icon: '🏆', price: 4000,  contents: [['title', 'tournament_champ'], ['theme', 'royal_gold'], ['frame', 'gold'], ['card_back', 'holographic'], ['title', 'final_table'], ['emote', 'trophy']] },
+  { id: 'whale_bundle',  name: 'Whale Bundle',      icon: '🐋', price: 10000, contents: [['theme', 'cosmic_nebula'], ['card_back', 'diamond_pattern'], ['frame', 'diamond'], ['title', 'tournament_champ'], ['emote', 'mic_drop'], ['title', 'royal'], ['theme', 'cherry_wood'], ['frame', 'gold']] },
+  { id: 'mythic_bundle', name: 'Mythic Bundle',     icon: '✨', price: 25000, contents: [['card_back', 'mythic'], ['frame', 'mythic'], ['title', 'godmode'], ['frame', 'flame'], ['frame', 'diamond'], ['title', 'royal'], ['card_back', 'diamond_pattern'], ['title', 'tournament_champ'], ['theme', 'cosmic_nebula']] },
 ];
 
 /** A bundle's contents as words; collectibles (drawn nowhere) are marked. */

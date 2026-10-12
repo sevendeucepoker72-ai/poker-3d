@@ -131,7 +131,7 @@ export default function HandHeatmap({
             <div className="hh-tooltip">
               Seat {seatIndex} — est. equity vs hero
               <br />
-              <span style={{ color: isAhead ? '#f87171' : '#4ade80' }}>
+              <span style={{ color: isAhead ? '#fbbf24' : '#4ade80' }}>
                 {isAhead ? '▲' : '▼'} {Math.abs(Math.round(diff))}% {isAhead ? 'ahead' : 'behind'}
               </span>
             </div>

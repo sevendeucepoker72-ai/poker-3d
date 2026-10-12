@@ -1,3 +1,4 @@
+/* R3 (APPUI-P3-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 /* =========================================================
    SpectatorPredict.css – Spectator Prediction Widget
    ========================================================= */
@@ -135,12 +136,12 @@
   transform: scale(1.05);
 }
 
-/* Wrong prediction — red */
+/* Wrong prediction — amber (R3 K3-8: no red) */
 .sp-pill--wrong {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.7);
-  color: #f87171;
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.25);
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.7);
+  color: #fbbf24;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.25);
 }
 
 /* Winner pill (someone else's seat) */

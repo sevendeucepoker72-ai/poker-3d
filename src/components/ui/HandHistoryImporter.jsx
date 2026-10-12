@@ -238,7 +238,7 @@ function DailyNetChart({ hands }) {
         const barH = Math.abs(val) / maxAbs * (H / 2 - 4);
         const x = i * (barW + 2) + 2;
         const y = val >= 0 ? midY - barH : midY;
-        const fill = val >= 0 ? '#00d97e' : '#ff4d6d';
+        const fill = val >= 0 ? '#00d97e' : '#f59e0b'; // R3 (APPUI-P3-7): a losing day is amber
         return <rect key={i} x={x} y={y} width={barW} height={Math.max(1, barH)} fill={fill} rx="1" />;
       })}
       <line x1="0" y1={midY} x2={W} y2={midY} stroke="rgba(120, 160, 255,0.2)" strokeWidth="1" />

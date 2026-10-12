@@ -1,3 +1,4 @@
+/* R3 (APPUI-P3-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 /* ═══════════════════════════════════════════════════════════════════════════
    SessionRecap.css
    Post-session AI-generated recap modal
@@ -170,7 +171,7 @@
 }
 
 .recap-score-card__value--negative {
-  color: #ff5566;
+  color: #f59e0b;
 }
 
 .recap-score-card__label {
@@ -323,9 +324,9 @@
 }
 
 .recap-hot-hand__result--loss {
-  background: rgba(255, 85, 102, 0.12);
-  color: #ff5566;
-  border: 1px solid rgba(255, 85, 102, 0.25);
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
 .recap-hot-hand__cta {

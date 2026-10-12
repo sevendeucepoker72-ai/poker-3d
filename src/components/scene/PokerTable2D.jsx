@@ -50,21 +50,23 @@ const TABLE_THEMES = {
     felt: 'radial-gradient(ellipse at 50% 30%, #1a2f66 0%, #101a3e 45%, #0a0d20 70%, #04040c 100%)',
     rail: '#1a1505', railMid: '#8B7355', name: '⬛ Midnight',
   },
+  // R3 (K1-7) — no red: the 'crimson' key (a saved pick) now draws an ocean-teal felt.
   crimson: {
-    felt: 'radial-gradient(ellipse at 50% 30%, #9c2a2a 0%, #661818 42%, #3f0e0e 70%, #260707 100%)',
-    rail: '#1a0505', railMid: '#6b2020', name: '🔴 Crimson',
+    felt: 'radial-gradient(ellipse at 50% 30%, #2f9db0 0%, #1b7187 40%, #104a5c 68%, #08303e 100%)',
+    rail: '#04161c', railMid: '#1b5866', name: '🌊 Ocean',
   },
 };
 const THEME_KEYS = Object.keys(TABLE_THEMES);
 
 /* ── Chip denominations ────────────────────────────────────── */
+// R3 (K1-7) — no red / rose chips: 100k plaque black + gold, 500 purple.
 const CHIP_DENOMS = [
-  { value: 100000, color: '#c0392b', stripe: '#e8a0a0', plaque: true  },
+  { value: 100000, color: '#111827', stripe: '#ffd24a', plaque: true  },
   { value: 50000,  color: '#7f8c8d', stripe: '#bdc3c7', plaque: true  },
   { value: 10000,  color: '#d35400', stripe: '#f0a070'                },
   { value: 5000,   color: '#7f8c8d', stripe: '#bdc3c7'                },
   { value: 1000,   color: '#ecf0f1', stripe: '#2c3e7a'                },
-  { value: 500,    color: '#f1a8c4', stripe: '#e8749c'                },
+  { value: 500,    color: '#7c3aed', stripe: '#c4b5fd'                },
   { value: 100,    color: '#d4a017', stripe: '#f5d76e'                },
   { value: 25,     color: '#2563eb', stripe: '#93c5fd'                },
   { value: 5,      color: '#d1d5db', stripe: '#9ca3af'                },
@@ -88,9 +90,10 @@ const EMOJI_OPTIONS = [
 ];
 
 /* ── Avatar colours ─────────────────────────────────────────── */
+// R3 (K1-7) — no red in the name-hash colours (the red entry is sky blue).
 const AVATAR_COLORS = [
   '#6366f1','#8b5cf6','#ec4899','#f59e0b',
-  '#10b981','#3b82f6','#ef4444','#3b82f6',
+  '#10b981','#3b82f6','#0ea5e9','#3b82f6',
   '#84cc16','#f97316',
 ];
 function getAvatarColor(name) {
@@ -502,8 +505,9 @@ const SeatPod = memo(function SeatPod({
   })();
 
   const stackBBs = bigBlind > 0 ? chips / bigBlind : 999;
+  // R3 (K1-7) — under 10 BB is blue (amber is already the 10-25 BB tier).
   const stackColor =
-    stackBBs < 10 ? '#f87171' :
+    stackBBs < 10 ? '#60a5fa' :
     stackBBs < 25 ? '#fbbf24' :
     stackBBs > 50 ? '#4ade80' : '#e2e8f0';
 
@@ -602,7 +606,7 @@ const SeatPod = memo(function SeatPod({
             <circle cx="25" cy="25" r="22" stroke="rgba(255,255,255,0.12)" strokeWidth="3" fill="none" />
             <circle
               cx="25" cy="25" r="22"
-              stroke={timerPct < 25 ? '#ef4444' : '#4ade80'}
+              stroke={timerPct < 25 ? '#f59e0b' : '#4ade80'}
               strokeWidth="3"
               fill="none"
               strokeDasharray={circumference}

@@ -1,3 +1,4 @@
+/* R3 (APPUI-P3-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 /* ─────────────────────────────────────────────────────────────────────────────
    BankrollAI.css
    Full-screen overlay + centred modal for bankroll analysis.
@@ -234,12 +235,12 @@
 }
 
 .bai-val--green { color: #22C55E; }
-.bai-val--red   { color: #EF4444; }
+.bai-val--red   { color: #F59E0B; }
 
 /* Direction indicators */
 .bai-dir         { font-size: 13px; font-weight: 700; }
 .bai-dir--up     { color: #22C55E; }
-.bai-dir--down   { color: #EF4444; }
+.bai-dir--down   { color: #60A5FA; }
 .bai-dir--ok     { color: #F59E0B; }
 
 /* ── Threshold block with progress bar ───────────────────────────────────── */

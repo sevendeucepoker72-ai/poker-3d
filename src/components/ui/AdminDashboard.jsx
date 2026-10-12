@@ -327,6 +327,8 @@ export default function AdminDashboard({ onClose }) {
   const lbl = { color: '#8888AA', fontSize: '0.72rem', marginBottom: 3, display: 'block' };
   const colH = { color: '#555', fontSize: '0.65rem', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.04em' };
   const secTitle = { color: '#ffd24a', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10, marginTop: 16, display: 'block' };
+  // R3 (K3-8) — no red: destructive buttons (Hide / Delete / Ban / Force Close) are
+  // blue outlines, errors blue, expired codes amber.
   const btn = (bg, color, border) => ({ padding: '6px 14px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600, background: bg, color, border: `1px solid ${border}`, cursor: 'pointer' });
 
   // ── Tab button style ──
@@ -413,7 +415,7 @@ export default function AdminDashboard({ onClose }) {
                   <span style={{ fontSize: '0.6rem', padding: '1px 6px', borderRadius: 10, background: `${q.color || '#ffd24a'}22`, color: q.color || '#ffd24a', border: `1px solid ${q.color || '#ffd24a'}44` }}>{q.type}</span>
                   {q.recurrence?.enabled && <span style={{ fontSize: '0.6rem', color: '#4ADE80', background: 'rgba(74,222,128,0.1)', padding: '1px 6px', borderRadius: 10, border: '1px solid rgba(74,222,128,0.3)' }}>↻ TEMPLATE</span>}
                   {q.templateId && <span style={{ fontSize: '0.6rem', color: '#FBBF24', background: 'rgba(251,191,36,0.1)', padding: '1px 6px', borderRadius: 10, border: '1px solid rgba(251,191,36,0.3)' }}>↻ AUTO</span>}
-                  {!q.active && <span style={{ fontSize: '0.6rem', color: '#F87171', background: 'rgba(248,113,113,0.1)', padding: '1px 6px', borderRadius: 10, border: '1px solid rgba(248,113,113,0.3)' }}>HIDDEN</span>}
+                  {!q.active && <span style={{ fontSize: '0.6rem', color: '#93C5FD', background: 'rgba(147,197,253,0.1)', padding: '1px 6px', borderRadius: 10, border: '1px solid rgba(147,197,253,0.3)' }}>HIDDEN</span>}
                 </div>
                 <div style={{ color: '#666', fontSize: '0.72rem', marginTop: 2 }}>
                   {new Date(q.scheduledAt).toUTCString().replace(' GMT', ' UTC')} · Stack {(q.startingStack || 0).toLocaleString()} · Max {q.maxPlayers} · {(q.blindStructure || []).length} blind rows
@@ -424,12 +426,12 @@ export default function AdminDashboard({ onClose }) {
                 <button onClick={() => setOpenRegistrants(openRegistrants === q.id ? null : q.id)} style={btn('rgba(255,255,255,0.06)', '#aaa', 'rgba(255,255,255,0.12)')}>
                   👥 {q.registered || 0}
                 </button>
-                <button onClick={() => qualifierActions.toggleActive(q.id)} style={btn(q.active ? 'rgba(248,113,113,0.15)' : 'rgba(74,222,128,0.15)', q.active ? '#F87171' : '#4ADE80', q.active ? 'rgba(248,113,113,0.3)' : 'rgba(74,222,128,0.3)')}>
+                <button onClick={() => qualifierActions.toggleActive(q.id)} style={btn(q.active ? 'rgba(147,197,253,0.15)' : 'rgba(74,222,128,0.15)', q.active ? '#93C5FD' : '#4ADE80', q.active ? 'rgba(147,197,253,0.3)' : 'rgba(74,222,128,0.3)')}>
                   {q.active ? 'Hide' : 'Show'}
                 </button>
                 <button onClick={() => cloneQ(q)} style={btn('rgba(255,255,255,0.06)', '#aaa', 'rgba(255,255,255,0.12)')}>Clone</button>
                 <button onClick={() => openEditQ(q)} style={btn('rgba(255,255,255,0.08)', '#ccc', 'rgba(255,255,255,0.12)')}>Edit</button>
-                <button onClick={() => qualifierActions.delete(q.id)} style={btn('rgba(248,113,113,0.1)', '#F87171', 'rgba(248,113,113,0.25)')}>Delete</button>
+                <button onClick={() => qualifierActions.delete(q.id)} style={btn('rgba(147,197,253,0.1)', '#93C5FD', 'rgba(147,197,253,0.25)')}>Delete</button>
               </div>
             </div>
 
@@ -446,7 +448,7 @@ export default function AdminDashboard({ onClose }) {
                         <div key={r} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.05)', borderRadius: 6, padding: '4px 8px', fontSize: '0.75rem', color: '#ccc' }}>
                           {r}
                           <button onClick={() => qualifierActions.removeRegistrant(q.id, r)}
-                            style={{ background: 'none', border: 'none', color: '#F87171', cursor: 'pointer', fontSize: '0.7rem', padding: 0 }}>×</button>
+                            style={{ background: 'none', border: 'none', color: '#93C5FD', cursor: 'pointer', fontSize: '0.7rem', padding: 0 }}>×</button>
                         </div>
                       ))}
                     </div>
@@ -549,7 +551,7 @@ export default function AdminDashboard({ onClose }) {
                         </div>
                       );
                       const delBtn = (
-                        <button onClick={() => removeBlindRow(idx)} style={{ width: 22, height: 22, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(248,113,113,0.1)', color: '#F87171', border: '1px solid rgba(248,113,113,0.25)', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}>×</button>
+                        <button onClick={() => removeBlindRow(idx)} style={{ width: 22, height: 22, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(147,197,253,0.1)', color: '#93C5FD', border: '1px solid rgba(147,197,253,0.25)', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}>×</button>
                       );
                       return isBreak ? (
                         <div key={idx} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 1fr 1fr 44px 28px', gap: 4, marginBottom: 3, alignItems: 'center', background: 'rgba(251,191,36,0.05)', borderRadius: 5, padding: '2px 0' }}>
@@ -681,7 +683,7 @@ export default function AdminDashboard({ onClose }) {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={() => handleForceCloseTable(t.id)} style={btn('rgba(248,113,113,0.1)', '#F87171', 'rgba(248,113,113,0.25)')}>Force Close</button>
+                  <button onClick={() => handleForceCloseTable(t.id)} style={btn('rgba(147,197,253,0.1)', '#93C5FD', 'rgba(147,197,253,0.25)')}>Force Close</button>
                 </div>
               </div>
             ))}
@@ -763,9 +765,9 @@ export default function AdminDashboard({ onClose }) {
                   {!user.isAdmin && (
                     user.banned
                       ? <button onClick={() => handleUnban(user.id)} style={btn('rgba(74,222,128,0.15)', '#4ADE80', 'rgba(74,222,128,0.3)')}>Unban</button>
-                      : <button onClick={() => handleBan(user.id)} style={btn('rgba(248,113,113,0.15)', '#F87171', 'rgba(248,113,113,0.3)')}>Ban</button>
+                      : <button onClick={() => handleBan(user.id)} style={btn('rgba(147,197,253,0.15)', '#93C5FD', 'rgba(147,197,253,0.3)')}>Ban</button>
                   )}
-                  <button onClick={() => handleIPBan(user.id)} style={btn('rgba(248,113,113,0.1)', '#F87171', 'rgba(248,113,113,0.2)')}>IP Ban</button>
+                  <button onClick={() => handleIPBan(user.id)} style={btn('rgba(147,197,253,0.1)', '#93C5FD', 'rgba(147,197,253,0.2)')}>IP Ban</button>
                   <button onClick={() => handleKick(user.id)} style={btn('rgba(255,255,255,0.06)', '#aaa', 'rgba(255,255,255,0.12)')}>Kick</button>
                   <button onClick={() => handleToggleAdmin(user.id)} style={btn('rgba(251,191,36,0.08)', '#FBBF24', 'rgba(251,191,36,0.2)')}>
                     {user.isAdmin ? 'Remove Admin' : 'Make Admin'}
@@ -863,7 +865,7 @@ export default function AdminDashboard({ onClose }) {
                     </div>
                     <div style={{ display: 'flex', gap: 5 }}>
                       <button onClick={() => openEditPromo(p)} style={btn('rgba(255,255,255,0.06)', '#aaa', 'rgba(255,255,255,0.12)')}>Edit</button>
-                      <button onClick={() => codeActions.deletePromo(p.id)} style={btn('rgba(248,113,113,0.1)', '#F87171', 'rgba(248,113,113,0.25)')}>Delete</button>
+                      <button onClick={() => codeActions.deletePromo(p.id)} style={btn('rgba(147,197,253,0.1)', '#93C5FD', 'rgba(147,197,253,0.25)')}>Delete</button>
                     </div>
                   </div>
                 );
@@ -962,15 +964,15 @@ export default function AdminDashboard({ onClose }) {
               return (
                 <div key={c.code} style={{
                   display: 'flex', alignItems: 'center', gap: 5,
-                  background: c.usedBy ? 'rgba(74,222,128,0.08)' : expired ? 'rgba(248,113,113,0.05)' : 'rgba(255,255,255,0.05)',
-                  border: `1px solid ${c.usedBy ? 'rgba(74,222,128,0.2)' : expired ? 'rgba(248,113,113,0.2)' : 'rgba(255,255,255,0.1)'}`,
+                  background: c.usedBy ? 'rgba(74,222,128,0.08)' : expired ? 'rgba(251,191,36,0.05)' : 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${c.usedBy ? 'rgba(74,222,128,0.2)' : expired ? 'rgba(251,191,36,0.2)' : 'rgba(255,255,255,0.1)'}`,
                   borderRadius: 6, padding: '4px 8px', fontSize: '0.75rem', fontFamily: 'monospace',
-                  color: c.usedBy ? '#4ADE80' : expired ? '#F87171' : '#ccc',
+                  color: c.usedBy ? '#4ADE80' : expired ? '#FBBF24' : '#ccc',
                 }}>
                   <span style={{ fontSize: '0.6rem', color: '#555' }}>[{scopeLabel}]</span>
                   {c.code}
                   {c.usedBy && <span style={{ fontSize: '0.62rem', color: '#4ADE80', fontFamily: 'sans-serif' }}>✓ {c.usedBy}</span>}
-                  {expired && !c.usedBy && <span style={{ fontSize: '0.62rem', color: '#F87171', fontFamily: 'sans-serif' }}>exp</span>}
+                  {expired && !c.usedBy && <span style={{ fontSize: '0.62rem', color: '#FBBF24', fontFamily: 'sans-serif' }}>exp</span>}
                   {!c.usedBy && (
                     <>
                       <button onClick={() => copyToClipboard(c.code)}
@@ -978,7 +980,7 @@ export default function AdminDashboard({ onClose }) {
                         {copiedCode === c.code ? '✓' : '📋'}
                       </button>
                       <button onClick={() => getSocket()?.emit('adminRevokeCode', { code: c.code })}
-                        style={{ background: 'none', border: 'none', color: '#F87171', cursor: 'pointer', fontSize: '0.7rem', padding: 0 }}>×</button>
+                        style={{ background: 'none', border: 'none', color: '#93C5FD', cursor: 'pointer', fontSize: '0.7rem', padding: 0 }}>×</button>
                     </>
                   )}
                 </div>
@@ -1074,9 +1076,9 @@ export default function AdminDashboard({ onClose }) {
       {actionMsg && (
         <div style={{
           margin: '0 0 12px', padding: '8px 12px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600,
-          background: actionMsg.ok ? 'rgba(80,200,120,0.15)' : 'rgba(220,80,80,0.15)',
-          border: `1px solid ${actionMsg.ok ? 'rgba(80,200,120,0.4)' : 'rgba(220,80,80,0.4)'}`,
-          color: actionMsg.ok ? '#7CE0A0' : '#F08A8A',
+          background: actionMsg.ok ? 'rgba(80,200,120,0.15)' : 'rgba(96,165,250,0.15)',
+          border: `1px solid ${actionMsg.ok ? 'rgba(80,200,120,0.4)' : 'rgba(96,165,250,0.4)'}`,
+          color: actionMsg.ok ? '#7CE0A0' : '#93C5FD',
         }}>{actionMsg.text}</div>
       )}
 

@@ -350,7 +350,8 @@ function ChooseUsernameScreen() {
             color: '#fff', outline: 'none', boxSizing: 'border-box',
           }}
         />
-        {error && <div style={{ color: '#F87171', fontSize: '0.8rem', marginTop: 8 }}>{error}</div>}
+        {/* R3 (K2-4) — the error line is blue, not red (as LoginScreen's hints). */}
+        {error && <div style={{ color: '#93C5FD', fontSize: '0.8rem', marginTop: 8 }}>{error}</div>}
         <button onClick={handleSubmit} disabled={loading} style={{
           width: '100%', padding: '14px', marginTop: 16, borderRadius: 10,
           background: 'linear-gradient(135deg, #ffd24a, #ffd24abb)',

@@ -1,3 +1,4 @@
+/* R3 (APPUI-P3-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 /* ===== Hand Quiz ===== */
 .hand-quiz-overlay {
   position: fixed;
@@ -189,9 +190,9 @@
 }
 
 .hq-action-btn.hq-wrong {
-  border-color: #EF4444;
-  background: rgba(239, 68, 68, 0.15);
-  color: #EF4444;
+  border-color: #F59E0B;
+  background: rgba(245, 158, 11, 0.15);
+  color: #F59E0B;
 }
 
 .hq-feedback {
@@ -211,9 +212,9 @@
 }
 
 .hq-feedback.hq-fb-wrong {
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #EF4444;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #F59E0B;
 }
 
 .hq-next-btn {
@@ -247,7 +248,7 @@
 
 .hq-results-score.hq-score-good { color: #4ADE80; }
 .hq-results-score.hq-score-ok { color: #EAB308; }
-.hq-results-score.hq-score-bad { color: #EF4444; }
+.hq-results-score.hq-score-bad { color: #60A5FA; }
 
 .hq-results-label {
   font-size: 1rem;

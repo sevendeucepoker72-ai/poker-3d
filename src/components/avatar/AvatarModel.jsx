@@ -89,10 +89,10 @@ export default function AvatarModel({ config, position = [0, 0, 0], rotation = [
           <boxGeometry args={[0.05, 0.08, 0.05]} />
         </mesh>
 
-        {/* Mouth */}
+        {/* Mouth (R3 APPUI-P3-7: a muted lip tone, no red) */}
         <mesh position={[0, -0.1, 0.155]} scale={[1, face.lipFullness * 0.5 + 0.5, 1]}>
           <boxGeometry args={[0.08, 0.02, 0.02]} />
-          <meshStandardMaterial color="#B5585A" />
+          <meshStandardMaterial color="#9E6B5F" />
         </mesh>
 
         {/* Eyebrows */}
@@ -313,15 +313,16 @@ function AccessoryMesh({ type, headPosition }) {
       );
 
     case 'beanie':
+      // R3 (APPUI-P3-7) — a navy beanie (was dark red).
       return (
         <group position={[hx, hy + 0.12, hz]}>
           <mesh>
             <sphereGeometry args={[0.2, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
-            <meshStandardMaterial color="#8B0000" />
+            <meshStandardMaterial color="#1E3A8A" />
           </mesh>
           <mesh position={[0, -0.03, 0]}>
             <cylinderGeometry args={[0.2, 0.19, 0.06, 16]} />
-            <meshStandardMaterial color="#6B0000" />
+            <meshStandardMaterial color="#172554" />
           </mesh>
         </group>
       );

@@ -207,7 +207,7 @@ const ACTION_COLORS = {
   call: '#F59E0B',
   check: '#F59E0B',
   checkRaise: '#A78BFA',
-  fold: '#EF4444',
+  fold: '#60A5FA', // R3 (APPUI-P3-7) — no red: fold is blue
 };
 
 function ActionBar({ label, pct }) {
@@ -278,7 +278,7 @@ export default function GTOSolver({
     if (equity == null) return null;
     if (equity > 65) return { text: 'Equity favors aggressive line', color: '#22C55E' };
     if (equity > 45) return { text: 'Near EV-neutral — mixed strategy', color: '#F59E0B' };
-    return { text: 'Equity suggests defensive play', color: '#EF4444' };
+    return { text: 'Equity suggests defensive play', color: '#60A5FA' };
   }, [equity]);
 
   if (!visible) return null;

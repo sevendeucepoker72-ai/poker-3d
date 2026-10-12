@@ -6,6 +6,7 @@ import {
   subscribeMultiTables, joinMultiTable, leaveMultiTable, sendMultiTableAction,
   disconnectAllMultiTables, MAX_SECONDARY_TABLES,
 } from '../../services/multiTableManager';
+import { noRedHue } from '../../utils/noRedHue';
 import './MultiTableView.css';
 
 // 2026-06-18 — Phase 3f: REAL multi-tabling. Slot 0 is the app's primary table
@@ -45,7 +46,8 @@ function PlayerStrip({ players = [], currentTurn }) {
           <div key={i} className={`mtv-avatar-wrap${isActing ? ' mtv-avatar-acting' : ''}`}>
             <div
               className={`mtv-avatar-circle${isActing ? ' mtv-avatar-glow' : ''}${p.isFolded ? ' mtv-avatar-folded' : ''}`}
-              style={{ background: `hsl(${(p.seatIndex * 47 + 17) % 360}, 55%, 42%)` }}
+              // R3 (APPUI-P3-7) — no red: seats whose hue was red / rose (0, 7) move to blue.
+              style={{ background: `hsl(${noRedHue((p.seatIndex * 47 + 17) % 360)}, 55%, 42%)` }}
             >
               {(p.name || 'P')[0].toUpperCase()}
             </div>

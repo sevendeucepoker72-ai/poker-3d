@@ -1,3 +1,4 @@
+/* R3 (K2-4) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 .lobby {
   height: 100vh;
   background: linear-gradient(180deg, #050c20 0%, #081434 100%);
@@ -302,8 +303,8 @@
 }
 
 .status-dot.disconnected {
-  background: #E63946;
-  box-shadow: 0 0 6px #E63946;
+  background: #94A3B8;
+  box-shadow: 0 0 6px #94A3B8;
 }
 
 .lobby-actions {
@@ -426,7 +427,7 @@
 .table-card--short-deck    { border-left: 3px solid rgba(59,130,246,0.6); }
 .table-card--five-card-draw{ border-left: 3px solid rgba(168,85,247,0.6); }
 .table-card--triple-draw   { border-left: 3px solid rgba(139,92,246,0.6); }
-.table-card--seven-card-stud{ border-left: 3px solid rgba(239,68,68,0.6); }
+.table-card--seven-card-stud{ border-left: 3px solid rgba(14,143,138,0.6); }
 .table-card--razz          { border-left: 3px solid rgba(236,72,153,0.6); }
 .table-card--texas-holdem:hover  { box-shadow: 0 6px 24px rgba(74,222,128,0.12); }
 .table-card--omaha:hover         { box-shadow: 0 6px 24px rgba(249,115,22,0.12); }
@@ -570,13 +571,13 @@
 }
 
 .quick-game-allin {
-  background: linear-gradient(135deg, rgba(78,26,26,0.6), rgba(45,13,13,0.6));
-  border-color: rgba(106,42,42,0.5);
+  background: linear-gradient(135deg, rgba(58,44,8,0.6), rgba(12,26,68,0.6));
+  border-color: rgba(255,210,74,0.35);
 }
 
 .quick-game-allin:hover {
-  border-color: #EF4444;
-  box-shadow: 0 8px 28px rgba(239,68,68,0.15);
+  border-color: #FFD24A;
+  box-shadow: 0 8px 28px rgba(255,210,74,0.15);
 }
 
 .quick-game-icon {
@@ -611,12 +612,12 @@
 
 /* Explosion pulse */
 .quick-game-allin .quick-game-icon {
-  animation: icon-pulse-red 1.5s ease-in-out infinite;
+  animation: icon-pulse-gold 1.5s ease-in-out infinite;
 }
 
-@keyframes icon-pulse-red {
-  0%, 100% { text-shadow: 0 0 4px rgba(239,68,68,0.3); transform: scale(1); }
-  50% { text-shadow: 0 0 20px rgba(239,68,68,0.7); transform: scale(1.15); }
+@keyframes icon-pulse-gold {
+  0%, 100% { text-shadow: 0 0 4px rgba(255,210,74,0.3); transform: scale(1); }
+  50% { text-shadow: 0 0 20px rgba(255,210,74,0.7); transform: scale(1.15); }
 }
 
 .quick-game-info {

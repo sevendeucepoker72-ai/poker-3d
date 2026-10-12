@@ -90,8 +90,9 @@ export default function SessionTracker() {
       return `${x},${y}`;
     });
 
-    const lineColor = profit >= 0 ? '#4ADE80' : '#EF4444';
-    const fillColor = profit >= 0 ? 'rgba(74,222,128,0.15)' : 'rgba(239,68,68,0.15)';
+    // R3 (K1-7) — a losing session is amber, not red.
+    const lineColor = profit >= 0 ? '#4ADE80' : '#F59E0B';
+    const fillColor = profit >= 0 ? 'rgba(74,222,128,0.15)' : 'rgba(245,158,11,0.15)';
 
     // Create fill area (polygon closing to bottom)
     const firstX = padding;

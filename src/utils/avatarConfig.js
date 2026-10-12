@@ -22,9 +22,10 @@ export const HAIR_STYLES = [
   { id: 'bald', label: 'Bald' },
 ];
 
+// R3 (APPUI-P3-7) — no red swatches: auburn / copper hair (were dark red / orange-red).
 export const HAIR_COLORS = [
   '#2C1B0E', '#5A3825', '#8B6914', '#C4A35A', '#D4A574',
-  '#0c1a44', '#808080', '#C0C0C0', '#8B0000', '#FF4500',
+  '#0c1a44', '#808080', '#C0C0C0', '#7B3F1D', '#C46A2B',
 ];
 
 export const EYE_COLORS = [
@@ -40,8 +41,9 @@ export const TOP_STYLES = [
   { id: 'dress_shirt', label: 'Dress Shirt' },
 ];
 
+// R3 (APPUI-P3-7) — the red top swatch is royal blue.
 export const TOP_COLORS = [
-  '#0c1a44', '#E63946', '#457B9D', '#2A9D8F', '#E9C46A',
+  '#0c1a44', '#1D4ED8', '#457B9D', '#2A9D8F', '#E9C46A',
   '#FFFFFF', '#264653', '#F4A261', '#6B4226', '#8338EC',
 ];
 

@@ -1,3 +1,4 @@
+/* R3 (K1-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 .range-chart-overlay {
   position: fixed;
   inset: 0;
@@ -52,8 +53,8 @@
 }
 
 .range-chart-close:hover {
-  border-color: #EF4444;
-  color: #EF4444;
+  border-color: #60A5FA;
+  color: #60A5FA;
 }
 
 .range-chart-legend {
