@@ -364,6 +364,25 @@ export default function AdminDashboard({ onClose }) {
         <div className="admin-server-stat"><span className="admin-server-stat-label">Memory</span><span className="admin-server-stat-value">{stats?.memoryUsage || 'N/A'}</span></div>
       </div>
 
+      {/* 2026-10-12 (owner: "loosen for pubs") — players from ONE network seated at
+          one table are allowed (friends at the same pub); the server lists them
+          here for a look instead of refusing the seat. Newest first. */}
+      {Array.isArray(stats?.sameNetworkSeats) && stats.sameNetworkSeats.length > 0 && (
+        <>
+          <span style={secTitle}>Same Network, Same Table</span>
+          <div className="admin-same-network" style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+            {stats.sameNetworkSeats.slice(0, 10).map((e, i) => (
+              <div key={`${e.at}-${i}`} style={{ background: 'rgba(255,210,74,0.06)', border: '1px solid rgba(255,210,74,0.2)', borderRadius: 8, padding: '8px 12px', fontSize: '0.78rem', color: '#dbe6ff' }}>
+                <strong style={{ color: '#ffd24a' }}>{e.tableName || 'Table'}</strong>
+                {' · '}{Number(e.seatedFromNetwork) || 2} from one network{' · '}
+                {Array.isArray(e.names) ? e.names.join(', ') : ''}
+                <span style={{ color: '#8298c4' }}>{' · '}{e.at ? new Date(e.at).toLocaleTimeString() : ''}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       <span style={secTitle}>Broadcast Message</span>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
         <input style={inp} placeholder="Send a message to all connected players..." value={broadcastMsg} onChange={(e) => setBroadcastMsg(e.target.value)}
