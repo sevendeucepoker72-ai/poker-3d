@@ -67,6 +67,8 @@ import { useTournamentRegistrationStore } from '../../store/tournamentRegistrati
 import { useTournamentSeatStore } from '../../store/tournamentSeatStore';
 import { PlayerAvatar } from '../../hooks/useAvatar';
 import { profileTargetOf, profileTargetFromParam } from '../../utils/profileTarget';
+// R3 (contract I1) — which seated table a friend can be invited to; refusals in words.
+import { inviteTableIdOf, isSeatedAt, inviteErrorText, INVITE_KIND_HINT } from '../../utils/tableInvite';
 import './Lobby.css';
 
 // Variant badge colour by game FAMILY (every server variant id has one; no red).
@@ -349,26 +351,45 @@ function InlineFriendsList({ onOpenProfile }) {
   // 2026-06-18 Phase 3b — real friends from poker-server (was sessionStorage mock).
   const [friends, setFriends] = useState([]);
   const [inviteSent, setInviteSent] = useState(null);
+  // R3 (contract I1) — the server's refusal of an invite sent from here.
+  const [inviteNotice, setInviteNotice] = useState(null);
+  const pendingInviteRef = useRef(null); // { userId } of an invite sent here in the last 10s
   // R2 (APPUI-47) — an invite names the table he is SEATED at (never a
   // spectated or stale one); with no seat there is nothing to invite to, so
   // Invite is not offered (it used to send an invite with no table).
-  const inviteTableId = useTableStore((s) => {
-    const gs = s.gameState;
-    const seated = gs && gs.isSpectator !== true && !s.isSpectating && Number.isInteger(gs.yourSeat) && gs.yourSeat >= 0;
-    return seated && gs.tableId != null ? gs.tableId : null;
-  });
+  // R3 (K3-2 / CLUBS-5, contract I1) — and only a cash table, his home game or
+  // a club table: an invite to a tournament / quick game could never be joined.
+  const inviteTableId = useTableStore((s) => inviteTableIdOf(s.gameState, s.isSpectating));
+  const seatedSomewhere = useTableStore((s) => isSeatedAt(s.gameState, s.isSpectating));
 
   useEffect(() => {
     const s = getSocket();
     if (!s) return undefined;
     const onList = (d) => setFriends((d?.friends || []).filter((f) => f.status === 'accepted'));
     const onChanged = () => { if (s.connected) s.emit('getFriends'); };
+    // R3 (contract I1) — an invite refused by the server (not seated there,
+    // not a joinable table, not a friend, too many, friend offline) is said
+    // here, for an invite this list sent in the last few seconds.
+    const onFriendError = (d) => {
+      const text = inviteErrorText(d);
+      const p = pendingInviteRef.current;
+      if (!text || !p) return;
+      pendingInviteRef.current = null;
+      setInviteSent(null);
+      setInviteNotice(text);
+    };
     s.on('friendsList', onList);
     s.on('friendsChanged', onChanged);
+    s.on('friendError', onFriendError);
     if (s.connected) s.emit('getFriends');
     const t = setTimeout(() => { if (s.connected) s.emit('getFriends'); }, 600);
-    return () => { clearTimeout(t); s.off('friendsList', onList); s.off('friendsChanged', onChanged); };
+    return () => { clearTimeout(t); s.off('friendsList', onList); s.off('friendsChanged', onChanged); s.off('friendError', onFriendError); };
   }, []);
+  useEffect(() => {
+    if (!inviteNotice) return undefined;
+    const t = setTimeout(() => setInviteNotice(null), 6000);
+    return () => clearTimeout(t);
+  }, [inviteNotice]);
 
   const statusColors = { online: '#27e0a0', 'in-game': '#ffd24a', offline: '#8298c4' };
   const statusLabels = { online: 'Online', 'in-game': 'In Game', offline: 'Offline' };
@@ -385,6 +406,10 @@ function InlineFriendsList({ onOpenProfile }) {
     if (!inviteTableId) return;
     const s = getSocket();
     if (s?.connected) s.emit('inviteFriendToTable', { userId: friend.userId, tableId: inviteTableId });
+    const pending = { userId: friend.userId };
+    pendingInviteRef.current = pending;
+    setTimeout(() => { if (pendingInviteRef.current === pending) pendingInviteRef.current = null; }, 10000);
+    setInviteNotice(null);
     setInviteSent(friend.userId);
     setTimeout(() => setInviteSent(null), 2000);
   };
@@ -400,7 +425,10 @@ function InlineFriendsList({ onOpenProfile }) {
         </div>
       )}
       {sortedFriends.length > 0 && !inviteTableId && onlineCount > 0 && (
-        <div className="inline-friends-hint">Sit at a table to invite online friends to it.</div>
+        <div className="inline-friends-hint">{seatedSomewhere ? INVITE_KIND_HINT : 'Sit at a table to invite online friends to it.'}</div>
+      )}
+      {inviteNotice && (
+        <div className="inline-friends-hint inline-friends-invite-refused" role="alert">{inviteNotice}</div>
       )}
       {sortedFriends.map((friend) => {
         const name = friendName(friend);

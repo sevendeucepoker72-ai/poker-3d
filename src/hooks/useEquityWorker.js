@@ -15,7 +15,13 @@ export function useEquityWorker() {
 
   function getWorker() {
     if (!workerRef.current) {
-      workerRef.current = new Worker('/equityWorker.js');
+      // R3 (APPUI-P3-4) — a content-hashed URL (Vite emits the worker as
+      // /assets/equityWorker-<hash>.js): the fixed /equityWorker.js was served
+      // from the host's year-long immutable cache and the service worker's
+      // cache-first copy, so a deploy's worker change reached nobody. A classic
+      // worker (no type:'module'): module workers need Safari 15, the build
+      // targets Safari 14.
+      workerRef.current = new Worker(new URL('../workers/equityWorker.js', import.meta.url));
       workerRef.current.onmessage = (e) => {
         const { id, result, error } = e.data;
         const callbacks = pendingRef.current.get(id);

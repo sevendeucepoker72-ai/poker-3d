@@ -25,10 +25,42 @@
 
     # HSTS — force HTTPS for 1y including subdomains.
     Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    # R3 (OPS-P3-4 / APPUI-P3-4) — files served under a FIXED name are always
+    # revalidated (a 304 when unchanged), never kept for a year: the service
+    # worker (a stale one keeps every player on the old app), the HTML pages
+    # (they name the hashed bundle), the manifest, the loose icons / logo, and
+    # the pre-R3 /equityWorker.js an older bundle still loads. The parent
+    # /public_html/.htaccess (americanpubpoker.com) marks every .js / .png /
+    # .svg "immutable, 1 year" in a <FilesMatch>; a <FilesMatch> here is merged
+    # after the parent's, so these names get this header. Only these names in
+    # this docroot: the content-hashed /assets/* keep the year-long cache.
+    <FilesMatch "^(sw\.js|equityWorker\.js|manifest\.json|favicon\.svg|icons\.svg|logo\.png|apple-touch-icon\.png|poker-icon-[A-Za-z0-9-]+\.(png|svg))$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+    <FilesMatch "\.html$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+    </FilesMatch>
 </IfModule>
 
 Options -MultiViews
 RewriteEngine On
 RewriteBase /
+
+# R3 (OPS-P3-5) — plain http:// goes to https:// with a 301 (path and query
+# kept, so a ?token= Play Online link survives). Only for this site's own host
+# names, never for the cPanel temporary URL, and never for /.well-known/ (the
+# AutoSSL certificate check is made over http). A proxy / CDN that ends TLS in
+# front of Apache reaches it over plain HTTP: X-Forwarded-Proto https (or
+# X-Forwarded-SSL on, or Cloudflare's CF-Visitor https) means the visitor is
+# already on https, so nothing is redirected (no redirect loop).
+RewriteCond %{HTTPS} !=on
+RewriteCond %{HTTP:X-Forwarded-Proto} !^https$ [NC]
+RewriteCond %{HTTP:X-Forwarded-SSL} !^on$ [NC]
+RewriteCond %{HTTP:CF-Visitor} !https [NC]
+RewriteCond %{REQUEST_URI} !^/\.well-known/
+RewriteCond %{HTTP_HOST} ^(www\.)?americanpubpoker\.online$ [NC]
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^ index.html [L]

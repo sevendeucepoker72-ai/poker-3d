@@ -97,7 +97,9 @@ export function sanitizeReplayHistory(raw) {
     const actions = Array.isArray(p.actions)
       ? p.actions.slice(0, MAX_ACTIONS_PER_PLAYER).filter((a) => typeof a === 'string').map((a) => cleanText(a, 40))
       : [];
-    const handName = cleanText(p.handName, 40);
+    // R3 (TABLEUI-6, contract H1) — a hand name only with its shown cards (a
+    // record stored before the R1 fix, shared as a link, named hidden hands).
+    const handName = holeCards.length > 0 ? cleanText(p.handName, 40) : '';
     players.push({
       seatIndex,
       name: cleanText(p.name, 40) || `Seat ${seatIndex + 1}`,

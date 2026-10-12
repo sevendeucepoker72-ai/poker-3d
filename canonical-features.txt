@@ -1048,3 +1048,18 @@ qualifierCancelled
 Tap again to confirm
 Starts when
 the game server restarted
+
+# 2026-10-11 .online R3 fixes (CF-B): friend table invites routed by tableKind
+#     (contract I1: home game via its invite code, club table via the club,
+#     cash via joinTable; refusals said on both sides; Invite only at cash /
+#     private / club tables), qualifier cancelled by a server restart (Q1),
+#     no cold-start silent SSO over a ?token= ticket (AUTH-P3-7), periodic
+#     service-worker update check (OPS-P3-11), content-hashed equity worker
+#     (APPUI-P3-4). Hand names only with shown cards (H1) has no literal.
+Friends can be invited to cash tables, home games and club tables
+inline-friends-invite-refused
+[table-invite] join refused
+please register again
+[silent-sso] cold-start skipped: a Play Online ticket is in the URL
+[sw] update check failed:
+/assets/equityWorker-

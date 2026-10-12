@@ -299,9 +299,11 @@ export default function QualifierLobby({ onSpectate }) {
     if (!qualLoaded) return <div style={{ color: '#8298c4', fontSize: '0.8rem', padding: '10px 0' }}>Checking qualification…</div>;
     if (state === 'finished' && q.cancelled) {
       // R2 review (K3-5) — a cancelled event never says "completed".
+      // R3 (contract Q1) — no reason here: a game-server restart cancels with
+      // the same update as too few players (the toast says which).
       return (
         <div className="qualifier-result-line" style={box({ background: 'rgba(130,152,196,0.08)', border: '1px solid rgba(130,152,196,0.25)', color: '#cfe0ff' })}>
-          Cancelled — not enough players. Any qualifier credit it used was refunded.
+          Cancelled. Any qualifier credit it used was refunded.
         </div>
       );
     }

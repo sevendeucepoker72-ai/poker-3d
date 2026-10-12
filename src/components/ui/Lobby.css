@@ -2640,6 +2640,11 @@
   color: #9fb4d8;
   text-align: center;
 }
+/* R3 (contract I1) — an invite the server refused (blue + gold, no red). */
+.inline-friends-invite-refused {
+  color: #ffd24a;
+  font-weight: 600;
+}
 
 @media (max-width: 480px) {
   .table-card { flex-wrap: wrap; gap: 10px; }

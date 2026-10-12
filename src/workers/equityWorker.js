@@ -1,5 +1,8 @@
 // Equity calculation web worker
 // Self-contained copy of the core logic from equitySimulator.js – no imports allowed in basic workers.
+// R3 (APPUI-P3-4) — lives in src/ (it was public/equityWorker.js): Vite bundles
+// it under a content-hashed /assets/ name (hooks/useEquityWorker.js), so a
+// deploy's new worker is never served from a year-long cache of the old one.
 
 // ─── Minimal 5-card hand evaluator ───────────────────────────────────────────
 

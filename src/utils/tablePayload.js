@@ -137,6 +137,28 @@ export function sanitizeShownCards(cards, max = MAX_SHOWN_CARDS) {
   return cards.map((c) => ({ rank: c.rank, suit: c.suit }));
 }
 
+/**
+ * R3 (APPUI-16, contract H1) — the hand-history record's viewer's OWN hole
+ * cards at `yourSeat` (the record masks every hand not shown, his own folded /
+ * uncontested one included): the server's `viewerHoleCards` (with its
+ * `viewerSeat`) when sent, else — an older server — `live.yourCards` of that
+ * same hand at that same seat. Null when the record has no row for the seat.
+ * Never another seat's cards.
+ */
+export function viewerHoleCardsOf(history, yourSeat, live = null) {
+  if (!history || typeof history !== 'object' || !Number.isInteger(yourSeat) || yourSeat < 0) return null;
+  const players = Array.isArray(history.players) ? history.players : [];
+  if (!players.some((p) => p && p.seatIndex === yourSeat)) return null;
+  const serverSeatOk = !Number.isInteger(history.viewerSeat) || history.viewerSeat === yourSeat;
+  const fromServer = serverSeatOk ? sanitizeShownCards(history.viewerHoleCards) : null;
+  if (fromServer) return fromServer;
+  if (live && typeof live === 'object' && live.isSpectator !== true && live.yourSeat === yourSeat
+    && live.handNumber !== undefined && live.handNumber === history.handNumber) {
+    return sanitizeShownCards(live.yourCards);
+  }
+  return null;
+}
+
 // ── Per-hand state keys (TABLEUI-7 / R1 contract #5) ────────────────────────
 // The server's delta could not clear a key that disappeared (JSON drops
 // `undefined`), so a split pot's "Split Pot!" banner and the training panel

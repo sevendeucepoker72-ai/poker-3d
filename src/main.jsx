@@ -295,6 +295,31 @@ function showUpdateToast(reg) {
     }
   } catch { /* animation is decoration only */ }
 }
+// R3 (OPS-P3-11) — the browser looks for a new sw.js only on a navigation, so
+// an installed PWA / a tab left open for days never heard of a deploy. Ask
+// every 30 minutes while the tab is visible, and when it comes back into view
+// (at most once a minute); a new version goes through the 'updatefound' path
+// below (the "New version available" notice — never an automatic reload).
+const SW_UPDATE_CHECK_MS = 30 * 60 * 1000
+const SW_UPDATE_MIN_GAP_MS = 60 * 1000
+function startSwUpdateChecks(reg) {
+  let lastCheck = Date.now()
+  const check = (why) => {
+    if (document.visibilityState === 'hidden') return
+    if (typeof navigator.onLine === 'boolean' && !navigator.onLine) return
+    if (Date.now() - lastCheck < SW_UPDATE_MIN_GAP_MS) return
+    lastCheck = Date.now()
+    try {
+      Promise.resolve(reg.update()).catch((err) => {
+        console.warn('[sw] update check failed:', why, err && err.message)
+      })
+    } catch { /* an older browser without update(): the next navigation checks */ }
+  }
+  setInterval(() => check('interval'), SW_UPDATE_CHECK_MS)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') check('visible')
+  })
+}
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then((reg) => {
@@ -311,6 +336,7 @@ if ('serviceWorker' in navigator) {
           }
         });
       });
+      startSwUpdateChecks(reg);
     }).catch((err) => {
       console.warn('[sw] registration failed:', err);
     });
@@ -357,6 +383,14 @@ async function bootstrapBridgeOrMount() {
     const triedSilent = sessionStorage.getItem('oauth_silent_attempted') === '1';
     const path = window.location.pathname || '/';
     const isAuthCallback = path.startsWith('/auth/callback');
+    // R3 (AUTH-P3-7) — a "Play Online" / waitlist deep link (`?token=`) IS
+    // this load's sign-in (App's parseDeepLinkContext reads it at mount). The
+    // prompt=none redirect left the page before App ran, and its return path
+    // dropped the query string: the ticket was lost (or the browser's SSO
+    // account signed in instead of the ticket's). Only that redirect is
+    // skipped: the canonical-origin bounce below keeps the query string.
+    let deepLinkTicket = false;
+    try { deepLinkTicket = !!new URLSearchParams(window.location.search || '').get('token'); } catch { deepLinkTicket = false; }
 
     if (!hasLocalToken && !triedSilent && !isAuthCallback && !bridgeToken) {
       const { startSilentLogin, bounceToCanonicalOriginIfUnregistered } =
@@ -374,16 +408,20 @@ async function bootstrapBridgeOrMount() {
       if (bounceToCanonicalOriginIfUnregistered()) {
         return; // navigating to the canonical origin — do not mount
       }
-      sessionStorage.setItem('oauth_silent_attempted', '1');
-      try {
-        sessionStorage.setItem('oauth_silent_return_to',
-          window.location.pathname + window.location.search + window.location.hash);
-      } catch {}
-      try {
-        await startSilentLogin({ returnTo: path });
-        return; // navigation fires inside; we don't reach here
-      } catch (err) {
-        console.warn('[silent-sso] cold-start failed:', err && err.message);
+      if (deepLinkTicket) {
+        console.warn('[silent-sso] cold-start skipped: a Play Online ticket is in the URL');
+      } else {
+        sessionStorage.setItem('oauth_silent_attempted', '1');
+        try {
+          sessionStorage.setItem('oauth_silent_return_to',
+            window.location.pathname + window.location.search + window.location.hash);
+        } catch {}
+        try {
+          await startSilentLogin({ returnTo: path });
+          return; // navigation fires inside; we don't reach here
+        } catch (err) {
+          console.warn('[silent-sso] cold-start failed:', err && err.message);
+        }
       }
     }
   } catch (err) {

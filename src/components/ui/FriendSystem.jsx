@@ -4,22 +4,25 @@ import { getSocket } from '../../services/socketService';
 import { useTableStore } from '../../store/tableStore';
 import { notify } from '../../hooks/usePushNotifications';
 import { profileTargetOf } from '../../utils/profileTarget';
+import { inviteTableIdOf, inviteErrorText, INVITE_ERROR_TEXT } from '../../utils/tableInvite';
 import './FriendSystem.css';
 
 // The friend invite must carry the inviter's current table id so the recipient
 // can actually join. R2 (APPUI-47) — only a table he is SEATED at (not one he
 // watches as a spectator or a stale view). Null => nothing to invite to.
+// R3 (K3-2 / CLUBS-5, contract I1) — and only a cash table, his home game or a
+// club table (never a tournament, a quick game or a club challenge).
 function getCurrentTableId() {
   const ts = useTableStore.getState();
-  const gs = ts.gameState;
-  const seated = gs && gs.isSpectator !== true && !ts.isSpectating && Number.isInteger(gs.yourSeat) && gs.yourSeat >= 0;
-  return seated && gs.tableId != null ? gs.tableId : null;
+  return inviteTableIdOf(ts.gameState, ts.isSpectating);
 }
 
 // R2 (APPUI-14 / addendum) — the server's friend error codes, in words.
+// R3 (contract I1) — plus the invite refusals (utils/tableInvite.js).
 const FRIEND_ERRORS = {
   friend_not_found: 'No player has that exact display name — check the spelling.',
   friend_name_ambiguous: 'More than one player uses that name — add them from their profile or a table instead.',
+  ...INVITE_ERROR_TEXT,
 };
 
 // 2026-06-18 — Phase 3a: real, durable friends backed by poker-server
@@ -91,7 +94,11 @@ export default function FriendSystem({ onClose, onOpenProfile }) {
     };
     const onChanged = () => refresh();
     const onSent = (d) => setNotice({ ok: true, text: d?.status === 'accepted' ? 'Friend added!' : 'Request sent' });
-    const onErr = (d) => setNotice({ ok: false, text: FRIEND_ERRORS[d?.code] || d?.message || 'Something went wrong' });
+    const onErr = (d) => {
+      // R3 (contract I1) — a refused invite is not "Sent!".
+      if (inviteErrorText(d)) setInviteSent(null);
+      setNotice({ ok: false, text: FRIEND_ERRORS[d?.code] || d?.message || 'Something went wrong' });
+    };
     const onInvited = () => { /* handled optimistically below */ };
     s.on('friendsList', onList);
     s.on('friendsChanged', onChanged);

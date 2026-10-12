@@ -161,11 +161,15 @@ export function buildReplaySteps(history) {
   }
   const anteTotal = [...antes.values()].reduce((s, v) => s + v, 0);
 
+  // R3 (TABLEUI-6, contract H1) — a hand's NAME only with its cards: records
+  // stored before the R1 fix carry the strength of hands that were never
+  // shown (an uncontested pot) next to masked cards. Not the viewer's own
+  // cards either (added below): the name goes with the record's shown cards.
   const states = new Map(players.map((p) => [p.seatIndex, {
     seatIndex: p.seatIndex,
     name: nameOf(p),
     holeCards: Array.isArray(p.holeCards) && p.holeCards.length ? p.holeCards : null,
-    handName: typeof p.handName === 'string' ? p.handName : null,
+    handName: typeof p.handName === 'string' && Array.isArray(p.holeCards) && p.holeCards.length ? p.handName : null,
     startChips: int(p.startChips),
     chips: int(p.startChips),
     folded: false,

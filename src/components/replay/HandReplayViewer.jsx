@@ -240,7 +240,8 @@ export default function HandReplayViewer({ history, onClose }) {
                     </>
                   )}
                 </div>
-                {p.handName && step.type === 'showdown' && (
+                {/* R3 (TABLEUI-6, contract H1) — a hand name only next to its shown cards. */}
+                {p.handName && p.revealed && p.holeCards && step.type === 'showdown' && (
                   <span className="replay-player-hand-name">{p.handName}</span>
                 )}
                 {/* Hand equity at current street */}

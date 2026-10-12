@@ -5,7 +5,7 @@ import { markTableLeft, isTableLeft } from '../services/leftTables';
 // R1 (AUTH-6, contract #3) — every frame the table renders passes through these
 // setters; a non-string name (number / object / array) is made safe here once,
 // so no seat, winner or showdown row can crash the table for its viewers.
-import { sanitizeTableState, sanitizeHandHistory, sanitizeNamedEvent, sanitizeShownCards } from '../utils/tablePayload';
+import { sanitizeTableState, sanitizeHandHistory, sanitizeNamedEvent, viewerHoleCardsOf } from '../utils/tablePayload';
 
 // 2026-10-07 — every gated play emit records how to replay itself, so a
 // login_required refusal that lands on a signed-out socket (reconnect race) can
@@ -441,13 +441,17 @@ export const useTableStore = create((set, get) => ({
     // R2 (APPUI-16) — the record masks every hand that was not shown, the
     // viewer's OWN included (a fold, an uncontested pot): keep his cards — he
     // saw them — for his replay. Only from his live seat in that same hand.
+    // R3 (contract H1) — the server's own viewerSeat / viewerHoleCards come
+    // first (validated); the live seat of that same hand only for an older
+    // server (and only when the record is the table on screen).
     try {
       const gs = state.gameState;
-      const seat = gs && !gs.isSpectator && Number(gs.yourSeat) >= 0 ? Number(gs.yourSeat) : null;
-      const mine = seat !== null && rec && gs.handNumber === rec.handNumber ? sanitizeShownCards(gs.yourCards) : null;
-      if (mine && Array.isArray(rec.players) && rec.players.some((p) => p && p.seatIndex === seat)) {
-        rec = { ...rec, viewerSeat: seat, viewerHoleCards: mine };
-      }
+      const liveSeat = gs && !gs.isSpectator && Number(gs.yourSeat) >= 0 ? Number(gs.yourSeat) : null;
+      const seat = rec && Number.isInteger(rec.viewerSeat) && rec.viewerSeat >= 0 ? rec.viewerSeat : liveSeat;
+      const live = gs && (rec?.tableId == null || String(gs.tableId) === String(rec.tableId)) ? gs : null;
+      const mine = seat !== null && rec ? viewerHoleCardsOf(rec, seat, live) : null;
+      if (mine) rec = { ...rec, viewerSeat: seat, viewerHoleCards: mine };
+      else if (rec && rec.viewerHoleCards !== undefined) rec = { ...rec, viewerHoleCards: undefined };
     } catch { /* best-effort */ }
     return { handHistories: [...state.handHistories, rec].slice(-20) };
   }),

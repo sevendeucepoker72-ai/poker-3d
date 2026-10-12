@@ -178,7 +178,9 @@ import MultiTableTabs from './components/game/MultiTableTabs';
 // per-hand state keys are cleared when a delta starts a new hand.
 import TableErrorBoundary from './components/game/TableErrorBoundary';
 import TableReconnectBanner from './components/game/TableReconnectBanner';
-import { clearStalePerHandKeys } from './utils/tablePayload';
+import { clearStalePerHandKeys, viewerHoleCardsOf } from './utils/tablePayload';
+// R3 (contract I1) — a friend's table invite keeps how to enter that table.
+import { tableInviteFields } from './utils/tableInvite';
 import PlayerNotes from './components/ui/PlayerNotes';
 import BottomNav from './components/ui/BottomNav';
 import PWAInstallPrompt from './components/ui/PWAInstallPrompt';
@@ -991,9 +993,15 @@ function App() {
     // R2 review (K3-5) — a qualifier the player registered for was cancelled
     // (too few players / taken off the schedule): say so, and that the
     // qualifier credit it used came back.
+    // R3 (S1-6, contract Q1) — a game-server restart releases every upcoming
+    // qualifier registration (reason 'server_restart'): he must register again.
     const handleQualifierCancelled = (d) => {
-      const why = d?.reason === 'removed_from_schedule' ? 'it was taken off the schedule' : 'not enough players registered';
       const credit = d?.creditRefunded ? ' Your qualifier credit was refunded.' : '';
+      if (d?.reason === 'server_restart') {
+        useProgressStore.getState().addNotification({ type: 'mission', title: 'Qualifier cancelled', message: `Your qualifier registration was cancelled because the game server restarted — please register again.${credit}` });
+        return;
+      }
+      const why = d?.reason === 'removed_from_schedule' ? 'it was taken off the schedule' : 'not enough players registered';
       useProgressStore.getState().addNotification({ type: 'mission', title: 'Qualifier cancelled', message: `A qualifier you registered for was cancelled — ${why}.${credit}` });
     };
     socket.on('qualifierCancelled', handleQualifierCancelled);
@@ -1311,11 +1319,14 @@ function App() {
       // Carry the inviter's tableId so the toast can render an actionable "Join"
       // button (handled in AchievementPopup). Falls back to a plain toast when
       // no tableId is present (older senders that didn't include one).
+      // R3 (K3-2 / S1-5, contract I1) — also the table's kind and how to enter
+      // it (tableKind + inviteCode for a home game, clubId + clubTableId for a
+      // club table): Join routes by kind (utils/tableInvite.js).
       useProgressStore.getState().addNotification({
         type: 'friend',
         title: 'Table Invite',
         message: `${String(data?.from || 'A friend')} invited you to their table.`,
-        inviteTableId: data?.tableId || null,
+        ...tableInviteFields(data),
       });
     });
     socket.on('tableBroken', () => {
@@ -1481,9 +1492,16 @@ function App() {
           const yourSeat = Number.isInteger(history.viewerSeat) && history.viewerSeat >= 0 ? history.viewerSeat
             : seated ? src.yourSeat
               : (src === gs && Number.isInteger(ts.mySeat) && ts.mySeat >= 0 ? ts.mySeat : -1);
+          // R3 (APPUI-16, contract H1) — his OWN cards for the lobby replay of
+          // a hand he folded / won uncontested (the record masks them): the
+          // server's viewerHoleCards when sent (an older server: his live
+          // cards of that same hand), never anyone else's.
+          const viewerHoleCards = viewerHoleCardsOf(history, yourSeat, seated ? src : null);
           const stamped = {
             ...history,
             yourSeat,
+            viewerSeat: viewerHoleCards ? yourSeat : history.viewerSeat,
+            viewerHoleCards: viewerHoleCards || undefined,
             tableId: histTid ?? (src && src.tableId != null ? src.tableId : null),
             tableName: (src && (src.tableName || src.name)) || null,
             receivedAt: Date.now(),

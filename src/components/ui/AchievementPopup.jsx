@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useProgressStore } from '../../store/progressStore';
-import { useTableStore } from '../../store/tableStore';
-import { useGameStore } from '../../store/gameStore';
+import { acceptTableInvite } from '../../services/tableInviteJoin';
+import { inviteJoinRequest } from '../../utils/tableInvite';
 import './Progression.css';
 
 // 2026-10-11 (R2, APPUI P3) — every toast is titled by what it is. The popup
@@ -48,18 +48,12 @@ export default function AchievementPopup() {
   const timersRef = useRef(new Map());
 
   // Accept a table invite: join the inviter's table (seat auto-assign, -1).
-  // buyIn defaults to 1000 (mirrors Lobby's `table.minBuyIn || 1000` fallback);
-  // the recipient doesn't carry the table object, so the server validates/clamps
-  // against the real table stakes. The invite payload could later include the
-  // table's minBuyIn for an exact figure.
+  // R3 (K3-2 / S1-5 / CLUBS-5, contract I1) — routed by the invite's tableKind
+  // (a home game through its invite code, a club table through the club, a
+  // cash table through joinTable); the table opens once the seat is
+  // confirmed, and a refused Join is said in a toast (services/tableInviteJoin).
   const acceptInvite = (notification) => {
-    const tableId = notification.inviteTableId;
-    if (tableId) {
-      const gs = useGameStore.getState();
-      try {
-        useTableStore.getState().joinTable(tableId, gs.playerName, -1, 1000, gs.avatar);
-      } catch { /* new table state arrives via broadcast */ }
-    }
+    try { acceptTableInvite(notification); } catch { /* the toast still closes */ }
     dismissNotification(notification.id);
   };
 
@@ -106,7 +100,7 @@ export default function AchievementPopup() {
           <div className="achievement-popup-content">
             <div className="achievement-popup-title">{toastTitle(notification)}</div>
             <div className="achievement-popup-name">{String(notification.message ?? '')}</div>
-            {notification.inviteTableId && (
+            {inviteJoinRequest(notification) && (
               <button
                 className="achievement-popup-invite-join"
                 onClick={(e) => { e.stopPropagation(); acceptInvite(notification); }}

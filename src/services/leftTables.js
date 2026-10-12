@@ -47,10 +47,12 @@ export const LEFT_TABLE_IGNORE_MS = 15_000;
 // name in the payload: they end the marks (the stale frames of a leave
 // arrive within a round trip of it — long before a player can tap one of
 // these).
+// R3 (contract I1) — joinClubTable names the club table ROW (clubTableId), not
+// the runtime table it seats at (ClubsPanel and a club table invite's Join).
 const SEAT_ANYWHERE_EVENTS = new Set([
   'quickPlay', 'quickHeadsUp', 'quickSpinGo', 'quickAllInOrFold', 'startCareerGame',
   'joinByInviteCode', 'createPrivateTable', 'joinWithWaitlistContext', 'authWithTicket',
-  'redeemEntryCode', 'rebuy',
+  'redeemEntryCode', 'rebuy', 'joinClubTable',
   'registerTournament', 'registerQualifierTournament', 'startSimulatedTournament',
   'startClubTournament', 'spectateTournament', 'spectateNextTable',
 ]);
