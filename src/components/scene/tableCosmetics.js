@@ -11,7 +11,7 @@
  * Every id the shop sells for a type the table draws maps to a look here (the
  * CSS lives in TableCosmetics.css): 10 felt themes, 10 card backs, 9 nameplate
  * frames (+ the VIP gold frame), 15 titles, the season badges. Brand: sapphire
- * + gold, never red — "Classic Red", the free default back, is drawn as the
+ * + gold, never red — "Classic" (id classic_red), the free default back, is drawn as the
  * house's classic back.
  *
  * Pure data + pure functions (no React, no store): an id that is not a known

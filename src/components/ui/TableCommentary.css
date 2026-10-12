@@ -1,3 +1,4 @@
+/* R3 (APPUI-P3-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 .commentary-panel {
   position: fixed;
   bottom: 120px;
@@ -97,7 +98,7 @@
 
 /* Type variants */
 .commentary-entry--allin .commentary-text {
-  color: #EF4444;
+  color: #FFD24A;
   font-weight: 600;
 }
 .commentary-entry--bigwin .commentary-text {

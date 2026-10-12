@@ -1,3 +1,4 @@
+/* R3 (K1-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 /* ================================================================
    mobile-overrides.css — Comprehensive mobile-first overrides
    Loaded only in the mobile build (main-mobile.jsx)
@@ -636,7 +637,7 @@ input, textarea {
   transition: width 1s linear, background 0.3s ease !important;
 }
 .action-timer-strip--danger {
-  background: #ef4444 !important;
+  background: #f59e0b !important;
   animation: timer-danger-pulse 0.5s ease-in-out infinite !important;
 }
 @keyframes timer-danger-pulse {

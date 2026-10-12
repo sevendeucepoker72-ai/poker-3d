@@ -982,7 +982,8 @@ export default function GameHUD() {
   // Stack-to-Pot Ratio (Upgrade 2) — helper keeps top-bar badge and action-bar
   // SPR display in lockstep; the two places used to inline their own copy of
   // this threshold ladder.
-  const getSPRColor = (s) => s === null ? '#6b7280' : Number(s) >= 8 ? '#4ADE80' : Number(s) >= 3 ? '#F59E0B' : '#EF4444';
+  // R3 (K1-7) — no red: the Short tier is blue (amber is already Mid).
+  const getSPRColor = (s) => s === null ? '#6b7280' : Number(s) >= 8 ? '#4ADE80' : Number(s) >= 3 ? '#F59E0B' : '#60A5FA';
   const getSPRLabel = (s) => s === null ? '' : Number(s) >= 8 ? 'Deep' : Number(s) >= 3 ? 'Mid' : 'Short';
   const spr = pot > 0 ? (myChips / pot).toFixed(1) : null;
   const sprColor = getSPRColor(spr);
@@ -2508,7 +2509,8 @@ export default function GameHUD() {
   const chipDenominations = [
     { value: 1000, color: '#081434', border: '#ffd24a', label: '1K' },
     { value: 500, color: '#166534', border: '#4ADE80', label: '500' },
-    { value: 100, color: '#991B1B', border: '#FCA5A5', label: '100' },
+    // R3 (K1-7) — no red chip: 100 is casino black.
+    { value: 100, color: '#111827', border: '#9CA3AF', label: '100' },
     { value: 25, color: '#1E40AF', border: '#93C5FD', label: '25' },
     { value: 5, color: '#ffffff', border: '#999', label: '5' },
   ];
@@ -3173,7 +3175,8 @@ export default function GameHUD() {
             {/* SPR badge (#3) */}
             {pot > 0 && myChips > 0 && phase !== 'WaitingForPlayers' && (() => {
               const spr = myChips / pot;
-              const sprColor = spr < 3 ? '#ef4444' : spr < 8 ? '#f59e0b' : '#4ade80';
+              // R3 (K1-7) — no red: short SPR is blue (amber is mid).
+              const sprColor = spr < 3 ? '#60a5fa' : spr < 8 ? '#f59e0b' : '#4ade80';
               return <span className="spr-badge" style={{ color: sprColor }}>SPR {spr.toFixed(1)}</span>;
             })()}
             {/* Side pot breakdown — shown only when 2+ pots exist (all-in situation) */}
@@ -3197,7 +3200,8 @@ export default function GameHUD() {
               <div className="blind-level-bar">
                 <div className="blind-level-bar-fill" style={{
                   width: `${Math.min(100, (gameState.nextBlindIn / (gameState.blindLevelDuration || 600)) * 100)}%`,
-                  background: gameState.nextBlindIn < 30 ? '#ef4444' : gameState.nextBlindIn < 60 ? '#f59e0b' : '#4ade80',
+                  // R3 (K1-7) — no red: the last 30s are amber, the 30-60s gold.
+                  background: gameState.nextBlindIn < 30 ? '#f59e0b' : gameState.nextBlindIn < 60 ? '#ffd24a' : '#4ade80',
                 }} />
               </div>
               <span className="blind-level-label">Level {gameState.blindLevel} · Next in {Math.ceil(gameState.nextBlindIn)}s</span>
@@ -3412,7 +3416,7 @@ export default function GameHUD() {
                     <button
                       className="options-action-btn"
                       onClick={() => setPreAction(null)}
-                      style={{ marginTop: 4, fontSize: '0.68rem', color: '#FCA5A5' }}
+                      style={{ marginTop: 4, fontSize: '0.68rem', color: '#93C5FD' }}
                     >✕ Clear queued action</button>
                   )}
                 </div>
@@ -3443,7 +3447,8 @@ export default function GameHUD() {
                       { key: 'blue',    label: '🔵 Speed',    preview: 'linear-gradient(135deg, #1a3a6e, #0f2447)' },
                       { key: 'green',   label: '🟢 Classic',  preview: 'linear-gradient(135deg, #2e7d52, #1a5438)' },
                       { key: 'black',   label: '⬛ Midnight', preview: 'linear-gradient(135deg, #0c1a44, #0d0d1a)' },
-                      { key: 'crimson', label: '🔴 Crimson',  preview: 'linear-gradient(135deg, #7c1d1d, #4a0f0f)' },
+                      // R3 (K1-7) — no red: key 'crimson' kept (saved picks), drawn ocean-teal.
+                      { key: 'crimson', label: '🌊 Ocean',    preview: 'linear-gradient(135deg, #1b7187, #0d3a48)' },
                     ].map(({ key, label, preview }) => {
                       const active = !equippedFeltShown && (sessionStorage.getItem('app_poker_theme') || 'blue') === key;
                       return (
@@ -3908,7 +3913,8 @@ export default function GameHUD() {
                       className="card-peek-front"
                       style={{
                         color: getCardColor(card.suit, colorBlindMode),
-                        ...(isSelected ? { border: '2px solid #EF4444', boxShadow: '0 0 8px rgba(239, 68, 68, 0.5)' } : {}),
+                        // R3 (K1-7) — a selected discard is outlined gold, not red.
+                        ...(isSelected ? { border: '2px solid #ffd24a', boxShadow: '0 0 8px rgba(255, 210, 74, 0.5)' } : {}),
                       }}
                     >
                       <span className="card-rank">{serverRankDisplay(card.rank)}</span>
@@ -3963,6 +3969,7 @@ export default function GameHUD() {
             {isMyTurn && (() => {
               // Use the same 0–30s base as the seat-pod timer ring.
               const pct = Math.max(0, Math.min(100, timerPct));
+              // R3 (K1-7) — the last 5s are blue, not red (the ring is gold).
               const danger = timeLeft <= 5;
               // Perimeter length scales with a 2:1 aspect (~220 for
               // typical nameplate width 180 × height 48; rx:10 rounds).
@@ -3979,7 +3986,7 @@ export default function GameHUD() {
                     x="1" y="1" width="98" height="98" rx="10" ry="10"
                     pathLength="100"
                     fill="none"
-                    stroke={danger ? '#ef4444' : '#f5c451'}
+                    stroke={danger ? '#60a5fa' : '#f5c451'}
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeDasharray="100"
@@ -4457,8 +4464,9 @@ export default function GameHUD() {
               className="hsp-fill"
               style={{
                 width: `${Math.round(handStrength.strength * 100)}%`,
+                // R3 (K1-7) — no red: the weakest tier is blue (orange / yellow are taken).
                 background:
-                  handStrength.strength < 0.2 ? '#DC2626' :
+                  handStrength.strength < 0.2 ? '#2563EB' :
                   handStrength.strength < 0.4 ? '#F97316' :
                   handStrength.strength < 0.7 ? '#EAB308' :
                   handStrength.strength < 0.9 ? '#22C55E' : '#FFD700',

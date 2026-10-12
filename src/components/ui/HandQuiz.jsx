@@ -165,7 +165,7 @@ export default function HandQuiz({ onClose }) {
                 <div className="hq-results-stat-label">Correct</div>
               </div>
               <div className="hq-results-stat">
-                <div className="hq-results-stat-value" style={{ color: '#EF4444' }}>{wrongCount}</div>
+                <div className="hq-results-stat-value" style={{ color: '#F59E0B' }}>{wrongCount}</div>
                 <div className="hq-results-stat-label">Wrong</div>
               </div>
               <div className="hq-results-stat">

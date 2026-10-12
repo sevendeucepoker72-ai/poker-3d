@@ -1,3 +1,4 @@
+/* R3 (K1-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 /* ═══════════════════════════════════════════════════════════════════════════
    MultiTableView.css
    Full-screen multi-table management overlay
@@ -72,7 +73,7 @@
 }
 
 .mtv-net-neg {
-  color: #f87171;
+  color: #fbbf24;
 }
 
 .mtv-stats-right {
@@ -491,13 +492,13 @@
 }
 
 .mtv-btn-fold {
-  background: rgba(239, 68, 68, 0.18);
-  border: 1px solid rgba(239, 68, 68, 0.45);
-  color: #fca5a5;
+  background: rgba(96, 165, 250, 0.18);
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  color: #bfdbfe;
 }
 
 .mtv-btn-fold:hover {
-  background: rgba(239, 68, 68, 0.3);
+  background: rgba(96, 165, 250, 0.3);
   filter: brightness(1.1);
 }
 
@@ -628,7 +629,7 @@
   border: 1px solid rgba(120,160,255,.25); border-radius: 6px; width: 22px; height: 22px;
   cursor: pointer; font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
 }
-.mtv-leave-btn:hover { background: rgba(209,60,60,.25); color: #fff; border-color: rgba(209,60,60,.4); }
+.mtv-leave-btn:hover { background: rgba(96,165,250,.25); color: #fff; border-color: rgba(96,165,250,.4); }
 .mtv-panel-status { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 120px; color: #8298c4; font-size: 13px; text-align: center; padding: 12px; }
 .mtv-avatar-folded { opacity: .35; filter: grayscale(0.6); }
 

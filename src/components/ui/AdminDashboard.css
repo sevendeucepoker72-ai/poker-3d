@@ -1,3 +1,4 @@
+/* R3 (K3-8) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 .admin-overlay {
   position: fixed;
   inset: 0;
@@ -31,7 +32,7 @@
 .admin-title {
   font-size: 1.3rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #EF4444, #F97316);
+  background: linear-gradient(135deg, #3B82F6, #FFD24A);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -211,8 +212,8 @@
 }
 
 .admin-ban-btn.ban {
-  background: rgba(239, 68, 68, 0.2);
-  color: #EF4444;
+  background: rgba(96, 165, 250, 0.2);
+  color: #60A5FA;
 }
 
 .admin-ban-btn.unban {
@@ -222,7 +223,7 @@
 
 .admin-user-banned {
   font-size: 0.7rem;
-  color: #EF4444;
+  color: #60A5FA;
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -230,6 +231,6 @@
 .admin-not-auth {
   text-align: center;
   padding: 40px;
-  color: #EF4444;
+  color: #60A5FA;
   font-size: 1.1rem;
 }

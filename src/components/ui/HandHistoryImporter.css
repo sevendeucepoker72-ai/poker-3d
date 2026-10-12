@@ -1,3 +1,4 @@
+/* R3 (APPUI-P3-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 /* ============================================================
    HandHistoryImporter — full-screen modal
    ============================================================ */
@@ -542,7 +543,7 @@
 }
 
 .negative {
-  color: #ff4d6d;
+  color: #f59e0b;
 }
 
 .hhi-muted {

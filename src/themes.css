@@ -1,3 +1,4 @@
+/* R3 (K2-4) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 /* ===== CSS Custom Properties for Theming ===== */
 
 :root {
@@ -19,7 +20,7 @@
   --accent-neon: #ffd24a;
   --accent-green: #27e0a0;
   --accent-purple: #ffd24a;
-  --accent-red: #EF4444;
+  --accent-red: #F59E0B;
 
   --border-primary: rgba(120, 160, 255, 0.16);
   --border-secondary: rgba(120, 160, 255, 0.28);
@@ -63,7 +64,7 @@
   --accent-gold: #c9a600;
   --accent-green: #16a34a;
   --accent-purple: #3b82f6;
-  --accent-red: #dc2626;
+  --accent-red: #b45309;
 
   --border-primary: rgba(0, 0, 0, 0.12);
   --border-secondary: rgba(0, 0, 0, 0.18);

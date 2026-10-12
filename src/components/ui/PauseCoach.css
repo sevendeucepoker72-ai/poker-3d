@@ -1,3 +1,4 @@
+/* R3 (APPUI-P3-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 /* =========================================================
    PauseCoach.css – Training Mode Pause & Analyze Overlay
    ========================================================= */
@@ -191,7 +192,7 @@
 
 .pc-equity--high  { color: #4ade80; }
 .pc-equity--mid   { color: #fbbf24; }
-.pc-equity--low   { color: #f87171; }
+.pc-equity--low   { color: #93c5fd; }
 
 /* ---------- Action cards ---------- */
 .pc-actions {
@@ -216,13 +217,13 @@
   position: relative;
 }
 
-/* FOLD – red accent */
+/* FOLD – blue accent (R3 K3-8: no red) */
 .pc-action-card--fold {
-  border-top: 3px solid rgba(239, 68, 68, 0.6);
+  border-top: 3px solid rgba(96, 165, 250, 0.6);
 }
 
 .pc-action-card--fold .pc-card-label {
-  color: #f87171;
+  color: #93c5fd;
 }
 
 /* CALL – yellow accent */
@@ -347,7 +348,7 @@
 }
 
 .pc-tree-ev--pos { color: #4ade80; }
-.pc-tree-ev--neg { color: #f87171; }
+.pc-tree-ev--neg { color: #fbbf24; }
 
 /* ---------- Calculating spinner text ---------- */
 .pc-calculating {

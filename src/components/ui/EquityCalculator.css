@@ -1,3 +1,4 @@
+/* R3 (APPUI-P3-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 .equity-calc-overlay {
   position: fixed;
   inset: 0;
@@ -51,8 +52,8 @@
 }
 
 .equity-calc-close:hover {
-  border-color: #EF4444;
-  color: #EF4444;
+  border-color: #60A5FA;
+  color: #60A5FA;
 }
 
 .equity-hands-row {

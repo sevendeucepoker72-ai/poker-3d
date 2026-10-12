@@ -70,6 +70,8 @@ export function normalizeItemType(t) {
 
 // ── Sellable cosmetics ────────────────────────────────────────────────────────
 
+// R3 (K2-4) — a preview swatch shows what the TABLE draws (tableCosmetics): Cherry
+// Wood is a brown felt, not maroon.
 export const THEMES = [
   { id: 'classic_blue',    name: 'Classic Blue',    felt: '#2874a6', rail: '#8B5E3C', price: 0 },
   { id: 'green_felt',      name: 'Green Felt',      felt: '#1a5c2a', rail: '#8B6914', price: 0 },
@@ -79,18 +81,21 @@ export const THEMES = [
   { id: 'neon_vegas',      name: 'Neon Vegas',      felt: '#050c20', rail: '#0c1a44', price: 600, glow: true },
   { id: 'carbon_black',    name: 'Carbon Black',    felt: '#18181b', rail: '#3f3f46', price: 700 },
   { id: 'royal_gold',      name: 'Royal Gold',      felt: '#0a1a3a', rail: '#DAA520', price: 800 },
-  { id: 'cherry_wood',     name: 'Cherry Wood',     felt: '#3d1a1a', rail: '#7c2d12', price: 900 },
+  { id: 'cherry_wood',     name: 'Cherry Wood',     felt: '#553a22', rail: '#7c2d12', price: 900 },
   { id: 'cosmic_nebula',   name: 'Cosmic Nebula',   felt: '#312e81', rail: '#a78bfa', price: 1500 },
 ];
 
+// R3 (K2-4) — no red. classic_red (id kept: the server's default + every owned row)
+// is the house sapphire back the table draws, so its swatch is that blue and its
+// display name 'Classic'; Dragon's swatch is the jade the table draws.
 export const CARD_BACKS = [
-  { id: 'classic_red',     name: 'Classic Red',  color: '#B91C1C', price: 0 },
+  { id: 'classic_red',     name: 'Classic',      color: '#1A237E', price: 0 },
   { id: 'royal_blue',      name: 'Royal Blue',   color: '#2563EB', price: 0 },
   { id: 'silver_foil',     name: 'Silver Foil',  color: '#C0C0C0', price: 400 },
   { id: 'gold_premium',    name: 'Gold Premium', color: '#D97706', price: 500 },
   { id: 'neon_green',      name: 'Neon Green',   color: '#16A34A', price: 500 },
   { id: 'holographic',     name: 'Holographic',  color: '#A78BFA', price: 800 },
-  { id: 'dragon',          name: 'Dragon',       color: '#7C2D12', price: 1200 },
+  { id: 'dragon',          name: 'Dragon',       color: '#1F6F5C', price: 1200 },
   { id: 'phoenix',         name: 'Phoenix',      color: '#F59E0B', price: 1500 },
   { id: 'diamond_pattern', name: 'Diamond',      color: '#B9F2FF', price: 2000 },
   { id: 'mythic',          name: 'Mythic',       color: '#6D28D9', price: 5000 },

@@ -19,10 +19,11 @@ import { API_BASE as MASTER_API } from '../../config';
 import './AvatarCustomizer.css';
 
 /* Upgrade #6: Preset seat-circle colors */
+// R3 (K3-8) — no red / rose swatches (those two are sky blue and gold).
 const SEAT_COLORS = [
   '#6366f1','#8b5cf6','#ec4899','#f59e0b',
-  '#10b981','#3b82f6','#ef4444','#3b82f6',
-  '#84cc16','#f97316','#e11d48','#3b82f6',
+  '#10b981','#3b82f6','#0ea5e9','#3b82f6',
+  '#84cc16','#f97316','#d4a017','#3b82f6',
 ];
 
 export default function AvatarCustomizer() {
@@ -199,7 +200,7 @@ export default function AvatarCustomizer() {
                 </button>
               )}
               {photoMessage
-                ? <span className="photo-hint" style={{ color: photoStatus === 'error' ? '#F87171' : (photoStatus === 'pending' ? '#4ADE80' : '#9fb4d8') }}>{photoMessage}</span>
+                ? <span className="photo-hint" style={{ color: photoStatus === 'error' ? '#93C5FD' : (photoStatus === 'pending' ? '#4ADE80' : '#9fb4d8') }}>{photoMessage}</span>
                 : <span className="photo-hint">Photos are reviewed before appearing at the table</span>
               }
             </div>

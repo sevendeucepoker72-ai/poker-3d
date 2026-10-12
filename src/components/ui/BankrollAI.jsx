@@ -215,8 +215,8 @@ export default function BankrollAI({ currentChips, onClose }) {
     };
   }, [bankroll, winRate, stdDev, targetBB, tolerance]);
 
-  // ── ROR colour ──
-  const rorColor = calc.ror < 5 ? '#22C55E' : calc.ror < 20 ? '#F59E0B' : '#EF4444';
+  // ── ROR colour ── (R3 APPUI-P3-7: high risk is blue, no red)
+  const rorColor = calc.ror < 5 ? '#22C55E' : calc.ror < 20 ? '#F59E0B' : '#60A5FA';
 
   return (
     <div className="bai-overlay" onClick={e => e.target === e.currentTarget && onClose()}>

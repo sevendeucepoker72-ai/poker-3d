@@ -1,3 +1,4 @@
+/* R3 (K1-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 .session-tracker {
   position: fixed;
   bottom: 100px;
@@ -38,8 +39,8 @@
 }
 
 .session-profit.negative {
-  color: #EF4444;
-  text-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+  color: #F59E0B;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
 }
 
 .session-profit.neutral {

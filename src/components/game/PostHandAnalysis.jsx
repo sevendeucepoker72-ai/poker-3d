@@ -4,10 +4,11 @@ import './PostHandAnalysis.css';
 
 const AUTO_DISMISS_MS = 12000;
 
+// R3 (K1-7) — no red: the weak / F / mistake tier is blue (yellow + orange are taken).
 function strengthColor(s) {
   if (s >= 0.66) return '#22C55E';
   if (s >= 0.33) return '#EAB308';
-  return '#EF4444';
+  return '#60A5FA';
 }
 
 function getOptimalAction(strength, potOdds, callAmount) {
@@ -58,7 +59,7 @@ const GRADE_CONFIG = {
   B: { min: 70, color: '#4ADE80', label: 'Good' },
   C: { min: 55, color: '#EAB308', label: 'Average' },
   D: { min: 40, color: '#F97316', label: 'Poor' },
-  F: { min: 0,  color: '#EF4444', label: 'Costly mistakes' },
+  F: { min: 0,  color: '#60A5FA', label: 'Costly mistakes' },
 };
 
 function scoreToGrade(score) {
@@ -270,7 +271,7 @@ export default function PostHandAnalysis({ gameState, yourSeat, handHistory, onD
 
           {/* Street-by-street analysis */}
           {streetAnalysis.map((sa) => {
-            const qualityColor = sa.quality === 'good' ? '#22C55E' : sa.quality === 'mistake' ? '#EF4444' : '#EAB308';
+            const qualityColor = sa.quality === 'good' ? '#22C55E' : sa.quality === 'mistake' ? '#60A5FA' : '#EAB308';
             const qualityIcon = sa.quality === 'good' ? '✓' : sa.quality === 'mistake' ? '✗' : '~';
             return (
               <div className="pha-street-row" key={sa.street} style={{ position: 'relative' }}>
@@ -291,10 +292,10 @@ export default function PostHandAnalysis({ gameState, yourSeat, handHistory, onD
           {/* Worst mistake callout */}
           {worstStreet && (
             <div style={{
-              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)',
+              background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.3)',
               borderRadius: '6px', padding: '8px 10px', marginTop: '6px',
             }}>
-              <div style={{ color: '#EF4444', fontSize: '0.72rem', fontWeight: 700, marginBottom: '2px' }}>
+              <div style={{ color: '#60A5FA', fontSize: '0.72rem', fontWeight: 700, marginBottom: '2px' }}>
                 ⚠ Costliest Mistake — {worstStreet.street}
               </div>
               <div style={{ color: '#ccc', fontSize: '0.7rem' }}>

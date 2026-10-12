@@ -4,10 +4,11 @@ import { syncToServer } from '../../services/persistenceService';
 
 const STORAGE_KEY = 'app_poker_player_notes';
 
+// R3 (APPUI-P3-7) — no red: Shark is blue (tags are stored by id, so old notes follow).
 export const COLOR_TAGS = [
   { id: 'fish',   emoji: '🐟', label: 'Fish',      color: '#60D4FF', bg: 'rgba(96,212,255,0.15)' },
   { id: 'reg',    emoji: '🎯', label: 'Reg',       color: '#EAB308', bg: 'rgba(234,179,8,0.15)' },
-  { id: 'shark',  emoji: '🦈', label: 'Shark',     color: '#EF4444', bg: 'rgba(239,68,68,0.15)' },
+  { id: 'shark',  emoji: '🦈', label: 'Shark',     color: '#3B82F6', bg: 'rgba(59,130,246,0.15)' },
   { id: 'maniac', emoji: '🔥', label: 'Maniac',    color: '#F97316', bg: 'rgba(249,115,22,0.15)' },
   { id: 'nit',    emoji: '🐢', label: 'Nit',       color: '#A8FFD8', bg: 'rgba(168,255,216,0.1)' },
   { id: 'hero',   emoji: '⭐', label: 'Good play', color: '#4ADE80', bg: 'rgba(74,222,128,0.12)' },
@@ -160,8 +161,8 @@ export default function PlayerNotes({ playerName, onClose }) {
               onClick={handleDelete}
               style={{
                 padding: '8px 16px', borderRadius: '8px',
-                border: '1px solid #E63946', background: 'transparent',
-                color: '#E63946', fontSize: '0.85rem', cursor: 'pointer',
+                border: '1px solid #93C5FD', background: 'transparent',
+                color: '#93C5FD', fontSize: '0.85rem', cursor: 'pointer',
               }}
             >
               Clear

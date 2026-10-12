@@ -1,3 +1,4 @@
+/* R3 (APPUI-P3-7) — owner rule "no red, use blue": danger / timer / loss -> amber, fold / error / destructive -> blue, all-in -> gold; red stays only on card suits. */
 .stream-overlay-panel {
   position: fixed;
   top: 50%;
@@ -6,9 +7,9 @@
   width: min(680px, 96vw);
   max-height: 90vh;
   background: rgba(5, 8, 20, 0.98);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  border: 1px solid rgba(96, 165, 250, 0.3);
   border-radius: 14px;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.8), 0 0 40px rgba(239,68,68,0.08);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.8), 0 0 40px rgba(96,165,250,0.08);
   z-index: 700;
   display: flex;
   flex-direction: column;
@@ -22,8 +23,8 @@
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: rgba(239,68,68,0.06);
-  border-bottom: 1px solid rgba(239,68,68,0.15);
+  background: rgba(96,165,250,0.06);
+  border-bottom: 1px solid rgba(96,165,250,0.15);
   flex-shrink: 0;
 }
 .stream-logo { font-size: 1.1rem; }
@@ -31,9 +32,9 @@
 .stream-live-badge {
   font-size: 10px;
   font-weight: 800;
-  color: #EF4444;
-  background: rgba(239,68,68,0.12);
-  border: 1px solid rgba(239,68,68,0.4);
+  color: #22C55E;
+  background: rgba(34,197,94,0.12);
+  border: 1px solid rgba(34,197,94,0.4);
   padding: 2px 8px;
   border-radius: 6px;
   animation: live-pulse 1.2s ease-in-out infinite;
@@ -54,23 +55,23 @@
   align-items: center;
   gap: 12px;
   padding: 6px 16px;
-  background: rgba(239,68,68,0.08);
-  border-bottom: 1px solid rgba(239,68,68,0.1);
+  background: rgba(96,165,250,0.08);
+  border-bottom: 1px solid rgba(96,165,250,0.1);
   flex-shrink: 0;
 }
 .stream-viewers { font-size: 12px; color: #94A3B8; }
-.stream-duration { font-size: 12px; color: #EF4444; font-family: monospace; font-weight: 700; flex: 1; }
+.stream-duration { font-size: 12px; color: #22C55E; font-family: monospace; font-weight: 700; flex: 1; }
 .stream-end-btn {
-  background: rgba(239,68,68,0.15);
-  border: 1px solid rgba(239,68,68,0.4);
-  color: #EF4444;
+  background: rgba(96,165,250,0.15);
+  border: 1px solid rgba(96,165,250,0.4);
+  color: #60A5FA;
   font-size: 11px;
   font-weight: 700;
   padding: 4px 10px;
   border-radius: 6px;
   cursor: pointer;
 }
-.stream-end-btn:hover { background: rgba(239,68,68,0.25); }
+.stream-end-btn:hover { background: rgba(96,165,250,0.25); }
 
 /* Body: two columns */
 .stream-body {
@@ -117,7 +118,7 @@
   color: #64748B; font-size: 11px; cursor: pointer; transition: all 0.15s;
 }
 .stream-delay-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); color: #fff; }
-.stream-delay-btn.active { border-color: #EF4444; color: #EF4444; background: rgba(239,68,68,0.08); }
+.stream-delay-btn.active { border-color: #FFD24A; color: #FFD24A; background: rgba(255,210,74,0.08); }
 .stream-delay-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .stream-delay-note { font-size: 9.5px; color: #334155; }
 
@@ -135,10 +136,10 @@
   border-radius: 6px; padding: 4px 8px; font-size: 13px; font-weight: 700; color: #e2e8f0;
 }
 .stream-card-chip.hidden { filter: blur(3px); }
-.stream-hidden-note { font-size: 9px; color: #EF4444; margin-left: 4px; }
+.stream-hidden-note { font-size: 9px; color: #F59E0B; margin-left: 4px; }
 
 .stream-golive-btn {
-  padding: 12px; background: linear-gradient(135deg, #EF4444, #DC2626);
+  padding: 12px; background: linear-gradient(135deg, #22C55E, #16A34A);
   border: none; border-radius: 10px; color: #fff; font-size: 15px; font-weight: 800;
   cursor: pointer; letter-spacing: 1px; transition: opacity 0.2s;
   margin-top: 4px;
@@ -146,10 +147,10 @@
 .stream-golive-btn:hover { opacity: 0.88; }
 
 .stream-live-info {
-  background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.2);
+  background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.2);
   border-radius: 8px; padding: 10px 12px;
 }
-.stream-live-indicator { font-size: 12px; font-weight: 700; color: #EF4444; margin-bottom: 4px; }
+.stream-live-indicator { font-size: 12px; font-weight: 700; color: #22C55E; margin-bottom: 4px; }
 .stream-live-sub { font-size: 10.5px; color: #64748B; line-height: 1.5; }
 
 /* Chat (right) */
@@ -236,7 +237,7 @@
 .sov-seat-top { display: flex; align-items: center; gap: 5px; justify-content: center; }
 .sov-dealer { background: var(--sov-accent, #ffd24a); color: #0a0a1a; font-weight: 800; font-size: 10px; border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
 .sov-seat-name { font-weight: 700; font-size: 13px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sov-allin { background: #c0392b; color: #fff; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 4px; }
+.sov-allin { background: #ffd24a; color: #0a0a1a; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 4px; }
 .sov-seat-stack { color: var(--sov-accent, #ffd24a); font-weight: 700; font-size: 14px; margin-top: 2px; }
 .sov-seat-bet { font-size: 10px; opacity: .7; }
 .sov-seat-cards { display: flex; gap: 3px; justify-content: center; margin-top: 4px; }

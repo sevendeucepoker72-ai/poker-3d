@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getAvatarInfo, preloadAvatar } from '../utils/avatarService';
 import { safeName, nameInitial } from '../utils/tablePayload';
+import { noRedHue } from '../utils/noRedHue';
 
 /**
  * React hook that returns the unified avatar info for a player.
@@ -59,7 +60,9 @@ export function PlayerAvatar({ playerId, name: rawName, size = 40, style = {} })
     hash = ((hash << 5) - hash) + name.charCodeAt(i);
     hash |= 0;
   }
-  const hue = Math.abs(hash) % 360;
+  // R3 (APPUI-P3-7) — no red: neither end of the hue → hue + 40 gradient may
+  // land on red / rose (such a hash moves to the blue side of the wheel).
+  const hue = noRedHue(Math.abs(hash) % 360, 40);
   const bg = `hsl(${hue}, 55%, 45%)`;
 
   if (url) {
