@@ -99,6 +99,9 @@ export function normalizeQualifierItem(raw) {
     signupClosesAt: ms(raw.signupClosesAt),
     lateRegUntil: ms(raw.lateRegUntil),
     status,
+    // R2 review (K3-5) — the server cancelled it (too few players / taken off
+    // the schedule): every credit it consumed was refunded.
+    cancelled: raw.cancelled === true,
     registered: typeof raw.registered === 'boolean' ? raw.registered : null,
     players: Math.max(0, Math.floor(players) || 0),
     maxPlayers: posInt(raw.maxPlayers),

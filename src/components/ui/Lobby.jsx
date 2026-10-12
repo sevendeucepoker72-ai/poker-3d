@@ -849,6 +849,31 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // again once via the latest beginJoin. Skipped if the Lobby has unmounted.
   const beginJoinRef = useRef(null);
   const lobbyMountedRef = useRef(false);
+  // R2 review (K2-1) — the daily spin, the missions and the login reward
+  // reset at Denver midnight, but the server pushes progress only after an
+  // action: a lobby left open across midnight kept yesterday's state (a locked
+  // wheel, dead missions). Ask for fresh progress just after each Denver
+  // midnight, and when the tab comes back on a different Denver day.
+  useEffect(() => {
+    let timer = null;
+    let dayKey = denverDateKey();
+    const refresh = () => {
+      dayKey = denverDateKey();
+      const sock = getSocket();
+      try { if (sock?.connected) sock.emit('getProgress'); } catch { /* best-effort */ }
+    };
+    const arm = () => {
+      const wait = Math.max(1000, nextDenverMidnightMs() - Date.now()) + 2000 + Math.floor(Math.random() * 8000);
+      timer = setTimeout(() => { refresh(); arm(); }, Math.min(wait, 2147483647));
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && denverDateKey() !== dayKey) refresh();
+    };
+    arm();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, []);
+
   useEffect(() => {
     lobbyMountedRef.current = true;
     return () => { lobbyMountedRef.current = false; };

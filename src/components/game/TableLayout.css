@@ -784,8 +784,9 @@
 .table2d-scene .seat-pod--winner .seat-pod__avatar,
 .table2d-scene .seat-pod--winner .seat-pod__avatar-wrap,
 .table2d-scene .seat-pod--winner .seat-pod__nameplate,
-.table2d-felt__win-glow,
-.hud .winner-banner { animation-iteration-count: 2 !important; }
+.table2d-felt__win-glow { animation-iteration-count: 2 !important; }
+/* (R2 review K1-5: the winner banner is NOT in this list — it has no glow loop,
+   and playing its slide-in / fade-out twice replayed the banner.) */
 
 /* 3 — decorative loops: off on phones (<= 480px wide, and landscape phones)
    and for reduced motion. */

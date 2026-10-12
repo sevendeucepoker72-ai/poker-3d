@@ -238,20 +238,28 @@ export default function StakingMarketplace({
 
     const handleStakeable = (payload) => setStakeable(normalizeStakeableTournaments(payload));
 
-    // A tournament you backed paid out (existing server event).
-    const handlePayout = (data) => {
+    // A tournament you backed paid out / refunded your escrow. R2 review
+    // (K3-3) — settled by OFFER when the server names it: one seller's payout
+    // used to mark every stake in that tournament paid, and a refund (the most
+    // common outcome: bust before the money, cancel, no-show) was never shown.
+    const settleStake = (data, status) => {
+      const offerId = data?.offerId != null ? String(data.offerId) : null;
       const tid = data?.tournamentId != null ? String(data.tournamentId) : null;
+      const amount = Number(data?.amount) || 0;
       setMyStakes((prev) => {
         let changed = false;
         const next = prev.map((s) => {
-          if (s.status !== 'escrow' || (tid && s.tournamentId !== tid)) return s;
+          if (s.status !== 'escrow') return s;
+          if (offerId ? String(s.offerId) !== offerId : (!tid || s.tournamentId !== tid)) return s;
           changed = true;
-          return { ...s, status: 'paid', paid: Number(data?.amount) || 0 };
+          return status === 'paid' ? { ...s, status: 'paid', paid: amount } : { ...s, status: 'refunded', refunded: amount };
         });
         if (changed) writeOwned(MY_STAKES_KEY, owner, { items: next });
         return changed ? next : prev;
       });
     };
+    const handlePayout = (data) => settleStake(data, 'paid');
+    const handleRefund = (data) => settleStake(data, 'refunded');
 
     socket.on('stakingUpdated', handleStakingUpdated);
     socket.on('buyStakeResult', handleBuyResult);
@@ -259,6 +267,7 @@ export default function StakingMarketplace({
     socket.on('error', handleServerError);
     socket.on('myStakeableTournaments', handleStakeable);
     socket.on('stakingPayout', handlePayout);
+    socket.on('stakeRefunded', handleRefund);
 
     // Request initial data
     socket.emit('getStakes');
@@ -271,6 +280,7 @@ export default function StakingMarketplace({
       socket.off('error', handleServerError);
       socket.off('myStakeableTournaments', handleStakeable);
       socket.off('stakingPayout', handlePayout);
+      socket.off('stakeRefunded', handleRefund);
     };
   }, [socket, settleBuys, settleSell, onPlayRefusal, owner, recordStake]);
 
@@ -577,7 +587,9 @@ export default function StakingMarketplace({
                   <div className="staking-state-line">
                     {s.status === 'paid'
                       ? `Settled — paid 🪙 ${Number(s.paid || 0).toLocaleString()}`
-                      : `In escrow — 🪙 ${Number(s.cost || 0).toLocaleString()} until the tournament settles`}
+                      : s.status === 'refunded'
+                        ? `Refunded 🪙 ${Number(s.refunded || 0).toLocaleString()}`
+                        : `In escrow — 🪙 ${Number(s.cost || 0).toLocaleString()} until the tournament settles`}
                   </div>
                 </div>
               ))}

@@ -56,6 +56,7 @@ function legacyCopy(text) {
 export default function CreateTableModal({ onClose, playerName, avatar }) {
   const setScreen = useGameStore((s) => s.setScreen);
   const setPlayerName = useGameStore((s) => s.setPlayerName);
+  const walletChips = useGameStore((s) => Number(s.chips) || 0);
 
   const [variant, setVariant] = useState('texas-holdem');
   const [blindIdx, setBlindIdx] = useState(1);
@@ -330,8 +331,11 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
             </div>
             <div style={{ color: '#9fb4d8', fontSize: '0.78rem', lineHeight: 1.45, marginBottom: 14 }}>{HOME_GAME_INVITE_HELP}</div>
             {error && <div className="create-table-error" role="alert" style={errorStyle}>{error}</div>}
+            {/* R2 review (K3-7) — the host buys in for up to 100 BB, but never more
+                than his wallet holds (floored at the 20 BB minimum, which the server
+                clamps to): a host who could afford the minimum used to be refused. */}
             <button
-              onClick={() => joinByCode(created.inviteCode, { buyIn: bb * 100, expectTableId: created.tableId })}
+              onClick={() => joinByCode(created.inviteCode, { buyIn: Math.max(bb * 20, Math.min(bb * 100, walletChips)), expectTableId: created.tableId })}
               disabled={joiningByCode}
               style={{ ...primaryBtn, opacity: joiningByCode ? 0.7 : 1, cursor: joiningByCode ? 'default' : 'pointer' }}
             >

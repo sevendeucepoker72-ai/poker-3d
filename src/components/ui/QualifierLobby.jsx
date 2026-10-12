@@ -137,6 +137,7 @@ export default function QualifierLobby({ onSpectate }) {
       setList((prev) => prev.map((q) => (q.qualifierId !== String(data.qualifierId) ? q : {
         ...q,
         status: ['scheduled', 'registering', 'running', 'finished'].includes(data.status) ? data.status : q.status,
+        cancelled: data.cancelled === true ? true : q.cancelled,
         players: Number.isFinite(Number(data.registeredCount)) ? Number(data.registeredCount)
           : (typeof data.players === 'number' ? data.players : q.players),
       })));
@@ -296,6 +297,14 @@ export default function QualifierLobby({ onSpectate }) {
     const pend = pendingReg && pendingReg.id === q.qualifierId ? pendingReg.kind : null;
     const pad = compact ? '10px 14px' : '12px 18px';
     if (!qualLoaded) return <div style={{ color: '#8298c4', fontSize: '0.8rem', padding: '10px 0' }}>Checking qualification…</div>;
+    if (state === 'finished' && q.cancelled) {
+      // R2 review (K3-5) — a cancelled event never says "completed".
+      return (
+        <div className="qualifier-result-line" style={box({ background: 'rgba(130,152,196,0.08)', border: '1px solid rgba(130,152,196,0.25)', color: '#cfe0ff' })}>
+          Cancelled — not enough players. Any qualifier credit it used was refunded.
+        </div>
+      );
+    }
     if (state === 'finished') {
       const line = qualifierResultText(q.result);
       return (
@@ -453,7 +462,7 @@ export default function QualifierLobby({ onSpectate }) {
                   </>
                 )}
                 {live && <div style={{ color: '#6abaff', fontWeight: 700, fontSize: '0.82rem' }}>In Progress</div>}
-                {state === 'finished' && <div style={{ color: '#9fb4d8', fontWeight: 700, fontSize: '0.82rem' }}>Finished</div>}
+                {state === 'finished' && <div style={{ color: '#9fb4d8', fontWeight: 700, fontSize: '0.82rem' }}>{q.cancelled ? 'Cancelled' : 'Finished'}</div>}
               </div>
             </div>
 

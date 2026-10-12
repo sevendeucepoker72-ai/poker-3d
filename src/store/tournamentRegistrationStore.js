@@ -69,12 +69,28 @@ function entryIdOf(v) {
 }
 
 /** Player-facing line for a cancelled tournament (refund included when there was one). */
-export function tournamentCancelledText({ name, refunded }) {
+// R2 review (K3-6) — the server's cancel reason codes, in words (an unknown
+// code says nothing rather than a raw id).
+const CANCEL_REASON_TEXT = {
+  tournament_cancelled_stalled: 'not enough players registered',
+  tournament_cancelled_too_few_eligible: 'not enough players were ready at the start',
+  cancelled_too_few_eligible_at_start: 'not enough players were ready at the start',
+  server_restart: 'the game server restarted',
+  admin_force_close: 'it was closed by an admin',
+  cancelled_by_club: 'the club cancelled it',
+};
+export function tournamentCancelReasonText(reason) {
+  return CANCEL_REASON_TEXT[String(reason || '')] || '';
+}
+
+export function tournamentCancelledText({ name, refunded, reason }) {
   const n = Number(refunded);
   const title = name ? String(name) : 'A tournament you registered for';
+  const why = tournamentCancelReasonText(reason);
+  const head = why ? `${title} was cancelled — ${why}.` : `${title} was cancelled.`;
   return Number.isFinite(n) && n > 0
-    ? `${title} was cancelled. Your ${n.toLocaleString()}-chip entry was refunded.`
-    : `${title} was cancelled. Your registration has been removed.`;
+    ? `${head} Your ${n.toLocaleString()}-chip entry was refunded.`
+    : `${head} Your registration has been removed.`;
 }
 
 export const useTournamentRegistrationStore = create((set, get) => ({

@@ -95,6 +95,13 @@ function settleTables(s) {
     // The only live seat is not the table on screen (the shown one ended):
     // show the live one; the dead one goes at the next settle.
     cur = live[0];
+  } else if (live.length === 1 && next.get(live[0]) && next.get(live[0]).extra) {
+    // R2 review (K1-2) — the only live seat left is an EXTRA seat (the main
+    // quick game ended, or the main seat was stood up after the sit-out
+    // limit): keep addressing it by id. With currentTableId null every action
+    // went out without a tableId, the server resolved the gone main session
+    // ("Not at a table") and the hands there timed out.
+    cur = live[0];
   } else {
     cur = null;
   }

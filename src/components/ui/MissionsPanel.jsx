@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useProgressStore, serverWinRate } from '../../store/progressStore';
 import { getSocket } from '../../services/socketService';
 import { formatReward, shopErrorText } from '../../utils/economyCatalog';
-import { nextDenverMidnightMs, formatCountdown } from '../../utils/denverTime';
+import { nextDenverMidnightMs, formatCountdown, denverDateKey } from '../../utils/denverTime';
 import { LIFETIME_ACHIEVEMENTS, achievementIcon } from '../../utils/achievementCatalog';
 import './Progression.css';
 
@@ -80,6 +80,11 @@ export default function MissionsPanel() {
         return;
       }
       settle(id, { state: 'error', text: MISSION_CLAIM_ERRORS[code] || shopErrorText(err, 'Could not claim — try again.') });
+      // R2 review (K2-1) — yesterday's set (the panel outlived Denver
+      // midnight): ask for today's missions instead of leaving a dead list.
+      if (code === 'mission_expired' || code === 'mission_not_found') {
+        try { if (socket.connected) socket.emit('getDailyMissions'); } catch { /* best-effort */ }
+      }
     };
     socket.on('missionClaimed', onClaimed);
     socket.on('missionClaimError', onError);
@@ -90,6 +95,15 @@ export default function MissionsPanel() {
       socket.off('error', onError);
     };
   }, [missionsExpanded]);
+
+  // R2 review (K2-1) — opened on a new Denver day with yesterday's missions in
+  // the store (nothing pushes progress at midnight): fetch today's set.
+  const missionsDate = progress?.dailyMissionsDate || null;
+  useEffect(() => {
+    if (!missionsExpanded || !missionsDate || missionsDate === denverDateKey()) return;
+    const socket = getSocket();
+    try { if (socket?.connected) socket.emit('getDailyMissions'); } catch { /* best-effort */ }
+  }, [missionsExpanded, missionsDate]);
 
   // A countdown that stays current while the panel is open.
   useEffect(() => {

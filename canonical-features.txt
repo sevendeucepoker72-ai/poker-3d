@@ -1041,3 +1041,10 @@ spinWheelConfig
 battlePassInfo
 seasonRewardAwarded
 stars (you already owned
+
+# 2026-10-11 R2 review fixes (client): backer refunds shown, cancelled qualifiers said, BP Premium two-tap, TD start threshold, readable cancel reasons
+stakeRefunded
+qualifierCancelled
+Tap again to confirm
+Starts when
+the game server restarted

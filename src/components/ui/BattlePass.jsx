@@ -80,8 +80,25 @@ export function useBattlePassPremium() {
   const stars = useProgressStore((s) => s.progress?.stars || 0);
   const [state, setState] = useState({ phase: 'idle', text: '' });
   const timerRef = useRef(null);
-  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  const armTimerRef = useRef(null);
+  const phaseRef = useRef('idle');
+  phaseRef.current = state.phase;
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (armTimerRef.current) clearTimeout(armTimerRef.current);
+  }, []);
   const buy = useCallback(() => {
+    // R2 review (K2-2) — two taps, like every Shop purchase: the first arms
+    // (4s), the second buys. A stray tap never spends 950 stars; a pending
+    // purchase is never sent twice.
+    if (phaseRef.current === 'pending') return;
+    if (phaseRef.current !== 'armed') {
+      setState({ phase: 'armed', text: `Tap again to confirm — ${BATTLE_PASS_PREMIUM_COST.toLocaleString()}⭐` });
+      if (armTimerRef.current) clearTimeout(armTimerRef.current);
+      armTimerRef.current = setTimeout(() => setState((st) => (st.phase === 'armed' ? { phase: 'idle', text: '' } : st)), 4000);
+      return;
+    }
+    if (armTimerRef.current) { clearTimeout(armTimerRef.current); armTimerRef.current = null; }
     const socket = getSocket();
     if (!socket || !socket.connected) { setState({ phase: 'error', text: 'Not connected — try again when the connection is back.' }); return; }
     setState({ phase: 'pending', text: 'Buying Premium…' });
@@ -391,7 +408,7 @@ export default function BattlePass({ onClose }) {
               {buyState.text && <span className={`bp-buy-note bp-buy-note--${buyState.phase}`}>{buyState.text}</span>}
             </div>
             <button className="bp-upgrade-btn" onClick={buy} disabled={buyState.phase === 'pending'}>
-              {buyState.phase === 'pending' ? 'Buying…' : `⭐ Go Premium · ${cost.toLocaleString()} Stars`}
+              {buyState.phase === 'pending' ? 'Buying…' : buyState.phase === 'armed' ? `Confirm · ${cost.toLocaleString()} Stars` : `⭐ Go Premium · ${cost.toLocaleString()} Stars`}
             </button>
           </div>
         )}

@@ -126,6 +126,8 @@ export const TITLES = [
   { id: 'godmode',           name: 'God Mode',          desc: 'The apex predator',               price: 8000, color: '#FFD24A' },
 ];
 
+// R2 review (K2-3) — 'fire' and 'dead' are FREE for every account (the emote
+// wheel's free set), so they are not sold: the server refused every purchase.
 export const EMOTES = [
   { id: 'nice_hand',   name: 'Nice Hand',   icon: '👍', price: 150 },
   { id: 'good_game',   name: 'Good Game',   icon: '🤝', price: 150 },
@@ -135,14 +137,12 @@ export const EMOTES = [
   { id: 'love',        name: 'Love',        icon: '💙', price: 250 },
   { id: 'big_brain',   name: 'Big Brain',   icon: '🧠', price: 200 },
   { id: 'money',       name: 'Money',       icon: '💰', price: 200 },
-  { id: 'fire',        name: 'Fire',        icon: '🔥', price: 250 },
   { id: 'tears',       name: 'Tears',       icon: '😭', price: 250 },
   { id: 'rocket',      name: 'Rocket',      icon: '🚀', price: 300 },
   { id: 'crown',       name: 'Crown',       icon: '👑', price: 400 },
   { id: 'sunglasses',  name: 'Cool',        icon: '😎', price: 200 },
   { id: 'laughing',    name: 'Laughing',    icon: '😂', price: 200 },
   { id: 'surprised',   name: 'Surprised',   icon: '😲', price: 200 },
-  { id: 'dead',        name: 'Dead',        icon: '💀', price: 300 },
   { id: 'think',       name: 'Thinking',    icon: '🤔', price: 300 },
   { id: 'poker_face',  name: 'Poker Face',  icon: '😐', price: 400 },
   { id: 'mic_drop',    name: 'Mic Drop',    icon: '🎤', price: 500 },

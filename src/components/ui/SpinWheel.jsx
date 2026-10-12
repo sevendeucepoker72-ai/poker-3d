@@ -49,6 +49,11 @@ export default function SpinWheel({ onClose }) {
   const activeListenerRef = useRef(null);
   const timeoutIdsRef = useRef(new Set());
   const mountedRef = useRef(true);
+  // R2 review (K2-1) — the wheel handler (bound once) reads these.
+  const spinningRef = useRef(false);
+  const prizeRef = useRef(null);
+  spinningRef.current = spinning;
+  prizeRef.current = prize;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -62,6 +67,10 @@ export default function SpinWheel({ onClose }) {
       if (payload?.claimedToday === true) {
         setCanSpin(false);
         markSpinSeenToday(userId);
+      } else if (payload?.claimedToday === false && !spinningRef.current && !prizeRef.current) {
+        // R2 review (K2-1) — the server says today's spin is free (a new
+        // Denver day since this lobby last heard): never keep yesterday's lock.
+        setCanSpin(true);
       }
     };
     if (sock) {
@@ -82,7 +91,9 @@ export default function SpinWheel({ onClose }) {
   useBackButtonClose(true, onClose);
 
   // The server's playerProgress says today's spin is used (another tab / device).
-  useEffect(() => { if (usedToday && !spinning && !prize) setCanSpin(false); }, [usedToday, spinning, prize]);
+  // R2 review (K2-1) — both ways: after Denver midnight the fresh progress says
+  // the spin is free again, and the wheel unlocks without a reload.
+  useEffect(() => { if (!spinning && !prize) setCanSpin(!usedToday); }, [usedToday, spinning, prize]);
   const nextSpinAt = resetsAt && resetsAt > Date.now() ? resetsAt : nextDenverMidnightMs();
 
   // Slice angles by odds (weight).

@@ -274,6 +274,12 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
   const [name, setName] = useState(`${playerName ? playerName + "'s " : ''}Tournament`);
   const [buyIn, setBuyIn] = useState(100);
   const [maxPlayers, setMaxPlayers] = useState(9);
+  // R2 review (K3-4) — the start threshold the server honours (2..max). Without
+  // it the server waits for a FULL field, and on .online's traffic an 18+ max
+  // event never filled and was cancelled after 30 minutes.
+  const [minPlayers, setMinPlayers] = useState(4);
+  const startOptions = [2, 3, 4, 5, 6, 8, 9, 12, 18, 27, 45, 90, 180].filter((n) => n <= maxPlayers);
+  const effectiveMin = Math.max(2, Math.min(minPlayers, maxPlayers));
   const [startingChips, setStartingChips] = useState(10000);
 
   // Format options
@@ -309,6 +315,7 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
       name,
       buyIn,
       maxPlayers,
+      minPlayers: effectiveMin,
       isPKO,
       bountyAmount: isPKO ? bountyAmount : 0,
       blindSchedule: schedule.map(({ sb, bb, ante, duration }) => ({ sb, bb, ante, duration })),
@@ -339,7 +346,7 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
     }
     setTimeout(() => { if (mountedRef.current) setNotice(null); }, 4000);
   }, [
-    name, buyIn, maxPlayers, isPKO, bountyAmount,
+    name, buyIn, maxPlayers, effectiveMin, isPKO, bountyAmount,
     schedule, startingChips, onCreateTournament, onClose, submitting,
   ]);
 
@@ -378,6 +385,13 @@ export default function TournamentDirector({ onClose, onCreateTournament, player
                 Max Players
                 <select className="td-select" value={maxPlayers} onChange={e => setMaxPlayers(Number(e.target.value))}>
                   {[6, 9, 18, 27, 45, 90, 180].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+
+              <label className="td-label">
+                Starts when
+                <select className="td-select" value={effectiveMin} onChange={e => setMinPlayers(Number(e.target.value))}>
+                  {startOptions.map(n => <option key={n} value={n}>{n === maxPlayers ? `${n} players (full field)` : `${n} players register`}</option>)}
                 </select>
               </label>
 

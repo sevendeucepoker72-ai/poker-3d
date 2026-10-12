@@ -184,7 +184,7 @@ export default function TournamentLobby({ onOpenBracket = null }) {
           role="status"
           onClick={() => dismissCancellation(c.tournamentId)}
         >
-          <span>{tournamentCancelledText(c)}{c.reason ? ` (${c.reason})` : ''}</span>
+          <span>{tournamentCancelledText(c)}</span>
           <span className="tournament-notice-dismiss">Dismiss</span>
         </div>
       ))}

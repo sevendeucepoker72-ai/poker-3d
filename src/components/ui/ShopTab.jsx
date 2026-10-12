@@ -302,7 +302,7 @@ export default function ShopTab({ progress, chipCount, onOpenBattlePass, onOpenD
           <div className="shop-bp-premium">
             <span>Premium track: cosmetics, chips and stars on every tier.</span>
             <button type="button" className="shop-btn shop-btn--confirm" onClick={bp.buy} disabled={bp.state.phase === 'pending'}>
-              {bp.state.phase === 'pending' ? 'Buying…' : `Go Premium · ${bp.cost.toLocaleString()}⭐`}
+              {bp.state.phase === 'pending' ? 'Buying…' : bp.state.phase === 'armed' ? `Confirm · ${bp.cost.toLocaleString()}⭐` : `Go Premium · ${bp.cost.toLocaleString()}⭐`}
             </button>
             {bp.state.text && <div className={`shop-card-status ${bp.state.phase === 'done' ? 'shop-card-status--ok' : ''}`}>{bp.state.text}</div>}
           </div>

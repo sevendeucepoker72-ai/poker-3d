@@ -988,6 +988,15 @@ function App() {
         useProgressStore.getState().addNotification({ type: 'mission', title: 'Tournament cancelled', message: tournamentCancelledText(notice) });
       },
     });
+    // R2 review (K3-5) — a qualifier the player registered for was cancelled
+    // (too few players / taken off the schedule): say so, and that the
+    // qualifier credit it used came back.
+    const handleQualifierCancelled = (d) => {
+      const why = d?.reason === 'removed_from_schedule' ? 'it was taken off the schedule' : 'not enough players registered';
+      const credit = d?.creditRefunded ? ' Your qualifier credit was refunded.' : '';
+      useProgressStore.getState().addNotification({ type: 'mission', title: 'Qualifier cancelled', message: `A qualifier you registered for was cancelled — ${why}.${credit}` });
+    };
+    socket.on('qualifierCancelled', handleQualifierCancelled);
 
     // 2026-10-07 — a play refusal (suspended / no account) can answer ANY play
     // path, including ones with no spinner of their own (club-challenge
@@ -1257,14 +1266,32 @@ function App() {
       useProgressStore.getState().addNotification({ type: 'system', title: 'Removed', message: data?.reason || 'You were removed by an administrator.' });
     });
     // Batch 5c: staking payout — a player you backed cashed in a tournament.
-    socket.on('stakingPayout', (data) => {
+    const handleStakingPayout = (data) => {
       useProgressStore.getState().addNotification({
         type: 'reward',
         title: 'Staking Payout',
         message: `Staking payout${data?.sellerName ? ` from ${data.sellerName}` : ''}!`,
         reward: { chips: data?.amount || 0, xp: 0, stars: 0 },
       });
-    });
+    };
+    socket.on('stakingPayout', handleStakingPayout);
+    // R2 review (K3-3) — the escrow came back (the player busted before the
+    // money, did not play, unregistered, or the tournament was cancelled).
+    const STAKE_REFUND_WHY = {
+      not_in_the_money: 'the player finished outside the money',
+      tournament_cancelled_stalled: 'the tournament was cancelled',
+      server_restart: 'the tournament was cancelled',
+    };
+    const handleStakeRefunded = (data) => {
+      const n = Number(data?.amount) || 0;
+      const why = STAKE_REFUND_WHY[String(data?.reason || '')] || 'the stake did not go ahead';
+      useProgressStore.getState().addNotification({
+        type: 'system',
+        title: 'Stake refunded',
+        message: `${n > 0 ? `🪙 ${n.toLocaleString()} came back from escrow` : 'Your stake came back from escrow'} — ${why}.`,
+      });
+    };
+    socket.on('stakeRefunded', handleStakeRefunded);
 
     // 2026-07-05 completeness fix — surface server events that were EMITTED but
     // had no client listener, so they fired into the void: tournament bounty,
@@ -1436,13 +1463,29 @@ function App() {
         if (history && typeof history === 'object' && Array.isArray(history.players)) {
           const ts = useTableStore.getState();
           const gs = ts.gameState;
-          const seated = gs && gs.isSpectator !== true && Number.isInteger(gs.yourSeat) && gs.yourSeat >= 0;
-          const yourSeat = seated ? gs.yourSeat : (Number.isInteger(ts.mySeat) && ts.mySeat >= 0 ? ts.mySeat : -1);
+          // R2 review (K2-6) — multi-table: stamp the seat / table the hand CAME
+          // from, never the table on screen. The server names both when it can
+          // (tableId, viewerSeat); else the record is the MAIN seat's (the
+          // server sends handHistory to main sessions), never an extra table's.
+          const histTid = history.tableId != null ? String(history.tableId) : null;
+          let src = gs;
+          if (histTid) {
+            const e = ts.activeTables && typeof ts.activeTables.get === 'function' ? ts.activeTables.get(histTid) : null;
+            src = (e && e.gameState) || (gs && String(gs.tableId) === histTid ? gs : null);
+          } else if (ts.currentTableId != null && ts.activeTables && typeof ts.activeTables.forEach === 'function') {
+            let main = null;
+            ts.activeTables.forEach((e) => { if (!main && e && !e.extra && e.gameState) main = e; });
+            src = main ? main.gameState : null;
+          }
+          const seated = src && src.isSpectator !== true && Number.isInteger(src.yourSeat) && src.yourSeat >= 0;
+          const yourSeat = Number.isInteger(history.viewerSeat) && history.viewerSeat >= 0 ? history.viewerSeat
+            : seated ? src.yourSeat
+              : (src === gs && Number.isInteger(ts.mySeat) && ts.mySeat >= 0 ? ts.mySeat : -1);
           const stamped = {
             ...history,
             yourSeat,
-            tableId: gs && gs.tableId != null ? gs.tableId : null,
-            tableName: (gs && (gs.tableName || gs.name)) || null,
+            tableId: histTid ?? (src && src.tableId != null ? src.tableId : null),
+            tableName: (src && (src.tableName || src.name)) || null,
             receivedAt: Date.now(),
           };
           useProgressStore.getState().noteHandRecord(stamped, useGameStore.getState().playerName);
@@ -1776,6 +1819,7 @@ function App() {
       socket.off('gameState');
       socket.off('tableList');
       stopTournamentRegistry();
+      socket.off('qualifierCancelled', handleQualifierCancelled);
       socket.off('error');
       // Specific handler ref: CreateTableModal / Lobby register their own
       // 'joinError' listeners, which a bare off('joinError') would remove.
@@ -1822,6 +1866,8 @@ function App() {
       socket.off('tournamentStarted');
       socket.off('qualifierTournamentStarted', handleQualifierTournamentStarted);
       socket.off('tableClosed', handleTableClosed);
+      socket.off('stakingPayout', handleStakingPayout);
+      socket.off('stakeRefunded', handleStakeRefunded);
       socket.off('eliminatedToSpectator', handleEliminatedToSpectator);
       socket.off('tournamentSeatKept', handleTournamentSeatKept);
       socket.off(TOURNAMENT_SEAT_TAKEN_OVER_EVENT, handleTournamentSeatTakenOver);

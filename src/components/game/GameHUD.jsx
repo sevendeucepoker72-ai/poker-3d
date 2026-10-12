@@ -1012,11 +1012,21 @@ export default function GameHUD() {
   // it, so it never showed. An older server (no key) shows nothing.
   const bigBlind = gameState?.bigBlind || 50;
   const straddleAmount = 2 * bigBlind;
-  const isUTG = gameState?.isFirstActor === true && seatedHere;
+  // R2 review (K1-4) — straddle / bomb pot are sent WITHOUT a tableId (the
+  // server applies them to the MAIN seat), so they are offered only while the
+  // main seat's table is the one on screen — never at an extra (multi-table)
+  // seat, whose flags would have acted at the main table.
+  const shownIsExtraSeat = useTableStore((st) => {
+    const tid = st.gameState?.tableId;
+    if (tid == null || st.currentTableId == null) return false;
+    const e = st.activeTables && typeof st.activeTables.get === 'function' ? st.activeTables.get(String(tid)) : null;
+    return !!(e && e.extra);
+  });
+  const isUTG = gameState?.isFirstActor === true && seatedHere && !shownIsExtraSeat;
   // Bomb Pot — R2 (C11 / GAME-12): offered only where the server runs one
   // (`canBombPot`: Hold'em / Omaha cash tables); elsewhere it dealt Stud /
   // Draw / Short Deck hands wrong. An older server (no key): not offered.
-  const canBombPot = gameState?.canBombPot === true && seatedHere;
+  const canBombPot = gameState?.canBombPot === true && seatedHere && !shownIsExtraSeat;
 
   // Insurance — R1 (TABLEUI-1 / ECON-1, CONTRACTS R1 #1). The panel is driven
   // ONLY by the server's quote for this seat and this hand
@@ -1154,8 +1164,28 @@ export default function GameHUD() {
   // turn (e.g., the user manually acted milliseconds before the effect
   // ran).
   const prevIsMyTurnForPreActionRef = useRef(false);
+  // R2 review (K1-1) — a pre-action belongs to the table + hand it was armed
+  // at. Multi-table: switching to table B on the render its turn opens used to
+  // fire an armed Fold / Check-Fold / Call Any from table A AT TABLE B (this
+  // effect runs before the table-change reset below). Stamped when armed
+  // (declared first, so it runs before the firing effect in the same commit).
+  const preActionCtxRef = useRef(null);
+  const preActionTableId = gameState?.tableId != null ? String(gameState.tableId) : null;
+  const preActionHand = gameState?.handNumber ?? gameState?.handId ?? null;
+  useEffect(() => {
+    if (!preAction) { preActionCtxRef.current = null; return; }
+    if (!preActionCtxRef.current) preActionCtxRef.current = { tableId: preActionTableId, hand: preActionHand };
+  }, [preAction]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (isMyTurn && !prevIsMyTurnForPreActionRef.current && preAction) {
+      const ctx = preActionCtxRef.current;
+      if (ctx && (ctx.tableId !== preActionTableId || ctx.hand !== preActionHand)) {
+        // Armed at another table (or hand): never act here — drop it.
+        preActionCtxRef.current = null;
+        setPreAction(null);
+        prevIsMyTurnForPreActionRef.current = isMyTurn;
+        return;
+      }
       if (hasSentActionRef.current) {
         // User already manually acted (or an action is mid-flight).
         // Clear the pre-action silently; don't double-send.
@@ -1195,7 +1225,7 @@ export default function GameHUD() {
       }
     }
     prevIsMyTurnForPreActionRef.current = isMyTurn;
-  }, [isMyTurn, preAction, callAmount, sendAction, playSound]);
+  }, [isMyTurn, preAction, callAmount, sendAction, playSound, preActionTableId, preActionHand]);
 
   // Close raise slider and all-in confirm when turn ends
   useEffect(() => {
@@ -3453,7 +3483,10 @@ export default function GameHUD() {
                 </button>
                 {/* R2 (TABLEUI-14) — the multi-table "+" lives here while only one
                     seat is live (the tab bar shows from two seats on). */}
-                {seatedHere && !onTournamentSeat && liveTableCount < 2 && (
+                {/* R2 review (K1-3) — never while a Spin & Go entry is live: Back
+                    to Lobby from the extra table would forfeit the Spin & Go seat
+                    without its forfeit warning (that check reads the table shown). */}
+                {seatedHere && !onTournamentSeat && liveTableCount < 2 && !spinGoEntryLive && (
                   <button
                     className="options-action-btn options-open-table"
                     onClick={() => {
