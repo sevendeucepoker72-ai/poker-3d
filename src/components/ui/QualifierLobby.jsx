@@ -1,60 +1,109 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useGameStore } from '../../store/gameStore';
-import { useQualifiers } from '../../store/qualifierStore';
 import { getSocket } from '../../services/socketService';
-import { useTableStore } from '../../store/tableStore';
 import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
+import {
+  normalizeQualifierList, qualifierSignupState, qualifierStatusCounts,
+  qualifierResultText, seatsForTopText,
+} from '../../utils/qualifierList';
 import QualifierDashboard from './QualifierDashboard';
 
 // A first entry waits on the master API's credit consume (awaited server-side),
 // so allow longer than a table join before calling the server unreachable.
 const REGISTER_WATCHDOG_MS = 20000;
+// An older server has no per-player `registered` flag: this tab remembers its
+// own registration answers (per account), never a match on a player's name.
+const LOCAL_REG_KEY = 'poker_qual_reg_v1';
 
-function formatCountdown(isoDate) {
-  const diff = new Date(isoDate) - Date.now();
-  if (diff <= 0) return 'Starting soon';
+export const QUALIFIER_NO_LIST_TEXT = 'No qualifier tournaments are scheduled right now.';
+
+function readLocalRegs(owner) {
+  try {
+    const raw = sessionStorage.getItem(LOCAL_REG_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && owner && parsed.owner === owner && Array.isArray(parsed.ids)) return new Set(parsed.ids.map(String));
+  } catch { /* ignore */ }
+  return new Set();
+}
+function writeLocalRegs(owner, ids) {
+  try {
+    if (!owner) return;
+    sessionStorage.setItem(LOCAL_REG_KEY, JSON.stringify({ owner, ids: [...ids] }));
+  } catch { /* ignore */ }
+}
+
+function formatCountdown(target, now = Date.now()) {
+  if (target == null) return '';
+  const diff = target - now;
+  if (diff <= 0) return 'now';
   const d = Math.floor(diff / 86400000);
   const h = Math.floor((diff % 86400000) / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
   if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
+  return `${Math.max(1, m)}m`;
 }
+
+function formatWhen(t) {
+  if (t == null) return '';
+  try {
+    return new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  } catch { return new Date(t).toISOString(); }
+}
+
+const TYPE_ICONS = { weekly: '🗓️', monthly: '🏆' };
+const TYPE_COLORS = { weekly: '#ffd24a', monthly: '#9db8ff' };
+
+const box = (extra = {}) => ({
+  padding: '10px 14px', borderRadius: 8, fontSize: '0.82rem', textAlign: 'center', lineHeight: 1.45, ...extra,
+});
 
 export default function QualifierLobby({ onSpectate }) {
   const playerName = useGameStore((s) => s.playerName);
-  const gameState = useTableStore((s) => s.gameState);
-  const phone = gameState?.yourPhone || sessionStorage.getItem('poker_remember_phone') || '';
-  const allQualifiers = useQualifiers();
-  const qualifiers = allQualifiers.filter((q) => q.active).sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+  const userId = useGameStore((s) => s.userId);
+  const owner = userId != null ? String(userId) : null;
 
+  const [list, setList] = useState([]);
+  const [listLoaded, setListLoaded] = useState(false);
   const [qualStatus, setQualStatus] = useState({ weekly: false, monthly: false });
-  const [loading, setLoading] = useState(true);
-  const [tournamentData, setTournamentData] = useState({}); // qualifierId -> {registeredCount, players, status, tournamentId}
-  const [myRegistrations, setMyRegistrations] = useState(new Set());
-  const [openDashboard, setOpenDashboard] = useState(null); // qualifier id or null
+  const [qualLoaded, setQualLoaded] = useState(false);
+  const [localRegs, setLocalRegs] = useState(() => readLocalRegs(owner));
+  const [openDashboard, setOpenDashboard] = useState(null); // qualifierId or null
+  const [now, setNow] = useState(() => Date.now());
   const [redeemCode, setRedeemCode] = useState('');        // Batch 5b: entry-code redemption
   const [redeemMsg, setRedeemMsg] = useState(null);        // { ok, text }
   const [redeeming, setRedeeming] = useState(false);
-  // 2026-10-07 — a refused registration (qualifierRegistrationResult
-  // {success:false}) used to be dropped silently. pendingReg: the qualifier id
-  // whose Register is awaiting an answer. regMsg: the last non-refusal
-  // failure, shown verbatim. Refusals (suspended / no account) go to the shared
-  // PlayRefusalNotice instead.
-  const [pendingReg, setPendingReg] = useState(null);
+  // The qualifier whose Register / Withdraw awaits an answer, and the last
+  // non-refusal failure, shown verbatim. Refusals (suspended / no account) go
+  // to the shared PlayRefusalNotice instead.
+  const [pendingReg, setPendingReg] = useState(null); // { id, kind }
   const [regMsg, setRegMsg] = useState(null);
+
+  // Another account on this tab: its own (empty) local registrations.
+  useEffect(() => { setLocalRegs(readLocalRegs(owner)); }, [owner]);
+  // Countdowns / window states move with time.
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const noteLocalReg = useCallback((qualifierId, on) => {
+    setLocalRegs((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(String(qualifierId)); else next.delete(String(qualifierId));
+      writeLocalRegs(owner, next);
+      return next;
+    });
+  }, [owner]);
 
   // Batch 5b: listen for the entry-code redemption result.
   useEffect(() => {
     const socket = getSocket();
-    if (!socket) return;
+    if (!socket) return undefined;
     const onResult = (res) => {
       setRedeeming(false);
-      // 2026-10-09 — a C5 play refusal (suspended / no account: a redeemed
-      // code is a qualifier entry, so the server's play gate refuses it) goes
-      // to the shared PlayRefusalNotice — blue/gold, stays until dismissed,
-      // Sign In / silent re-auth — not this 4s red line. The code stays in
-      // the box (the gate runs before the code is claimed).
+      // A C5 play refusal goes to the shared PlayRefusalNotice; the code stays
+      // in the box (the gate runs before the code is claimed).
       if (reportPlayRefusal(res)) { setRedeemMsg(null); return; }
       if (res?.success) {
         setRedeemMsg({ ok: true, text: `Code redeemed — ${res.tier || 'weekly'} qualifier credit added!` });
@@ -69,120 +118,88 @@ export default function QualifierLobby({ onSpectate }) {
     return () => socket.off('redeemEntryCodeResult', onResult);
   }, []);
 
-  // Fetch qualification status + tournament registrations
+  // Qualification status + the server's qualifier list.
   useEffect(() => {
     const socket = getSocket();
-    if (!socket) { setLoading(false); return; }
-
-    // Always emit, even if phone is empty — server returns {weekly:false,
-    // monthly:false} which correctly resolves the loading state. Previously
-    // skipping the emit when phone was blank left the UI stuck on
-    // "Checking qualification..." indefinitely for users whose phone wasn't
-    // populated in the store (e.g., OAuth-signed-in users before the
-    // oauthLogin handler started including phone in userData).
-    socket.emit('getQualifications', { phone: phone || '' });
+    if (!socket) { setQualLoaded(true); return undefined; }
+    // AUTH-9 — identity is the signed-in account (server side): no phone, no name.
+    socket.emit('getQualifications');
     socket.emit('getQualifierTournaments');
-
-    // Safety net: bail out of loading after 8s even if no response arrives.
-    const loadingTimeout = setTimeout(() => setLoading(false), 8000);
+    const loadingTimeout = setTimeout(() => { setQualLoaded(true); setListLoaded(true); }, 8000);
 
     const qualHandler = (data) => {
-      setQualStatus(data);
-      setLoading(false);
-      clearTimeout(loadingTimeout);
+      setQualStatus(data && typeof data === 'object' ? data : { weekly: false, monthly: false });
+      setQualLoaded(true);
     };
-    const tournListHandler = (list) => {
-      const map = {};
-      for (const t of list) {
-        map[t.qualifierId] = t;
-        // Check if I'm registered
-        if (t.players?.some(p => p.name === playerName)) {
-          setMyRegistrations(prev => new Set([...prev, t.qualifierId]));
-        }
-      }
-      setTournamentData(map);
+    const updateHandler = (data) => {
+      // An older server's delta: status / count only (its player names are not used).
+      if (!data?.qualifierId) return;
+      setList((prev) => prev.map((q) => (q.qualifierId !== String(data.qualifierId) ? q : {
+        ...q,
+        status: ['scheduled', 'registering', 'running', 'finished'].includes(data.status) ? data.status : q.status,
+        players: Number.isFinite(Number(data.registeredCount)) ? Number(data.registeredCount)
+          : (typeof data.players === 'number' ? data.players : q.players),
+      })));
     };
-    const tournUpdateHandler = (data) => {
-      setTournamentData(prev => ({
-        ...prev,
-        [data.qualifierId]: { ...prev[data.qualifierId], ...data },
-      }));
+    const startHandler = (data) => {
+      if (!data?.qualifierId) return;
+      setList((prev) => prev.map((q) => (q.qualifierId !== String(data.qualifierId) ? q
+        : { ...q, status: 'running', tournamentId: data.tournamentId != null ? String(data.tournamentId) : q.tournamentId })));
     };
     const regResultHandler = (data) => {
       setPendingReg(null);
       if (data?.success) {
         setRegMsg(null);
-        if (data.unregistered) {
-          setMyRegistrations(prev => { const s = new Set(prev); s.delete(data.qualifierId); return s; });
-        } else {
-          setMyRegistrations(prev => new Set([...prev, data.qualifierId]));
-        }
+        if (data.qualifierId) noteLocalReg(data.qualifierId, !data.unregistered);
+        // The server's own flag + count, at once.
+        try { socket.emit('getQualifierTournaments'); } catch { /* next poll */ }
         return;
       }
       if (reportPlayRefusal(data)) { setRegMsg(null); return; }
       setRegMsg(data?.error || data?.message || 'Registration failed — please try again.');
     };
-    const tournStartHandler = (data) => {
-      setTournamentData(prev => ({
-        ...prev,
-        [data.qualifierId]: { ...prev[data.qualifierId], status: 'running', tournamentId: data.tournamentId },
-      }));
-    };
 
-    socket.on('qualifications', qualHandler);
-    socket.on('qualifierTournamentList', tournListHandler);
-    socket.on('qualifierTournamentUpdate', tournUpdateHandler);
-    socket.on('qualifierRegistrationResult', regResultHandler);
-    socket.on('qualifierTournamentStarted', tournStartHandler);
-
-    // Adaptive polling with exponential backoff. On every successful response
-    // the backoff resets to the base interval (10s). If we go a full poll cycle
-    // without seeing a fresh list (disconnected / server unhealthy), the delay
-    // doubles up to a 2-minute ceiling. That keeps steady-state traffic light
-    // while avoiding a DDoS-style flood against an unhealthy server.
+    // Adaptive polling with exponential backoff (10s, doubling to 2 min while
+    // no list arrives; back to 10s on every list).
     const BASE_MS = 10000;
     const MAX_MS = 120000;
     let currentDelay = BASE_MS;
     let lastListAt = Date.now();
     let pollTimer = null;
-
-    const resetBackoffOnList = (origHandler) => (list) => {
+    const listHandler = (raw) => {
       currentDelay = BASE_MS;
       lastListAt = Date.now();
-      origHandler(list);
+      setList(normalizeQualifierList(raw));
+      setListLoaded(true);
     };
-    // Hot-swap the list handler so we can observe success without rewriting it
-    socket.off('qualifierTournamentList', tournListHandler);
-    const wrappedListHandler = resetBackoffOnList(tournListHandler);
-    socket.on('qualifierTournamentList', wrappedListHandler);
-
     const scheduleNextPoll = () => {
       pollTimer = setTimeout(() => {
-        // If we haven't heard back in 2× the current delay, double it (capped).
-        if (Date.now() - lastListAt > currentDelay * 2) {
-          currentDelay = Math.min(MAX_MS, currentDelay * 2);
-        }
+        if (Date.now() - lastListAt > currentDelay * 2) currentDelay = Math.min(MAX_MS, currentDelay * 2);
         socket.emit('getQualifierTournaments');
         scheduleNextPoll();
       }, currentDelay);
     };
     scheduleNextPoll();
 
+    socket.on('qualifications', qualHandler);
+    socket.on('qualifierTournamentList', listHandler);
+    socket.on('qualifierTournamentUpdate', updateHandler);
+    socket.on('qualifierRegistrationResult', regResultHandler);
+    socket.on('qualifierTournamentStarted', startHandler);
     return () => {
       socket.off('qualifications', qualHandler);
-      socket.off('qualifierTournamentList', wrappedListHandler);
-      socket.off('qualifierTournamentUpdate', tournUpdateHandler);
+      socket.off('qualifierTournamentList', listHandler);
+      socket.off('qualifierTournamentUpdate', updateHandler);
       socket.off('qualifierRegistrationResult', regResultHandler);
-      socket.off('qualifierTournamentStarted', tournStartHandler);
+      socket.off('qualifierTournamentStarted', startHandler);
       if (pollTimer) clearTimeout(pollTimer);
       clearTimeout(loadingTimeout);
     };
-  }, [phone, playerName]);
+  }, [noteLocalReg]);
 
-  // While a Register is in flight: some refusals arrive on the shared
-  // 'error' event instead of qualifierRegistrationResult (e.g. a socket with no
-  // signed-in session), so listen for it during that window only, and give up
-  // after REGISTER_WATCHDOG_MS. A late success still lands via regResultHandler.
+  // While a Register / Withdraw is in flight: some refusals arrive on the
+  // shared 'error' event instead of qualifierRegistrationResult, so listen for
+  // it during that window only, and give up after REGISTER_WATCHDOG_MS.
   useEffect(() => {
     if (!pendingReg) return undefined;
     const socket = getSocket();
@@ -195,6 +212,9 @@ export default function QualifierLobby({ onSpectate }) {
     socket.on('error', onServerError);
     const watchdog = setTimeout(() => {
       setPendingReg(null);
+      // A withdraw the server ignored (an older server answers some branches
+      // with nothing) is not proof it is unreachable: ask for the list again.
+      if (pendingReg.kind === 'withdraw') { try { socket.emit('getQualifierTournaments'); } catch { /* ignore */ } return; }
       setRegMsg(GAME_SERVER_UNREACHABLE_TEXT);
     }, REGISTER_WATCHDOG_MS);
     return () => {
@@ -203,34 +223,27 @@ export default function QualifierLobby({ onSpectate }) {
     };
   }, [pendingReg]);
 
-  // 2026-10-07 — play-refusal replay (services/playRefusal.js): a
-  // login_required on a still-signed-in tab re-authenticates the socket and
-  // runs this registration again ONCE through the latest handleRegister,
-  // unless the lobby has unmounted.
+  // Play-refusal replay (services/playRefusal.js): a login_required on a
+  // still-signed-in tab re-authenticates the socket and runs this registration
+  // again ONCE through the latest handleRegister, unless the lobby unmounted.
   const handleRegisterRef = useRef(null);
   const mountedRef = useRef(false);
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
-  const handleRegister = useCallback((qualifier) => {
+  const handleRegister = useCallback((q) => {
     const socket = getSocket();
     if (!socket) return;
     setRegMsg(null);
-    setPendingReg(qualifier.id);
+    setPendingReg({ id: q.qualifierId, kind: 'register' });
     runPlayFlow(() => {
-      if (mountedRef.current && handleRegisterRef.current) handleRegisterRef.current(qualifier);
-    }, () => socket.emit('registerQualifierTournament', {
-      qualifierId: qualifier.id,
-      playerName,
-      phone,
-    }));
-  }, [playerName, phone]);
+      if (mountedRef.current && handleRegisterRef.current) handleRegisterRef.current(q);
+    }, () => socket.emit('registerQualifierTournament', { qualifierId: q.qualifierId, playerName }));
+  }, [playerName]);
   useEffect(() => { handleRegisterRef.current = handleRegister; }, [handleRegister]);
 
-  // Batch 5b: redeem an entry code. 2026-10-09 — re-runnable: a
-  // login_required refusal on a still-signed-in tab re-authenticates the
-  // socket and sends this code again ONCE, unless the lobby has unmounted.
+  // Batch 5b: redeem an entry code (re-runnable for the play-refusal replay).
   const sendRedeem = useCallback(function sendRedeemOnce(code) {
     if (!mountedRef.current) return;
     const socket = getSocket();
@@ -239,21 +252,18 @@ export default function QualifierLobby({ onSpectate }) {
     setRedeeming(true);
     runPlayFlow(() => sendRedeemOnce(code), () => socket.emit('redeemEntryCode', { code }));
   }, []);
-
   const handleRedeem = () => {
     const code = redeemCode.trim().toUpperCase();
     if (!code || redeeming) return;
     sendRedeem(code);
   };
 
-  // No pending/watchdog here: poker-server's unregister handler returns
-  // silently on some branches (no session, tournament no longer registering),
-  // so a missing answer is not proof the server is unreachable.
-  const handleUnregister = useCallback((qualifier) => {
+  const handleUnregister = useCallback((q) => {
     const socket = getSocket();
     if (!socket) return;
     setRegMsg(null);
-    socket.emit('unregisterQualifierTournament', { qualifierId: qualifier.id });
+    setPendingReg({ id: q.qualifierId, kind: 'withdraw' });
+    socket.emit('unregisterQualifierTournament', { qualifierId: q.qualifierId });
   }, []);
 
   const handleSpectate = useCallback((tournamentId) => {
@@ -263,31 +273,102 @@ export default function QualifierLobby({ onSpectate }) {
     if (onSpectate) onSpectate();
   }, [onSpectate]);
 
-  if (qualifiers.length === 0) {
-    // While the qualification check is still in flight, show a skeleton rather
-    // than the "No active qualifiers" copy — the store hydrates synchronously
-    // but the server might still be producing the list, so we don't want the
-    // first frame to flash the empty message only for qualifiers to appear.
-    if (loading) {
+  const isRegistered = useCallback((q) => (q.registered !== null ? q.registered : localRegs.has(q.qualifierId)), [localRegs]);
+  const counts = useMemo(() => qualifierStatusCounts(list, now), [list, now]);
+
+  if (list.length === 0) {
+    if (!listLoaded) {
       return (
-        <div style={{ color: '#666', fontSize: '0.85rem', padding: '12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{
-            display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
-            background: '#ffd24a33', border: '1px solid #ffd24a',
-            animation: 'pulse 1.2s infinite',
-          }} />
+        <div style={{ color: '#8298c4', fontSize: '0.85rem', padding: '12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#ffd24a33', border: '1px solid #ffd24a', animation: 'pulse 1.2s infinite' }} />
           Checking available qualifiers…
         </div>
       );
     }
-    return <div style={{ color: '#555', fontSize: '0.85rem', padding: '12px 0' }}>No active qualifiers at this time.</div>;
+    return <div className="qualifier-empty" style={{ color: '#8298c4', fontSize: '0.85rem', padding: '12px 0' }}>{QUALIFIER_NO_LIST_TEXT}</div>;
   }
+
+  const renderAction = (q, compact = false) => {
+    const state = qualifierSignupState(q, now);
+    const qs = qualStatus?.[q.type];
+    const qualified = !!(qs && qs.qualified);
+    const mine = isRegistered(q);
+    const pend = pendingReg && pendingReg.id === q.qualifierId ? pendingReg.kind : null;
+    const pad = compact ? '10px 14px' : '12px 18px';
+    if (!qualLoaded) return <div style={{ color: '#8298c4', fontSize: '0.8rem', padding: '10px 0' }}>Checking qualification…</div>;
+    if (state === 'finished') {
+      const line = qualifierResultText(q.result);
+      return (
+        <div className="qualifier-result-line" style={box({ background: 'rgba(130,152,196,0.08)', border: '1px solid rgba(130,152,196,0.25)', color: line ? (q.result?.wonSeat ? '#ffd24a' : '#cfe0ff') : '#9fb4d8' })}>
+          {line || 'Tournament completed'}
+        </div>
+      );
+    }
+    if (state === 'running' || state === 'late') {
+      const canLate = state === 'late' && qualified && !mine;
+      return (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {canLate && (
+            <button onClick={(e) => { e.stopPropagation(); handleRegister(q); }} disabled={!!pend} style={{ flex: 1, minWidth: 140, padding: pad, borderRadius: 8, fontWeight: 700, fontSize: '0.88rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: pend ? 'default' : 'pointer', opacity: pend ? 0.7 : 1 }}>
+              {pend === 'register' ? 'Registering…' : 'Late Register'}
+            </button>
+          )}
+          {q.tournamentId && (
+            <button onClick={(e) => { e.stopPropagation(); handleSpectate(q.tournamentId); }} style={{ flex: 1, minWidth: 120, padding: pad, borderRadius: 8, fontWeight: 700, fontSize: '0.88rem', background: 'rgba(106,186,255,0.14)', color: '#cfe0ff', border: '1px solid rgba(106,186,255,0.5)', cursor: 'pointer' }}>
+              Watch Live
+            </button>
+          )}
+          {!canLate && !q.tournamentId && (
+            <div style={box({ flex: 1, background: 'rgba(106,186,255,0.08)', border: '1px solid rgba(106,186,255,0.25)', color: '#cfe0ff' })}>In progress</div>
+          )}
+        </div>
+      );
+    }
+    if (mine) {
+      const canWithdraw = state === 'open' || state === 'scheduled';
+      return (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div style={box({ flex: 1, background: 'rgba(255,210,74,0.1)', border: '1px solid rgba(255,210,74,0.35)', color: '#ffd24a', fontWeight: 700 })}>✓ Registered</div>
+          {canWithdraw && (
+            <button onClick={(e) => { e.stopPropagation(); handleUnregister(q); }} disabled={!!pend} style={{ padding: '10px 14px', borderRadius: 8, fontSize: '0.8rem', background: 'transparent', border: '1px solid rgba(120,160,255,0.5)', color: '#cfe0ff', cursor: pend ? 'default' : 'pointer', opacity: pend ? 0.6 : 1 }}>
+              {pend === 'withdraw' ? 'Withdrawing…' : 'Withdraw'}
+            </button>
+          )}
+        </div>
+      );
+    }
+    if (state === 'open') {
+      if (qualified) {
+        return (
+          <button onClick={(e) => { e.stopPropagation(); handleRegister(q); }} disabled={!!pend} style={{ width: '100%', padding: pad, borderRadius: 8, fontWeight: 700, fontSize: '0.9rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: pend ? 'default' : 'pointer', opacity: pend ? 0.7 : 1 }}>
+            {pend === 'register' ? 'Registering…' : "Register — You're Qualified!"}
+          </button>
+        );
+      }
+      return (
+        <div style={box({ background: 'rgba(12,28,72,0.6)', border: '1px solid rgba(255,210,74,0.25)', color: '#cfe0ff' })}>
+          {q.type === 'monthly'
+            ? 'Not yet qualified — qualify via a Weekly, league standings, or attendance (see above)'
+            : 'Not yet qualified — finish top 5 in any live game to earn entry'}
+        </div>
+      );
+    }
+    if (state === 'scheduled') {
+      return (
+        <div style={box({ background: 'rgba(255,210,74,0.06)', border: '1px solid rgba(255,210,74,0.25)', color: '#ffd24a' })}>
+          {q.signupOpensAt != null ? `Signup opens in ${formatCountdown(q.signupOpensAt, now)} — ${formatWhen(q.signupOpensAt)}` : 'Signup has not opened yet'}
+          {qualified ? ' · you are qualified' : ''}
+        </div>
+      );
+    }
+    if (state === 'closed') return <div style={box({ background: 'rgba(130,152,196,0.08)', border: '1px solid rgba(130,152,196,0.2)', color: '#9fb4d8' })}>Signup window has closed</div>;
+    return <div style={box({ background: 'rgba(130,152,196,0.08)', border: '1px solid rgba(130,152,196,0.2)', color: '#9fb4d8' })}>Signup times have not been announced yet</div>;
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* 2026-10-07 — registration failure, verbatim. Fixed + above the
-          QualifierDashboard modal (zIndex 1000), because tapping Register on a
-          card also opens that modal. Blue + gold, not red. */}
+      {/* Registration failure, verbatim. Fixed + above the QualifierDashboard
+          modal (zIndex 1000). Blue + gold, not red. */}
       {regMsg && (
         <div
           className="qualifier-register-msg"
@@ -306,11 +387,16 @@ export default function QualifierLobby({ onSpectate }) {
           {regMsg} <span style={{ opacity: 0.7, fontWeight: 400, marginLeft: 6 }}>(tap to dismiss)</span>
         </div>
       )}
+
+      <div className="qualifier-status-counts" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.75rem', color: '#9fb4d8' }}>
+        <span>{counts.upcoming} upcoming</span>
+        <span>·</span>
+        <span style={{ color: counts.live ? '#6abaff' : '#9fb4d8' }}>{counts.live} live</span>
+        {counts.finished > 0 && <><span>·</span><span>{counts.finished} finished</span></>}
+      </div>
+
       {/* Batch 5b: redeem a promo entry code for a qualifier credit. */}
-      <div style={{
-        background: 'linear-gradient(135deg, rgba(10,10,20,0.9), rgba(30,20,60,0.6))',
-        border: '1px solid rgba(255,210,74,0.25)', borderRadius: 12, padding: '12px 14px',
-      }}>
+      <div style={{ background: 'linear-gradient(135deg, rgba(10,10,20,0.9), rgba(20,30,70,0.6))', border: '1px solid rgba(255,210,74,0.25)', borderRadius: 12, padding: '12px 14px' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             value={redeemCode}
@@ -318,233 +404,102 @@ export default function QualifierLobby({ onSpectate }) {
             onKeyDown={(e) => { if (e.key === 'Enter') handleRedeem(); }}
             placeholder="Enter entry code"
             maxLength={8}
-            style={{
-              flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 8, fontSize: '0.85rem',
-              letterSpacing: '0.12em', textTransform: 'uppercase', background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.14)', color: '#fff', outline: 'none',
-            }}
+            style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 8, fontSize: '0.85rem', letterSpacing: '0.12em', textTransform: 'uppercase', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)', color: '#fff', outline: 'none' }}
           />
           <button onClick={handleRedeem} disabled={redeeming || !redeemCode.trim()} style={{
             padding: '8px 16px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 700, whiteSpace: 'nowrap',
             border: 'none', cursor: redeeming || !redeemCode.trim() ? 'default' : 'pointer',
-            background: redeeming || !redeemCode.trim() ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg,#ffd24a,#0099BB)',
-            color: redeeming || !redeemCode.trim() ? '#888' : '#0a0a1a',
+            background: redeeming || !redeemCode.trim() ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg,#ffd24a,#e6b422)',
+            color: redeeming || !redeemCode.trim() ? '#8298c4' : '#0a1628',
           }}>{redeeming ? 'Redeeming…' : 'Redeem'}</button>
         </div>
         {redeemMsg && (
-          <div style={{ marginTop: 8, fontSize: '0.78rem', fontWeight: 600, color: redeemMsg.ok ? '#7CE0A0' : '#F08A8A' }}>
+          <div style={{ marginTop: 8, fontSize: '0.78rem', fontWeight: 600, color: redeemMsg.ok ? '#ffd24a' : '#cfe0ff' }}>
             {redeemMsg.text}
           </div>
         )}
       </div>
 
-      {qualifiers.map((q) => {
-        const color = q.color || '#ffd24a';
-        const tier = q.type?.toLowerCase();
-        const qualStat = qualStatus[tier];
-        const isQualified = qualStat && qualStat.qualified;
-        const isRegistered = myRegistrations.has(q.id);
-        const tData = tournamentData[q.id];
-        const regCount = tData?.registeredCount || q.registered || 0;
-        const tournStatus = tData?.status || 'registering';
-        const tournamentId = tData?.tournamentId;
-        const isRunning = tournStatus === 'running';
-        const isFinished = tournStatus === 'finished';
-        const registeredPlayers = tData?.players || [];
-        // Prize copy: prefer the server-driven prizeStructure (count of places
-        // that win a seat) over the hardcoded literals. Falls back to the
-        // legacy numbers (Weekly=3, Monthly=6) when the config lacks the field.
-        const seatWinnerCount = (Array.isArray(q.prizeStructure) && q.prizeStructure.length > 0)
-          ? q.prizeStructure.filter((p) => /seat/i.test(p.prize || '')).length || q.prizeStructure.length
-          : (q.type === 'Weekly' ? 3 : 6);
-        const signupOpen = tData?.signupOpen ?? true;
-        const signupOpensAt = tData?.signupOpensAt;
-        const signupClosesAt = tData?.signupClosesAt;
-
+      {list.map((q) => {
+        const color = TYPE_COLORS[q.type] || '#ffd24a';
+        const state = qualifierSignupState(q, now);
+        const live = state === 'running' || state === 'late';
+        const qs = qualStatus?.[q.type];
+        const seatsLine = seatsForTopText(q.seatsForTop);
         return (
-          <div key={q.id} onClick={() => setOpenDashboard(q.id)} style={{
-            background: 'linear-gradient(135deg, rgba(10,10,20,0.95), rgba(30,20,60,0.7))',
-            border: `1px solid ${isRunning ? '#4ADE8055' : color + '33'}`,
-            borderRadius: 14,
-            padding: '18px 20px',
-            cursor: 'pointer',
+          <div key={q.qualifierId} className="qualifier-card" onClick={() => setOpenDashboard(q.qualifierId)} style={{
+            background: 'linear-gradient(135deg, rgba(10,10,20,0.95), rgba(20,30,70,0.7))',
+            border: `1px solid ${live ? 'rgba(106,186,255,0.45)' : color + '33'}`,
+            borderRadius: 14, padding: '16px', cursor: 'pointer', minWidth: 0,
           }}>
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-              <span style={{ fontSize: '1.8rem' }}>{q.icon || '🏆'}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontWeight: 700, fontSize: '1rem', color: '#fff' }}>{q.name}</span>
-                  <span style={{
-                    fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px',
-                    borderRadius: 20, background: `${color}22`, color,
-                    border: `1px solid ${color}55`, textTransform: 'uppercase',
-                  }}>{q.type}</span>
-                  {isRunning && (
-                    <span style={{
-                      fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px',
-                      borderRadius: 20, background: 'rgba(74,222,128,0.15)', color: '#4ADE80',
-                      border: '1px solid rgba(74,222,128,0.4)', textTransform: 'uppercase',
-                      animation: 'pulse 2s infinite',
-                    }}>LIVE</span>
-                  )}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+              <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>{TYPE_ICONS[q.type] || '🏆'}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.98rem', color: '#fff' }}>{q.name}</span>
+                  <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: `${color}22`, color, border: `1px solid ${color}55`, textTransform: 'uppercase' }}>{q.typeLabel}</span>
+                  {live && <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(106,186,255,0.15)', color: '#6abaff', border: '1px solid rgba(106,186,255,0.4)', textTransform: 'uppercase' }}>Live</span>}
                 </div>
-                <div style={{ color: '#aaa', fontSize: '0.78rem', marginTop: 2 }}>
-                  {new Date(tData?.scheduledAt || q.scheduledAt).toUTCString().replace(' GMT', ' UTC')}
+                <div style={{ color: '#9fb4d8', fontSize: '0.76rem', marginTop: 2 }}>
+                  {q.scheduledAt != null ? formatWhen(q.scheduledAt) : 'Start time not announced yet'}
                 </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                {!isRunning && !isFinished && (
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                {!live && state !== 'finished' && q.scheduledAt != null && q.scheduledAt > now && (
                   <>
-                    <div style={{ color, fontWeight: 700, fontSize: '0.85rem' }}>{formatCountdown(tData?.scheduledAt || q.scheduledAt)}</div>
-                    <div style={{ color: '#666', fontSize: '0.7rem' }}>until start</div>
+                    <div style={{ color, fontWeight: 700, fontSize: '0.85rem' }}>{formatCountdown(q.scheduledAt, now)}</div>
+                    <div style={{ color: '#8298c4', fontSize: '0.68rem' }}>until start</div>
                   </>
                 )}
-                {isRunning && (
-                  <div style={{ color: '#4ADE80', fontWeight: 700, fontSize: '0.85rem' }}>In Progress</div>
-                )}
-                {isFinished && (
-                  <div style={{ color: '#888', fontWeight: 700, fontSize: '0.85rem' }}>Finished</div>
-                )}
+                {live && <div style={{ color: '#6abaff', fontWeight: 700, fontSize: '0.82rem' }}>In Progress</div>}
+                {state === 'finished' && <div style={{ color: '#9fb4d8', fontWeight: 700, fontSize: '0.82rem' }}>Finished</div>}
               </div>
             </div>
 
-            {/* Stats row */}
-            <div style={{ display: 'flex', gap: 16, marginBottom: 14, fontSize: '0.78rem', color: '#aaa', flexWrap: 'wrap' }}>
-              <span>🎰 Stack: <strong style={{ color: '#fff' }}>{(q.startingStack || 0).toLocaleString()}</strong></span>
-              <span>👥 <strong style={{ color: '#fff' }}>{regCount}/{q.maxPlayers}</strong> registered</span>
-              {isQualified && !isRunning && (
-                <span style={{ color: '#4ADE80' }}>✓ {qualStat.credits} credit{qualStat.credits > 1 ? 's' : ''}</span>
+            {/* Stats row — server numbers only */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: '0.76rem', color: '#9fb4d8', flexWrap: 'wrap' }}>
+              <span>👥 <strong style={{ color: '#fff' }}>{q.players}{q.maxPlayers ? `/${q.maxPlayers}` : ''}</strong> registered</span>
+              {q.structure?.startingStack && <span>🎰 Stack: <strong style={{ color: '#fff' }}>{q.structure.startingStack.toLocaleString()}</strong></span>}
+              {seatsLine && <span style={{ color: '#ffd24a' }}>🎟 {seatsLine}</span>}
+              {qs && qs.qualified && !live && state !== 'finished' && (
+                <span style={{ color: '#ffd24a' }}>✓ {qs.credits} credit{qs.credits === 1 ? '' : 's'}</span>
               )}
-              {!isRunning && !isFinished && signupOpen && signupClosesAt && (
-                <span style={{ color: '#FFB74D' }}>⏱ Signup closes in {formatCountdown(signupClosesAt)}</span>
+              {state === 'open' && q.signupClosesAt != null && (
+                <span style={{ color: '#ffd24a' }}>⏱ Signup closes in {formatCountdown(q.signupClosesAt, now)}</span>
+              )}
+              {state === 'late' && q.lateRegUntil != null && (
+                <span style={{ color: '#6abaff' }}>⏱ Late registration until {formatWhen(q.lateRegUntil)}</span>
               )}
             </div>
 
-            {/* Registered players list */}
-            {regCount > 0 && !isRunning && (
-              <div style={{
-                marginBottom: 12, padding: '8px 12px', borderRadius: 8,
-                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
-                maxHeight: 80, overflowY: 'auto', fontSize: '0.75rem', color: '#888',
-              }}>
-                {registeredPlayers.map((p, i) => (
-                  <span key={i}>
-                    {p.name}{i < registeredPlayers.length - 1 ? ', ' : ''}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* How to qualify — official guidelines surfaced onto the card itself
-                (was previously only inside the click-in dashboard modal). The
-                rules match marketing (Home/HowToPlay/Promotions/Championship/FAQ)
-                and QualifierDashboard.jsx. 2026-06-11. */}
-            <div style={{
-              marginBottom: 12, padding: '10px 12px', borderRadius: 8,
-              background: 'rgba(90,140,230,0.06)', border: '1px solid rgba(90,140,230,0.18)',
-              fontSize: '0.76rem', color: '#9fb4d8', lineHeight: 1.5,
-            }}>
+            {/* How to qualify — the official guidelines. */}
+            <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(90,140,230,0.06)', border: '1px solid rgba(90,140,230,0.18)', fontSize: '0.76rem', color: '#9fb4d8', lineHeight: 1.5 }}>
               <div style={{ color: '#cfe0ff', fontWeight: 700, marginBottom: 4, fontSize: '0.7rem', letterSpacing: '0.05em' }}>📋 HOW TO QUALIFY</div>
-              {q.type === 'Weekly' ? (
-                <>Finish <strong style={{ color: '#fff' }}>top 5 in any live game</strong> at any venue to earn a credit and an entry here. Top {seatWinnerCount} here win a seat to the Championship at Bally's Blackhawk; the top 10% advance to the Monthly Major.</>
+              {q.type === 'monthly' ? (
+                <>Three ways in: <strong style={{ color: '#fff' }}>top 10%</strong> of any Weekly online qualifier · <strong style={{ color: '#fff' }}>top 20%</strong> of each league's leaderboard (auto-added on the 1st) · <strong style={{ color: '#fff' }}>top 20%</strong> of your venue's average attendance.{seatsLine ? ` ${seatsLine} at Bally's Blackhawk.` : ''}</>
               ) : (
-                <>Three ways in: <strong style={{ color: '#fff' }}>top 10%</strong> of any Weekly online qualifier · <strong style={{ color: '#fff' }}>top 20%</strong> of each league's leaderboard (auto-added on the 1st) · <strong style={{ color: '#fff' }}>top 20%</strong> of your venue's average attendance. Top {seatWinnerCount} here win Bally's seats.</>
+                <>Finish <strong style={{ color: '#fff' }}>top 5 in any live game</strong> at any venue to earn a credit and an entry here.{seatsLine ? ` ${seatsLine} at Bally's Blackhawk;` : ''} the top 10% advance to the Monthly Major.</>
               )}
             </div>
 
-            {/* Action area */}
-            {loading ? (
-              <div style={{ color: '#666', fontSize: '0.8rem', padding: '10px 0' }}>Checking qualification...</div>
-            ) : isRunning ? (
-              <button onClick={() => handleSpectate(tournamentId)} style={{
-                width: '100%', padding: '12px 18px', borderRadius: 8, fontWeight: 700, fontSize: '0.9rem',
-                background: 'linear-gradient(135deg, #4ADE80, #22c55e)',
-                color: '#0a0a1a', border: 'none', cursor: 'pointer',
-              }}>
-                Watch Live
-              </button>
-            ) : isFinished ? (
-              <div style={{
-                padding: '10px 14px', borderRadius: 8,
-                background: 'rgba(136,136,170,0.08)', border: '1px solid rgba(136,136,170,0.2)',
-                color: '#888', fontSize: '0.82rem', textAlign: 'center',
-              }}>
-                Tournament completed
-              </div>
-            ) : isRegistered ? (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{
-                  flex: 1, padding: '10px 14px', borderRadius: 8,
-                  background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)',
-                  color: '#4ADE80', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center',
-                }}>
-                  ✓ Registered
-                </div>
-                <button onClick={() => handleUnregister(q)} style={{
-                  padding: '10px 14px', borderRadius: 8, fontSize: '0.8rem',
-                  background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)',
-                  color: '#F87171', cursor: 'pointer',
-                }}>
-                  Withdraw
-                </button>
-              </div>
-            ) : !signupOpen && signupOpensAt && new Date(signupOpensAt) > new Date() ? (
-              <div style={{
-                padding: '10px 14px', borderRadius: 8,
-                background: 'rgba(255,183,77,0.08)', border: '1px solid rgba(255,183,77,0.25)',
-                color: '#FFB74D', fontSize: '0.82rem', textAlign: 'center',
-              }}>
-                Signup opens {formatCountdown(signupOpensAt)} before game — {new Date(signupOpensAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-              </div>
-            ) : !signupOpen && signupClosesAt ? (
-              <div style={{
-                padding: '10px 14px', borderRadius: 8,
-                background: 'rgba(136,136,170,0.08)', border: '1px solid rgba(136,136,170,0.2)',
-                color: '#888', fontSize: '0.82rem', textAlign: 'center',
-              }}>
-                Signup window has closed
-              </div>
-            ) : isQualified ? (
-              <button onClick={() => handleRegister(q)} disabled={pendingReg === q.id} style={{
-                width: '100%', padding: '12px 18px', borderRadius: 8, fontWeight: 700, fontSize: '0.9rem',
-                background: `linear-gradient(135deg, ${color}, ${color}bb)`,
-                color: '#0a0a1a', border: 'none',
-                cursor: pendingReg === q.id ? 'default' : 'pointer',
-                opacity: pendingReg === q.id ? 0.7 : 1,
-              }}>
-                {pendingReg === q.id ? 'Registering…' : "Register — You're Qualified!"}
-              </button>
-            ) : (
-              <div style={{
-                padding: '10px 14px', borderRadius: 8,
-                background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)',
-                color: '#F87171', fontSize: '0.82rem', textAlign: 'center',
-              }}>
-                {q.type === 'Weekly'
-                  ? 'Not yet qualified — finish top 5 in any live game to earn entry'
-                  : 'Not yet qualified — qualify via a Weekly, league standings, or attendance (see above)'}
-              </div>
-            )}
+            {renderAction(q)}
           </div>
         );
       })}
 
       {/* Dashboard modal */}
       {openDashboard && (() => {
-        const q = qualifiers.find(x => x.id === openDashboard);
+        const q = list.find((x) => x.qualifierId === openDashboard);
         if (!q) return null;
-        const tier = q.type?.toLowerCase();
-        const qualStat = qualStatus[tier];
+        const qs = qualStatus?.[q.type];
         return (
           <QualifierDashboard
             qualifier={q}
-            tournamentData={tournamentData[q.id]}
-            isRegistered={myRegistrations.has(q.id)}
-            isQualified={qualStat && qualStat.qualified}
-            onRegister={() => { handleRegister(q); setOpenDashboard(null); }}
-            onUnregister={() => { handleUnregister(q); setOpenDashboard(null); }}
-            onSpectate={(tid) => { handleSpectate(tid); setOpenDashboard(null); }}
+            now={now}
+            isRegistered={isRegistered(q)}
+            isQualified={!!(qs && qs.qualified)}
+            action={renderAction(q, true)}
             onClose={() => setOpenDashboard(null)}
           />
         );

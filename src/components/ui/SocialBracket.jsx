@@ -70,6 +70,32 @@ function SideBetModal({ players, accent, available, onClose, onPlace }) {
 
 const DEFAULT_ROSTER = 'Player 1\nPlayer 2\nPlayer 3\nPlayer 4\nPlayer 5\nPlayer 6';
 
+// R2 (APPUI-43 / ECON-14) — the organizer decides every elimination, so he
+// may not bet on his own bracket (poker-server refuses it; the form is hidden).
+export const BRACKET_ORGANIZER_NO_BET_TEXT = "You're the organizer — you decide the eliminations, so you can't place side bets on this bracket.";
+
+/** The ?bracket=ID share-link id (upper-case), or null. */
+function bracketIdFromUrl() {
+  try {
+    const id = new URLSearchParams(window.location.search).get('bracket');
+    return id && /^[A-Za-z0-9]{4,16}$/.test(id) ? id.toUpperCase() : null;
+  } catch { return null; }
+}
+
+/** Remove ?bracket= from the address bar: the link opens the bracket ONCE, never again on a lobby remount / reload. */
+function scrubBracketParam() {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('bracket')) return;
+    url.searchParams.delete('bracket');
+    window.history.replaceState(window.history.state, '', url.pathname + (url.search ? url.search : '') + url.hash);
+  } catch { /* ignore */ }
+}
+
+function sameBracket(a, b) {
+  return !!a && !!b && String(a).toUpperCase() === String(b).toUpperCase();
+}
+
 // Fallbacks when rendered without Lobby's refusal props.
 const NO_REFUSAL_HANDLER = () => false;
 const RUN_DIRECT = (_replay, run) => run();
@@ -121,11 +147,33 @@ export default function SocialBracket({
 
   const activeTheme = THEMES.find(t => t.id === (serverState?.theme || theme)) || THEMES[0];
 
+  // R2 (APPUI-43) — the ONE bracket this panel shows (or is creating /
+  // loading). The socket stays in the room of every bracket it ever opened
+  // (and the server broadcasts each room's state), so a frame for ANOTHER
+  // bracket used to replace the view ("hijacked"); frames are now matched to
+  // this id. The share-link id is read once and scrubbed from the URL, so a
+  // lobby remount / reload never reopens it.
+  const [urlBracketId] = useState(() => bracketIdFromUrl());
+  const bracketIdRef = useRef(urlBracketId);
+  const leaveBracket = useCallback((id) => {
+    if (!id || !socket) return;
+    // Best effort: a server without the handler ignores it (frames are
+    // filtered by id either way).
+    try { socket.emit('leaveSocialBracket', { bracketId: id }); } catch { /* ignore */ }
+  }, [socket]);
+
   // ─── Subscribe to live bracket updates ──────────────────────────────────
   useEffect(() => {
     if (!socket) return undefined;
-    const onState = (state) => { setServerState(state); setLoading(false); };
-    const onRole = (d) => { if (d?.isOrganizer != null) setIsOrganizer(!!d.isOrganizer); };
+    const onState = (state) => {
+      if (!state || !sameBracket(state.bracketId, bracketIdRef.current)) return;
+      setServerState(state);
+      setLoading(false);
+    };
+    const onRole = (d) => {
+      if (!d || !sameBracket(d.bracketId, bracketIdRef.current)) return;
+      if (d.isOrganizer != null) setIsOrganizer(!!d.isOrganizer);
+    };
     const onErr = (d) => {
       setLoading(false);
       // 2026-10-09 — a C5 play refusal (suspended / no account) goes to the
@@ -135,10 +183,12 @@ export default function SocialBracket({
     };
     // GAP 24 — placement confirmation: server escrowed the chips atomically.
     const onPlaced = (d) => {
+      if (d?.bracketId && !sameBracket(d.bracketId, bracketIdRef.current)) return;
       setNotice(`Bet placed: ${(d?.amount || 0).toLocaleString()} chips escrowed`);
     };
     // GAP 24 — settlement: server credits winnings / refunds and sends the
-    // player's NEW balance. Sync the local wallet + toast the result.
+    // player's NEW balance. Sync the local wallet + toast the result (any
+    // bracket of his: it is his money).
     const onSettled = (d) => {
       if (d && typeof d.chips === 'number') setChips(d.chips);
       const amt = (d?.amount || 0).toLocaleString();
@@ -152,16 +202,16 @@ export default function SocialBracket({
     socket.on('socialSideBetPlaced', onPlaced);
     socket.on('socialSideBetSettled', onSettled);
 
-    // Share-link viewer: ?bracket=ID auto-loads that bracket.
-    // 2026-07-06 audit P2 — on a COLD page load from a share link the socket
-    // isn't connected yet, so the old `&& socket.connected` guard silently
-    // no-op'd and the bracket never loaded. Emit now if already connected, else
-    // load on the next 'connect' (also refreshes after a reconnect).
-    const urlId = new URLSearchParams(window.location.search).get('bracket');
+    // Share-link viewer: ?bracket=ID loads that bracket ONCE (cold page loads
+    // wait for the connect).
     let onConnectLoad = null;
-    if (urlId) {
-      const bracketId = urlId.toUpperCase();
-      const emitLoad = () => { setLoading(true); socket.emit('getSocialBracket', { bracketId }); };
+    if (urlBracketId) {
+      scrubBracketParam();
+      const emitLoad = () => {
+        if (!sameBracket(bracketIdRef.current, urlBracketId)) return;
+        setLoading(true);
+        socket.emit('getSocialBracket', { bracketId: urlBracketId });
+      };
       if (socket.connected) emitLoad();
       else { onConnectLoad = emitLoad; socket.on('connect', onConnectLoad); }
     }
@@ -173,7 +223,10 @@ export default function SocialBracket({
       socket.off('socialSideBetSettled', onSettled);
       if (onConnectLoad) socket.off('connect', onConnectLoad);
     };
-  }, [socket, setChips, onPlayRefusal]);
+  }, [socket, setChips, onPlayRefusal, urlBracketId]);
+
+  // Closing the panel leaves the shown bracket's room.
+  useEffect(() => () => { leaveBracket(bracketIdRef.current); }, [leaveBracket]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -185,10 +238,12 @@ export default function SocialBracket({
     const parsed = playerList.split('\n').map(s => s.trim()).filter(Boolean);
     if (parsed.length < 2 || !socket?.connected) return;
     const id = generateBracketId();
+    leaveBracket(bracketIdRef.current);
+    bracketIdRef.current = id;
     setLoading(true);
     setIsOrganizer(true);
     socket.emit('createSocialBracket', { bracketId: id, name: bracketName, theme, players: parsed });
-  }, [playerList, bracketName, theme, socket]);
+  }, [playerList, bracketName, theme, socket, leaveBracket]);
 
   const handleEliminate = useCallback((playerName) => {
     if (!serverState || !socket?.connected) return;
@@ -215,7 +270,12 @@ export default function SocialBracket({
     }).catch(() => {});
   };
 
-  const newTournament = () => { setServerState(null); setIsOrganizer(false); };
+  const newTournament = () => {
+    leaveBracket(bracketIdRef.current);
+    bracketIdRef.current = null;
+    setServerState(null);
+    setIsOrganizer(false);
+  };
 
   // ─── Derived bracket data ───────────────────────────────────────────────
   const players = serverState?.players || [];
@@ -375,7 +435,7 @@ export default function SocialBracket({
               <div className="sb-section-label" style={{ color: activeTheme.accent, marginBottom: 0 }}>
                 Side Bets
               </div>
-              {!champion && (
+              {!champion && !isOrganizer && (
                 isLoggedIn ? (
                   <button
                     className="sb-sidebet-add-btn"
@@ -389,6 +449,9 @@ export default function SocialBracket({
                 )
               )}
             </div>
+            {!champion && isOrganizer && (
+              <div className="sb-organizer-rule">{BRACKET_ORGANIZER_NO_BET_TEXT}</div>
+            )}
             {(serverState.sideBets || []).length === 0 ? (
               <div className="sb-no-bets">No side bets yet</div>
             ) : (

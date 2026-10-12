@@ -5,6 +5,7 @@ import { reportPlayRefusal, runPlayFlow, isPlayRefusal } from '../../services/pl
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
+import { isValidInviteCode } from '../../utils/tableList';
 
 const VARIANTS = [
   { value: 'texas-holdem', label: "Texas Hold'em" },
@@ -24,10 +25,37 @@ const BLINDS = [
   { sb: 500, bb: 1000 },
 ];
 
+// R2 (C12) — createPrivateTable answers a refusal on 'error' with one of these
+// STABLE codes (besides a C5 play refusal); the message is the server's.
+// invalid_table_config: R1 AUTH-4 validation; private_table_limit / rate_limited:
+// the C12 per-account caps. Any other 'error' frame is not this request's answer.
+const CREATE_PRIVATE_TABLE_REFUSALS = new Set(['invalid_table_config', 'private_table_limit', 'rate_limited']);
+
+const HOME_GAME_INVITE_HELP = 'Friends join from Play → Create / Join Private Table → Join by Code. The table closes 10 minutes after the last player leaves.';
+
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => legacyCopy(text));
+  }
+  return Promise.resolve(legacyCopy(text));
+}
+function legacyCopy(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch { return false; }
+}
+
 export default function CreateTableModal({ onClose, playerName, avatar }) {
   const setScreen = useGameStore((s) => s.setScreen);
   const setPlayerName = useGameStore((s) => s.setPlayerName);
-  const joinTable = useTableStore((s) => s.joinTable);
 
   const [variant, setVariant] = useState('texas-holdem');
   const [blindIdx, setBlindIdx] = useState(1);
@@ -39,11 +67,14 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
   // Join-by-invite-code mode
   const [joinMode, setJoinMode] = useState(false);
   const [inviteInput, setInviteInput] = useState('');
-  const [inviteCode, setInviteCode] = useState(null);
+  // R2 (C12) — the created home game: { tableId, inviteCode, tableName }.
+  // Shown with Copy / Share BEFORE the host sits (the code used to be stored
+  // and never displayed: the modal jumped straight to the table).
+  const [created, setCreated] = useState(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState(null);
   const [creating, setCreating] = useState(false);
-  // Join-by-code in flight (waiting for the server to seat us or refuse).
+  // A join by code (the host's own seat too) in flight.
   const [joiningByCode, setJoiningByCode] = useState(false);
 
   const { sb, bb } = BLINDS[blindIdx];
@@ -81,27 +112,17 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
     socket.off(event, fn);
   }
 
-  // `${tableId}:${seat}` when the TABLE store's gameState shows us seated,
-  // else null. (The join-by-code watcher used to read
-  // useGameStore.getState().gameState — gameState lives in useTableStore, so
-  // that was always undefined and the watcher could never confirm a join: it
-  // timed out after 10s even on success.)
+  // `${tableId}:${seat}` when the TABLE store's gameState shows us seated, else null.
   const seatSig = (gs) =>
     (gs?.yourSeat >= 0 && gs?.seats?.[gs.yourSeat]?.playerName)
       ? `${gs.tableId ?? '?'}:${gs.yourSeat}`
       : null;
 
   /**
-   * 2026-10-07 — emit a join and switch to the table screen ONLY once the
-   * server confirms it (our fresh seat shows up in the table store). A
-   * refusal (suspended / no account) or any other join error keeps the player
-   * here: refusals go to the shared PlayRefusalNotice, other errors to this
-   * modal's error line. Previously both flows called setScreen('table')
-   * immediately (create) or could never confirm (join by code), so a refused
-   * player was dropped onto an empty table.
-   *
-   * App.jsx's gameState handler merges into the table store before this
-   * later-registered listener fires, so getState() here is up to date.
+   * Emit a join and switch to the table screen ONLY once the server confirms
+   * it (our fresh seat shows up in the table store). A refusal (suspended / no
+   * account) or any other join error keeps the player here: refusals go to the
+   * shared PlayRefusalNotice, other errors to this modal's error line.
    */
   function joinAndConfirm(socket, { errorEvent, emitJoin, expectTableId, onSeated, onFailed }) {
     const fromSig = seatSig(useTableStore.getState().gameState);
@@ -130,37 +151,10 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
     }
     attach(socket, errorEvent, onJoinFailed);
     attach(socket, 'gameState', onGameState);
-    // Watchdog: if no seat / error arrives, don't leave the listeners dangling
-    // or the user stuck — surface a retry message.
     timeoutId = setTimeout(() => {
       finish(() => onFailed('Server didn\'t respond in time. Check your connection and try again.'));
     }, 10000);
     emitJoin();
-  }
-
-  // Join the table we just created, as its host (seat 0). Re-runnable: the
-  // play-refusal replay (services/playRefusal.js) calls it again once after
-  // silently re-authenticating a signed-in tab that was refused login_required.
-  function joinCreatedTable(tableId) {
-    if (!mountedRef.current) return;
-    const socket = getSocket();
-    if (!socket?.connected) { setError('Not connected to server.'); setCreating(false); return; }
-    setCreating(true);
-    setError(null);
-    runPlayFlow(() => joinCreatedTable(tableId), () => joinAndConfirm(socket, {
-      errorEvent: 'error',
-      expectTableId: tableId,
-      emitJoin: () => joinTable(tableId, playerName, 0, bb * 100, avatar),
-      onSeated: () => {
-        setCreating(false);
-        if (playerName) setPlayerName(playerName);
-        setScreen('table');
-      },
-      onFailed: (msg) => {
-        setCreating(false);
-        setError(msg);
-      },
-    }));
   }
 
   function handleCreate() {
@@ -168,14 +162,12 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
     createTable();
   }
 
-  // 2026-10-09 (decision D3) — createPrivateTable is play-gated server-side
-  // and, having no failure event of its own, refuses on 'error' {message,
-  // code}. This used to wait for privateTableCreated only, so a refused
-  // (suspended / no account) host sat on "Creating…" forever. Now a C5
-  // refusal ends "Creating…" and goes to the shared PlayRefusalNotice (with
+  // createPrivateTable is play-gated server-side and refuses on 'error'
+  // {message, code}: a C5 refusal goes to the shared PlayRefusalNotice (with
   // Sign In / the silent re-auth + one replay of THIS flow for login_required
-  // on a signed-in tab), and a watchdog ends it if nothing answers.
-  // Re-runnable for that replay.
+  // on a signed-in tab); a config / limit refusal (CREATE_PRIVATE_TABLE_REFUSALS)
+  // ends "Creating…" with the server's sentence; a watchdog ends it if nothing
+  // answers. Re-runnable for that replay.
   function createTable() {
     if (!mountedRef.current) return;
     setCreating(true);
@@ -200,18 +192,23 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
       if (settled) return;
       finish();
       if (!mountedRef.current) return;
-      setInviteCode(code);
-      // Auto-join as creator (seat 0, host) — the table screen opens only
-      // once the server confirms the seat (joinAndConfirm).
-      joinCreatedTable(tableId);
+      setCreating(false);
+      setCreated({ tableId, inviteCode: String(code || '').toUpperCase(), tableName: tableName.trim() });
     }
-    // The handler emits nothing on 'error' but its play refusal, so only a
-    // C5 frame is taken as this request's answer.
     function onCreateRefused(payload) {
-      if (settled || !isPlayRefusal(payload)) return;
+      if (settled) return;
+      if (isPlayRefusal(payload)) {
+        finish();
+        reportPlayRefusal(payload);
+        if (mountedRef.current) setCreating(false);
+        return;
+      }
+      const code = typeof payload?.code === 'string' ? payload.code : '';
+      if (!CREATE_PRIVATE_TABLE_REFUSALS.has(code)) return;
       finish();
-      reportPlayRefusal(payload);
-      if (mountedRef.current) setCreating(false);
+      if (!mountedRef.current) return;
+      setCreating(false);
+      setError(payload?.message || 'Could not create the table — check its settings.');
     }
     attach(socket, 'privateTableCreated', onCreated);
     attach(socket, 'error', onCreateRefused);
@@ -238,28 +235,28 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
 
   function handleJoinByCode() {
     const code = inviteInput.trim().toUpperCase();
-    if (code.length < 8) { setError('Invite code must be 8 characters.'); return; }
+    if (!isValidInviteCode(code)) { setError('An invite code is 8 characters: the numbers 0-9 and the letters A-F.'); return; }
     joinByCode(code);
   }
 
-  // 2026-07-06 audit P2 — settling on ANY gameState broadcast was wrong: a
-  // routine broadcast from a table the user is spectating would falsely
-  // confirm the join and jump to the WRONG table. joinAndConfirm correlates on
-  // OUR fresh seat instead. Re-runnable for the play-refusal replay (see
-  // joinCreatedTable). A play refusal (suspended / no account) is shown
-  // verbatim by the shared PlayRefusalNotice, not repeated in this modal.
-  function joinByCode(code) {
+  // A private table is entered ONLY through its invite code (R2 C1 / C12 —
+  // poker-server refuses joinTable on a private table, the host's own too), so
+  // the host takes his seat the same way his friends do. Correlates on OUR
+  // fresh seat (a routine broadcast from a watched table never confirms it).
+  // Re-runnable for the play-refusal replay.
+  function joinByCode(code, { buyIn = 0, expectTableId = null } = {}) {
     if (!mountedRef.current) return;
     setError(null);
     const socket = getSocket();
     if (!socket?.connected) { setError('Not connected.'); return; }
     setJoiningByCode(true);
-    runPlayFlow(() => joinByCode(code), () => joinAndConfirm(socket, {
+    runPlayFlow(() => joinByCode(code, { buyIn, expectTableId }), () => joinAndConfirm(socket, {
       errorEvent: 'joinError',
+      expectTableId,
       emitJoin: () => socket.emit('joinByInviteCode', {
         inviteCode: code,
         playerName,
-        buyIn: 0,
+        buyIn,
         avatar,
       }),
       onSeated: () => {
@@ -274,6 +271,24 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
     }));
   }
 
+  const handleCopyCode = () => {
+    if (!created?.inviteCode) return;
+    copyText(created.inviteCode).then((ok) => {
+      if (!mountedRef.current) return;
+      if (ok) { setCopied(true); setTimeout(() => { if (mountedRef.current) setCopied(false); }, 2000); }
+      else setError(`Copy failed — your code is ${created.inviteCode}`);
+    });
+  };
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  const handleShareCode = () => {
+    if (!created?.inviteCode || !canShare) return;
+    navigator.share({
+      title: 'American Pub Poker home game',
+      text: `Join my American Pub Poker home game "${created.tableName}" with invite code ${created.inviteCode}`,
+      url: 'https://americanpubpoker.online/',
+    }).catch(() => { /* cancelled */ });
+  };
+
   return createPortal(
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1300,
@@ -281,123 +296,141 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '16px',
     }} onClick={onClose}>
-      <div style={{
-        background: 'linear-gradient(160deg, #0d0d28, #12103a)',
-        border: '1px solid rgba(179,136,255,0.3)',
+      <div className="create-table-modal-card" style={{
+        background: 'linear-gradient(160deg, #0d1a3d, #0a1430)',
+        border: '1px solid rgba(255,210,74,0.35)',
         borderRadius: '16px',
         width: 'min(480px, 100%)',
-        // 2026-07-05 mobile audit fix: the card had no height cap, so on short
-        // screens (landscape phones / short portrait) its content clipped off the
-        // top and bottom with no way to scroll. Cap to the dynamic viewport height
-        // and scroll internally.
         maxHeight: '90dvh',
         overflowY: 'auto',
-        padding: '24px',
+        padding: '20px',
+        boxSizing: 'border-box',
         boxShadow: '0 24px 64px rgba(0,0,0,0.7)',
       }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h2 style={{ margin: 0, color: '#E0E0E0', fontSize: '1.1rem' }}>Private Home Game</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#888', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: '#9fb4d8', fontSize: '1.2rem', cursor: 'pointer', minWidth: 44, minHeight: 44 }}>✕</button>
         </div>
 
-        {/* Tab: Create / Join */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-          {['Create Table', 'Join by Code'].map((label, i) => (
-            <button key={i} onClick={() => { setJoinMode(i === 1); setError(null); }} style={{
-              flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid',
-              borderColor: joinMode === (i === 1) ? '#B388FF' : 'rgba(255,255,255,0.1)',
-              background: joinMode === (i === 1) ? 'rgba(179,136,255,0.15)' : 'rgba(255,255,255,0.04)',
-              color: joinMode === (i === 1) ? '#B388FF' : '#8888AA',
-              fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer',
-            }}>{label}</button>
-          ))}
-        </div>
-
-        {!joinMode ? (
-          <>
-            {/* Table Name */}
-            <label style={labelStyle}>Table Name</label>
-            <input value={tableName} onChange={(e) => setTableName(e.target.value)} maxLength={40} style={inputStyle} />
-
-            {/* Variant */}
-            <label style={labelStyle}>Game Type</label>
-            <select value={variant} onChange={(e) => setVariant(e.target.value)} style={inputStyle}>
-              {VARIANTS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-            </select>
-
-            {/* Blinds */}
-            <label style={labelStyle}>Blinds</label>
-            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
-              {BLINDS.map((b, i) => (
-                <button key={i} onClick={() => setBlindIdx(i)} style={{
-                  padding: '6px 10px', borderRadius: '6px', border: '1px solid',
-                  borderColor: blindIdx === i ? '#B388FF' : 'rgba(255,255,255,0.1)',
-                  background: blindIdx === i ? 'rgba(179,136,255,0.15)' : 'rgba(255,255,255,0.04)',
-                  color: blindIdx === i ? '#B388FF' : '#8888AA',
-                  fontSize: '0.75rem', cursor: 'pointer',
-                }}>{b.sb}/{b.bb}</button>
-              ))}
+        {created ? (
+          <div className="home-game-created">
+            <div style={{ color: '#cfe0ff', fontSize: '0.9rem', marginBottom: 10 }}>
+              <strong style={{ color: '#ffd24a' }}>{created.tableName || 'Your home game'}</strong> is ready. Share this invite code:
             </div>
-
-            {/* Max Seats */}
-            <label style={labelStyle}>Max Seats: {maxSeats}</label>
-            <input type="range" min={2} max={9} value={maxSeats} onChange={(e) => setMaxSeats(+e.target.value)}
-              style={{ width: '100%', marginBottom: '12px', accentColor: '#B388FF' }} />
-
-            {/* Options */}
-            {/* 2026-07-05 audit P3 fix: Straddle is not implemented server-side (the
-                create handler drops the flag with only a server-side warning), so it
-                is disabled + marked "soon" rather than silently toggling a no-op that
-                a host would believe is active. Re-enable when the server supports it. */}
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-              {[
-                { label: 'Straddle', val: straddle, set: setStraddle, disabled: true },
-                { label: 'Bomb Pot', val: bombPot, set: setBombPot },
-              ].map(({ label, val, set, disabled }) => (
-                <button key={label} disabled={disabled} onClick={() => { if (!disabled) set(!val); }}
-                  title={disabled ? 'Straddle isn’t available yet' : undefined}
-                  style={{
-                    padding: '6px 12px', borderRadius: '6px', border: '1px solid',
-                    borderColor: val ? '#4ADE80' : 'rgba(255,255,255,0.1)',
-                    background: val ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.04)',
-                    color: val ? '#4ADE80' : '#8888AA',
-                    fontSize: '0.78rem', cursor: disabled ? 'not-allowed' : 'pointer',
-                    opacity: disabled ? 0.5 : 1,
-                  }}>{val ? '✓ ' : ''}{label}{disabled ? ' (soon)' : ''}</button>
-              ))}
-            </div>
-
-            {error && <div className="create-table-error" role="alert" style={errorStyle}>{error}</div>}
-
-            <button onClick={handleCreate} disabled={creating || !tableName.trim()} style={{
-              width: '100%', padding: '12px', borderRadius: '10px',
-              background: 'linear-gradient(135deg, #B388FF, #7C3AED)',
-              border: 'none', color: '#fff', fontSize: '0.95rem', fontWeight: 700,
-              cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.7 : 1,
+            <div className="home-game-invite-code" aria-label={`Invite code ${created.inviteCode}`} style={{
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 'clamp(1.5rem, 8vw, 2rem)', fontWeight: 800,
+              letterSpacing: '0.25em', textAlign: 'center', padding: '14px 8px', borderRadius: 12, marginBottom: 10,
+              background: 'rgba(255,210,74,0.08)', border: '1px dashed rgba(255,210,74,0.6)', color: '#ffd24a', userSelect: 'all',
             }}>
-              {creating ? 'Creating…' : 'Create & Join Table'}
+              {created.inviteCode}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <button className="home-game-copy-code" onClick={handleCopyCode} style={secondaryBtn}>{copied ? '✓ Copied' : 'Copy code'}</button>
+              {canShare && <button onClick={handleShareCode} style={secondaryBtn}>Share…</button>}
+            </div>
+            <div style={{ color: '#9fb4d8', fontSize: '0.78rem', lineHeight: 1.45, marginBottom: 14 }}>{HOME_GAME_INVITE_HELP}</div>
+            {error && <div className="create-table-error" role="alert" style={errorStyle}>{error}</div>}
+            <button
+              onClick={() => joinByCode(created.inviteCode, { buyIn: bb * 100, expectTableId: created.tableId })}
+              disabled={joiningByCode}
+              style={{ ...primaryBtn, opacity: joiningByCode ? 0.7 : 1, cursor: joiningByCode ? 'default' : 'pointer' }}
+            >
+              {joiningByCode ? 'Taking your seat…' : 'Take your seat'}
             </button>
-          </>
+          </div>
         ) : (
           <>
-            <label style={labelStyle}>Invite Code (8 characters)</label>
-            <input
-              value={inviteInput}
-              onChange={(e) => setInviteInput(e.target.value.toUpperCase())}
-              maxLength={8}
-              placeholder="e.g. A1B2C3D4"
-              style={{ ...inputStyle, letterSpacing: '4px', textTransform: 'uppercase', fontWeight: 700 }}
-            />
-            {error && <div className="create-table-error" role="alert" style={errorStyle}>{error}</div>}
-            <button onClick={handleJoinByCode} disabled={inviteInput.trim().length < 8 || joiningByCode} style={{
-              width: '100%', padding: '12px', borderRadius: '10px',
-              background: 'linear-gradient(135deg, #22C55E, #4ADE80)',
-              border: 'none', color: '#0a1a0a', fontSize: '0.95rem', fontWeight: 700,
-              cursor: inviteInput.trim().length < 8 || joiningByCode ? 'default' : 'pointer',
-              opacity: inviteInput.trim().length < 8 ? 0.5 : (joiningByCode ? 0.7 : 1),
-            }}>
-              {joiningByCode ? 'Joining…' : 'Join Table'}
-            </button>
+            {/* Tab: Create / Join */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              {['Create Table', 'Join by Code'].map((label, i) => (
+                <button key={i} onClick={() => { setJoinMode(i === 1); setError(null); }} style={{
+                  flex: 1, padding: '10px 8px', minHeight: 44, borderRadius: '8px', border: '1px solid',
+                  borderColor: joinMode === (i === 1) ? '#ffd24a' : 'rgba(255,255,255,0.1)',
+                  background: joinMode === (i === 1) ? 'rgba(255,210,74,0.12)' : 'rgba(255,255,255,0.04)',
+                  color: joinMode === (i === 1) ? '#ffd24a' : '#9fb4d8',
+                  fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer',
+                }}>{label}</button>
+              ))}
+            </div>
+
+            {!joinMode ? (
+              <>
+                <label style={labelStyle}>Table Name</label>
+                <input value={tableName} onChange={(e) => setTableName(e.target.value)} maxLength={40} style={inputStyle} />
+
+                <label style={labelStyle}>Game Type</label>
+                <select value={variant} onChange={(e) => setVariant(e.target.value)} style={inputStyle}>
+                  {VARIANTS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+                </select>
+
+                <label style={labelStyle}>Blinds</label>
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                  {BLINDS.map((b, i) => (
+                    <button key={i} onClick={() => setBlindIdx(i)} style={{
+                      padding: '8px 10px', minHeight: 38, borderRadius: '6px', border: '1px solid',
+                      borderColor: blindIdx === i ? '#ffd24a' : 'rgba(255,255,255,0.1)',
+                      background: blindIdx === i ? 'rgba(255,210,74,0.12)' : 'rgba(255,255,255,0.04)',
+                      color: blindIdx === i ? '#ffd24a' : '#9fb4d8',
+                      fontSize: '0.78rem', cursor: 'pointer',
+                    }}>{b.sb}/{b.bb}</button>
+                  ))}
+                </div>
+
+                {/* Max Seats — honoured by the server (R2 C12): no seat beyond it can be taken. */}
+                <label style={labelStyle}>Max Seats: {maxSeats}</label>
+                <input type="range" min={2} max={9} value={maxSeats} onChange={(e) => setMaxSeats(+e.target.value)}
+                  style={{ width: '100%', marginBottom: '12px', accentColor: '#ffd24a' }} />
+
+                {/* Straddle is not implemented server-side (the create handler
+                    drops the flag), so it is disabled + marked "soon". */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                  {[
+                    { label: 'Straddle', val: straddle, set: setStraddle, disabled: true },
+                    { label: 'Bomb Pot', val: bombPot, set: setBombPot },
+                  ].map(({ label, val, set, disabled }) => (
+                    <button key={label} disabled={disabled} onClick={() => { if (!disabled) set(!val); }}
+                      title={disabled ? 'Straddle isn’t available yet' : undefined}
+                      style={{
+                        padding: '8px 12px', minHeight: 38, borderRadius: '6px', border: '1px solid',
+                        borderColor: val ? '#ffd24a' : 'rgba(255,255,255,0.1)',
+                        background: val ? 'rgba(255,210,74,0.12)' : 'rgba(255,255,255,0.04)',
+                        color: val ? '#ffd24a' : '#9fb4d8',
+                        fontSize: '0.78rem', cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: disabled ? 0.5 : 1,
+                      }}>{val ? '✓ ' : ''}{label}{disabled ? ' (soon)' : ''}</button>
+                  ))}
+                </div>
+
+                {error && <div className="create-table-error" role="alert" style={errorStyle}>{error}</div>}
+
+                <button onClick={handleCreate} disabled={creating || !tableName.trim()} style={{ ...primaryBtn, cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.7 : 1 }}>
+                  {creating ? 'Creating…' : 'Create Home Game'}
+                </button>
+              </>
+            ) : (
+              <>
+                <label style={labelStyle}>Invite Code (8 characters)</label>
+                <input
+                  value={inviteInput}
+                  onChange={(e) => setInviteInput(e.target.value.toUpperCase().replace(/[^0-9A-F]/g, ''))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleJoinByCode(); }}
+                  maxLength={8}
+                  placeholder="e.g. A1B2C3D4"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  style={{ ...inputStyle, letterSpacing: '4px', textTransform: 'uppercase', fontWeight: 700 }}
+                />
+                {error && <div className="create-table-error" role="alert" style={errorStyle}>{error}</div>}
+                <button onClick={handleJoinByCode} disabled={inviteInput.trim().length < 8 || joiningByCode} style={{
+                  ...primaryBtn,
+                  cursor: inviteInput.trim().length < 8 || joiningByCode ? 'default' : 'pointer',
+                  opacity: inviteInput.trim().length < 8 ? 0.5 : (joiningByCode ? 0.7 : 1),
+                }}>
+                  {joiningByCode ? 'Joining…' : 'Join Table'}
+                </button>
+              </>
+            )}
           </>
         )}
       </div>
@@ -406,7 +439,9 @@ export default function CreateTableModal({ onClose, playerName, avatar }) {
   );
 }
 
-// 2026-10-07 — join / create errors in blue + gold, not red (owner preference).
+// Join / create errors in blue + gold, not red (owner preference).
 const errorStyle = { color: '#ffd24a', background: 'rgba(12,28,72,0.85)', border: '1px solid rgba(255,210,74,0.45)', borderRadius: '8px', padding: '8px 10px', fontSize: '0.78rem', lineHeight: 1.4, marginBottom: '10px' };
-const labelStyle = { display: 'block', color: '#8888AA', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', letterSpacing: '1px', textTransform: 'uppercase' };
-const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#E0E0E0', padding: '8px 12px', fontSize: '0.88rem', marginBottom: '12px', outline: 'none', boxSizing: 'border-box' };
+const labelStyle = { display: 'block', color: '#9fb4d8', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', letterSpacing: '1px', textTransform: 'uppercase' };
+const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#E0E0E0', padding: '10px 12px', fontSize: '16px', marginBottom: '12px', outline: 'none', boxSizing: 'border-box' };
+const primaryBtn = { width: '100%', minHeight: 46, padding: '12px', borderRadius: '10px', background: 'linear-gradient(135deg, #ffd24a, #e6b422)', border: 'none', color: '#0a1628', fontSize: '0.95rem', fontWeight: 800 };
+const secondaryBtn = { flex: 1, minHeight: 44, padding: '10px', borderRadius: 10, border: '1px solid rgba(120,160,255,0.5)', background: 'rgba(106,186,255,0.1)', color: '#cfe0ff', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' };

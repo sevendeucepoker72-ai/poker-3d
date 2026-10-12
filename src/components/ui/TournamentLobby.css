@@ -188,3 +188,74 @@
   background: rgba(255, 210, 74, 0.12);
   border-color: #ffd24a;
 }
+
+/* R2 (C2, 2026-10-11) — shared registration state, cancellation notices,
+   per-card Live Bracket. Blue + gold, readable on 320-430px phones. */
+.btn-tournament-register { color: #0a1628; }
+.tournament-card--mine { border-color: rgba(255, 210, 74, 0.45); }
+.tournament-entered-badge {
+  margin-left: 6px;
+  font-size: 0.62rem;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  background: rgba(255, 210, 74, 0.16);
+  color: #ffd24a;
+  border: 1px solid rgba(255, 210, 74, 0.45);
+}
+.tournament-live-label {
+  display: block;
+  color: #6abaff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 6px;
+}
+.btn-tournament-bracket {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid rgba(106, 186, 255, 0.55);
+  border-radius: 8px;
+  background: rgba(106, 186, 255, 0.1);
+  color: #cfe0ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-tournament-bracket:hover { background: rgba(106, 186, 255, 0.2); }
+.tournament-cancelled-notice,
+.tournament-register-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  background: linear-gradient(135deg, rgba(12, 28, 72, 0.95), rgba(8, 18, 48, 0.95));
+  border: 1px solid rgba(255, 210, 74, 0.5);
+  color: #ffd24a;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.tournament-register-info { color: #cfe0ff; border-color: rgba(106, 186, 255, 0.5); }
+.tournament-notice-dismiss { opacity: 0.7; font-weight: 400; font-size: 0.75rem; white-space: nowrap; }
+.tournament-status-badge.finished { background: rgba(130, 152, 196, 0.2); color: #9fb4d8; }
+
+@media (max-width: 480px) {
+  .tournament-card { flex-wrap: wrap; padding: 14px; gap: 10px; }
+  .tournament-icon { width: 36px; font-size: 1.5rem; }
+  .tournament-info { min-width: 0; flex: 1 1 calc(100% - 50px); }
+  .tournament-actions { width: 100%; }
+  .tournament-actions .btn-tournament-register,
+  .tournament-actions .btn-tournament-registered,
+  .tournament-actions .btn-tournament-withdraw { width: 100%; min-height: 40px; }
+  .tournament-registered-actions { flex-direction: row; }
+  .tournament-registered-actions > button { flex: 1; }
+}

@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { getSocket } from '../../services/socketService';
 import { reportPlayRefusal, notePlayAttempt } from '../../services/playRefusal';
 import { useGameStore } from '../../store/gameStore';
-import { useTableStore } from '../../store/tableStore';
 import './ClubsPanel.css';
 
 // 2026-10-07 — gated play emits record how to replay themselves, so a
@@ -124,14 +123,41 @@ function ClubCodeDisplay({ code }) {
   );
 }
 
+// Compact chip counts for the narrow Ranks columns (320-360px phones).
+function compactChips(n) {
+  const v = Number(n) || 0;
+  const a = Math.abs(v);
+  if (a >= 1_000_000) return `${(v / 1_000_000).toFixed(a >= 10_000_000 ? 0 : 1)}M`;
+  if (a >= 10_000) return `${(v / 1_000).toFixed(a >= 100_000 ? 0 : 1)}k`;
+  return v.toLocaleString();
+}
+
+// Club tournament status as the server stores it → player words.
+const CLUB_TOURNEY_STATUS = {
+  scheduled: 'Scheduled',
+  registering: 'Registration open',
+  running: 'Running',
+  started: 'Running',
+  completed: 'Finished',
+  finished: 'Finished',
+  cancelled: 'Cancelled',
+};
+
 // ═══════════════════════════════════════════
 // MAIN CLUBS PANEL
 // ═══════════════════════════════════════════
 
-export default function ClubsPanel({ onClose }) {
+/**
+ * R2 (2026-10-11 — CLUBS-5 / APPUI-53): `onJoinTable(label, action)` is the
+ * lobby's normal join watcher (spinner, server refusal shown, the table screen
+ * opens once the seat is confirmed). A club table is joined through
+ * `joinClubTable` (membership-checked; poker-server refuses a plain joinTable
+ * on a club table, C1).
+ */
+export default function ClubsPanel({ onClose, onJoinTable = null }) {
   const playerName = useGameStore((s) => s.playerName);
   const avatar = useGameStore((s) => s.avatar);
-  const joinTable = useTableStore((s) => s.joinTable);
+  const myUserId = useGameStore((s) => s.userId);
 
   // View state
   const [view, setView] = useState('list'); // 'list' | 'detail' | 'create' | 'join'
@@ -209,6 +235,11 @@ export default function ClubsPanel({ onClose }) {
   const [tourneyStartingChips, setTourneyStartingChips] = useState(5000);
   const [tourneyMaxPlayers, setTourneyMaxPlayers] = useState(20);
   const [tourneyScheduledAt, setTourneyScheduledAt] = useState('');
+  // R2 — this account's registration per club tournament: the server's
+  // per-item `registered` flag when it sends one, else its last
+  // clubTournamentRegistered answer ({tournamentId, registered}).
+  const [clubTourneyRegs, setClubTourneyRegs] = useState({});
+  const [clubTourneyPending, setClubTourneyPending] = useState(null); // tournament id
 
   // Challenges
   const [clubChallenges, setClubChallenges] = useState([]);
@@ -364,6 +395,7 @@ export default function ClubsPanel({ onClose }) {
 
     const onError = (data) => {
       setLoading(false);
+      setClubTourneyPending(null);
       // 2026-10-07 — play refusals (suspended / no account) are shown by the
       // shared PlayRefusalNotice; don't repeat them in the panel's error line.
       if (reportPlayRefusal(data)) { setError(''); return; }
@@ -416,12 +448,17 @@ export default function ClubsPanel({ onClose }) {
       }
     };
     const onClubTournamentRegistered = (data) => {
+      setClubTourneyPending(null);
+      if (data && data.tournamentId != null && typeof data.registered === 'boolean') {
+        setClubTourneyRegs((prev) => ({ ...prev, [String(data.tournamentId)]: data.registered }));
+      }
       if (selectedClub) {
         const s = getSocket();
         if (s) s.emit('getClubTournaments', { clubId: selectedClub.id });
       }
     };
     const onClubTournamentStarted = () => {
+      setClubTourneyPending(null);
       if (selectedClub) {
         const s = getSocket();
         if (s) s.emit('getClubTournaments', { clubId: selectedClub.id });
@@ -793,10 +830,15 @@ export default function ClubsPanel({ onClose }) {
   };
 
   const handleJoinClubTable = (table) => {
-    if (table.tableId) {
-      // Join via the regular joinTable with the runtime tableId
-      joinTable(table.tableId, playerName, -1, table.minBuyIn, avatar);
-    }
+    if (!table?.tableId || table.id == null) return;
+    const socket = getSocket();
+    if (!socket) return;
+    // The club table ROW id (membership-checked server-side), never the
+    // runtime table id through joinTable (refused for club tables, C1).
+    const payload = { clubTableId: table.id, playerName, seatIndex: -1, buyIn: table.minBuyIn, avatar };
+    const send = () => emitClubPlay(socket, 'joinClubTable', payload);
+    if (typeof onJoinTable === 'function') onJoinTable(`Joining ${table.tableName || 'the club table'}…`, send);
+    else send();
   };
 
   const handleApproveMember = (userId) => {
@@ -904,12 +946,18 @@ export default function ClubsPanel({ onClose }) {
   const handleRegisterTournament = (tournamentId) => {
     const socket = getSocket();
     if (!socket) return;
+    setClubTourneyPending(tournamentId);
+    // The server answer (clubTournamentRegistered / error) clears it; a lost
+    // one cannot leave the button stuck.
+    setTimeout(() => setClubTourneyPending((cur) => (cur === tournamentId ? null : cur)), 10000);
     emitClubPlay(socket, 'registerClubTournament', { tournamentId });
   };
 
   const handleStartTournament = (tournamentId) => {
     const socket = getSocket();
     if (!socket) return;
+    setClubTourneyPending(tournamentId);
+    setTimeout(() => setClubTourneyPending((cur) => (cur === tournamentId ? null : cur)), 10000);
     socket.emit('startClubTournament', { tournamentId });
   };
 
@@ -1665,27 +1713,45 @@ export default function ClubsPanel({ onClose }) {
           )}
         </div>
         {clubTournaments.length === 0 && <div className="clubs-empty" style={{ padding: '8px 0', fontSize: '0.75rem' }}>No tournaments yet.</div>}
-        {clubTournaments.map((t) => (
-          <div key={t.id} className="club-table-card">
-            <div className="club-table-header">
-              <span className="club-table-name">{t.name}</span>
-              <span className="club-table-variant">{t.status}</span>
+        {clubTournaments.map((t) => {
+          const reg = typeof t.registered === 'boolean' ? t.registered : clubTourneyRegs[String(t.id)];
+          const pend = clubTourneyPending === t.id;
+          const count = Number(t.registeredCount) || 0;
+          const buyIn = Number(t.buyIn) || 0;
+          const starts = t.scheduledAt ? new Date(t.scheduledAt) : null;
+          return (
+            <div key={t.id} className={`club-table-card club-tourney-card${reg === true ? ' club-tourney-card--mine' : ''}`}>
+              <div className="club-table-header">
+                <span className="club-table-name">{t.name}</span>
+                <span className={`club-table-variant club-tourney-status club-tourney-status--${t.status}`}>{CLUB_TOURNEY_STATUS[t.status] || t.status}</span>
+              </div>
+              <div className="club-table-meta">
+                <span>Format: {t.format}</span>
+                <span>Buy-in: {buyIn > 0 ? `${buyIn.toLocaleString()} chips` : 'Free'}</span>
+                <span>{count}/{t.maxPlayers} players</span>
+              </div>
+              <div className="club-table-meta">
+                <span>Stack: {Number(t.startingChips || 0).toLocaleString()}</span>
+                {starts && !Number.isNaN(starts.getTime()) && <span>Starts: {starts.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>}
+              </div>
+              {reg === true && t.status !== 'completed' && t.status !== 'finished' && (
+                <div className="club-tourney-registered">✓ You're registered{t.status === 'running' ? ' — you are seated when your table starts' : ''}</div>
+              )}
+              <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                {t.status === 'registering' && (
+                  <button className="clubs-btn clubs-btn-primary clubs-btn-sm" disabled={pend} onClick={() => handleRegisterTournament(t.id)}>
+                    {pend ? 'Sending…' : (reg === true ? 'Unregister' : (reg === false ? 'Register' : 'Register / Unregister'))}
+                  </button>
+                )}
+                {t.status === 'registering' && isManager && (
+                  <button className="clubs-btn clubs-btn-green clubs-btn-sm" disabled={pend || count < 2} title={count < 2 ? 'At least 2 registered players are needed' : undefined} onClick={() => handleStartTournament(t.id)}>
+                    {count < 2 ? 'Start (needs 2+)' : 'Start Now'}
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="club-table-meta">
-              <span>Format: {t.format}</span>
-              <span>Buy-in: {t.buyIn}</span>
-              <span>{t.registeredCount || 0}/{t.maxPlayers} players</span>
-            </div>
-            <div className="club-table-meta">
-              <span>Chips: {t.startingChips}</span>
-              <span>Starts: {new Date(t.scheduledAt).toLocaleString()}</span>
-            </div>
-            <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-              {t.status === 'registering' && <button className="clubs-btn clubs-btn-primary clubs-btn-sm" onClick={() => handleRegisterTournament(t.id)}>Register / Unregister</button>}
-              {t.status === 'registering' && isManager && <button className="clubs-btn clubs-btn-green clubs-btn-sm" onClick={() => handleStartTournament(t.id)}>Start Now</button>}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Scheduled Tables Section */}
@@ -2036,18 +2102,30 @@ export default function ClubsPanel({ onClose }) {
         <div style={{ marginTop: '16px', borderTop: '1px solid #2a2a3e', paddingTop: '12px' }}>
           <h4 style={{ color: '#e2e2f0', fontSize: '0.85rem', fontWeight: 600, margin: '0 0 8px' }}>Challenges</h4>
           {clubChallenges.filter((c) => c.status === 'pending').length === 0 && <div className="clubs-empty" style={{ padding: '8px 0', fontSize: '0.75rem' }}>No pending challenges.</div>}
-          {clubChallenges.filter((c) => c.status === 'pending').map((ch) => (
-            <div key={ch.id} className="club-member-row club-member-pending" style={{ marginBottom: '4px' }}>
-              <div className="club-member-info">
-                <span className="club-member-name">{ch.challengerName} vs {ch.challengedName}</span>
-                <span style={{ color: '#f59e0b', fontSize: '0.7rem', marginLeft: '6px' }}>Stakes: {ch.stakes}</span>
+          {clubChallenges.filter((c) => c.status === 'pending').map((ch) => {
+            // Only the challenged player can accept / decline (the server
+            // enforces it); everyone else sees who it is waiting for.
+            const forMe = myUserId != null && String(ch.challengedId) === String(myUserId);
+            const byMe = myUserId != null && String(ch.challengerId) === String(myUserId);
+            return (
+              <div key={ch.id} className="club-member-row club-member-pending" style={{ marginBottom: '4px' }}>
+                <div className="club-member-info">
+                  <span className="club-member-name">{ch.challengerName} vs {ch.challengedName}</span>
+                  <span style={{ color: '#ffd24a', fontSize: '0.7rem', marginLeft: '6px' }}>Stakes: {Number(ch.stakes || 0).toLocaleString()} chips</span>
+                </div>
+                <div className="club-member-actions">
+                  {forMe ? (
+                    <>
+                      <button className="clubs-btn clubs-btn-green clubs-btn-sm" onClick={() => handleAcceptChallenge(ch.id)}>Accept</button>
+                      <button className="clubs-btn clubs-btn-sm" onClick={() => handleDeclineChallenge(ch.id)}>Decline</button>
+                    </>
+                  ) : (
+                    <span className="club-challenge-waiting">{byMe ? `Waiting for ${ch.challengedName || 'your opponent'}` : 'Pending'}</span>
+                  )}
+                </div>
               </div>
-              <div className="club-member-actions">
-                <button className="clubs-btn clubs-btn-green clubs-btn-sm" onClick={() => handleAcceptChallenge(ch.id)}>Accept</button>
-                <button className="clubs-btn clubs-btn-danger clubs-btn-sm" onClick={() => handleDeclineChallenge(ch.id)}>Decline</button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {/* Live + finished challenges (was filtered out entirely, so accepted
               matches vanished from the UI). */}
           {clubChallenges.filter((c) => c.status === 'playing' || c.status === 'completed').map((ch) => {
@@ -2443,7 +2521,6 @@ export default function ClubsPanel({ onClose }) {
 
   // ─── RENDER: Leaderboard Tab ───
   const renderLeaderboardTab = () => {
-    const auth = useGameStore.getState();
     return (
       <div className="club-leaderboard-tab">
         {/* Period Tabs */}
@@ -2476,16 +2553,17 @@ export default function ClubsPanel({ onClose }) {
             </div>
             {leaderboard.map((entry, idx) => (
               <div
-                key={entry.id}
-                className={`club-leaderboard-row ${entry.username === playerName ? 'club-lb-highlight' : ''}`}
+                key={entry.id ?? idx}
+                // 'You' by account id, never by a display name two members can share.
+                className={`club-leaderboard-row ${myUserId != null && entry.userId != null && String(entry.userId) === String(myUserId) ? 'club-lb-highlight' : ''}`}
               >
                 <span className="club-lb-rank">
                   {idx === 0 ? '\uD83E\uDD47' : idx === 1 ? '\uD83E\uDD48' : idx === 2 ? '\uD83E\uDD49' : idx + 1}
                 </span>
-                <span className="club-lb-name">{entry.username}</span>
-                <span className="club-lb-stat club-lb-chips">{entry.chipsWon.toLocaleString()}</span>
-                <span className="club-lb-stat">{entry.handsPlayed}</span>
-                <span className="club-lb-stat">{entry.biggestPot.toLocaleString()}</span>
+                <span className="club-lb-name" title={String(entry.username ?? '')}>{String(entry.username ?? 'Player')}</span>
+                <span className="club-lb-stat club-lb-chips" title={Number(entry.chipsWon || 0).toLocaleString()}>{compactChips(entry.chipsWon)}</span>
+                <span className="club-lb-stat">{compactChips(entry.handsPlayed)}</span>
+                <span className="club-lb-stat" title={Number(entry.biggestPot || 0).toLocaleString()}>{compactChips(entry.biggestPot)}</span>
               </div>
             ))}
           </div>

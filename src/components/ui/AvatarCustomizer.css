@@ -233,8 +233,8 @@
 }
 
 .btn-remove-photo:hover {
-  border-color: #ef4444;
-  color: #ef4444;
+  border-color: #ffd24a;
+  color: #ffd24a;
 }
 
 .photo-hint {
@@ -282,5 +282,59 @@
     height: 60vh;
     border-left: none;
     border-top: 1px solid #2A2A4A;
+  }
+}
+
+/* R2 (2026-10-11 — APPUI-25): dynamic-viewport units (100vh is taller than
+   the visible area on phones: the action row sat under the browser bar), a
+   sticky top bar with Done, and the safe area at the bottom. */
+.customizer {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.customizer-topbar {
+  position: sticky;
+  top: -20px;              /* the panel's own top padding */
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -20px -20px 16px;
+  padding: 14px 20px 10px;
+  background: #12122A;
+  border-bottom: 1px solid #1E1E3A;
+}
+
+.customizer-topbar h2 { margin: 0; }
+
+.customizer-done-top {
+  min-height: 40px;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #ffd24a, #e6b422);
+  color: #0a1628;
+  font-weight: 800;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.customizer-actions { flex-wrap: wrap; }
+
+@media (max-width: 768px) {
+  .customizer-preview {
+    height: 40vh;
+    height: 36dvh;
+    flex: none;
+  }
+
+  .customizer-panel {
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
   }
 }

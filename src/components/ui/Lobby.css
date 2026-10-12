@@ -2145,22 +2145,27 @@
 }
 
 /* #8 Sticky Quick Play bar */
+/* R2 (2026-10-11 — APPUI-28): ABOVE the bottom nav at every width, safe area
+   included. The nav is 56px + env(safe-area-inset-bottom) tall everywhere
+   (mobile-overrides); this bar sat at bottom 0 (desktop) / 66px (phones), so on
+   a notched iPhone it covered the top of the nav and a tap on Home / Play /
+   Social started Quick Play. */
 .lobby-sticky-play {
   position: fixed;
-  bottom: 0;
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   left: 0;
   right: 0;
-  padding: 10px 20px;
+  padding: 8px 16px;
   background: rgba(8,6,22,0.92);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border-top: 1px solid rgba(74,222,128,0.2);
+  border-top: 1px solid rgba(255,210,74,0.2);
   z-index: 400;
   animation: sticky-slide-up 0.2s ease-out;
 }
-/* Lift above bottom nav on mobile */
-@media (max-width: 768px) {
-  .lobby-sticky-play { bottom: 66px; }
+/* The home tab keeps room for the bar under its last row while it is up. */
+.lobby-tab-content.lobby-home-layout.lobby-home--sticky-play {
+  padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)) !important;
 }
 @keyframes sticky-slide-up {
   from { transform: translateY(100%); opacity: 0; }
@@ -2557,3 +2562,89 @@
   cursor:pointer; padding:4px; transition:color 0.2s; flex-shrink:0;
 }
 .achievement-toast-close:hover { color:#fff; }
+
+/* ═══════════════════════════════════════════ */
+/* R2 (2026-10-11 — C1 / APPUI-39 / APPUI-41): */
+/* the cash-table list on 320-430px phones     */
+/* ═══════════════════════════════════════════ */
+.table-card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-variant-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #fff;
+  vertical-align: middle;
+}
+.table-card--family-holdem     { border-left: 3px solid rgba(46,158,107,0.7); }
+.table-card--family-omaha      { border-left: 3px solid rgba(201,138,18,0.7); }
+.table-card--family-short-deck { border-left: 3px solid rgba(37,99,235,0.7); }
+.table-card--family-draw       { border-left: 3px solid rgba(124,58,237,0.7); }
+.table-card--family-stud       { border-left: 3px solid rgba(14,143,138,0.7); }
+.table-card--family-other      { border-left: 3px solid rgba(71,85,105,0.8); }
+.table-live-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: #9fb4d8;
+}
+.table-need-chips {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: #ffd24a;
+}
+.table-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.table-watch-btn {
+  padding: 8px 14px;
+  border: 1px solid #9db8ff;
+  border-radius: 8px;
+  background: transparent;
+  color: #9db8ff;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+.table-watch-btn:hover { background: rgba(157,184,255,0.12); }
+.table-list-empty { flex-wrap: wrap; gap: 8px; text-align: center; }
+.table-filters-clear {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,210,74,0.5);
+  background: rgba(255,210,74,0.1);
+  color: #ffd24a;
+  font-weight: 700;
+  cursor: pointer;
+}
+.inline-friends-hint {
+  padding: 4px 8px 8px;
+  font-size: 0.75rem;
+  color: #9fb4d8;
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  .table-card { flex-wrap: wrap; gap: 10px; }
+  .table-card .table-info { flex: 1 1 100%; min-width: 0; }
+  .table-card-actions { width: 100%; }
+  .table-card-actions > button { flex: 1; min-height: 42px; }
+  /* The older phone rule `.table-card .btn-primary { width: 100% }` pushed
+     Watch off the row: Join shares the row now. */
+  .table-card .table-card-actions > .btn-primary { flex: 1 1 0; width: auto; }
+  .table-card .table-card-actions > .table-watch-btn { flex: 0 0 auto; }
+  .table-details { flex-wrap: wrap; gap: 4px 12px; }
+  .table-filters-row .table-search-input { flex: 1 1 100%; min-width: 0; }
+  .table-filters-row .table-filter-select { flex: 1 1 calc(50% - 5px); min-width: 0; }
+  .table-sort-group { flex-wrap: wrap; }
+}

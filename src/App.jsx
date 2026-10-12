@@ -56,8 +56,16 @@ import {
 } from './services/tournamentReturn';
 import {
   isTableLeft, noteIgnoredLeftTableFrame, leftTableMergeBase, clearTableLeft,
-  forgetLeftTable, resetLeftTables,
+  forgetLeftTable, resetLeftTables, markTableLeft,
 } from './services/leftTables';
+// R2 (K3, 2026-10-11) — tournament registrations (C2), the career result on
+// the lobby (APPUI-24), a club challenge that opens its table (APPUI-53), the
+// qualifier result line (C3) and the admin maintenance flag (APPUI-34).
+import { installTournamentRegistry, tournamentCancelledText } from './store/tournamentRegistrationStore';
+import CareerResultNotice from './components/career/CareerResultNotice';
+import { followJoinToTable } from './services/joinFollow';
+import { tournamentCompleteMessage } from './utils/qualifierList';
+import { noteMaintenanceMode, noteServerConnected } from './services/serverFlags';
 import { shouldApplyRemoteSignOut, noteIgnoredRemoteSignOut } from './services/crossTabSignOut';
 import { maybeOfferGuestCarryOver, resetGuestCarryOver } from './services/guestCarryOver';
 import GuestCarryOverPrompt from './components/ui/GuestCarryOverPrompt';
@@ -176,7 +184,10 @@ import PWAInstallPrompt from './components/ui/PWAInstallPrompt';
 import { setOnOpenPlayerNotes } from './components/scene/PokerTable2D';
 import KeyboardShortcuts from './components/ui/KeyboardShortcuts';
 import Tutorial from './components/ui/Tutorial';
-import HandReplayViewer from './components/replay/HandReplayViewer';
+// R2 (APPUI-32) — LAZY: only a ?replay= link renders it from here. A static
+// import put it (and, through the overlay manual chunk, ~95KB gz of shared
+// modules) on the sign-in path as a serial chunk waterfall.
+const HandReplayViewer = lazy(() => import('./components/replay/HandReplayViewer'));
 import { API_BASE } from './config';
 import { checkSubscriptionHealth, isPushSupported, notify } from './hooks/usePushNotifications';
 import './components/ui/Transitions.css';
@@ -760,6 +771,8 @@ function App() {
     // flush handlers registered inside socketService.js.
     const handleConnect = () => {
       useTableStore.getState().setConnected(true);
+      // R2 (APPUI-34) — a new connection: maintenance OFF until announced.
+      try { noteServerConnected(); } catch { /* ignore */ }
 
       // Re-authenticate on every socket connect (initial + reconnect). Railway
       // restarts, brief network drops, and phone-locks all produce a new socket
@@ -952,6 +965,15 @@ function App() {
 
     socket.on('tableList', (tables) => useTableStore.getState().setTables(tables));
 
+    // R2 (C2) — tournament registrations live in ONE store hydrated from the
+    // server's list (registered / entryId per socket), wherever the player is;
+    // a cancelled tournament is said with its refund.
+    const stopTournamentRegistry = installTournamentRegistry(socket, {
+      onCancelled: (notice) => {
+        useProgressStore.getState().addNotification({ type: 'mission', title: 'Tournament cancelled', message: tournamentCancelledText(notice) });
+      },
+    });
+
     // 2026-10-07 — a play refusal (suspended / no account) can answer ANY play
     // path, including ones with no spinner of their own (club-challenge
     // auto-join, joinAdditionalTable, career start, rebuy, tournament register).
@@ -1110,6 +1132,7 @@ function App() {
       if (data?.message) useProgressStore.getState().addNotification({ type: 'mission', message: String(data.message).slice(0, 280) });
     });
     socket.on('maintenanceMode', (data) => {
+      try { noteMaintenanceMode(!!data?.enabled); } catch { /* ignore */ }
       if (data?.enabled) useProgressStore.getState().addNotification({ type: 'mission', message: 'Server maintenance in progress — play may be briefly interrupted.' });
     });
     const handleTableClosed = (data) => {
@@ -1216,10 +1239,17 @@ function App() {
     // Club challenge accepted — the server spawned a heads-up table (stakes =
     // buy-in) and sent this to BOTH participants. Auto-join it here (global, so a
     // participant with the Clubs panel closed still joins). Read live store state.
+    // R2 (APPUI-53): the join is FOLLOWED — the table screen opens once the
+    // server confirms the seat at that table (it never did: the player stayed
+    // in the lobby while the match blinded him out); a refusal is said.
     socket.on('clubChallengeAccepted', (payload) => {
       if (!payload?.tableId) return;
       const gs = useGameStore.getState();
       try {
+        followJoinToTable({
+          tableId: payload.tableId,
+          onFailed: (message) => useProgressStore.getState().addNotification({ type: 'mission', message: `Club challenge: ${message}` }),
+        });
         useTableStore.getState().joinTable(payload.tableId, gs.playerName, -1, payload.stakes, gs.avatar);
       } catch { /* ignore */ }
       useProgressStore.getState().addNotification({ type: 'mission', message: 'Club challenge starting — joining your heads-up table!' });
@@ -1257,13 +1287,43 @@ function App() {
         cur[vk] = entry;
         localStorage.setItem(KEY, JSON.stringify(cur));
       } catch { /* ignore */ }
-      // Show the same result overlay quick games use, and return to the lobby —
-      // the career table is torn down server-side shortly after.
+      // R2 (APPUI-24) — the stage is over and the server tears its table down
+      // shortly after: this tab's session at it ends NOW (no stale "Return to
+      // Table" in the lobby; late frames of that table are ignored — the
+      // server's own cleanup settles the stack, nothing is emitted here). The
+      // result is shown ON THE LOBBY (CareerResultNotice) — the old overlay
+      // lived on the table screen this handler left at once, so it was never
+      // seen.
+      try {
+        const ts = useTableStore.getState();
+        const shown = ts.gameState;
+        const tid = data?.tableId != null ? String(data.tableId)
+          : (shown && shown.tableId != null && Number(shown.yourSeat) >= 0 ? String(shown.tableId) : null);
+        if (tid) {
+          const cached = ts.activeTables && ts.activeTables.get(tid);
+          markTableLeft(tid, (cached && cached.gameState) || shown || null);
+          const updates = {};
+          if (shown && String(shown.tableId) === tid) {
+            Object.assign(updates, { gameState: null, mySeat: -1, isSpectating: false, sittingOut: false, quickGameResult: null });
+          }
+          if (ts.activeTables && ts.activeTables.has(tid)) {
+            const next = new Map(ts.activeTables);
+            next.delete(tid);
+            updates.activeTables = next;
+            if (ts.currentTableId === tid) updates.currentTableId = null;
+          }
+          if (Object.keys(updates).length) useTableStore.setState(updates);
+        }
+      } catch { /* best-effort */ }
       setQuickGameResult({
         type: 'career',
+        won: !!data?.won,
+        venue: Number.isInteger(data?.venue) ? data.venue : null,
+        stage: Number.isInteger(data?.stage) ? data.stage : null,
+        stars: Number(data?.stars) || 0,
         message: data?.won ? '⭐ Career stage cleared!' : 'Career stage failed — try again.',
       });
-      const t = setTimeout(() => { quickGameTimeouts.delete(t); setQuickGameResult(null); }, 5000);
+      const t = setTimeout(() => { quickGameTimeouts.delete(t); setQuickGameResult(null); }, 15000);
       quickGameTimeouts.add(t);
       useGameStore.getState().setScreen?.('lobby');
     });
@@ -1562,7 +1622,9 @@ function App() {
         setQuickGameResult({
           type: 'tournament',
           winner: winner?.playerName || 'Unknown',
-          message: `Tournament Complete! ${winner?.playerName} wins ${winner?.payout?.toLocaleString() || 0} chips!`,
+          // R2 (C3 / TOURNEY-13) — a qualifier pays SEATS: the player's own
+          // place + "won a championship seat" (never "wins 0 chips").
+          message: tournamentCompleteMessage(data, useGameStore.getState().userId),
         });
         const t = setTimeout(() => {
           tournamentTimeouts.delete(t);
@@ -1598,6 +1660,7 @@ function App() {
       socket.off('disconnect', handleDisconnect);
       socket.off('gameState');
       socket.off('tableList');
+      stopTournamentRegistry();
       socket.off('error');
       // Specific handler ref: CreateTableModal / Lobby register their own
       // 'joinError' listeners, which a bare off('joinError') would remove.
@@ -2697,10 +2760,12 @@ function App() {
   // Shared replay link — show viewer without any auth requirement
   if (sharedReplay) {
     return (
-      <HandReplayViewer
-        history={sharedReplay}
-        onClose={() => { window.history.replaceState(null, '', window.location.pathname); window.location.reload(); }}
-      />
+      <Suspense fallback={<ChunkLoader />}>
+        <HandReplayViewer
+          history={sharedReplay}
+          onClose={() => { window.history.replaceState(null, '', window.location.pathname); window.location.reload(); }}
+        />
+      </Suspense>
     );
   }
 
@@ -3070,6 +3135,15 @@ function App() {
       <Suspense fallback={<ChunkLoader />}>
         <Lobby activeTab={activeNavTab} onTabChange={handleNavTabChange} pwaAction={pwaAction} onPwaActionConsumed={consumePwaAction} waitlistContext={waitlistContext} />
       </Suspense>
+      {/* R2 (APPUI-24) — a Career Mode stage result lands HERE (the career
+          table is gone by now). */}
+      {quickGameResult?.type === 'career' && (
+        <CareerResultNotice
+          result={quickGameResult}
+          onClose={() => setQuickGameResult(null)}
+          onOpenCareer={() => { setQuickGameResult(null); useGameStore.getState().setScreen('career'); }}
+        />
+      )}
       {/* 2026-10-07 — server play refusals (suspended / no account) from any
           lobby path, shown verbatim with the sign-in action when needed. */}
       <PlayRefusalNotice />

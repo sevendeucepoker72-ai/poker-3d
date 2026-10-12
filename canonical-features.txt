@@ -849,3 +849,84 @@ Leaving forfeits your Spin & Go entry
 Server is restarting
 hud-tourney-start-offer
 Go to your tournament seat
+# 2026-10-11 R2 K3 (C1 / APPUI-39 / APPUI-41 / TOURNEY-11 client): the cash-table list renders the
+#     server's seats / phase / pot / kind (utils/tableList); the seat picker shows real occupancy, is
+#     responsive (no 440px canvas) and is skipped (the server picks) when the list has no seat
+#     positions; variant chips by game family; contiguous stakes / seat bands; Best Match only ever a
+#     joinable table; a table_not_joinable refusal is said and refreshes the list.
+seat-picker-seat--open
+Any open seat
+table-card--family-
+Mixed & Other
+Micro (BB under 20)
+That table is not open to join from the lobby any more.
+was taken just before you
+#     APPUI-28: the sticky Quick Play bar sits above the bottom nav (safe area included).
+lobby-home--sticky-play
+# 2026-10-11 R2 K3 (C2 / TOURNEY-5 / TOURNEY-7 / APPUI-19): one shared tournament registration store
+#     hydrated from the server list (registered / entryId), per account, survives remounts + reloads;
+#     tournamentCancelled shown with its refund; already_registered handled.
+poker_tourney_reg_v1
+tournamentCancelled
+tournament-cancelled-notice
+already_registered
+#     APPUI-42: Live Bracket per tournament id from its card; "No tournament running" when none.
+btn-tournament-bracket
+No tournament running
+#     TOURNEY-15 / APPUI-18: TD Suite for admins only; the wizard waits for the server's answer and
+#     shows refusals; rebuys / add-on / late registration shown disabled (not supported).
+lobby-td-suite-btn
+custom tournaments are freezeouts.
+#     APPUI-24: a Career Mode stage result is shown on the lobby; its table session ends on
+#     careerGameComplete. APPUI-53: a club challenge auto-join is followed to the table screen.
+career-result-notice
+try again from the Clubs panel.
+
+# 2026-10-11 R2 K3 (C3 / TOURNEY-2 / TOURNEY-13 / APPUI-44 / AUTH-9 client): the qualifier lobby +
+#     dashboard render ONLY the server's list (never a built-in default), never assume signup open,
+#     show the real schedule / signup window / late registration, the server's structure and
+#     seatsForTop, status counts; "registered" from the server (Withdraw after a reload); the
+#     player's own place + "won a championship seat" (never "wins 0 chips").
+qualifier-status-counts
+Signup times have not been announced yet
+you won a championship seat
+poker_qual_reg_v1
+Qualifier complete!
+
+# 2026-10-11 R2 K3 (C4 / APPUI-22 / TOURNEY-8 client): sell only in a tournament from
+#     myStakeableTournaments (no free text); createStake { tournamentId, percent, pricePerPercent };
+#     escrow / refund states shown; the Buy control is hidden for the account's OWN offers by account
+#     (never by display name).
+getStakeableTournaments
+myStakeableTournaments
+pricePerPercent
+staking-mine-badge
+held in escrow until the tournament
+# 2026-10-11 R2 K3 (C12 / APPUI-20): a private table's invite code is shown with Copy / Share before
+#     the host sits; the host joins by invite code; Create settles on invalid_table_config (and
+#     private_table_limit / rate_limited).
+home-game-invite-code
+invalid_table_config
+private_table_limit
+Take your seat
+
+# 2026-10-11 R2 K3 (CLUBS-5 / APPUI-53 / APPUI-47 / APPUI-43): club Join Table goes through
+#     joinClubTable and the lobby's join watcher; club Ranks readable at 320-360px ('you' by account
+#     id); club tournament registration state; a challenge is accepted only by the challenged player;
+#     the lobby friend invite only from a seat (with its table id); friend error codes; the social
+#     bracket follows ONE bracket id, leaves it on close, scrubs ?bracket=, and states the
+#     organizer-can't-bet rule.
+joinClubTable
+club-tourney-registered
+club-challenge-waiting
+Sit at a table to invite online friends to it.
+friend_name_ambiguous
+leaveSocialBracket
+sb-organizer-rule
+
+# 2026-10-11 R2 K3 (APPUI-24 / APPUI-25 / APPUI-34): Career Mode is its own dvh scroll container;
+#     the avatar customizer's Done returns to the lobby (plus a sticky Done), its mobile overrides
+#     target the real classes, Reset is synced; the admin maintenance toggle follows the server, the
+#     user drawer shows only fields the server sends, table blinds come from `blinds`.
+customizer-done-top
+admin-maintenance-toggle

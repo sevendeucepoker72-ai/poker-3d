@@ -169,7 +169,12 @@ export default function AvatarCustomizer() {
 
       {/* Controls Panel */}
       <div className="customizer-panel">
-        <h2>Create Your Avatar</h2>
+        {/* R2 (APPUI-25) — a way back that is always on screen (the panel
+            scrolls; the action row is at its very end). */}
+        <div className="customizer-topbar">
+          <h2>Create Your Avatar</h2>
+          <button type="button" className="customizer-done-top" onClick={() => setScreen('lobby')}>Done</button>
+        </div>
 
         {/* Upgrade #1: Photo upload — moderated pipeline (pending until approved) */}
         <Section title="Seat Photo">
@@ -403,8 +408,10 @@ export default function AvatarCustomizer() {
               </button>
             </>
           ) : (
-            <button className="btn-primary" onClick={() => setScreen('table')}>
-              Join Table
+            // R2 (APPUI-25) — "Join Table" opened an EMPTY table screen (no
+            // seat): Done saves (every change is already synced) and goes back.
+            <button className="btn-primary customizer-done" onClick={() => setScreen('lobby')}>
+              Done
             </button>
           )}
         </div>

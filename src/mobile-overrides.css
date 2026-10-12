@@ -923,19 +923,31 @@ input, textarea {
 
 /* ================================================================
    AVATAR CUSTOMIZER — scrollable on mobile
+   R2 (2026-10-11, APPUI-25): these rules named .avatar-customizer /
+   .avatar-customizer-panels / .avatar-preview-panel, classes the customizer
+   never had (it renders .customizer / .customizer-preview / .customizer-panel),
+   so none of them applied. Same intent, real selectors: the visible viewport,
+   preview on top, the controls panel scrolls with room for the home bar.
    ================================================================ */
-.avatar-customizer {
-  height: 100dvh !important;
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
-}
-.avatar-customizer-panels {
-  flex-direction: column !important;
-  height: auto !important;
-}
-.avatar-preview-panel {
-  height: 200px !important;
+@media (max-width: 768px) {
+  .customizer {
+    height: 100dvh !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+  .customizer-preview {
+    height: 36dvh !important;
+    flex: none !important;
+  }
+  .customizer-panel {
+    width: 100% !important;
+    flex: 1 1 auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+  }
 }
 
 /* ================================================================

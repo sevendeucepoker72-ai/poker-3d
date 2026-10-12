@@ -72,7 +72,7 @@
     #6ABAFF 20%,
     #ffd24a 40%,
     #ffd24a 60%,
-    #EF4444 80%,
+    #34D399 80%,
     #ffd24a 100%
   );
   opacity: 0.2;
@@ -299,4 +299,42 @@
     flex-wrap: wrap;
     gap: 4px;
   }
+}
+
+/* R2 (2026-10-11 — APPUI-24) — Career Mode SCROLLS on phones. html / body /
+   #root are 100dvh with overflow hidden (mobile-overrides), and this screen
+   was a min-height:100vh block with no overflow of its own: everything below
+   the first two venues was unreachable. It is its own scroll container now,
+   sized to the dynamic viewport, with room for the home indicator. */
+.career-mode {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  padding-top: calc(16px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+}
+
+.career-header {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.btn-stage-play {
+  min-height: 40px;
+  min-width: 72px;
+}
+
+@media (max-width: 600px) {
+  .career-mode {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .career-header { margin-bottom: 18px; }
+  .career-back { min-height: 40px; }
+  .career-venue { padding: 14px; }
+  .venue-stage { gap: 8px; }
 }

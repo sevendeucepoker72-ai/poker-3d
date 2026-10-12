@@ -656,7 +656,12 @@ export const useGameStore = create((set, get) => ({
     }),
   resetAvatar: () => {
     sessionStorage.removeItem(AVATAR_STORAGE_KEY);
-    set({ avatar: { ...DEFAULT_AVATAR } });
+    const next = { ...DEFAULT_AVATAR, faceShape: { ...DEFAULT_AVATAR.faceShape } };
+    set({ avatar: next });
+    // R2 (APPUI-25) — Reset reaches the server like every other change: it
+    // used to be local only, and the next durableState hydrate brought the
+    // old look back.
+    scheduleAvatarSync(next);
   },
 
   // Table state
