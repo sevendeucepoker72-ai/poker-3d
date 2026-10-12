@@ -91,8 +91,9 @@ function MiniTablePanel({ tableData, isActive, onAction, onLeave }) {
 
   const {
     tableName, pot, currentTurn, mySeatIndex, isMyTurn, callAmount = 0, status,
-    players = [], communityCards = [], heroCards = [], isPrimary,
+    players = [], communityCards = [], heroCards = [], isPrimary, holeCardCount = 2,
   } = tableData;
+  const holeSlots = Math.max(2, Math.min(7, Math.max(Number(holeCardCount) || 2, heroCards?.length || 0)));
 
   if (status && status !== 'playing') {
     return (
@@ -123,15 +124,22 @@ function MiniTablePanel({ tableData, isActive, onAction, onLeave }) {
 
       <PlayerStrip players={players} currentTurn={currentTurn} />
 
-      <div className="mtv-hero-cards">
-        <CardSlot card={heroCards?.[0] || null} large />
-        <CardSlot card={heroCards?.[1] || null} large />
+      {/* R2 (APPUI-21) — every hole card of the variant (Omaha 4-6, Stud up
+          to 7, Draw 5); it always drew exactly two slots. */}
+      <div className={`mtv-hero-cards${holeSlots > 2 ? ' mtv-hero-cards--many' : ''}`}>
+        {Array.from({ length: holeSlots }, (_, i) => (
+          <CardSlot key={i} card={heroCards?.[i] || null} large={holeSlots <= 4} />
+        ))}
       </div>
 
       {isMyTurn && (
         <div className="mtv-action-row">
-          <button className="mtv-btn mtv-btn-fold" onClick={() => onAction?.fold()}>Fold</button>
-          <button className="mtv-btn mtv-btn-call" onClick={() => onAction?.call()}>
+          {callAmount > 0 && (
+            <button className="mtv-btn mtv-btn-fold" onClick={() => onAction?.fold()}>Fold</button>
+          )}
+          {/* R2 (APPUI-21) — nothing to call is a CHECK (a 'call' there was
+              refused by the server). */}
+          <button className="mtv-btn mtv-btn-call" onClick={() => (callAmount > 0 ? onAction?.call() : onAction?.check?.())}>
             {callAmount > 0 ? `Call ${callAmount.toLocaleString()}` : 'Check'}
           </button>
           <button className="mtv-btn mtv-btn-raise" onClick={() => onAction?.raise()}>Raise</button>
@@ -237,6 +245,7 @@ function mapGameStateToPanel(gs, { isPrimary }) {
       .filter(Boolean),
     communityCards: (gs.communityCards || []).map((c) => c?.display || c),
     heroCards: (gs.yourCards || gs.hand || gs.heroCards || []).map((c) => c?.display || c),
+    holeCardCount: Number(gs.holeCardCount) || 2,
     isPrimary,
   };
 }
@@ -308,12 +317,15 @@ export default function MultiTableView({ onClose }) {
   const activeTableName = activePanel?.tableName ?? 'None';
 
   const gridCols = panels.length <= 1 ? 1 : 2;
+  // R2 (APPUI-21) — the keyboard's C is Check when nothing is owed.
+  const activeOwes = (panels[activeSlot]?.callAmount || 0) > 0;
 
   const makeActionHandler = useCallback((idx) => {
     if (idx === 0) {
       return {
         fold: () => sendAction('fold'),
         call: () => sendAction('call'),
+        check: () => sendAction('check'),
         raise: () => sendAction('raise', computeMinRaiseTo(gameState)), // #10: send a valid amount
       };
     }
@@ -322,6 +334,7 @@ export default function MultiTableView({ onClose }) {
     return {
       fold: () => sendMultiTableAction(slot.id, 'fold'),
       call: () => sendMultiTableAction(slot.id, 'call'),
+      check: () => sendMultiTableAction(slot.id, 'check'),
       raise: () => sendMultiTableAction(slot.id, 'raise', computeMinRaiseTo(slot.gameState)), // #10
     };
   }, [sendAction, secondary, gameState]);
@@ -334,13 +347,13 @@ export default function MultiTableView({ onClose }) {
       if (e.key >= '1' && e.key <= '4') { setActiveSlot(Math.min(panels.length - 1, Number(e.key) - 1)); return; }
       if (e.key === 'Escape') { onClose?.(); return; }
       const act = makeActionHandler(activeSlot);
-      if (e.key === 'f' || e.key === 'F') act.fold?.();
-      else if (e.key === 'c' || e.key === 'C') act.call?.();
+      if (e.key === 'f' || e.key === 'F') { if (activeOwes) act.fold?.(); }
+      else if (e.key === 'c' || e.key === 'C') { if (activeOwes) act.call?.(); else act.check?.(); }
       else if (e.key === 'r' || e.key === 'R') act.raise?.();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeSlot, panels.length, makeActionHandler, onClose]);
+  }, [activeSlot, panels.length, activeOwes, makeActionHandler, onClose]);
 
   const handlePick = (t) => {
     setShowAdd(false);

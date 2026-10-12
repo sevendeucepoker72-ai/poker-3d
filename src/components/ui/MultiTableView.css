@@ -460,6 +460,11 @@
   justify-content: center;
   flex-shrink: 0;
 }
+/* R2 (APPUI-21) — 4-7 hole cards (Omaha / Stud / Draw) fit the panel. */
+.mtv-hero-cards--many {
+  gap: 3px;
+  flex-wrap: wrap;
+}
 
 /* Action row */
 

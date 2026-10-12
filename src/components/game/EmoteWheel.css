@@ -139,3 +139,100 @@
   background: #ffd24a;
   transition: width 0.1s linear;
 }
+
+/* ── R2 (C7 / C8) — the emote panel: free emotes, table reactions, the
+   player's own shop emotes and the VIP emotes, as a grid of 48px tiles
+   (the 12-item ring could not hold them; every tile is a real button). */
+.emote-panel {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  width: min(calc(100vw - 24px), 360px);
+  max-height: min(72vh, 520px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 10px 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(16, 40, 96, 0.97), rgba(8, 20, 52, 0.97));
+  border: 1px solid rgba(246, 220, 138, 0.6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  color: #e8eefc;
+}
+.emote-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: #ffd24a;
+  margin-bottom: 6px;
+}
+.emote-panel__close {
+  min-width: 44px;
+  min-height: 44px;
+  margin: -8px -8px -8px 0;
+  border: none;
+  background: transparent;
+  color: #f6dc8a;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.emote-panel__section {
+  margin: 10px 0 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9fb3dc;
+}
+.emote-panel__section--vip { color: #ffd24a; }
+.emote-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 6px;
+}
+.emote-item.emote-item--tile {
+  position: static;
+  width: auto;
+  height: auto;
+  min-height: 52px;
+  padding: 4px 2px;
+  border-radius: 10px;
+  border: 1px solid rgba(246, 220, 138, 0.22);
+  background: rgba(255, 255, 255, 0.05);
+  color: #c9d6f2;
+  font: inherit;
+}
+.emote-item.emote-item--tile:hover,
+.emote-item.emote-item--tile:focus-visible {
+  transform: none;
+  border-color: #ffd24a;
+  background: rgba(120, 160, 255, 0.15);
+}
+.emote-item.emote-item--tile .emote-item-label {
+  color: #9fb3dc;
+  font-size: 0.56rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.emote-item.emote-item--vip {
+  border-color: rgba(255, 210, 74, 0.6);
+  background: linear-gradient(180deg, rgba(255, 210, 74, 0.14), rgba(255, 210, 74, 0.04));
+}
+.emote-note {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.68rem;
+  background: rgba(8, 20, 52, 0.95);
+  border: 1px solid rgba(246, 220, 138, 0.5);
+  color: #f6dc8a;
+  pointer-events: none;
+}

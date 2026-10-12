@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback, Component, lazy, Suspense } from 'react';
 import { useGameStore, clearOtherAccountOidcFromTicketTab } from './store/gameStore';
 import { useTableStore, forgetSitOutPreference } from './store/tableStore';
+import { useTimerStore } from './store/timerStore';
 import { getAuthToken, setAuthToken, clearAuthToken, setOAuthItem, bearerForThisTab } from './services/tokenStorage';
 import { runSocketLogin, isCredentialDead, isDefinitiveLoginFailure } from './services/socketAuth';
 // 2026-10-07 — game suspension + guest play OFF: server play refusals (C5).
@@ -179,6 +180,13 @@ import HandReplayViewer from './components/replay/HandReplayViewer';
 import { API_BASE } from './config';
 import { checkSubscriptionHealth, isPushSupported, notify } from './hooks/usePushNotifications';
 import './components/ui/Transitions.css';
+
+// R2 (S1) — why the server closed the table on screen (`tableClosed.reason`).
+const TABLE_CLOSED_TEXT = {
+  private_table_idle: 'This private table closed after everyone left.',
+  quick_game_over: 'The game is over and its table has closed.',
+  tournament_finished: 'The tournament is over and its table has closed.',
+};
 
 /**
  * Decode a ?replay=... URL param into a history object (returns null on failure).
@@ -810,6 +818,10 @@ function App() {
 
     // Handle both full state and delta patches from the server
     socket.on('gameState', (data) => {
+      // R2 (P3) — the server's clock, for the turn rings + insurance countdown.
+      if (data && typeof data === 'object' && typeof data._serverTs === 'number') {
+        try { useTimerStore.getState().noteServerTs(data._serverTs); } catch { /* ignore */ }
+      }
       const ts = useTableStore.getState();
       let state;
       if (data && typeof data === 'object' && 'full' in data) {
@@ -1100,9 +1112,30 @@ function App() {
     socket.on('maintenanceMode', (data) => {
       if (data?.enabled) useProgressStore.getState().addNotification({ type: 'mission', message: 'Server maintenance in progress — play may be briefly interrupted.' });
     });
+    const handleTableClosed = (data) => {
+      if (!data || data.tableId == null) return;
+      let res = { shown: false };
+      try { res = useTableStore.getState().closeTable(data.tableId) || res; } catch { /* best-effort */ }
+      if (!res.shown) return;
+      useProgressStore.getState().addNotification({
+        type: 'system', title: 'Table closed',
+        message: TABLE_CLOSED_TEXT[data.reason] || 'This table has closed.',
+      });
+      try {
+        const gs = useGameStore.getState();
+        if (gs.screen === 'table' && !useTableStore.getState().gameState) gs.setScreen('lobby');
+      } catch { /* ignore */ }
+    };
     socket.on('tableClosedByAdmin', () => {
       useProgressStore.getState().addNotification({ type: 'mission', message: 'This table was closed by an administrator.' });
     });
+    // R2 (S1) — `tableClosed { tableId, reason }`: the server removed a table
+    // (private_table_idle / quick_game_over / tournament_finished). Whatever
+    // this tab held of it goes (tableStore.closeTable) and, when it was the
+    // table on screen with no other seat to show, back to the lobby with a
+    // short line — never a frozen table. (A quick game's / tournament's result
+    // overlay is app-level and stays up over the lobby.)
+    socket.on('tableClosed', handleTableClosed);
     socket.on('kickedByAdmin', (data) => {
       // The server disconnects this socket right after; just surface why.
       useProgressStore.getState().addNotification({ type: 'mission', message: data?.reason || 'You were removed by an administrator.' });
@@ -1161,6 +1194,11 @@ function App() {
       }
       try { noteTournamentTableMove(toTable, fromTable); } catch { /* best-effort */ }
       if (toTable) { try { clearTableLeft(toTable); } catch { /* ignore */ } }
+      // R2 (TABLEUI-14) — the seat left `fromTable`: its cached entry goes (it
+      // stayed as a phantom tab) and a late frame of it never flashes back.
+      if (fromTable && liveAtFrom && String(fromTable) !== String(toTable)) {
+        try { useTableStore.getState().dropActiveTable(fromTable, { ignore: true }); } catch { /* best-effort */ }
+      }
       if (toTable) { try { useTableStore.getState().switchActiveTable(toTable); } catch { /* new table state arrives via broadcast */ } }
       useProgressStore.getState().addNotification({
         type: 'mission',
@@ -1308,6 +1346,11 @@ function App() {
     const handleQualifierTournamentStarted = (data) => {
       try { noteTournamentSeat({ tournamentId: data?.tournamentId, tableId: data?.tableId, name: 'Qualifier Tournament' }); } catch { /* best-effort */ }
       if (data?.tableId) { try { clearTableLeft(data.tableId); } catch { /* ignore */ } }
+      // R2 (S1) — a LATE entrant was seated in a qualifier already running
+      // (`lateEntry: true`, its table's state follows): take him to the seat.
+      if (data?.lateEntry === true && data?.tableId) {
+        try { useGameStore.getState().setScreen('table'); } catch { /* ignore */ }
+      }
     };
     socket.on('qualifierTournamentStarted', handleQualifierTournamentStarted);
     // Busted (also while away — an absent seat can blind out): the seat is gone.
@@ -1533,7 +1576,10 @@ function App() {
     socket.on('additionalTableJoined', (data) => {
       if (data?.tableId) { try { clearTableLeft(data.tableId); } catch { /* ignore */ } }
       const store = useTableStore.getState();
-      store.updateActiveTable(data.tableId, data.gameState);
+      // R2 (TABLEUI-14) — marked as an EXTRA seat (kept, tabbed, left on Back).
+      store.updateActiveTable(data.tableId, data.gameState, { extra: true });
+      // (`store` is the snapshot from before the join: single-table mode →
+      // the view moves to the new table, as before.)
       if (!store.currentTableId) {
         store.switchActiveTable(data.tableId);
       }
@@ -1593,6 +1639,7 @@ function App() {
       socket.off('themeEquipped');
       socket.off('tournamentStarted');
       socket.off('qualifierTournamentStarted', handleQualifierTournamentStarted);
+      socket.off('tableClosed', handleTableClosed);
       socket.off('eliminatedToSpectator', handleEliminatedToSpectator);
       socket.off('tournamentSeatKept', handleTournamentSeatKept);
       socket.off(TOURNAMENT_SEAT_TAKEN_OVER_EVENT, handleTournamentSeatTakenOver);

@@ -181,7 +181,14 @@ export function readInsuranceQuote(gameState) {
   if (handNumber !== toInt(gameState.handNumber)) return null; // a stale quote never shows
   if (cashout <= 0 || equityPct < 0 || equityPct > 100) return null;
   const pot = toInt(q.pot);
-  return { handNumber, cashout, equityPct, pot: pot !== null && pot > 0 ? pot : null };
+  // R2 (Addendum) — when the decision window closes, on the SERVER's clock
+  // (epoch ms); null from a server that does not send it.
+  const expiresAt = toInt(q.expiresAt);
+  return {
+    handNumber, cashout, equityPct,
+    pot: pot !== null && pot > 0 ? pot : null,
+    expiresAt: expiresAt !== null && expiresAt > 0 ? expiresAt : null,
+  };
 }
 
 /** The server's `insuranceAccepted { cashout, equityPct }`, or null. */

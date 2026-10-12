@@ -755,3 +755,97 @@ declineInsurance
 
 # 2026-10-11 R1 client review (R1C-REV-1): Tap to reconnect reuses the SAME socket so every listener keeps working
 forceReconnectSameInstance
+
+# 2026-10-11 .online R2 K1 (table screen, part 1)
+#     TABLEUI-8 / TABLEUI-9: on phones the table (felt + seats) lives BETWEEN the
+#     top bar and the action bar; the board, the felt pot, the hand-strength pill
+#     and the hero's cards + nameplate are placed from the MEASURED action-bar
+#     height and felt rect (useTableGeometry -> CSS vars, TableLayout.css):
+#     landscape = one-row action bar, portrait = two rows (slider + presets /
+#     buttons), a 44px raise-slider touch row, side seats' bets beside the pod.
+table-geometry
+--hud-bar-h
+--felt-w
+poker:felt-measured
+ab-preset-short
+chip-stack--in-
+#     TABLEUI-14: tabs only for 2+ LIVE seats (watched / moved-from / ended
+#     tables are dropped, currentTableId only in multi mode), the picker opens
+#     from Options; TABLEUI-15: a spectator's Sit Here = joinTable(tableId,
+#     seat), Back = stopSpectating with no forfeit confirm.
+hud--no-tabs
+multi-table-tabs-bar
+poker:open-table-picker
+seat-pod__sit-btn--spectator
+hud-spectator-tag
+#     TABLEUI-10: the training panel docks in the Training badge (equity %),
+#     minimizes and closes, never over the top bar or the board.
+training-overlay--open
+hud-training-badge--open
+app_poker_trainingDock
+#     TABLEUI-16 / APPUI-16: the replay follows the record's actionLog (board on
+#     each street change, the pot from the real chip movements, antes
+#     reconciled, the viewer's own cards kept), stacks on phones; "Last hand
+#     replay" in Options (the rail button is hidden on touch screens).
+Antes posted
+viewerHoleCards
+Last hand replay
+#     TABLEUI-17: no `left` animation, box-shadow pulses are steady glows, the
+#     transform-only motions run on the hero's turn only, decorative loops are
+#     off on phones and for reduced motion.
+allin-shimmer-x
+hud-waiting-dot
+#     P3: pot presets are raise-TO totals that include the hero's own bet; the
+#     insurance panel counts down the server's decision window (expiresAt, on
+#     the server clock), sapphire + gold with no red Decline.
+insurance-countdown__text
+
+# 2026-10-11 .online R2 K1 (table screen, part 2): C11 + the S2 engine notes
+#     Straddle only when the server's isFirstActor says so (a pill above the
+#     bar on phones); Bomb Pot only where canBombPot; fast mode is sent only by
+#     the toggle and follows fastModeSet (never on mount); refused actions are
+#     toasts (stable codes), 'Hand already in progress' is silent, the
+#     sit-out-limit stand-up explains itself, the fixed-limit raise cap is
+#     explained; no card backs for a seat not dealt in (hasCards).
+isFirstActor
+canBombPot
+fastModeSet
+straddle_not_allowed
+bomb_pot_not_allowed
+Tap Sit Here on an open seat to play again.
+Raising is capped this round
+
+# 2026-10-11 .online R2 K1 (table screen, part 3): C7 / C8 cosmetics at the table
+#     the viewer's equipped table theme (myTheme) is the felt; every seat's
+#     equipped card back / nameplate frame / title / season badge and the VIP
+#     badge + gold frame (seats[i].cosmetics) are drawn for every id the shop
+#     sells (unknown ids draw the default look); the emote panel adds owned and
+#     VIP emotes to the free set (C5 equipped.emotes / owned / vip).
+Cosmic Nebula
+np-frame np-frame--
+np-vip
+cb-diamond_pattern
+options-theme-swatch--equipped
+emote-panel__grid
+emoteRefused
+vip_champagne
+#     APPUI-45 / 46: the opt-in panels (Predict Winner, Prediction Market, Voice,
+#     GTO) share one dock, under the top bar on phones (never on the action bar
+#     or the hero); Predict Winner lists the dealt-in seats; picks close at the
+#     river and market bets before the flop, as the server rules.
+hud-panel-dock
+Picks close when the river is dealt
+Bets close when the flop is dealt
+
+# 2026-10-11 .online R2 K1 (table screen, part 5): the S1 server notes
+#     tableClosed (private_table_idle / quick_game_over / tournament_finished)
+#     leaves the table view for the lobby with a line; leaving a Spin & Go in
+#     play asks first (it forfeits the entry); server_restarting is a plain
+#     sentence; a tournament that starts while he plays another table offers
+#     "Go to your tournament seat" (leave, then Return); a late qualifier
+#     entrant goes to his seat. A Fold armed at one table never folds at another.
+quick_game_over
+Leaving forfeits your Spin & Go entry
+Server is restarting
+hud-tourney-start-offer
+Go to your tournament seat

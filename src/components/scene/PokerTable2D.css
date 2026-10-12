@@ -923,6 +923,22 @@
   to   { opacity: 1; transform: translateX(-50%) translateY(-6px) scale(1); }
 }
 
+/* R2 (TABLEUI-9) — a SIDE seat's bet sits beside the pod, toward the felt
+   (stacked above it, it covered the nameplate of the seat above). */
+.seat-pod .chip-stack.chip-stack--in-left,
+.seat-pod .chip-stack.chip-stack--in-right {
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  animation-name: chip-slide-in-side;
+}
+.seat-pod .chip-stack.chip-stack--in-left { left: auto; right: 100%; margin-right: 2px; }
+.seat-pod .chip-stack.chip-stack--in-right { left: 100%; margin-left: 2px; }
+@keyframes chip-slide-in-side {
+  from { opacity: 0; transform: translateY(-50%) scale(0.8); }
+  to   { opacity: 1; transform: translateY(-50%) scale(1); }
+}
+
 .chip-stack__tower {
   position: relative;
   width: 24px;

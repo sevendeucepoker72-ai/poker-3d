@@ -14,7 +14,8 @@ import {
 } from '../../utils/tablePayload';
 import useSoundEffects, { readSoundPrefs, SOUND_SETTINGS_EVENT, TABLE_SOUND_KEY } from '../../hooks/useSoundEffects';
 import TrainingOverlay from './TrainingOverlay';
-import EmoteWheel, { EMOTE_MAP } from './EmoteWheel';
+import EmoteWheel from './EmoteWheel';
+import { EMOTE_MAP } from './emoteCatalog';
 // PWA audit #9: request Screen Wake Lock while the user has an active
 // turn so the phone doesn't auto-sleep mid-decision (which would drop
 // the socket and auto-fold). Hook self-gates on browser support.
@@ -32,18 +33,27 @@ import { useProgressStore } from '../../store/progressStore';
 import { useEquityWorker } from '../../hooks/useEquityWorker';
 import { getSocket, subscribeConnectionStatus } from '../../services/socketService';
 import { reportPlayRefusal, notePlayAttempt } from '../../services/playRefusal';
-import { useTimerStore } from '../../store/timerStore';
+import { useTimerStore, serverNow } from '../../store/timerStore';
 // 2026-10-10 (S2) — a LIVE tournament seat is kept in play (absent) when the
 // player leaves the table screen; he is told so first and returns from the lobby.
 import {
   useTournamentSeatStore, isTournamentSeatView, leaveTournamentSeatToLobby, eliminationShownElsewhere,
-  TOURNAMENT_SEAT_AWAY_ACTS_TEXT,
+  TOURNAMENT_SEAT_AWAY_ACTS_TEXT, awaySeatOfTournament, awaySeatKey,
 } from '../../store/tournamentSeatStore';
+import { returnToTournament } from '../../services/tournamentReturn';
 import { TournamentLeaveDialog } from '../ui/TournamentSeatNotice';
 import { loadHotkeys } from '../ui/HotkeySettings';
 import { useAFKTracker } from '../../hooks/useAFKTracker';
 import { notify } from '../../hooks/usePushNotifications';
+import { liveTableIds } from '../../store/tableStore';
+import { OPEN_TABLE_PICKER_EVENT } from './MultiTableTabs';
+import useTableGeometry from './useTableGeometry';
+// R2 (C7 / C8) — the hero's own seat look + the equipped table theme.
+import { seatLook, feltForTheme } from '../scene/tableCosmetics';
 import './GameHUD.css';
+// R2 (TABLEUI-8/9) — the phone layout layer; imported LAST so it is the final
+// layer of the table cascade (it reads useTableGeometry's measured CSS vars).
+import './TableLayout.css';
 
 import OverlayBoundary from '../ui/OverlayBoundary';
 
@@ -141,6 +151,19 @@ const ChatPanel = React.memo(function ChatPanel({ chatOpen, setChatOpen, chatUnr
 
 const haptic = (pattern) => { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (_) {} };
 
+// R2 (S2) — what a refused table action means when the server sends only its
+// stable code (every current server message is shown verbatim instead).
+const ACTION_ERROR_TEXT = {
+  straddle_not_allowed: 'Straddles are only available at cash tables.',
+  bomb_pot_not_allowed: 'Bomb pots are only available at Hold\'em and Omaha cash tables.',
+  invalid_draw: 'That draw is not allowed right now.',
+  no_seat_available: 'No seat is free at this table right now.',
+  server_restarting: 'Server is restarting — try again in a moment.',
+  sit_out_limit: 'You were sitting out for a while, so your seat was released and your chips went back to your balance.',
+};
+// The fixed-limit variants (the server's bettingStructure 'fixed-limit').
+const FIXED_LIMIT_VARIANT = /^(seven-card-stud|seven-card-stud-hi-lo|razz|triple-draw)$/;
+
 // R1 (TABLEUI-2) — the ONLY surface a touch gesture may start on: the table
 // felt (PokerTable2D's oval, drawn under the HUD). Anything interactive, a
 // seat, or any HUD layer drawn over the felt is never a gesture surface.
@@ -179,6 +202,11 @@ function gestureStartAllowed(target, x, y) {
 
 export default function GameHUD() {
   const { calculateEquity } = useEquityWorker();
+  // R2 (TABLEUI-8/9) — measured bar / top bar / felt geometry → CSS vars.
+  useTableGeometry();
+  // R2 (TABLEUI-14) — the tab bar shows only with 2+ live seats; with one the
+  // HUD no longer reserves its 36px band.
+  const liveTableCount = useTableStore((s) => liveTableIds(s.activeTables).length);
 
   const { setScreen, playerName } = useGameStore(
     useShallow((s) => ({ setScreen: s.setScreen, playerName: s.playerName }))
@@ -231,6 +259,13 @@ export default function GameHUD() {
   // only trigger re-renders of the chat panel, not the entire HUD.
   const chatMessages = useTableStore((s) => s.chatMessages);
   const sendChat = useTableStore((s) => s.sendChat);
+  // R2 (TABLEUI-10) — the training panel's open state + the badge's equity.
+  const trainingPanelOpen = useTableStore((s) => s.trainingPanelOpen);
+  const setTrainingPanelOpen = useTableStore((s) => s.setTrainingPanelOpen);
+  const trainingEquityPct = useTableStore((s) => {
+    const e = s.trainingData && s.trainingData.equity;
+    return typeof e === 'number' && Number.isFinite(e) ? Math.round(Math.max(0, Math.min(100, e))) : null;
+  });
   const emotes = useTableStore((s) => s.emotes);
   const handHistories = useTableStore((s) => s.handHistories);
 
@@ -655,7 +690,18 @@ export default function GameHUD() {
   const yourSeat = gameState?.yourSeat ?? mySeat;
   const seats = gameState?.seats || [];
   const myPlayer = yourSeat >= 0 && seats[yourSeat] ? seats[yourSeat] : null;
+  // R2 (C7 / C8) — the hero's equipped look from his own seat's `cosmetics`
+  // (what everyone else at the table sees): frame / VIP, title, badge, back.
+  const heroLook = seatLook(myPlayer?.cosmetics);
+  // R2 (C7) — the table theme he equipped (`myTheme`) and whether the felt
+  // picker below overrides it (mirrors PokerTable2D's rule).
+  const myThemeId = gameState?.myTheme ?? null;
+  const equippedFelt = feltForTheme(myThemeId);
+  const [feltPickedFor, setFeltPickedFor] = useState(undefined);
+  const equippedFeltShown = !!equippedFelt && feltPickedFor !== myThemeId;
   const isSeated = myPlayer != null;
+  // R2 (P3 / TABLEUI-15) — this socket PLAYS this table (not watching it).
+  const seatedHere = isSeated && !isSpectating && gameState?.isSpectator !== true;
   // 2026-10-10 (S2) — is the table on screen this socket's LIVE tournament
   // seat? Leaving it keeps it in play (absent), so the player is told first
   // (TournamentLeaveDialog); `tournamentLeaveVia` = what he tapped.
@@ -959,12 +1005,18 @@ export default function GameHUD() {
     return 'marginal';
   })();
 
-  // Straddle: player is UTG (first to act after big blind) in PreFlop
+  // Straddle — R2 (C11 / TABLEUI-19): the SERVER says when this seat may
+  // straddle right now (`isFirstActor`: preflop, first to act, nothing
+  // voluntary yet, a cash table, the stack covers it — always present, false
+  // for spectators). The button was gated on that key while no server sent
+  // it, so it never showed. An older server (no key) shows nothing.
   const bigBlind = gameState?.bigBlind || 50;
   const straddleAmount = 2 * bigBlind;
-  // Determine if player is UTG: in PreFlop, activeSeat === yourSeat means it's our turn,
-  // and we check if we are the first actor (UTG position)
-  const isUTG = phase === 'PreFlop' && isMyTurn && gameState?.isFirstActor;
+  const isUTG = gameState?.isFirstActor === true && seatedHere;
+  // Bomb Pot — R2 (C11 / GAME-12): offered only where the server runs one
+  // (`canBombPot`: Hold'em / Omaha cash tables); elsewhere it dealt Stud /
+  // Draw / Short Deck hands wrong. An older server (no key): not offered.
+  const canBombPot = gameState?.canBombPot === true && seatedHere;
 
   // Insurance — R1 (TABLEUI-1 / ECON-1, CONTRACTS R1 #1). The panel is driven
   // ONLY by the server's quote for this seat and this hand
@@ -976,8 +1028,25 @@ export default function GameHUD() {
   // its quoted cashout, and its `insuranceAccepted` numbers are what the toast
   // shows.
   const insuranceQuote = readInsuranceQuote(gameState);
+  // R2 (Addendum) — the server's decision window (`expiresAt`, server clock):
+  // a live countdown, and the panel closes when it runs out (the server
+  // releases the runout then; Accept after that is refused anyway).
+  const [insuranceNow, setInsuranceNow] = useState(() => serverNow());
+  // the window's full length as first seen (the bar's 100%)
+  const [insuranceWindowMs, setInsuranceWindowMs] = useState(7000);
+  const insuranceExpiresAt = insuranceQuote ? insuranceQuote.expiresAt : null;
+  useEffect(() => {
+    if (!insuranceExpiresAt) return undefined;
+    const now = serverNow();
+    setInsuranceNow(now);
+    setInsuranceWindowMs(Math.max(1000, insuranceExpiresAt - now));
+    const id = setInterval(() => setInsuranceNow(serverNow()), 250);
+    return () => clearInterval(id);
+  }, [insuranceExpiresAt]);
+  const insuranceSecsLeft = insuranceExpiresAt ? Math.max(0, Math.ceil((insuranceExpiresAt - insuranceNow) / 1000)) : null;
   const showInsurancePanel = !!insuranceQuote && !isSpectating
-    && insuranceClosedHand !== insuranceQuote.handNumber;
+    && insuranceClosedHand !== insuranceQuote.handNumber
+    && (insuranceSecsLeft === null || insuranceSecsLeft > 0);
 
   // Session stats tracking: initialize start chips, count hands, track biggest pot
   useEffect(() => {
@@ -1146,10 +1215,17 @@ export default function GameHUD() {
   // action bar before the player has interacted. Runs for every hand boundary,
   // including the first hand dealt after joining.
   const prevHandNumberRef = useRef(null);
+  // R2 (TABLEUI-14/18) — and whenever ANOTHER table takes the screen (multi
+  // table): two tables can be on the same hand number, and a Fold armed at
+  // table A ("Fold?") used to fold at table B with a single tap.
+  const prevHandTableRef = useRef(null);
   useEffect(() => {
     const hn = gameState?.handNumber ?? gameState?.handId ?? null;
     if (hn == null) return;
-    if (prevHandNumberRef.current != null && prevHandNumberRef.current !== hn) {
+    const tid = gameState?.tableId != null ? String(gameState.tableId) : null;
+    const tableChanged = prevHandTableRef.current != null && tid != null && prevHandTableRef.current !== tid;
+    if (tid != null) prevHandTableRef.current = tid;
+    if ((prevHandNumberRef.current != null && prevHandNumberRef.current !== hn) || tableChanged) {
       setRaiseAmount(0);
       lastRaiseRef.current = null;
       setPreAction(null);
@@ -1161,7 +1237,7 @@ export default function GameHUD() {
       autoFoldedRef.current = false;
     }
     prevHandNumberRef.current = hn;
-  }, [gameState?.handNumber, gameState?.handId]);
+  }, [gameState?.handNumber, gameState?.handId, gameState?.tableId]);
 
   // Mobile audit M2: iOS software-keyboard handling. When the chat / chip /
   // rabbit-hunt input focuses on iOS Safari, the keyboard (~290-380px tall)
@@ -1669,7 +1745,8 @@ export default function GameHUD() {
           setTimeLeft(Math.ceil((serverTurnTimeout || 30000) / 1000));
           return;
         }
-        const elapsed = Date.now() - serverTurnStartedAt;
+        // R2 (P3) — on the SERVER's clock (_serverTs offset), not the device's.
+        const elapsed = serverNow() - serverTurnStartedAt;
         const timeoutSec = Math.max(1, Math.ceil(serverTurnTimeout / 1000));
         const rawRemaining = Math.ceil((serverTurnTimeout - elapsed) / 1000);
         const remaining = Math.max(0, Math.min(timeoutSec, rawRemaining));
@@ -2017,13 +2094,23 @@ export default function GameHUD() {
     };
   }, [autoDeal, phase, isSpectating, startHand, onTournamentSeat]);
 
-  // Fast Mode: emit to server when toggled (#12)
+  // Fast Mode (#12) — R2 (P3 / GAME-11): fast mode is the PLAYER's own
+  // setting on the server (`fastModeSet { enabled }`), so it is sent only
+  // when he flips the toggle. The old effect also sent it on every mount — a
+  // `setFastMode false` that switched fast mode off whenever the table opened.
+  const toggleFastMode = useCallback(() => {
+    const next = !fastMode;
+    setFastMode(next);
+    const socket = getSocket();
+    if (socket?.connected) socket.emit('setFastMode', { enabled: next });
+  }, [fastMode]);
   useEffect(() => {
     const socket = getSocket();
-    if (socket?.connected) {
-      socket.emit('setFastMode', { enabled: fastMode });
-    }
-  }, [fastMode]);
+    if (!socket) return undefined;
+    const onSet = (d) => { if (d && typeof d.enabled === 'boolean') setFastMode(d.enabled); };
+    socket.on('fastModeSet', onSet);
+    return () => socket.off('fastModeSet', onSet);
+  }, []);
 
   // Persist Quick Showdown preference (#13)
   useEffect(() => {
@@ -2130,12 +2217,39 @@ export default function GameHUD() {
       // went wrong from their side, the table just advanced. Real errors (not
       // your turn, invalid amount, insufficient chips) still surface.
       if (data?.code === 'STALE_STATE') return;
+      // R2 (P3) — Auto Deal: the late startHand of two clients (or of a client
+      // racing the server's own auto-start) is answered "Hand already in
+      // progress". Nothing went wrong for anyone, so no toast.
+      if (data?.message === 'Hand already in progress') return;
       // 2026-10-07 — a play refusal (suspended / no account, e.g. on rebuy or
       // a career start) is shown by the shared PlayRefusalNotice, verbatim and
       // without the 3s auto-hide. Don't toast it a second time.
       if (reportPlayRefusal(data)) return;
-      if (data?.message) {
-        try { addToast(data.message, 'warn', 3000); } catch {}
+      // R2 (S2 sit-out limit) — a ring seat sat out 30 hands was released and
+      // its stack went back to the wallet; the server already made him a
+      // spectator of the table (full state + `spectating`). Say why, longer.
+      if (data?.code === 'sit_out_limit') {
+        const why = (typeof data.message === 'string' && data.message) || ACTION_ERROR_TEXT.sit_out_limit;
+        const gs = useTableStore.getState().gameState;
+        const kind = gs?.tableKind;
+        const canSit = !(gs?.isTournament === true || gs?.tournamentId != null) && (kind == null || kind === 'cash');
+        const next = canSit ? ' You are watching the table now. Tap Sit Here on an open seat to play again.' : ' You are watching the table now.';
+        try { addToast(`${why}${next}`, 'info', 9000); } catch { /* ignore */ }
+        return;
+      }
+      // R2 (S2, GAME-9) — fixed limit (Stud, Razz, Triple Draw) allows a bet
+      // and three raises a round; the server refuses the next raise with only
+      // "Invalid action: raise" (no state key says the round is capped), so
+      // say what it means there.
+      if (data?.message === 'Invalid action: raise' && FIXED_LIMIT_VARIANT.test(String(useTableStore.getState().gameState?.variant || ''))) {
+        try { addToast('Raising is capped this round (a bet and three raises). You can call or fold.', 'warn', 3500); } catch { /* ignore */ }
+        return;
+      }
+      // R2 — every refusal is a toast, never a crash: the server's own words,
+      // else a plain sentence for the stable code.
+      const text = (typeof data?.message === 'string' && data.message) || ACTION_ERROR_TEXT[data?.code] || '';
+      if (text) {
+        try { addToast(text, 'warn', 3500); } catch { /* ignore */ }
       }
     };
     socket.on('missedBlinds', handler);
@@ -2336,10 +2450,14 @@ export default function GameHUD() {
 
   // Pot fraction helpers
   const potFraction = (fraction) => {
-    // Standard NL pot-sized raise: raise to (pot + callAmount + callAmount) × fraction
-    // i.e., after you call, the pot would be (pot + callAmount), then you raise that amount
+    // Standard NL pot-sized raise, as a RAISE-TO total (what 'raise' sends):
+    // call first (the pot becomes pot + callAmount), then raise that much on
+    // top of the bet to match. R2 (P3): it used to return callAmount + that,
+    // which left out the hero's OWN chips already in this street
+    // (myCurrentBet) — every preset from the blinds or after a re-raise came
+    // up short (SB facing the BB: "Pot" sent 250 instead of 300).
     const potAfterCall = pot + callAmount;
-    const amount = callAmount + Math.round(potAfterCall * fraction);
+    const amount = currentBetToMatch + Math.round(potAfterCall * fraction);
     const clamped = Math.max(minRaiseTotal, Math.min(amount, maxRaise));
     // Surface a subtle toast when a preset gets clamped so the user knows
     // the "½ Pot" (etc.) button worked, it just hit the stack ceiling.
@@ -2748,11 +2866,92 @@ export default function GameHUD() {
     SeventhStreet: '7th Street',
   }[phase] || phase;
 
+  // R2 (S1, ECON-8) — a VOLUNTARY leave from a Spin & Go forfeits the entry
+  // (a prize format: the stack is never cashed). While the game is on and he
+  // still has chips, every way off the table asks first.
+  const [quickGameOverTable, setQuickGameOverTable] = useState(null);
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onOver = (d) => { if (d && d.tableId != null) setQuickGameOverTable(String(d.tableId)); };
+    socket.on('quickGameOver', onOver);
+    return () => socket.off('quickGameOver', onOver);
+  }, []);
+  const spinGoEntryLive = gameState?.tableKind === 'spingo' && seatedHere && !!myPlayer
+    && !myPlayer.eliminated && (myPlayer.chipCount ?? 0) > 0
+    && quickGameOverTable !== String(gameState?.tableId);
+
+  // R2 (S1, TOURNEY-9) — his tournament started while he plays THIS table: the
+  // server dealt his tournament seat in absent (`tournamentSeatKept` with
+  // `atStart: true`; App.jsx keeps it as an away seat). Offer to go there:
+  // leave this table, then Return to the tournament seat.
+  const [tourneyStartOffer, setTourneyStartOffer] = useState(null);
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onKept = (d) => {
+      if (!d || d.atStart !== true || d.tableId == null) return;
+      setTourneyStartOffer({
+        tournamentId: d.tournamentId != null ? String(d.tournamentId) : null,
+        tableId: String(d.tableId),
+        name: typeof d.tournamentName === 'string' && d.tournamentName.trim() ? d.tournamentName.trim() : 'Your tournament',
+      });
+    };
+    socket.on('tournamentSeatKept', onKept);
+    return () => socket.off('tournamentSeatKept', onKept);
+  }, []);
+  const goToTournamentSeat = useCallback(() => {
+    const offer = tourneyStartOffer;
+    if (!offer) return;
+    const inLiveHand = phase && phase !== 'WaitingForPlayers' && phase !== 'HandComplete' && phase !== 'Showdown';
+    if (onTournamentSeat) {
+      const ok = typeof window !== 'undefined' && window.confirm(`Go to ${offer.name}? Your seat at this tournament stays in play while you are away.`);
+      if (!ok) return;
+      leaveTournamentSeatToLobby('lobby', gameState);
+      leaveTable();
+    } else if (seatedHere) {
+      const parts = ['Leave this table and take your tournament seat?'];
+      parts.push(spinGoEntryLive ? 'Leaving forfeits your Spin & Go entry.' : 'Your chips here go back to your balance.');
+      if (inLiveHand) parts.push('Your hand here will be folded.');
+      const ok = typeof window !== 'undefined' && window.confirm(parts.join(' '));
+      if (!ok) return;
+      leaveTable();
+    } else if (isSpectating || gameState?.isSpectator === true) {
+      stopSpectating();
+    }
+    setTourneyStartOffer(null);
+    setScreen('lobby');
+    const entry = offer.tournamentId ? awaySeatOfTournament(offer.tournamentId) : null;
+    const key = entry ? awaySeatKey(entry) : null;
+    // (the leave first reaches the server; the lobby's Return banner shows the
+    // answer and offers Return again if it is refused)
+    setTimeout(() => { returnToTournament(key).catch(() => { /* answered in the store */ }); }, 700);
+  }, [tourneyStartOffer, phase, onTournamentSeat, seatedHere, spinGoEntryLive, isSpectating, gameState, leaveTable, stopSpectating, setScreen]);
+
   const handleBackToLobby = useCallback(() => {
     // 2026-10-10 (S2) — a LIVE tournament seat: say what leaving means (the
     // seat stays in play, auto-folded, until he returns) before leaving.
     if (onTournamentSeat) {
       setTournamentLeaveVia('lobby');
+      return;
+    }
+    // R2 (S1) — a Spin & Go in play: leaving forfeits the entry (one confirm,
+    // which also covers a hand in progress).
+    if (spinGoEntryLive) {
+      const ok = typeof window !== 'undefined' && window.confirm('Leaving forfeits your Spin & Go entry. Leave anyway?');
+      if (!ok) return;
+      leaveTable();
+      setScreen('lobby');
+      return;
+    }
+    // R2 (TABLEUI-15) — a SPECTATOR has nothing at stake: no forfeit confirm
+    // (`!!undefined === false` made every watcher confirm "forfeit any chips
+    // already in the pot"), and 'stopSpectating' — 'leaveTable' is a no-op on
+    // the server for a watcher, which stayed subscribed to the table's room.
+    if (isSpectating || gameState?.isSpectator === true || !isSeated) {
+      if (isSpectating || gameState?.isSpectator === true) stopSpectating();
+      else leaveTable();
+      setScreen('lobby');
       return;
     }
     // Audit fix #10: require confirmation mid-hand so a misclick doesn't
@@ -2770,7 +2969,7 @@ export default function GameHUD() {
     }
     leaveTable();
     setScreen('lobby');
-  }, [leaveTable, setScreen, phase, gameState?.seats, yourSeat, isMyTurn, onTournamentSeat]);
+  }, [leaveTable, setScreen, phase, gameState?.seats, gameState?.isSpectator, yourSeat, isMyTurn, onTournamentSeat, isSpectating, isSeated, stopSpectating, spinGoEntryLive]);
 
   // S2 — the player confirmed leaving his LIVE tournament seat: the lobby
   // remembers it ("Return to tournament"), then the socket leaves the table
@@ -2822,7 +3021,9 @@ export default function GameHUD() {
   }, [handHistories, yourSeat]);
 
   // Timer percentage for circular indicator
-  const timerPct = (timeLeft / 30) * 100;
+  // R2 (P3) — against the table's real turn length (fast mode is shorter).
+  const turnSecs = Math.max(1, Math.ceil((serverTurnTimeout || 30000) / 1000));
+  const timerPct = (timeLeft / turnSecs) * 100;
   const timerDanger = timeLeft <= 5;
 
   // Quick chat presets
@@ -2846,7 +3047,7 @@ export default function GameHUD() {
   };
 
   return (
-    <div className="hud">
+    <div className={`hud ${liveTableCount >= 2 ? 'hud--tabs' : 'hud--no-tabs'}`}>
       {/* 2026-10-10 (S2) — leaving a LIVE tournament seat keeps it in play. */}
       {tournamentLeaveVia && (
         <TournamentLeaveDialog
@@ -2918,14 +3119,19 @@ export default function GameHUD() {
             were in it — easy to forget. Small glowing pill next to
             Back button so it's always visible but unobtrusive. Click
             to turn it back off. */}
+        {/* R2 (TABLEUI-10) — the badge is the training panel's DOCK: it shows
+            the hand's equity and opens / minimizes the panel (which has its
+            own close = turn training off). It used to turn training off. */}
         {trainingEnabled && (
           <button
-            className="hud-training-badge"
-            onClick={toggleTraining}
-            title="Training mode is ON. Click to turn off."
-            aria-label="Training mode active, click to disable"
+            className={`hud-training-badge${trainingPanelOpen ? ' hud-training-badge--open' : ''}`}
+            onClick={() => setTrainingPanelOpen(!trainingPanelOpen)}
+            title={trainingPanelOpen ? 'Minimize the training panel' : 'Open the training panel'}
+            aria-expanded={trainingPanelOpen}
+            aria-label={`Training mode on${trainingEquityPct !== null ? `, ${trainingEquityPct}% equity` : ''}. ${trainingPanelOpen ? 'Minimize' : 'Open'} the training panel`}
           >
-            🎓 Training
+            🎓 <span className="hud-training-badge__label">Training</span>
+            {trainingEquityPct !== null && <span className="hud-training-badge__eq">{trainingEquityPct}%</span>}
           </button>
         )}
         <div className="hud-center-info">
@@ -3000,7 +3206,9 @@ export default function GameHUD() {
               : connStatus === 'failed' ? 'Connection lost — tap to reconnect'
               : 'Disconnected'}
           />
-          {/* Sit Out quick-access button */}
+          {/* Sit Out quick-access button — R2 (P3): a seat's control, never
+              shown to a spectator (who also has no name / 0-chip stack here). */}
+          {seatedHere && (
           <button
             className={`sit-out-quick-btn ${sittingOut ? 'sit-out-quick-btn--active' : ''}`}
             onClick={toggleSitOut}
@@ -3015,6 +3223,7 @@ export default function GameHUD() {
           >
             {sittingOut ? '🪑 Sitting Out' : '🪑 Sit Out'}
           </button>
+          )}
 
           {/* ⋯ Options dropdown — contains Sit Out, Training, and all settings */}
           <div className="hud-options-wrapper" ref={optionsRef}>
@@ -3052,7 +3261,7 @@ export default function GameHUD() {
                   <span className="options-label">Fast Mode</span>
                   <button
                     className={`options-toggle ${fastMode ? 'options-on' : 'options-off'}`}
-                    onClick={() => setFastMode(!fastMode)}
+                    onClick={toggleFastMode}
                   >{fastMode ? 'ON' : 'OFF'}</button>
                 </div>
                 <div className="options-row">
@@ -3073,6 +3282,8 @@ export default function GameHUD() {
                 </div>
                 )}
                 <div className="options-divider" />
+                {/* R2 (C11) — offered only where the server runs bomb pots. */}
+                {canBombPot && (
                 <button className="options-action-btn options-bomb"
                   onClick={() => {
                     const socket = getSocket();
@@ -3084,12 +3295,16 @@ export default function GameHUD() {
                   }}>
                   💣 Bomb Pot
                 </button>
+                )}
                 {/* Hard dismiss for the banner. Forces local suppression
-                    regardless of whatever the server-side flag says. */}
-                <button className="options-action-btn"
+                    regardless of whatever the server-side flag says.
+                    R2 — offered while there is a bomb pot banner to dismiss. */}
+                {isBombPot && (
+                <button className="options-action-btn options-bomb-dismiss"
                   onClick={() => { setBombPotSuppressed(true); setShowOptions(false); }}>
                   ✕ Dismiss Bomb Pot Banner
                 </button>
+                )}
                 <button className="options-action-btn" onClick={() => { setShowRangeChart(true); setShowOptions(false); }}>
                   📊 Range Chart
                 </button>
@@ -3099,6 +3314,13 @@ export default function GameHUD() {
                 <button className="options-action-btn" onClick={() => { setShowAchievements(true); setShowOptions(false); }}>
                   🏆 Achievements
                 </button>
+                {/* R2 (APPUI-16) — the replay's way in on a phone (the Last Hand
+                    rail button is hidden on touch screens). */}
+                {lastHandHistory && (
+                  <button className="options-action-btn options-last-hand" onClick={() => { setShowReplay(true); setShowOptions(false); }}>
+                    🃏 Last hand replay
+                  </button>
+                )}
                 <div className="options-divider" />
                 {/* Sound volume (#8) */}
                 <div className="options-row options-row--volume">
@@ -3172,13 +3394,28 @@ export default function GameHUD() {
                 <div className="options-theme-row" role="radiogroup" aria-label="Table felt color">
                   <span className="options-label">🎨 Table Felt</span>
                   <div className="options-theme-swatches">
+                    {/* R2 (C7) — the theme equipped in the shop (myTheme). */}
+                    {equippedFelt && (
+                      <button
+                        role="radio"
+                        aria-checked={equippedFeltShown}
+                        className={`options-theme-swatch options-theme-swatch--equipped ${equippedFeltShown ? 'options-theme-swatch--active' : ''}`}
+                        title={`Your theme: ${equippedFelt.name}`}
+                        aria-label={`Your theme: ${equippedFelt.name}`}
+                        style={{ background: equippedFelt.felt }}
+                        onClick={() => {
+                          setFeltPickedFor(undefined);
+                          window.dispatchEvent(new CustomEvent('poker:set-theme', { detail: { key: 'equipped' } }));
+                        }}
+                      >{equippedFeltShown ? '✓' : '★'}</button>
+                    )}
                     {[
                       { key: 'blue',    label: '🔵 Speed',    preview: 'linear-gradient(135deg, #1a3a6e, #0f2447)' },
                       { key: 'green',   label: '🟢 Classic',  preview: 'linear-gradient(135deg, #2e7d52, #1a5438)' },
                       { key: 'black',   label: '⬛ Midnight', preview: 'linear-gradient(135deg, #0c1a44, #0d0d1a)' },
                       { key: 'crimson', label: '🔴 Crimson',  preview: 'linear-gradient(135deg, #7c1d1d, #4a0f0f)' },
                     ].map(({ key, label, preview }) => {
-                      const active = (sessionStorage.getItem('app_poker_theme') || 'blue') === key;
+                      const active = !equippedFeltShown && (sessionStorage.getItem('app_poker_theme') || 'blue') === key;
                       return (
                         <button
                           key={key}
@@ -3188,7 +3425,9 @@ export default function GameHUD() {
                           title={label}
                           style={{ background: preview }}
                           onClick={() => {
-                            window.dispatchEvent(new CustomEvent('poker:set-theme', { detail: { key } }));
+                            // R2 (C7) — a pick here wins over the equipped theme it was made against.
+                            setFeltPickedFor(myThemeId);
+                            window.dispatchEvent(new CustomEvent('poker:set-theme', { detail: { key, over: myThemeId } }));
                             /* Don't close the Options menu — let the user
                                compare themes live. Close with the gear
                                toggle or tap outside when satisfied. */
@@ -3212,6 +3451,19 @@ export default function GameHUD() {
                 >
                   😀 Pick Avatar Emoji
                 </button>
+                {/* R2 (TABLEUI-14) — the multi-table "+" lives here while only one
+                    seat is live (the tab bar shows from two seats on). */}
+                {seatedHere && !onTournamentSeat && liveTableCount < 2 && (
+                  <button
+                    className="options-action-btn options-open-table"
+                    onClick={() => {
+                      setShowOptions(false);
+                      window.dispatchEvent(new Event(OPEN_TABLE_PICKER_EVENT));
+                    }}
+                  >
+                    ➕ Open another table
+                  </button>
+                )}
                 {/* Customize Avatar — moved into Options per user request.
                     AvatarCustomizer is a full-screen 3D view (Canvas +
                     OrbitControls), not an overlay, so clicking it leaves
@@ -3232,7 +3484,12 @@ export default function GameHUD() {
                       && phase !== 'HandComplete' && phase !== 'Showdown';
                     const mySeatObj = gameState?.seats?.[yourSeat];
                     const chipsAtRisk = (mySeatObj?.currentBet || 0) > 0;
-                    if (inLiveHand && (isMyTurn || chipsAtRisk)) {
+                    if (spinGoEntryLive) {
+                      // R2 (S1) — leaving a Spin & Go in play forfeits the entry.
+                      const ok = typeof window !== 'undefined'
+                        && window.confirm('Customize avatar? Leaving the table forfeits your Spin & Go entry.');
+                      if (!ok) return;
+                    } else if (inLiveHand && (isMyTurn || chipsAtRisk)) {
                       const ok = typeof window !== 'undefined'
                         && window.confirm('Customize avatar? You\'ll leave the table and your hand will be auto-folded.');
                       if (!ok) return;
@@ -3301,14 +3558,20 @@ export default function GameHUD() {
             )}
           </div>
 
-          <span className="hud-name">{safeName(playerName, '')}</span>
-          {/* Chip stack visual */}
-          <div className={`hud-chip-stack ${myChips >= 5000 ? 'chip-deep' : myChips >= 1500 ? 'chip-mid' : 'chip-short'}`}>
-            <span className="chip-coins">
-              {myChips >= 5000 ? '🪙🪙🪙' : myChips >= 1500 ? '🪙🪙' : '🪙'}
-            </span>
-            <span className="chip-amount">{myChips.toLocaleString()}</span>
-          </div>
+          {seatedHere ? (
+            <>
+              <span className="hud-name">{safeName(playerName, '')}</span>
+              {/* Chip stack visual */}
+              <div className={`hud-chip-stack ${myChips >= 5000 ? 'chip-deep' : myChips >= 1500 ? 'chip-mid' : 'chip-short'}`}>
+                <span className="chip-coins">
+                  {myChips >= 5000 ? '🪙🪙🪙' : myChips >= 1500 ? '🪙🪙' : '🪙'}
+                </span>
+                <span className="chip-amount">{myChips.toLocaleString()}</span>
+              </div>
+            </>
+          ) : (
+            <span className="hud-spectator-tag">Watching</span>
+          )}
         </div>
       </div>
 
@@ -3525,7 +3788,7 @@ export default function GameHUD() {
           <div className="action-timer-strip">
             <div
               className={`action-timer-strip-fill ${timeLeft <= 5 ? 'action-timer-strip--danger' : ''}`}
-              style={{ width: `${(timeLeft / 30) * 100}%` }}
+              style={{ width: `${Math.max(0, Math.min(100, timerPct))}%` }}
             />
           </div>
         )}
@@ -3639,7 +3902,7 @@ export default function GameHUD() {
                       )}
                     </div>
                     {/* Back face - red/gold pattern */}
-                    <div className="card-peek-back" />
+                    <div className={`card-peek-back${heroLook.cardBack ? ` ${heroLook.cardBack}` : ''}`} />
                   </div>
                 </div>
               );
@@ -3661,10 +3924,12 @@ export default function GameHUD() {
             nameplate via position:absolute inset:-6. Only hero gets
             this — all other seats keep their own avatar-centric rings. */}
         {myPlayer && yourSeat >= 0 && (
-          <div className={`hud-nameplate-me ${isMyTurn ? 'hud-nameplate-me--active' : ''}`}>
+          <div className={`hud-nameplate-me ${isMyTurn ? 'hud-nameplate-me--active' : ''}${heroLook.frameClass ? ` ${heroLook.frameClass}` : ''}`}>
+            {heroLook.title && <span className={heroLook.titleClass}>{heroLook.title}</span>}
+            {heroLook.vip && <span className="np-vip" title="VIP">VIP</span>}
             {isMyTurn && (() => {
               // Use the same 0–30s base as the seat-pod timer ring.
-              const pct = Math.max(0, Math.min(100, (timeLeft / 30) * 100));
+              const pct = Math.max(0, Math.min(100, timerPct));
               const danger = timeLeft <= 5;
               // Perimeter length scales with a 2:1 aspect (~220 for
               // typical nameplate width 180 × height 48; rx:10 rounds).
@@ -3695,7 +3960,7 @@ export default function GameHUD() {
               {nameInitial(playerName, 'P')}
             </div>
             <div className="hud-np-info">
-              <span className="hud-np-name">{safeName(playerName, '')}</span>
+              <span className="hud-np-name">{safeName(playerName, '')}{heroLook.badge && <span className="np-badge" title={heroLook.badge.name}>{heroLook.badge.icon}</span>}</span>
               <span className="hud-np-chips">● {(myPlayer.chipCount ?? myPlayer.chips ?? 0).toLocaleString()} · {bigBlind > 0 ? Math.round((myPlayer.chipCount ?? myPlayer.chips ?? 0) / bigBlind) : 0}bb</span>
             </div>
             {gameState?.seatPositions?.[yourSeat] && (
@@ -3784,10 +4049,8 @@ export default function GameHUD() {
                 background: 'rgba(120, 160, 255,0.08)', color: '#ffd24a',
                 border: '1px solid rgba(120, 160, 255,0.25)', fontSize: 13, fontWeight: 600,
               }}>
-                <span style={{
-                  width: 8, height: 8, borderRadius: '50%', background: '#ffd24a',
-                  animation: 'livePulse 1.2s ease-in-out infinite',
-                }} />
+                {/* R2 (TABLEUI-17) — CSS-owned so phones / reduced motion stop it. */}
+                <span className="hud-waiting-dot" aria-hidden="true" />
                 {phase === 'HandComplete' ? 'Starting next hand…' : 'Waiting for players…'}
               </span>
               <button
@@ -3802,7 +4065,6 @@ export default function GameHUD() {
               >
                 Deal now
               </button>
-              <style>{`@keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }`}</style>
             </div>
           ) : hasDrawPhase && isDrawPhase ? (
             /* Draw Phase */
@@ -3990,12 +4252,14 @@ export default function GameHUD() {
                 {/* PRESETS — flat text buttons. Only show when a legal raise
                     is actually possible (min ≤ max and max > 0) — otherwise
                     the player is effectively all-in-or-fold. */}
+                {/* R2 — each preset carries a short label too (½ ⅔ Pot 3x):
+                    phones show it so the presets share the slider's row. */}
                 {isMyTurn && maxRaise > 0 && minRaiseTotal <= maxRaise && (
                   <div className="ab-presets">
-                    <button className="ab-preset" onClick={() => setRaiseAmountSafe(potFraction(1/2))}>½ Pot</button>
-                    <button className="ab-preset" onClick={() => setRaiseAmountSafe(potFraction(2/3))}>2/3 Pot</button>
-                    <button className="ab-preset ab-preset--active" onClick={() => setRaiseAmountSafe(potFraction(1))}>Pot</button>
-                    <button className="ab-preset" onClick={() => setRaiseAmountSafe(Math.max(minRaiseTotal, Math.min(bigBlind * 3, maxRaise)))}>3x BB</button>
+                    <button className="ab-preset" aria-label="Half pot" onClick={() => setRaiseAmountSafe(potFraction(1/2))}><span className="ab-preset-full">½ Pot</span><span className="ab-preset-short" aria-hidden="true">½</span></button>
+                    <button className="ab-preset" aria-label="Two thirds pot" onClick={() => setRaiseAmountSafe(potFraction(2/3))}><span className="ab-preset-full">2/3 Pot</span><span className="ab-preset-short" aria-hidden="true">⅔</span></button>
+                    <button className="ab-preset ab-preset--active" aria-label="Pot" onClick={() => setRaiseAmountSafe(potFraction(1))}><span className="ab-preset-full">Pot</span><span className="ab-preset-short" aria-hidden="true">Pot</span></button>
+                    <button className="ab-preset ab-preset--3bb" aria-label="Three big blinds" onClick={() => setRaiseAmountSafe(Math.max(minRaiseTotal, Math.min(bigBlind * 3, maxRaise)))}><span className="ab-preset-full">3x BB</span><span className="ab-preset-short" aria-hidden="true">3x</span></button>
                   </div>
                 )}
 
@@ -4090,17 +4354,23 @@ export default function GameHUD() {
 
               {/* raise row moved to raise-panel-float below hud-bottom */}
 
-              {/* STRADDLE (UTG only, active turn) */}
+              {/* STRADDLE — R2 (C11): when the server's `isFirstActor` says
+                  this seat may straddle right now (its own turn, preflop). */}
               {isUTG && isMyTurn && (
                 <button
                   className="action-btn straddle"
                   onClick={() => {
+                    // (No action-sent lock: the server answers a refused
+                    // straddle with nothing, which would lock the turn. A
+                    // second tap is refused server-side — no longer first.)
                     const socket = getSocket();
-                    if (socket?.connected) socket.emit('straddle');
+                    if (!socket?.connected) return;
+                    socket.emit('straddle');
                     playSound('bet');
                   }}
                 >
-                  Straddle {straddleAmount.toLocaleString()}
+                  <span className="action-verb">Straddle</span>
+                  <span className="action-amount-sub">{straddleAmount.toLocaleString()}</span>
                 </button>
               )}
 
@@ -4129,7 +4399,10 @@ export default function GameHUD() {
           which element contains the HUD. Positioned top-centre of the table
           area via `.hand-strength-portal` CSS; hidden on handComplete so it
           doesn't linger on the next-hand overlay. */}
-      {handStrength && yourCards.length > 0 && !myPlayer?.folded && phase !== 'HandComplete' && createPortal(
+      {/* R2 (P3) — rendered INSIDE the HUD (was a <body> portal at z 180, above
+          the Options menu and the all-in confirm); TableLayout.css places it
+          clear of the pot and Options. */}
+      {handStrength && yourCards.length > 0 && !myPlayer?.folded && phase !== 'HandComplete' && (
         <div
           className={`hand-strength-portal hand-strength-portal--${
             handStrength.strength < 0.2 ? 'weak' :
@@ -4170,8 +4443,7 @@ export default function GameHUD() {
              handStrength.strength < 0.7 ? 'Medium' :
              handStrength.strength < 0.9 ? 'Strong' : 'Monster'}
           </span>
-        </div>,
-        document.body
+        </div>
       )}
 
       {/* Pot odds — on the table below "AMERICAN PUB POKER".
@@ -4397,6 +4669,12 @@ export default function GameHUD() {
       {showInsurancePanel && (
         <div className="insurance-panel insurance-panel--server-quote">
           <div className="insurance-title">{'\uD83D\uDEE1\uFE0F'} Insurance</div>
+          {insuranceSecsLeft !== null && (
+            <div className="insurance-countdown" role="timer" aria-live="off" aria-label={`${insuranceSecsLeft} seconds to decide`}>
+              <span className="insurance-countdown__bar" style={{ transform: `scaleX(${Math.max(0, Math.min(1, (insuranceExpiresAt - insuranceNow) / insuranceWindowMs))})` }} />
+              <span className="insurance-countdown__text">Decide in {insuranceSecsLeft}s</span>
+            </div>
+          )}
           <div className="insurance-question">
             Lock in {insuranceQuote.equityPct}% equity for {insuranceQuote.cashout.toLocaleString()} chips?
           </div>
@@ -4434,6 +4712,19 @@ export default function GameHUD() {
               Decline
             </button>
           </div>
+        </div>
+      )}
+
+      {/* R2 (S1) — his tournament started while he plays this table. */}
+      {tourneyStartOffer && (
+        <div className="hud-tourney-start-offer" role="status">
+          <span className="hud-tourney-start-offer__text">
+            {'\uD83C\uDFC6'} {tourneyStartOffer.name} has started. Your seat is waiting.
+          </span>
+          <button type="button" className="hud-tourney-start-offer__go" onClick={goToTournamentSeat}>
+            Go to your tournament seat
+          </button>
+          <button type="button" className="hud-tourney-start-offer__close" aria-label="Not now" onClick={() => setTourneyStartOffer(null)}>{'\u2715'}</button>
         </div>
       )}
 
@@ -4793,18 +5084,6 @@ export default function GameHUD() {
         {showAchievements && <AchievementsPanel onClose={() => setShowAchievements(false)} />}
         {showEquityCalc && <EquityCalculator onClose={() => setShowEquityCalc(false)} />}
 
-        {/* GTO Overlay — always mounted, toggled via visibility */}
-        <GTOOverlay
-          holeCards={yourCards}
-          communityCards={gameState?.communityCards}
-          pot={gameState?.pot}
-          callAmount={gameState?.callAmount || gameState?.toCall}
-          numOpponents={(gameState?.seats || []).filter(s => s?.playerName && !s?.folded).length - 1}
-          phase={phase}
-          omaha={/omaha/i.test(gameVariant)}
-          visible={gtoVisible && isMyTurn}
-        />
-
         {showProvablyFair && (
           <ProvablyFair
             commitment={deckCommitment}
@@ -4839,14 +5118,69 @@ export default function GameHUD() {
         />
       )}
 
-      {/* Voice Chat */}
-      <Suspense fallback={null}>
-        <VoiceChat
-          tableId={gameState?.tableId}
-          username={gameState?.seats?.[yourSeat]?.playerName || 'Player'}
-          visible={showVoiceChat}
-        />
-      </Suspense>
+      {/* R2 (APPUI-45/46) — the opt-in floating panels (Predict Winner,
+          Prediction Market, Voice Chat, the GTO overlay + solver) share ONE
+          dock. Desktop: display:contents, every panel keeps its own corner.
+          Phones (TableLayout.css): a column under the top bar sized to the
+          measured bars, so none sits on the action bar, the hero's cards or
+          another panel (they were fixed at bottom:116px — ON the 143-149px
+          portrait bar — and over each other). */}
+      <OverlayBoundary
+        name="Table Panels"
+        onClose={() => {
+          setShowSpectatorPredict(false);
+          setShowPredictionMarket(false);
+          setShowVoiceChat(false);
+          setGtoVisible(false);
+          setShowGTOSolver(false);
+        }}
+      >
+        <div className="hud-panel-dock">
+          <Suspense fallback={null}>
+            <SpectatorPredict
+              tableId={gameState?.tableId}
+              gameState={gameState}
+              socket={getSocket()}
+              visible={showSpectatorPredict}
+              onClose={() => setShowSpectatorPredict(false)}
+            />
+            {/* 2026-10-09 — refusal handling passed in (PredictionMarket is in
+                the manual 'game-overlays' chunk; see its header). */}
+            <PredictionMarket
+              gameState={gameState}
+              socket={getSocket()}
+              visible={showPredictionMarket}
+              onClose={() => setShowPredictionMarket(false)}
+              onPlayRefusal={reportPlayRefusal}
+              notePlayAttempt={notePlayAttempt}
+            />
+            <VoiceChat
+              tableId={gameState?.tableId}
+              username={gameState?.seats?.[yourSeat]?.playerName || 'Player'}
+              visible={showVoiceChat}
+            />
+            {/* GTO Overlay — always mounted, toggled via visibility */}
+            <GTOOverlay
+              holeCards={yourCards}
+              communityCards={gameState?.communityCards}
+              pot={gameState?.pot}
+              callAmount={gameState?.callAmount || gameState?.toCall}
+              numOpponents={(gameState?.seats || []).filter(s => s?.playerName && !s?.folded).length - 1}
+              phase={phase}
+              omaha={/omaha/i.test(gameVariant)}
+              visible={gtoVisible && isMyTurn}
+            />
+            <GTOSolver
+              gameState={gameState}
+              yourCards={yourCards}
+              positionLabel={gameState?.seats?.[yourSeat]?.positionLabel || ''}
+              equity={equityResults?.[yourSeat] ?? null}
+              visible={showGTOSolver}
+              onClose={() => setShowGTOSolver(false)}
+            />
+          </Suspense>
+        </div>
+      </OverlayBoundary>
 
       {/* Lazy-loaded overlays — code-split, loaded on first open */}
       <Suspense fallback={null}>
@@ -4868,13 +5202,6 @@ export default function GameHUD() {
           visible={showRangeViz}
           onClose={() => setShowRangeViz(false)}
         />
-        <SpectatorPredict
-          tableId={gameState?.tableId}
-          gameState={gameState}
-          socket={getSocket()}
-          visible={showSpectatorPredict}
-          onClose={() => setShowSpectatorPredict(false)}
-        />
         <PauseCoach
           visible={showPauseCoach}
           gameState={gameState}
@@ -4890,14 +5217,6 @@ export default function GameHUD() {
           yourCards={yourCards}
           visible={showStream}
           onClose={() => setShowStream(false)}
-        />
-        <GTOSolver
-          gameState={gameState}
-          yourCards={yourCards}
-          positionLabel={gameState?.seats?.[yourSeat]?.positionLabel || ''}
-          equity={equityResults?.[yourSeat] ?? null}
-          visible={showGTOSolver}
-          onClose={() => setShowGTOSolver(false)}
         />
         <CoachingRail
           gameState={gameState}
@@ -4936,16 +5255,6 @@ export default function GameHUD() {
             setShowSessionRecap(false);
             setShowReplay(true);
           }}
-        />
-        {/* 2026-10-09 — refusal handling passed in (PredictionMarket is in
-            the manual 'game-overlays' chunk; see its header). */}
-        <PredictionMarket
-          gameState={gameState}
-          socket={getSocket()}
-          visible={showPredictionMarket}
-          onClose={() => setShowPredictionMarket(false)}
-          onPlayRefusal={reportPlayRefusal}
-          notePlayAttempt={notePlayAttempt}
         />
         <HandHeatmap
           seats={gameState?.seats || []}

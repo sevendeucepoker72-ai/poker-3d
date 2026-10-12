@@ -1,0 +1,194 @@
+/* ════════════════════════════════════════════════════════════════════════
+   TableCosmetics.css — the table's looks for the shop cosmetics
+   (.online R2, 2026-10-11 — C7 / C8; ids + names in tableCosmetics.js).
+   Card backs  .cb-<id>          on .card2d--back (seats) / .card-peek-back (hero)
+   Frames      .np-frame--<id>   on a seat nameplate / the hero nameplate
+   VIP         .np-vip (badge) + .np-frame--vip (gold frame when none equipped)
+   Titles      .np-title         a line under the name (seats) / a tab (hero)
+   Badges      .np-badge         the season medal beside the name
+   Sapphire + gold; nothing red. No animation (TABLEUI-17 budget).
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Table themes ──────────────────────────────────────────────────────
+   The felt surface paints noise + spotlight + var(--felt-bg); a theme felt
+   can be several layers, so every layer gets its size and blend (lists
+   longer than the layer count are ignored). */
+.table2d-felt__surface {
+  background-size: 200px 200px, cover, cover, cover, cover, cover, cover !important;
+  background-blend-mode: soft-light, screen, normal, normal, normal, normal, normal !important;
+}
+
+/* ── Card backs ──────────────────────────────────────────────────────── */
+.cb-royal_blue { background: linear-gradient(145deg, #1e3a8a 0%, #2563eb 50%, #1e3a8a 100%) !important; }
+.cb-royal_blue .card2d__back-pattern {
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 210, 74, 0.24) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(-45deg, rgba(255, 210, 74, 0.24) 0 1px, transparent 1px 6px) !important;
+  border-color: rgba(255, 210, 74, 0.55) !important;
+}
+
+.cb-silver_foil { background: linear-gradient(135deg, #f1f5f9 0%, #94a3b8 42%, #e2e8f0 58%, #64748b 100%) !important; }
+.cb-silver_foil .card2d__back-pattern {
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0 1px, transparent 1px 4px) !important;
+  border-color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.cb-gold_premium { background: linear-gradient(145deg, #7a5a12 0%, #ffd24a 45%, #b8860b 72%, #6b4f10 100%) !important; }
+.cb-gold_premium .card2d__back-pattern {
+  background: radial-gradient(ellipse at center, rgba(255, 246, 200, 0.35) 0%, transparent 70%) !important;
+  border-color: rgba(12, 26, 68, 0.6) !important;
+}
+
+.cb-neon_green { background: #04140b !important; }
+.cb-neon_green .card2d__back-pattern {
+  background:
+    repeating-linear-gradient(0deg, rgba(34, 197, 94, 0.38) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(90deg, rgba(34, 197, 94, 0.38) 0 1px, transparent 1px 5px) !important;
+  border-color: #22c55e !important;
+  box-shadow: inset 0 0 6px rgba(34, 197, 94, 0.5);
+}
+
+.cb-holographic { background: conic-gradient(from 210deg at 50% 50%, #a5f3fc, #c4b5fd, #fde68a, #86efac, #a5f3fc) !important; }
+.cb-holographic .card2d__back-pattern {
+  background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.28) 0 1px, transparent 1px 5px) !important;
+  border-color: rgba(255, 255, 255, 0.75) !important;
+}
+
+.cb-dragon { background: radial-gradient(ellipse at 50% 40%, #1f6f5c 0%, #0f3b33 60%, #071f1b 100%) !important; }
+.cb-dragon .card2d__back-pattern {
+  background: radial-gradient(circle at 50% 0, transparent 2.5px, rgba(212, 175, 55, 0.4) 3px, transparent 4px) 0 0 / 7px 5px !important;
+  border-color: rgba(212, 175, 55, 0.65) !important;
+}
+
+.cb-phoenix { background: radial-gradient(ellipse at 50% 72%, #fde68a 0%, #f59e0b 36%, #b45309 72%, #4a2a08 100%) !important; }
+.cb-phoenix .card2d__back-pattern {
+  background: repeating-linear-gradient(60deg, rgba(255, 255, 255, 0.14) 0 1px, transparent 1px 6px) !important;
+  border-color: rgba(253, 230, 138, 0.75) !important;
+}
+
+.cb-diamond_pattern { background: linear-gradient(145deg, #0c4a6e 0%, #0e7490 100%) !important; }
+.cb-diamond_pattern .card2d__back-pattern {
+  background:
+    linear-gradient(45deg, rgba(185, 242, 255, 0.34) 25%, transparent 25%, transparent 75%, rgba(185, 242, 255, 0.34) 75%) 0 0 / 8px 8px,
+    linear-gradient(-45deg, rgba(185, 242, 255, 0.34) 25%, transparent 25%, transparent 75%, rgba(185, 242, 255, 0.34) 75%) 0 0 / 8px 8px !important;
+  border-color: rgba(185, 242, 255, 0.75) !important;
+}
+
+.cb-mythic { background: radial-gradient(ellipse at 50% 45%, #7c3aed 0%, #4c1d95 52%, #1e1048 100%) !important; }
+.cb-mythic .card2d__back-pattern {
+  background: radial-gradient(ellipse at center, rgba(255, 210, 74, 0.2) 0%, transparent 65%) !important;
+  border-color: rgba(255, 210, 74, 0.65) !important;
+}
+.cb-mythic .card2d__back-pattern::after { content: '\2605'; color: rgba(255, 210, 74, 0.85); font-size: 0.7rem; }
+
+/* The hero's own back (the peek card's reverse): the house sapphire back by
+   default (it was red), the equipped back when there is one. */
+.hud .card-peek-back {
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.07) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.07) 0 1px, transparent 1px 6px),
+    linear-gradient(145deg, #0d1545 0%, #1a237e 35%, #283593 50%, #1a237e 65%, #0d1545 100%);
+}
+
+/* ── Nameplate frames (box-shadow rings: the plate's box never changes) ── */
+.np-frame {
+  --np-c: #ffd24a;
+  --np-glow: rgba(255, 210, 74, 0.35);
+}
+/* (the hero plate's own box-shadow is !important at the same specificity in
+   GameHUD.css, which loads later — hence the .hud twin; it sets no colour so
+   each frame's --np-c below still applies) */
+.np-frame,
+.hud .hud-nameplate-me.np-frame {
+  border-color: var(--np-c) !important;
+  box-shadow: 0 0 0 1px var(--np-c), 0 0 9px var(--np-glow), 0 4px 16px rgba(0, 0, 0, 0.6) !important;
+}
+.np-frame--bronze   { --np-c: #cd7f32; --np-glow: rgba(205, 127, 50, 0.35); }
+.np-frame--silver   { --np-c: #cbd5e1; --np-glow: rgba(203, 213, 225, 0.35); }
+.np-frame--gold     { --np-c: #ffd24a; --np-glow: rgba(255, 210, 74, 0.4); }
+.np-frame--platinum { --np-c: #e5e7eb; --np-glow: rgba(229, 231, 235, 0.45); }
+.np-frame--ice      { --np-c: #60a5fa; --np-glow: rgba(96, 165, 250, 0.5); }
+.np-frame--flame    { --np-c: #f59e0b; --np-glow: rgba(245, 158, 11, 0.55); }
+.np-frame--diamond,
+.hud .hud-nameplate-me.np-frame--diamond {
+  --np-c: #b9f2ff; --np-glow: rgba(185, 242, 255, 0.5);
+  box-shadow: 0 0 0 1px #b9f2ff, 0 0 0 3px rgba(185, 242, 255, 0.28), 0 0 10px rgba(185, 242, 255, 0.45), 0 4px 16px rgba(0, 0, 0, 0.6) !important;
+}
+.np-frame--mythic,
+.hud .hud-nameplate-me.np-frame--mythic {
+  --np-c: #a78bfa; --np-glow: rgba(167, 139, 250, 0.55);
+  box-shadow: 0 0 0 1px #a78bfa, 0 0 0 2.5px rgba(255, 210, 74, 0.6), 0 0 11px rgba(167, 139, 250, 0.5), 0 4px 16px rgba(0, 0, 0, 0.6) !important;
+}
+.np-frame--crown    { --np-c: #ffd24a; --np-glow: rgba(255, 210, 74, 0.5); }
+.np-frame--vip,
+.hud .hud-nameplate-me.np-frame--vip {
+  --np-c: #ffd24a; --np-glow: rgba(255, 210, 74, 0.45);
+  box-shadow: 0 0 0 1px #ffd24a, 0 0 0 2px rgba(184, 134, 11, 0.7), 0 0 9px rgba(255, 210, 74, 0.4), 0 4px 16px rgba(0, 0, 0, 0.6) !important;
+}
+.seat-pod__nameplate.np-cos { position: relative; }
+.np-frame--crown::before {
+  content: '\1F451';
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* ── VIP badge ─────────────────────────────────────────────────────────── */
+.np-vip {
+  position: absolute;
+  top: -6px;
+  right: -5px;
+  padding: 0 4px;
+  border-radius: 5px;
+  font-size: 0.45rem;
+  font-weight: 900;
+  line-height: 11px;
+  letter-spacing: 0.06em;
+  color: #0c1a44;
+  background: linear-gradient(180deg, #ffe08a, #d9a92a);
+  border: 1px solid rgba(255, 246, 200, 0.9);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+/* ── Titles ────────────────────────────────────────────────────────────── */
+.np-title {
+  font-size: calc(0.62rem * var(--sp, 1));
+  line-height: 1.15;
+  font-weight: 700;
+  font-style: italic;
+  color: #9fc0ff;
+  letter-spacing: 0.02em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.np-title--gold { color: #ffd24a; }
+/* the hero's nameplate: a small tab on its top-left edge (its box — which the
+   layout measures — never changes) */
+.hud .hud-nameplate-me .np-title {
+  position: absolute;
+  top: -7px;
+  left: 8px;
+  max-width: calc(100% - 40px);
+  padding: 0 5px;
+  border-radius: 5px;
+  font-size: 0.5rem;
+  line-height: 11px;
+  background: rgba(8, 20, 52, 0.95);
+  border: 1px solid rgba(246, 220, 138, 0.35);
+  pointer-events: none;
+}
+
+/* ── Season badge ──────────────────────────────────────────────────────── */
+.np-badge {
+  flex: 0 0 auto;
+  font-size: 0.62rem;
+  line-height: 1;
+  margin-left: 2px;
+}

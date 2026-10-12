@@ -15,19 +15,62 @@
   backdrop-filter: blur(6px);
 }
 
-/* 2026-07-05 mobile audit fix: on a phone the 220px panel at left:16px covered
-   most of the felt (center) and the left-side seats. Shrink it, tuck it below the
-   notch/HUD bar in the top-left corner, and cap its height with internal scroll so
-   it stays out of the way of the table. */
-@media (max-width: 600px) {
-  .training-overlay {
-    top: calc(env(safe-area-inset-top, 0px) + 46px);
+/* R2 (TABLEUI-10) — the header's minimize / close controls. */
+.training-header-actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.training-header .training-badge { margin-left: 8px; }
+.training-hdr-btn {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(246, 220, 138, 0.35);
+  background: rgba(13, 34, 84, 0.9);
+  color: #ffd24a;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.training-hdr-btn:hover { border-color: rgba(246, 220, 138, 0.7); }
+
+/* Phones: the open panel never covers the top bar (Back / Sit Out / Options
+   / the Training badge — its dock), the board or the hero's cards.
+   Portrait: under the top bar, ending above the board, scrolling inside.
+   Landscape: a column on the right edge between the two bars. */
+@media (max-width: 600px) and (orientation: portrait) {
+  .training-overlay.training-overlay--open {
+    position: fixed;
     left: 8px;
-    width: min(190px, 54vw);
-    max-height: 38vh;
+    right: 8px;
+    width: auto;
+    top: calc(var(--hud-top-h, 100px) + 4px);
+    bottom: auto;
+    max-height: max(96px, calc(var(--board-cy, 320px) - var(--board-card-w, 36px) * 0.7 - var(--hud-top-h, 100px) - 14px));
     overflow-y: auto;
-    padding: 10px 12px;
+    padding: 8px 12px;
     font-size: 0.85em;
+    z-index: 520;
+    animation: none;
+  }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .training-overlay.training-overlay--open {
+    position: fixed;
+    left: auto;
+    right: calc(8px + env(safe-area-inset-right, 0px));
+    top: calc(var(--hud-top-h, 44px) + 6px);
+    /* above the hero's nameplate, which sits on the bar */
+    bottom: calc(var(--hud-bar-h, 60px) + var(--hero-plate-h, 32px) + 10px);
+    width: min(210px, 32vw);
+    max-height: none;
+    overflow-y: auto;
+    padding: 8px 10px;
+    font-size: 0.82em;
+    z-index: 520;
+    animation: none;
   }
 }
 
@@ -99,7 +142,7 @@
 }
 
 .equity-fill.equity-low {
-  stroke: #EF4444;
+  stroke: #F59E0B;
 }
 
 .equity-fill.equity-mid {
@@ -125,7 +168,7 @@
   line-height: 1;
 }
 
-.equity-pct.equity-low { color: #EF4444; }
+.equity-pct.equity-low { color: #FBBF24; }
 .equity-pct.equity-mid { color: #EAB308; }
 .equity-pct.equity-high { color: #4ADE80; }
 
@@ -184,8 +227,8 @@
 }
 
 .training-suggested.action-fold {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.35);
 }
 
 .training-suggested.action-check {
@@ -217,7 +260,7 @@
   margin-bottom: 4px;
 }
 
-.suggested-action.action-fold { color: #EF4444; }
+.suggested-action.action-fold { color: #CBD5E1; }
 .suggested-action.action-check { color: #3B82F6; }
 .suggested-action.action-call { color: #4ADE80; }
 .suggested-action.action-raise { color: #4ADE80; }
