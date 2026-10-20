@@ -1585,7 +1585,12 @@ function App() {
       if (data?.tableId) { try { clearTableLeft(data.tableId); } catch { /* ignore */ } }
       // R2 (S1) — a LATE entrant was seated in a qualifier already running
       // (`lateEntry: true`, its table's state follows): take him to the seat.
-      if (data?.lateEntry === true && data?.tableId) {
+      // 2026-10-20 — and every registrant the server SEATED on this socket at
+      // the start (`seated: true`). Before, everyone who registered on time
+      // stayed in the lobby, dealt in and blinded out, until he found "Return
+      // to Table". A registrant kept absent (`seated: false` — this socket
+      // plays another table) is not moved.
+      if ((data?.lateEntry === true || data?.seated === true) && data?.tableId) {
         try { useGameStore.getState().setScreen('table'); } catch { /* ignore */ }
       }
     };

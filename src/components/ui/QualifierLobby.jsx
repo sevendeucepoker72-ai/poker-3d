@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { getSocket } from '../../services/socketService';
+// 2026-10-20 — a registered player's way back to his seat in a running qualifier.
+import { awaySeatOfTournament } from '../../store/tournamentSeatStore';
+import { returnToTournament } from '../../services/tournamentReturn';
 import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
 import {
   normalizeQualifierList, qualifierSignupState, qualifierStatusCounts,
@@ -274,6 +277,27 @@ export default function QualifierLobby({ onSpectate }) {
     if (onSpectate) onSpectate();
   }, [onSpectate]);
 
+  // 2026-10-20 — "Go to my table": a REGISTERED player in a running
+  // qualifier is taken back to his own seat (it was "Watch Live", which made
+  // him a spectator of his own event — the server now refuses that). An away
+  // seat this tab knows goes through the usual Return (services/tournamentReturn);
+  // otherwise (a reload / another device) the server finds his absent seat by
+  // account (`returnToTournamentSeat` {tournamentId}); its 'reconnectedToTable'
+  // opens the table, and a refusal is shown here.
+  const handleGoToMyTable = useCallback((q) => {
+    setRegMsg(null);
+    const away = awaySeatOfTournament(q.tournamentId);
+    if (away) { returnToTournament(away.key).catch(() => { /* answered in the store */ }); return; }
+    const socket = getSocket();
+    if (!socket || !socket.connected) { setRegMsg(GAME_SERVER_UNREACHABLE_TEXT); return; }
+    socket.emit('returnToTournamentSeat', { tournamentId: q.tournamentId }, (r) => {
+      if (r && r.success === false) {
+        if (reportPlayRefusal(r)) return;
+        setRegMsg(r.error || 'We could not find your seat in this qualifier.');
+      }
+    });
+  }, []);
+
   const isRegistered = useCallback((q) => (q.registered !== null ? q.registered : localRegs.has(q.qualifierId)), [localRegs]);
   const counts = useMemo(() => qualifierStatusCounts(list, now), [list, now]);
 
@@ -324,7 +348,12 @@ export default function QualifierLobby({ onSpectate }) {
               {pend === 'register' ? 'Registering…' : 'Late Register'}
             </button>
           )}
-          {q.tournamentId && (
+          {q.tournamentId && mine && (
+            <button className="qualifier-go-to-my-table" onClick={(e) => { e.stopPropagation(); handleGoToMyTable(q); }} style={{ flex: 1, minWidth: 140, padding: pad, borderRadius: 8, fontWeight: 800, fontSize: '0.88rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: 'pointer' }}>
+              ↩ Go to my table
+            </button>
+          )}
+          {q.tournamentId && !mine && (
             <button onClick={(e) => { e.stopPropagation(); handleSpectate(q.tournamentId); }} style={{ flex: 1, minWidth: 120, padding: pad, borderRadius: 8, fontWeight: 700, fontSize: '0.88rem', background: 'rgba(106,186,255,0.14)', color: '#cfe0ff', border: '1px solid rgba(106,186,255,0.5)', cursor: 'pointer' }}>
               Watch Live
             </button>

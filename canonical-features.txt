@@ -1066,3 +1066,9 @@ please register again
 
 # 2026-10-12 admin: same-network seats listed (owner "loosen for pubs")
 Same Network, Same Table
+
+# 2026-10-20 (owner: weekly qualifier Sunday 11 AM Denver) - a registered
+# player in a running qualifier gets "Go to my table" (Watch Live made him a
+# spectator of his own event); on-time registrants are taken to their table
+# at the start (qualifierTournamentStarted seated:true).
+qualifier-go-to-my-table
