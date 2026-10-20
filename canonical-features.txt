@@ -1072,3 +1072,7 @@ Same Network, Same Table
 # spectator of his own event); on-time registrants are taken to their table
 # at the start (qualifierTournamentStarted seated:true).
 qualifier-go-to-my-table
+# 2026-10-20 (owner: "Remove + refund at start") - a registrant offline when
+# the qualifier starts is released (credit refunded) and told at the next
+# sign-in: qualifierCancelled reason absent_at_start.
+Qualifier started without you

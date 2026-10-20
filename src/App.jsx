@@ -1002,6 +1002,17 @@ function App() {
         useProgressStore.getState().addNotification({ type: 'mission', title: 'Qualifier cancelled', message: `Your qualifier registration was cancelled because the game server restarted — please register again.${credit}` });
         return;
       }
+      // 2026-10-20 (owner: no-shows removed + refunded at the start) — told at
+      // the next sign-in: the event went ahead without this player.
+      if (d?.reason === 'absent_at_start') {
+        const name = d?.qualifierName || 'The qualifier';
+        const until = d?.lateRegUntil ? new Date(d.lateRegUntil) : null;
+        const late = d?.lateRegOpen && until && !Number.isNaN(until.getTime())
+          ? ` Late registration is open until ${until.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} — enter again from Qualifiers if a seat is free.`
+          : '';
+        useProgressStore.getState().addNotification({ type: 'mission', title: 'Qualifier started without you', message: `${name} started while you were offline, so your entry was released.${credit}${late}` });
+        return;
+      }
       const why = d?.reason === 'removed_from_schedule' ? 'it was taken off the schedule' : 'not enough players registered';
       useProgressStore.getState().addNotification({ type: 'mission', title: 'Qualifier cancelled', message: `A qualifier you registered for was cancelled — ${why}.${credit}` });
     };
