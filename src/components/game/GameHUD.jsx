@@ -11,6 +11,7 @@ import {
   raiseLimits, allInButtonMode, shownRaiseAmount, betVerb, callView, queuedCallAnyAction,
   preActionKeysFor, turnDecisionKey, drawTurnInfo, preflopTierOf, leaveConfirmText,
   handIsOver, revealDecision, pineappleAckRefused, SHOW_AT_HAND_END_TEXT,
+  allInHiddenText,
 } from '../../utils/actionBar';
 // Gameplay audit 2026-10-21 (C2) — winner banner / showdown rows / equity per
 // variant / hand boundary rules, kept pure + probed.
@@ -457,6 +458,9 @@ export default function GameHUD() {
   const optionsOpenRef = useRef(false);
   const canRaiseRef = useRef(false);
   const aofRef = useRef(false); // gameplay audit F107 — All-In-or-Fold table
+  // F107 fix-up — at that table, Check is offered on a free street (its
+  // server takes a check when nothing is owed: actionBar.aofAllowsCheck).
+  const aofFreeCheckRef = useRef(false);
   // Gameplay audit F130 / G169 — a draw round is not a betting decision: the
   // seat that closed the betting stays in activeSeatIndex (isMyTurn), but no
   // check / call / raise is legal until the next betting round.
@@ -843,6 +847,7 @@ export default function GameHUD() {
   // seat at once on the server's own draw clock (`drawStartedAt`); the seat in
   // activeSeatIndex is just whoever closed the betting. `isMyDraw` = he still
   // owes a draw on that clock. isMyTurn keeps its meaning (actions, hotkeys).
+  // F134 fix-up — an all-in seat owes a draw too (the server waits for it).
   const { canDrawNow, drawClockKnown, isMyDraw } = drawTurnInfo(gameState, {
     yourSeat, yourCardsLen: yourCards.length, myPlayer,
   });
@@ -917,13 +922,22 @@ export default function GameHUD() {
   // server's `maxRaise` (pot limit / fixed limit), no raise controls when the
   // server says the betting is not open to him (`canRaise === false`) or at an
   // All-In-or-Fold table. Keys absent (older server): stack max, as before.
-  const limits = raiseLimits({ myChips, myCurrentBet, minRaiseTotal, callAmount, gameState });
+  // F12 fix-up — `canRaise` decides only on HIS turn (the server sends false
+  // for a folded seat / Showdown too): off-turn the bar keeps its shape.
+  const limits = raiseLimits({ myChips, myCurrentBet, minRaiseTotal, callAmount, gameState, isMyTurn });
   const maxRaise = limits.maxRaise;
   const raiseControlsOk = limits.raiseControlsOk;
   const isAof = limits.isAof;
+  // F107 fix-up — All-In-or-Fold with nothing to call, on a server that takes
+  // a check there: Check (button, pre-actions, key, tap / swipe right).
+  const aofFreeCheck = limits.aofFreeCheck;
   const allInMode = allInButtonMode(limits);
+  // The pre-actions this table takes (F107), as a string for effect deps.
+  const preActionKeys = preActionKeysFor(gameState);
+  const preActionKeysSig = preActionKeys.join(',');
   canRaiseRef.current = raiseControlsOk;
   aofRef.current = isAof;
+  aofFreeCheckRef.current = aofFreeCheck;
   drawRoundRef.current = !!(gameState?.hasDrawPhase && gameState?.isDrawPhase);
   // F126 — the Call button's real amount / pot odds (a call above his stack
   // commits only the stack; the excess he cannot win).
@@ -1303,10 +1317,12 @@ export default function GameHUD() {
         // User already manually acted (or an action is mid-flight).
         // Clear the pre-action silently; don't double-send.
         setPreAction(null);
-      } else if (isAof && preAction !== 'fold') {
-        // Gameplay audit F107 — All-In-or-Fold: the server refuses check /
-        // call, so only a queued Fold may fire (one armed before the table
-        // kind was known is dropped, never turned into an all-in).
+      } else if (isAof && !preActionKeysSig.split(',').includes(preAction)) {
+        // Gameplay audit F107 — All-In-or-Fold: the server refuses a call, so
+        // only the pre-actions this table offers may fire (Fold; Check/Fold
+        // and Check too where its server takes a free check). One armed
+        // before the table kind was known is dropped, never turned into an
+        // all-in.
         setPreAction(null);
       } else {
         const action = preAction;
@@ -1350,7 +1366,7 @@ export default function GameHUD() {
       }
     }
     prevIsMyTurnForPreActionRef.current = isMyTurn;
-  }, [isMyTurn, preAction, callAmount, sendAction, playSound, preActionTableId, preActionHand, isAof]);
+  }, [isMyTurn, preAction, callAmount, sendAction, playSound, preActionTableId, preActionHand, isAof, preActionKeysSig]);
 
   // Close raise slider and all-in confirm when turn ends
   useEffect(() => {
@@ -2960,9 +2976,10 @@ export default function GameHUD() {
     const handlers = [
       ['checkCall', () => {
         e.preventDefault();
-        // Gameplay audit F107 — All-In-or-Fold: the server refuses check and
-        // call, so the key does nothing there (never an all-in in disguise).
-        if (isAof) return;
+        // Gameplay audit F107 — All-In-or-Fold: the server refuses a call, so
+        // the key does nothing there (never an all-in in disguise) — except a
+        // free check where its server takes one (aofFreeCheck).
+        if (isAof && !aofFreeCheck) return;
         // Audit fix #6: on a free street, the configured check/call key
         // ALREADY routed to check — but a user remapping "F" to both fold
         // and checkCall used to fold a free card. Now we unify the fold key
@@ -2980,9 +2997,10 @@ export default function GameHUD() {
         handleAction('raise', amt);
       }],
       ['allIn', () => {
-        // F12 — betting not reopened to him: the server would only call.
+        // F12 — betting not reopened to him (or the fixed-limit cap is
+        // reached): the server would only call.
         if (allInMode === 'hidden') {
-          addToast('You can only call or fold — the betting was not reopened.', 'info', 3500);
+          addToast(allInHiddenText(callAmount), 'info', 3500);
           return;
         }
         handleAction('allIn');
@@ -2990,11 +3008,11 @@ export default function GameHUD() {
       ['fold', () => {
         // Free street → treat fold key as check (mirrors the now-hidden
         // Fold button's old click behavior so keyboard + UI agree).
-        // F107 — at All-In-or-Fold there is no check: on a free street the
-        // key is the Fold button's two-step fold (never a one-key fold of a
-        // free hand).
+        // F107 — at All-In-or-Fold with no check (an older server): on a
+        // free street the key is the Fold button's two-step fold (never a
+        // one-key fold of a free hand). Where Check is offered it checks.
         if (callAmount === 0) {
-          if (isAof) requestFold();
+          if (isAof && !aofFreeCheck) requestFold();
           else handleAction('check');
           return;
         }
@@ -3009,7 +3027,7 @@ export default function GameHUD() {
       seen.add(k);
       if (key === k) { fn(); return; }
     }
-  }, [isMyTurn, handleAction, requestFold, callAmount, raiseAmount, hotkeys, showRaiseSlider, showAllInConfirm, isTouchDevice, minRaiseTotal, raiseControlsOk, snapRaiseToStep, isAof, allInMode, addToast]);
+  }, [isMyTurn, handleAction, requestFold, callAmount, raiseAmount, hotkeys, showRaiseSlider, showAllInConfirm, isTouchDevice, minRaiseTotal, raiseControlsOk, snapRaiseToStep, isAof, aofFreeCheck, allInMode, addToast]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -3137,9 +3155,10 @@ export default function GameHUD() {
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
     const free = callAmountRef.current === 0;
-    // Gameplay audit F107 — All-In-or-Fold: no check / call gestures (the
-    // server refuses them); swipe left is the two-step fold.
-    const aof = aofRef.current;
+    // Gameplay audit F107 — All-In-or-Fold: no call gestures (the server
+    // refuses a call); swipe left is the two-step fold. A free check is a
+    // check there too where its server takes one (aofFreeCheck).
+    const aof = aofRef.current && !(free && aofFreeCheckRef.current);
     // Tap — check (free) or call
     if (dt < 200 && absDx < 15 && absDy < 15) {
       if (aof) return;
@@ -3737,8 +3756,9 @@ export default function GameHUD() {
                       { key: 'checkFold', icon: '🔄', label: 'Check/Fold' },
                       { key: 'callAny',   icon: '✋', label: 'Call Any' },
                       { key: 'checkOnly', icon: '✓', label: 'Check' },
-                    // F107 — only Fold at an All-In-or-Fold table
-                    ].filter(({ key }) => preActionKeysFor(gameState).includes(key)).map(({ key, icon, label }) => {
+                    // F107 — at an All-In-or-Fold table: Fold (+ Check/Fold
+                    // and Check where its server takes a free check)
+                    ].filter(({ key }) => preActionKeys.includes(key)).map(({ key, icon, label }) => {
                       const active = preAction === key;
                       return (
                         <button
@@ -4237,7 +4257,8 @@ export default function GameHUD() {
               let cardTitle = 'Hover to peek';
               if (hasDrawPhase && isDrawPhase) {
                 // F134 — only while he still owes this round's draw (not
-                // folded, not already drawn): the server refuses the rest.
+                // folded, not already drawn; an all-in seat draws too): the
+                // server refuses the rest.
                 if (canDrawNow) {
                   cardClick = () => toggleDiscard(i);
                   cardTitle = isSelected ? 'Click to keep' : 'Click to discard';
@@ -4532,8 +4553,10 @@ export default function GameHUD() {
                     <span className="pre-action-label">Fold</span>
                   </button>
                   {/* Gameplay audit F107 — All-In-or-Fold: the server refuses
-                      check / call, so only Fold may be queued. */}
-                  {!isAof && (<>
+                      a call, so only Fold may be queued there — plus
+                      Check/Fold and Check where its server takes a free check
+                      (preActionKeysFor). */}
+                  {preActionKeys.includes('checkFold') && (
                   <button
                     className={`pre-action-btn${preAction === 'checkFold' ? ' active' : ''}`}
                     aria-label={preAction === 'checkFold' ? 'Cancel pre-action: check or fold' : 'Queue pre-action: check or fold on my turn'}
@@ -4543,6 +4566,8 @@ export default function GameHUD() {
                     <span className="pre-action-icon">🔄</span>
                     <span className="pre-action-label">Check/Fold</span>
                   </button>
+                  )}
+                  {preActionKeys.includes('callAny') && (
                   <button
                     className={`pre-action-btn${preAction === 'callAny' ? ' active' : ''}`}
                     aria-label={preAction === 'callAny' ? 'Cancel pre-action: call any' : 'Queue pre-action: call any bet on my turn'}
@@ -4552,6 +4577,8 @@ export default function GameHUD() {
                     <span className="pre-action-icon">✋</span>
                     <span className="pre-action-label">Call Any</span>
                   </button>
+                  )}
+                  {preActionKeys.includes('checkOnly') && (
                   <button
                     className={`pre-action-btn${preAction === 'checkOnly' ? ' active' : ''}`}
                     aria-label={preAction === 'checkOnly' ? 'Cancel pre-action: check if possible' : 'Queue pre-action: check if still free when action returns'}
@@ -4561,7 +4588,7 @@ export default function GameHUD() {
                     <span className="pre-action-icon">✓</span>
                     <span className="pre-action-label">Check</span>
                   </button>
-                  </>)}
+                  )}
                 </div>
               )}
             {/* Audit fix #19: aria-live="polite" so screen readers announce
@@ -4584,10 +4611,12 @@ export default function GameHUD() {
                     its right — and clicking it routed to `check` anyway,
                     which confused users ("the button says Fold but I checked").
                     Hide it entirely when there's nothing to fold. */}
-                {/* Gameplay audit F107 — at an All-In-or-Fold table Fold is
-                    offered on a free street too: the server refuses Check
-                    there, so Fold / All-In are the only actions it takes. */}
-                {(callAmount > 0 || isAof) && (
+                {/* Gameplay audit F107 — at an All-In-or-Fold table whose
+                    server refuses Check (an older server), Fold is offered on
+                    a free street too: Fold / All-In are the only actions it
+                    takes. Where Check is offered (aofFreeCheck) a free street
+                    is like any other table's. */}
+                {(callAmount > 0 || (isAof && !aofFreeCheck)) && (
                 <button
                   className={`action-btn fold ${foldPending ? 'fold-pending' : ''}`}
                   disabled={!isMyTurn}
@@ -4626,8 +4655,10 @@ export default function GameHUD() {
 
                 {/* CHECK / CALL with pot odds below.
                     Gameplay audit F107 — not at an All-In-or-Fold table (the
-                    server refuses both): a note says what the table allows. */}
-                {isAof ? (
+                    server refuses a call): a note says what the table allows,
+                    except on a free street where its server takes a check
+                    (aofFreeCheck) — then the Check button. */}
+                {isAof && !aofFreeCheck ? (
                   <span className="ab-aof-note" style={{ color: '#ffd24a', fontSize: '0.72rem', fontWeight: 700, alignSelf: 'center', whiteSpace: 'nowrap' }}>
                     All-In or Fold
                   </span>
@@ -4635,7 +4666,7 @@ export default function GameHUD() {
                 <div className="ab-call-group">
                   {callAmount === 0 ? (
                     <button
-                      className="action-btn check"
+                      className={`action-btn check${aofFreeCheck ? ' ab-aof-check' : ''}`}
                       disabled={!isMyTurn}
                       aria-label={!isMyTurn ? 'Check button, not your turn' : `Check for free. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
                       onClick={() => handleAction('check')}

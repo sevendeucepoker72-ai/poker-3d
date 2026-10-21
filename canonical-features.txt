@@ -1101,6 +1101,11 @@ pineappleDiscardAck
 Your hand will be shown when this hand ends.
 You are all-in: you stay in this hand
 rebuyComplete
+# C1 fix-up: F107 - at All-In-or-Fold a free street offers Check (button,
+# Check/Fold + Check pre-actions, key, tap) where the server takes a check
+# (it sends bettingStructure); F134 - an all-in seat draws too; F12 - the
+# server's canRaise shapes the bar only on his turn.
+ab-aof-check
 
 # 2026-10-21 gameplay audit C2 (table rendering, showdown display, variant
 # cards, seat ring). F125: Stud opponents show the server's up-cards between

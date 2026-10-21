@@ -10,9 +10,27 @@
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
-/** All-In-or-Fold table: the server accepts only 'fold' and 'allIn' (F107). */
+/**
+ * All-In-or-Fold table (F107): the server accepts 'fold' and 'allIn', and
+ * (since the 2026-10-21 server, below) a 'check' when nothing is owed.
+ */
 export function isAllInOrFoldTable(gs) {
   return !!gs && gs.tableKind === 'aof';
+}
+
+/**
+ * May he CHECK at this All-In-or-Fold table when nothing is owed (F107
+ * fix-up)? poker-server 742e006 (gameplay F49, `allInOrFoldAllows`) takes a
+ * check there when his call is 0; the server before it refuses every check at
+ * AOF ("Only fold or all-in allowed at this table"). There is no flag of its
+ * own: that server ships in the same 2026-10-21 gameplay release as S2
+ * (5554e99), which sends `bettingStructure` in EVERY state frame and which
+ * the older server never sends — so its presence is the gate, and without it
+ * the bar stays Fold + All-In only (today's behaviour). A refusal anyway is
+ * the existing action-error toast.
+ */
+export function aofAllowsCheck(gs) {
+  return isAllInOrFoldTable(gs) && typeof gs.bettingStructure === 'string' && gs.bettingStructure.length > 0;
 }
 
 /**
@@ -23,40 +41,60 @@ export function isAllInOrFoldTable(gs) {
  *  - `maxRaise` (server): the largest legal raise-TO total (pot limit / fixed
  *    limit), null for no limit. The bar never offers more than that or his
  *    stack (chips + this street's bet).
+ *  - `isMyTurn` (F12 fix-up): the server computes `canRaise` on EVERY frame,
+ *    whether or not it is his turn, and it is false for a folded seat, at
+ *    Showdown, during a held runout, etc. It only decides the bar on his own
+ *    turn: off-turn (isMyTurn === false) the bar keeps its stack-based shape
+ *    (All-In button, inline raise group — disabled as before), never 'hidden'
+ *    / 'call'. Omitted = applied (callers that only render on his turn).
  * → { stackMax, serverMax, maxRaise, raiseControlsOk, capBelowStack,
- *     allInIsCallOnly, isAof, capVerb }
+ *     allInIsCallOnly, isAof, aofFreeCheck, capVerb }
+ *  aofFreeCheck — an All-In-or-Fold table whose server takes a check
+ *    (aofAllowsCheck) and nothing to call: Check is offered there.
  */
-export function raiseLimits({ myChips, myCurrentBet, minRaiseTotal, callAmount, gameState } = {}) {
+export function raiseLimits({ myChips, myCurrentBet, minRaiseTotal, callAmount, gameState, isMyTurn } = {}) {
   const chips = num(myChips);
   const stackMax = chips + num(myCurrentBet);
   const sm = gameState ? gameState.maxRaise : undefined;
   const serverMax = (typeof sm === 'number' && Number.isFinite(sm) && sm > 0) ? sm : null;
   const maxRaise = serverMax != null ? Math.min(stackMax, serverMax) : stackMax;
   const isAof = isAllInOrFoldTable(gameState);
-  const serverCanRaise = !gameState || gameState.canRaise !== false;
-  const raiseControlsOk = serverCanRaise && !isAof && maxRaise > 0 && num(minRaiseTotal) <= maxRaise;
+  const onTurn = isMyTurn !== false;
+  const serverSaysNoRaise = onTurn && !!gameState && gameState.canRaise === false;
+  const raiseControlsOk = !serverSaysNoRaise && !isAof && maxRaise > 0 && num(minRaiseTotal) <= maxRaise;
   const capBelowStack = serverMax != null && serverMax < stackMax;
-  const allInIsCallOnly = !!gameState && gameState.canRaise === false && chips > num(callAmount);
+  const allInIsCallOnly = serverSaysNoRaise && chips > num(callAmount);
+  const aofFreeCheck = isAof && aofAllowsCheck(gameState) && num(callAmount) === 0;
   const capVerb = gameState && gameState.bettingStructure === 'pot-limit' ? 'Pot' : 'Max';
-  return { stackMax, serverMax, maxRaise, raiseControlsOk, capBelowStack, allInIsCallOnly, isAof, capVerb };
+  return { stackMax, serverMax, maxRaise, raiseControlsOk, capBelowStack, allInIsCallOnly, isAof, aofFreeCheck, capVerb };
 }
 
 /**
  * What the All-In button is (F12 / F41 / F107):
  *  'hidden' — the server would turn the shove into a call (betting not
- *             reopened); the Call button covers it;
- *  'call'   — the same, at an All-In-or-Fold table, where the Call button is
- *             not offered: the button is his way to call (it sends 'allIn',
- *             which the server answers as a call);
+ *             reopened) or a check; the Call / Check button covers it;
+ *  'call'   — the same, at an All-In-or-Fold table facing a bet, where the
+ *             Call button is not offered: the button is his way to call (it
+ *             sends 'allIn', which the server answers as a call);
  *  'max'    — pot / fixed limit caps the bet below his stack: it raises to the
  *             cap (the server clamps an 'allIn' to the same number);
  *  'allin'  — a real all-in.
+ * Off-turn raiseLimits never sets allInIsCallOnly, so it is 'max' / 'allin'.
  */
 export function allInButtonMode(limits) {
   if (!limits) return 'allin';
-  if (limits.allInIsCallOnly) return limits.isAof ? 'call' : 'hidden';
+  if (limits.allInIsCallOnly) return (limits.isAof && !limits.aofFreeCheck) ? 'call' : 'hidden';
   if (limits.capBelowStack) return 'max';
   return 'allin';
+}
+
+/**
+ * The allIn hotkey's line when the All-In button is hidden (F12): the server
+ * would only call (or check) — the betting was not reopened, or the fixed
+ * limit cap is reached — so it says what he can do, not why.
+ */
+export function allInHiddenText(callAmount) {
+  return num(callAmount) > 0 ? 'You can only call or fold here.' : 'You can only check or fold here.';
 }
 
 /** Raise amount shown / sent: never 0, never outside [min, max] (F130 / F131). */
@@ -108,17 +146,24 @@ export function callView({ callAmount, myChips, myCurrentBet, pot, seats, yourSe
 
 /**
  * A queued "Call Any" when the turn opens (F132): nothing to call is a CHECK
- * (a 'call' there is refused by the server); at an All-In-or-Fold table
- * neither is allowed → null (dropped).
+ * (a 'call' there is refused by the server); at an All-In-or-Fold table Call
+ * Any is not offered (a call is refused there) → null (dropped).
  */
 export function queuedCallAnyAction(callAmount, { isAof = false } = {}) {
   if (isAof) return null;
   return num(callAmount) === 0 ? 'check' : 'call';
 }
 
-/** Pre-actions offered at this table (F107: only Fold at All-In-or-Fold). */
+/**
+ * Pre-actions offered at this table (F107). At All-In-or-Fold: Fold, plus
+ * Check/Fold and Check when its server takes a free check (aofAllowsCheck —
+ * each checks only when nothing is owed, else folds / waits); never Call Any
+ * (a call is refused there). A queued key not in this list is dropped when
+ * the turn opens.
+ */
 export function preActionKeysFor(gs) {
-  return isAllInOrFoldTable(gs) ? ['fold'] : ['fold', 'checkFold', 'callAny', 'checkOnly'];
+  if (!isAllInOrFoldTable(gs)) return ['fold', 'checkFold', 'callAny', 'checkOnly'];
+  return aofAllowsCheck(gs) ? ['fold', 'checkFold', 'checkOnly'] : ['fold'];
 }
 
 /**
@@ -138,7 +183,12 @@ export function turnDecisionKey({ isMyTurn, tableId, handNumber, phase } = {}) {
 /**
  * Draw rounds (F134 / G169 / G172).
  *  canDrawNow — the hero may still draw this round: dealt in, not folded /
- *               all-in / eliminated, not in the server's `drawsCompleted`;
+ *               eliminated, not in the server's `drawsCompleted`. An ALL-IN
+ *               seat draws too (F134 fix-up): all-in ends his betting, not his
+ *               drawing — poker-server 8cbe8f8 (F27) waits for his draw every
+ *               round and takes it; the older server stands him pat by putting
+ *               his seat in `drawsCompleted` when the round starts, which hides
+ *               the bar here the same way;
  *  drawClockKnown — the server sends the round's own clock (`drawStartedAt`);
  *  isMyDraw — he owes a draw and the clock is the draw clock.
  */
@@ -148,7 +198,7 @@ export function drawTurnInfo(gs, { yourSeat, yourCardsLen, myPlayer } = {}) {
   const done = gs && Array.isArray(gs.drawsCompleted) ? gs.drawsCompleted : [];
   const seated = Number.isInteger(yourSeat) && yourSeat >= 0 && !!myPlayer;
   const owes = seated && num(yourCardsLen) > 0 && !myPlayer.folded && !myPlayer.eliminated && !done.includes(yourSeat);
-  const canDrawNow = hasDrawPhase && isDrawPhase && owes && !myPlayer.allIn;
+  const canDrawNow = hasDrawPhase && isDrawPhase && owes;
   const drawClockKnown = isDrawPhase && typeof gs.drawStartedAt === 'number' && gs.drawStartedAt > 0;
   const isMyDraw = drawClockKnown && owes;
   return { canDrawNow, drawClockKnown, isMyDraw };
