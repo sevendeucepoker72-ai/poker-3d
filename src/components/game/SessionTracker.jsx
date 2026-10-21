@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTableStore } from '../../store/tableStore';
+import { isNextHandAtSameTable } from '../../utils/tableRender';
 import './SessionTracker.css';
 
 export default function SessionTracker() {
@@ -14,13 +15,14 @@ export default function SessionTracker() {
   const startChipsRef = useRef(null);
   const chipHistoryRef = useRef([]);
   const handsPlayedRef = useRef(0);
-  const prevPhaseRef = useRef(null);
+  const prevHandRef = useRef(null);
 
   // Get current chip count
   const seats = gameState?.seats || [];
   const myPlayer = mySeat >= 0 && seats[mySeat] ? seats[mySeat] : null;
   const myChips = myPlayer?.chipCount ?? 0;
-  const phase = gameState?.phase || 'WaitingForPlayers';
+  const handTableId = gameState?.tableId ?? null;
+  const handNumber = gameState?.handNumber ?? null;
 
   // Initialize starting chips on first valid chip count
   useEffect(() => {
@@ -42,12 +44,15 @@ export default function SessionTracker() {
   }, [myChips, gameState]);
 
   // Count hands played
+  // Gameplay audit G171 (2026-10-21) — one per new hand number at the same
+  // table: Stud never shows 'PreFlop' (it counted 0 for a whole session); a
+  // table switch or a reconnect's first frame is not a hand.
   useEffect(() => {
-    if (phase === 'PreFlop' && prevPhaseRef.current !== 'PreFlop') {
-      handsPlayedRef.current += 1;
-    }
-    prevPhaseRef.current = phase;
-  }, [phase]);
+    if (handTableId == null || handNumber == null) return;
+    const next = { tableId: handTableId, handNumber };
+    if (isNextHandAtSameTable(prevHandRef.current, next)) handsPlayedRef.current += 1;
+    prevHandRef.current = next;
+  }, [handTableId, handNumber]);
 
   // Session timer - updates every second
   useEffect(() => {

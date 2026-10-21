@@ -524,6 +524,25 @@
   filter: brightness(1.1);
 }
 
+/* Gameplay audit G176 (2026-10-21) — draw rounds on a tile: tap cards to
+   discard (gold mark), then Stand Pat / Draw N. */
+.mtv-card-pickable {
+  cursor: pointer;
+  transition: transform 0.1s, opacity 0.1s;
+}
+.mtv-card-discard {
+  opacity: 0.5;
+  transform: translateY(-4px);
+  outline: 2px solid #ffd24a;
+  outline-offset: 1px;
+}
+.mtv-draw-hint {
+  font-size: 10px;
+  color: #93c5fd;
+  text-align: center;
+  flex-shrink: 0;
+}
+
 /* Pre-action checkboxes */
 
 .mtv-preaction-row {

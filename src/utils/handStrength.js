@@ -17,6 +17,16 @@ const HAND_NAMES = [
   'Royal Flush',
 ];
 
+/*
+ * Gameplay audit F128 (2026-10-21) — Short Deck (6-A, 36 cards) ranks hands
+ * like the server's ShortDeckHandRank: A-6-7-8-9 is the lowest straight,
+ * Three of a Kind beats a Straight and a Flush beats a Full House. The `rank`
+ * returned stays the label index above (HAND_NAMES); the ORDER used to pick
+ * the best five and the strength meter follow Short Deck. Every other
+ * variant is unchanged.
+ */
+const SHORT_DECK_ORDER = [0, 1, 2, 4, 3, 6, 5, 7, 8, 9]; // label index -> Short Deck strength
+
 /** Map numeric rank to display name */
 function rankName(r) {
   const names = { 14: 'Ace', 13: 'King', 12: 'Queen', 11: 'Jack', 10: 'Ten', 9: 'Nine', 8: 'Eight', 7: 'Seven', 6: 'Six', 5: 'Five', 4: 'Four', 3: 'Three', 2: 'Two' };
@@ -34,7 +44,7 @@ function rankNamePlural(r) {
  * Returns { rank: 0-9, tiebreaker: number[] } for comparison.
  * Cards have { suit: 0-3, rank: 2-14 } where 14 = Ace.
  */
-function evaluate5(cards) {
+function evaluate5(cards, shortDeck = false) {
   const ranks = cards.map((c) => c.rank).sort((a, b) => b - a);
   const suits = cards.map((c) => c.suit);
 
@@ -54,6 +64,11 @@ function evaluate5(cards) {
   if (!isStraight && ranks[0] === 14 && ranks[1] === 5 && ranks[2] === 4 && ranks[3] === 3 && ranks[4] === 2) {
     isStraight = true;
     straightHigh = 5; // 5-high straight
+  }
+  // Short Deck wheel (A-6-7-8-9): the ace plays below the six (F128)
+  if (shortDeck && !isStraight && ranks[0] === 14 && ranks[1] === 9 && ranks[2] === 8 && ranks[3] === 7 && ranks[4] === 6) {
+    isStraight = true;
+    straightHigh = 9; // nine-high straight
   }
 
   // Count rank frequencies
@@ -124,13 +139,14 @@ function evaluate5(cards) {
  * @param {number[]} tiebreaker - tiebreaker values
  * @returns {string} Detailed description
  */
-function getDetailedHandName(handRank, tiebreaker) {
+function getDetailedHandName(handRank, tiebreaker, shortDeck = false) {
   switch (handRank) {
     case 9: // Royal Flush
       return 'Royal Flush';
     case 8: { // Straight Flush
       const high = tiebreaker[0];
       if (high === 5) return 'Straight Flush, Five-high';
+      if (shortDeck && high === 9) return 'Straight Flush, Ace to Nine';
       return `Straight Flush, ${rankName(high - 4)} to ${rankName(high)}`;
     }
     case 7: { // Quads
@@ -150,6 +166,7 @@ function getDetailedHandName(handRank, tiebreaker) {
     case 4: { // Straight
       const high = tiebreaker[0];
       if (high === 5) return 'Straight, Ace to Five';
+      if (shortDeck && high === 9) return 'Straight, Ace to Nine';
       return `Straight, ${rankName(high - 4)} to ${rankName(high)}`;
     }
     case 3: { // Trips
@@ -181,8 +198,10 @@ function getDetailedHandName(handRank, tiebreaker) {
 /**
  * Compare two evaluated hands. Returns > 0 if a wins, < 0 if b wins, 0 if tie.
  */
-function compareHands(a, b) {
-  if (a.rank !== b.rank) return a.rank - b.rank;
+function compareHands(a, b, shortDeck = false) {
+  const ra = shortDeck ? SHORT_DECK_ORDER[a.rank] : a.rank;
+  const rb = shortDeck ? SHORT_DECK_ORDER[b.rank] : b.rank;
+  if (ra !== rb) return ra - rb;
   for (let i = 0; i < Math.min(a.tiebreaker.length, b.tiebreaker.length); i++) {
     if (a.tiebreaker[i] !== b.tiebreaker[i]) return a.tiebreaker[i] - b.tiebreaker[i];
   }
@@ -242,6 +261,7 @@ export function evaluateHandStrength(holeCards, communityCards, options = {}) {
   //   - Short Deck, Texas Hold'em, default: any 5 of all cards.
   const variant = (options.variant || 'texas-holdem').toLowerCase();
   const isOmaha = variant === 'omaha' || variant === 'omaha-hi-lo';
+  const shortDeck = variant === 'short-deck';
 
   let combos;
   if (isOmaha && holeCards.length >= 2 && communityCards.length >= 3) {
@@ -261,8 +281,8 @@ export function evaluateHandStrength(holeCards, communityCards, options = {}) {
   let bestCombo = null;
 
   for (const combo of combos) {
-    const evaluation = evaluate5(combo);
-    if (!bestEval || compareHands(evaluation, bestEval) > 0) {
+    const evaluation = evaluate5(combo, shortDeck);
+    if (!bestEval || compareHands(evaluation, bestEval, shortDeck) > 0) {
       bestEval = evaluation;
       bestCombo = combo;
     }
@@ -270,10 +290,10 @@ export function evaluateHandStrength(holeCards, communityCards, options = {}) {
 
   const handRank = bestEval.rank;
   const name = HAND_NAMES[handRank];
-  const detailedName = getDetailedHandName(handRank, bestEval.tiebreaker);
+  const detailedName = getDetailedHandName(handRank, bestEval.tiebreaker, shortDeck);
 
-  // Normalize strength to 0-1.
-  const rankStrength = handRank / 9;
+  // Normalize strength to 0-1 (Short Deck: on its own hand order).
+  const rankStrength = (shortDeck ? SHORT_DECK_ORDER[handRank] : handRank) / 9;
 
   let tiebreakerStrength = 0;
   if (bestEval.tiebreaker.length > 0) {

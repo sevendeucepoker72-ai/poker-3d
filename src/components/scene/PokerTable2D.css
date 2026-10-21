@@ -530,6 +530,27 @@
   transform: rotate(8deg) translateX(-3px);
 }
 
+/* Gameplay audit F125 / F136 (2026-10-21) — an opponent holding more than two
+   cards (Omaha 4-6, Draw 5, Badugi 4, Pineapple 3, Stud up to 7) gets an
+   overlapped row about as wide as two cards, not a long row over the
+   neighbouring seats; Stud up-cards and a 3+ card showdown hand keep each
+   face-up card's rank corner readable. The two-card Hold'em row is
+   unchanged. */
+.seat-pod__cards--many {
+  gap: 0;
+}
+.seat-pod__cards--many .card2d + .card2d {
+  margin-left: calc(10px - 44px * var(--sp));
+}
+.seat-pod__cards--stud .card2d + .card2d,
+.seat-pod__cards--shown .card2d + .card2d {
+  margin-left: calc(15px - 44px * var(--sp));
+}
+.seat-pod__cards--many .card2d--small:first-child,
+.seat-pod__cards--many .card2d--small:last-child {
+  transform: none;
+}
+
 /* ── Nameplate ────────────────────────────────────────────── */
 .seat-pod__nameplate {
   /* premium glass plate — deep navy with a thin gold top edge that catches the

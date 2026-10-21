@@ -12,6 +12,12 @@ import {
   preActionKeysFor, turnDecisionKey, drawTurnInfo, preflopTierOf, leaveConfirmText,
   handIsOver, revealDecision, pineappleAckRefused, SHOW_AT_HAND_END_TEXT,
 } from '../../utils/actionBar';
+// Gameplay audit 2026-10-21 (C2) — winner banner / showdown rows / equity per
+// variant / hand boundary rules, kept pure + probed.
+import {
+  winnerBannerLines, perPotUsable, potWinnerRows, showdownRowHandName, equitySimFor,
+  isNextHandAtSameTable, rabbitHuntOffered,
+} from '../../utils/tableRender';
 // R1 (2026-10-11) — the table's defensive payload readers (names, shown cards,
 // the server's insurance quote, rebuy policy) and the sound settings keys.
 import {
@@ -666,7 +672,7 @@ export default function GameHUD() {
   const sessionStartTimeRef = useRef(Date.now());
   const sessionHandsRef = useRef(0);
   const sessionBiggestPotRef = useRef(0);
-  const sessionPrevPhaseRef = useRef(null);
+  const sessionPrevHandRef = useRef(null);
 
   // Track previous phase for sound triggers
   const prevPhaseRef = useRef(null);
@@ -1109,12 +1115,17 @@ export default function GameHUD() {
       sessionStartChipsRef.current = myChips;
     }
   }, [myChips]);
+  // Gameplay audit G171 (2026-10-21) — a hand counts when the hand number goes
+  // up at the same table (Stud never shows 'PreFlop': it counted 0 hands);
+  // a table switch or a reconnect's first frame is not a hand.
+  const sessionHandTableId = gameState?.tableId ?? null;
+  const sessionHandNumber = gameState?.handNumber ?? null;
   useEffect(() => {
-    if (phase === 'PreFlop' && sessionPrevPhaseRef.current !== 'PreFlop') {
-      sessionHandsRef.current += 1;
-    }
-    sessionPrevPhaseRef.current = phase;
-  }, [phase]);
+    if (sessionHandTableId == null || sessionHandNumber == null) return;
+    const next = { tableId: sessionHandTableId, handNumber: sessionHandNumber };
+    if (isNextHandAtSameTable(sessionPrevHandRef.current, next)) sessionHandsRef.current += 1;
+    sessionPrevHandRef.current = next;
+  }, [sessionHandTableId, sessionHandNumber]);
   useEffect(() => {
     if (pot > sessionBiggestPotRef.current) {
       sessionBiggestPotRef.current = pot;
@@ -1346,9 +1357,27 @@ export default function GameHUD() {
       setShowAllInConfirm(false);
       hasSentActionRef.current = false;
       autoFoldedRef.current = false;
+      // Gameplay audit G171 (2026-10-21) — every per-hand UI reset happens on
+      // THIS edge (a new hand, or another table on screen). Stud never shows
+      // 'PreFlop', so the resets keyed on it never ran there: a dead 'Show
+      // Rabbit' after every hand, the last winner banner over the whole next
+      // hand, a stale Show / Muck prompt. (The PreFlop resets below stay.)
+      setPlayerFoldedThisHand(false);
+      clearRabbitCards();
+      setShowRabbitPanel(false);
+      setRabbitHuntCooldownUntil(0);
+      if (winnerBannerTimerRef.current) { clearTimeout(winnerBannerTimerRef.current); winnerBannerTimerRef.current = null; }
+      setWinnerBanner(null);
+      setWinnerBannerFading(false);
+      equityCalculatedRef.current = null;
+      setShowMuckButton(false);
+      setMuckedHands([]);
+      setShowHandPrompt(false);
+      setPineappleDiscardIndex(null);
+      pendingShowRef.current = null;
     }
     prevHandNumberRef.current = hn;
-  }, [gameState?.handNumber, gameState?.handId, gameState?.tableId]);
+  }, [gameState?.handNumber, gameState?.handId, gameState?.tableId, clearRabbitCards]);
 
   // Mobile audit M2: iOS software-keyboard handling. When the chat / chip /
   // rabbit-hunt input focuses on iOS Safari, the keyboard (~290-380px tall)
@@ -1700,43 +1729,11 @@ export default function GameHUD() {
     if (phase === 'HandComplete' && handResult?.winners?.length > 0 && handResult !== winnerBannerShownRef.current) {
       winnerBannerShownRef.current = handResult;
 
-      // Build per-pot lines if potBreakdown available, else fall back to totals
-      const potBreakdown = handResult.potBreakdown;
-      let lines;
-      if (potBreakdown && potBreakdown.length > 0) {
-        // Flatten winnerAmounts across pots, labeled by pot name. Dedup key
-        // uses (seatIndex, potIndex) — the previous (name, potName, amount)
-        // key incorrectly collapsed two distinct players sharing the same pot
-        // for the same amount into a single row.
-        lines = potBreakdown.flatMap((pot, potIndex) =>
-          (pot.winnerAmounts || []).map(wa => {
-            const winnerInfo = handResult.winners.find(w => w.seatIndex === wa.seatIndex);
-            return {
-              name: safeName(winnerInfo?.playerName, '') || `Seat ${wa.seatIndex + 1}`,
-              amount: Number(wa.amount) || 0,
-              potName: pot.name,
-              potIndex,
-              seatIndex: wa.seatIndex,
-              handName: winnerInfo?.handName || '',
-            };
-          })
-        );
-        const seen = new Set();
-        lines = lines.filter(l => {
-          const key = `${l.seatIndex}:${l.potIndex}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-      } else {
-        lines = handResult.winners.map(w => ({
-          name: safeName(w.playerName, 'Player'),
-          amount: Number(w.chipsWon) || 0,
-          potName: 'Main Pot',
-          handName: w.handName || '',
-        }));
-      }
-
+      // Gameplay audit F19 / F20 (2026-10-21) — per pot only when the server's
+      // pot list names every pot's winners; a fold win (and an older server's
+      // Omaha Hi-Lo pot) listed none and the banner came up empty. Else one
+      // line per winner from the totals. One line per seat per pot.
+      const lines = winnerBannerLines(handResult);
       setWinnerBanner({ lines });
       setWinnerBannerFading(false);
       if (winnerBannerTimerRef.current) clearTimeout(winnerBannerTimerRef.current);
@@ -2323,8 +2320,17 @@ export default function GameHUD() {
     const showdownHands = gameState?.handResult?.showdownHands;
     if (!showdownHands || showdownHands.length < 2) { setEquityResults(null); return; }
 
-    // Check if we already calculated for this exact state
-    const stateKey = `${phase}-${communityCards.length}-${showdownHands.map(h => h.seatIndex).join(',')}`;
+    // Gameplay audit G170 (2026-10-21) — the worker simulates HIGH Hold'em /
+    // Omaha hands on a board. Stud / Razz / Draw / Badugi (no board, lowball),
+    // Short Deck (its own ranking) and Omaha Hi-Lo (split pots) get no badges:
+    // they showed the server's winner as the underdog. Omaha uses the worker's
+    // exactly-two-hole-cards rule (it counted illegal one-card flushes).
+    const sim = equitySimFor(gameState);
+    if (!sim) { setEquityResults(null); return; }
+
+    // Check if we already calculated for this exact state (table, hand and
+    // variant included: Stud never reaches PreFlop, where the key was reset)
+    const stateKey = `${gameState?.tableId ?? ''}-${gameState?.handNumber ?? ''}-${gameState?.variant ?? ''}-${phase}-${communityCards.length}-${showdownHands.map(h => h.seatIndex).join(',')}`;
     if (equityCalculatedRef.current === stateKey) return;
     equityCalculatedRef.current = stateKey;
 
@@ -2347,8 +2353,10 @@ export default function GameHUD() {
     }
 
     // Run simulation in the equity web worker to avoid blocking the UI
-    calculateEquity(playerHands, communityCards, deckRemaining, 1000)
+    calculateEquity(playerHands, communityCards, deckRemaining, 1000, sim.omaha)
       .then((result) => {
+        // a result for a state that has moved on (next hand / table) is dropped
+        if (equityCalculatedRef.current !== stateKey) return;
         const equityMap = {};
         showdownHands.forEach((h, i) => {
           equityMap[h.seatIndex] = result.playerEquities[i];
@@ -2503,8 +2511,11 @@ export default function GameHUD() {
       setMuckedHands([]);
     }
     prevFoldedRef.current = folded;
-    return () => { if (muckTimerRef.current) clearTimeout(muckTimerRef.current); };
   }, [myPlayer?.folded, phase, yourCards.length]);
+  // G171 — the 5s timer is cancelled only on unmount: the per-run cleanup
+  // killed it at the next street, leaving Show / Muck up for the whole hand
+  // (and, in Stud, for good).
+  useEffect(() => () => { if (muckTimerRef.current) clearTimeout(muckTimerRef.current); }, []);
 
   // Gameplay audit F21 (2026-10-21) — a folded hand is shown to the table
   // only once the hand is OVER (TDA: no disclosing a folded hand while action
@@ -2614,18 +2625,25 @@ export default function GameHUD() {
   }, [phase, showTableId, showHandNo, showMuckedEntry]);
 
   // Track when player folds (for rabbit hunting)
+  // Gameplay audit G171 (2026-10-21) — a fold counts only inside one hand at
+  // one table (the pre-fold of a sit-out at the deal is not his fold), and
+  // the flag is cleared on the hand boundary edge, not while the phase reads
+  // PreFlop: that cleared a pre-flop fold in the same run (no rabbit after a
+  // pre-flop fold) and never ran in Stud (a dead rabbit after every hand).
   const prevMyPlayerRef = useRef(null);
+  const foldHandKey = `${gameState?.tableId ?? ''}:${gameState?.handNumber ?? ''}`;
   useEffect(() => {
-    if (myPlayer && myPlayer.folded && prevMyPlayerRef.current && !prevMyPlayerRef.current.folded) {
+    const prev = prevMyPlayerRef.current;
+    if (myPlayer && myPlayer.folded && prev && !prev.folded && prev.handKey === foldHandKey) {
       setPlayerFoldedThisHand(true);
     }
+    if (phase === 'WaitingForPlayers') setPlayerFoldedThisHand(false);
     if (phase === 'PreFlop' || phase === 'WaitingForPlayers') {
-      setPlayerFoldedThisHand(false);
       clearRabbitCards();
       setShowRabbitPanel(false);
     }
-    prevMyPlayerRef.current = myPlayer ? { ...myPlayer } : null;
-  }, [myPlayer, phase, clearRabbitCards]);
+    prevMyPlayerRef.current = myPlayer ? { ...myPlayer, handKey: foldHandKey } : null;
+  }, [myPlayer, phase, clearRabbitCards, foldHandKey]);
 
   // Rabbit hunt socket listener
   useEffect(() => {
@@ -4875,11 +4893,12 @@ export default function GameHUD() {
             <div className="showdown-title">Showdown</div>
 
             {/* Winners — per-pot if available, otherwise totals */}
-            {handResult.potBreakdown && handResult.potBreakdown.some(p => (p.winnerAmounts || []).length > 0) ? (
+            {/* F19 / F20 — per pot only when every pot with chips names its winners. */}
+            {perPotUsable(handResult) ? (
               handResult.potBreakdown.map((pot, pi) => (
                 <div key={pi} className="showdown-pot-section">
-                  <div className="showdown-pot-label">{pot.name}</div>
-                  {(pot.winnerAmounts || []).map((wa, wi) => {
+                  <div className="showdown-pot-label">{safeName(pot?.name, '') || 'Main Pot'}</div>
+                  {potWinnerRows(pot).map((wa, wi) => {
                     const winnerInfo = handResult.winners.find(w => w.seatIndex === wa.seatIndex);
                     return (
                       <div key={wi} className="showdown-winner-row">
@@ -4888,7 +4907,7 @@ export default function GameHUD() {
                           {safeName(winnerInfo?.playerName, '') || `Seat ${wa.seatIndex + 1}`}
                         </div>
                         {winnerInfo?.handName && <div className="showdown-hand-name">{winnerInfo.handName}</div>}
-                        <div className="showdown-chips-won">+{wa.amount.toLocaleString()} chips</div>
+                        <div className="showdown-chips-won">+{(Number(wa.amount) || 0).toLocaleString()} chips</div>
                         {winnerInfo?.bestFiveCards && winnerInfo.bestFiveCards.length > 0 && (
                           <div className="showdown-best-cards">
                             {winnerInfo.bestFiveCards.map((c) => renderMiniCard(c, true))}
@@ -4933,11 +4952,11 @@ export default function GameHUD() {
               )}
               {handResult.showdownHands.filter(h => Array.isArray(h.holeCards) && h.holeCards.length > 0).map((hand) => {
                 const isWinner = winnerSeatSet.has(hand.seatIndex);
-                let detailedName = hand.handName;
-                if (hand.holeCards.length > 0 && communityCards.length >= 3) {
-                  const evalResult = evaluateHandStrength(hand.holeCards, communityCards, { variant: gameVariant });
-                  if (evalResult.detailedName) detailedName = evalResult.detailedName;
-                }
+                // Gameplay audit F128 (2026-10-21) — the client's detailed name
+                // only where its evaluator ranks like the server (Hold'em,
+                // Pineapple, Omaha); Short Deck / Omaha Hi-Lo / Stud / Draw
+                // show the server's name (it is the hand that was paid).
+                const detailedName = showdownRowHandName(hand, communityCards, gameState, evaluateHandStrength);
                 return (
                   <div
                     key={hand.seatIndex}
@@ -5021,7 +5040,8 @@ export default function GameHUD() {
           Tracks a 20s client-side cooldown so the user can't spam requests
           (server throttles too, but silently — the button just looked broken
           between taps). Cooldown resets on next hand. */}
-      {phase === 'HandComplete' && playerFoldedThisHand && !rabbitCards && !showShowdown && (
+      {/* G171 — only a board game has a rabbit (Stud / Draw answered nothing). */}
+      {phase === 'HandComplete' && playerFoldedThisHand && !rabbitCards && !showShowdown && rabbitHuntOffered(gameState) && (
         <button
           className="rabbit-hunt-btn"
           disabled={rabbitHuntCooldownUntil > Date.now()}
@@ -5318,9 +5338,11 @@ export default function GameHUD() {
         }
         // Non-hero seats: legacy center-table spread.
         const seatCount = Math.max(2, gameState?.maxSeats || (seats?.length || 8));
+        // G182 — the server now sends maxSeats (a 6-max cap): a seat index at
+        // or past it (a cap lowered under a seated player) stays in the spread.
         const offsetX = seatCount === 1
           ? 0
-          : ((emote.seatIndex / (seatCount - 1)) * 400) - 200;
+          : ((Math.min(Math.max(0, Number(emote.seatIndex) || 0), seatCount - 1) / (seatCount - 1)) * 400) - 200;
         return (
           <div
             key={`${emote.timestamp}-${i}`}

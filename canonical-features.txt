@@ -1101,3 +1101,17 @@ pineappleDiscardAck
 Your hand will be shown when this hand ends.
 You are all-in: you stay in this hand
 rebuyComplete
+
+# 2026-10-21 gameplay audit C2 (table rendering, showdown display, variant
+# cards, seat ring). F125: Stud opponents show the server's up-cards between
+# their down cards; F136: opponents hold the variant's card count (Omaha 4-6,
+# Draw 5, Badugi 4, Pineapple 3 until the discard) in an overlapped row;
+# G181: a sitting-out opponent shows AWAY (server seat.sittingOut); G176: a
+# Multi-Table tile can draw (Stand Pat / Draw N) in a draw round; F128: Short
+# Deck's A-6-7-8-9 straight is named.
+seat-pod__cards--stud
+seat-pod__cards--many
+seat-pod__away-badge
+YOUR DRAW
+mtv-draw-hint
+Straight, Ace to Nine

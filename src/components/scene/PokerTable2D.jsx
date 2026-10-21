@@ -26,6 +26,11 @@ import { safeName, nameInitial } from '../../utils/tablePayload';
 import { TABLE_GEOMETRY_EVENT } from '../game/useTableGeometry';
 // R2 (C7 / C8) — the shop cosmetics the server sends per seat + myTheme.
 import { feltForTheme, seatLook } from './tableCosmetics';
+// Gameplay audit C2 (2026-10-21) — the seat ring / opponents' cards rules.
+import {
+  tableBackCount, opponentCardSlots, seatSittingOut, seatCapOf,
+  seatMoveFrameIsForTable, rotationSeats, positionLabel,
+} from '../../utils/tableRender';
 import './PokerTable2D.css';
 import './TableCosmetics.css';
 
@@ -103,23 +108,13 @@ function getAvatarColor(name) {
   return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
 }
 
-/* ── Position label ─────────────────────────────────────────── */
+/* ── Position label ─────────────────────────────────────────
+   Gameplay audit G175 (2026-10-21) — the rules live in utils/tableRender.js:
+   positions go round the seats the SERVER rotates the button over (no busted
+   seat, no player who sat down mid-hand, nothing in Stud), and 3-handed the
+   big blind reads BB (it read CO). */
 function getPositionLabel(seatIndex, dealerButtonSeat, occupiedSeats) {
-  if (!occupiedSeats || occupiedSeats.length < 2) return '';
-  const total = SEAT_COUNT;
-  const sorted = [...occupiedSeats].sort((a, b) => {
-    const da = (a - dealerButtonSeat + total) % total;
-    const db = (b - dealerButtonSeat + total) % total;
-    return da - db;
-  });
-  const pos = sorted.indexOf(seatIndex);
-  if (pos === -1) return '';
-  const n = sorted.length;
-  if (n === 2) return pos === 0 ? 'BTN/SB' : 'BB';
-  const labels = ['BTN','SB','BB','UTG','UTG+1','MP','HJ','CO',''];
-  if (pos === n - 1) return 'CO';
-  if (pos === n - 2 && n >= 5) return 'HJ';
-  return labels[pos] ?? '';
+  return positionLabel(seatIndex, dealerButtonSeat, occupiedSeats, SEAT_COUNT);
 }
 
 /* R2 (TABLEUI-15) — can a SPECTATOR sit at this table through joinTable? Only
@@ -323,7 +318,7 @@ const SeatPod = memo(function SeatPod({
   handResult, phase, onClickNameplate,
   bigBlind, heroEmoji, onSitHere, winStreak,
   isTournament, heroAlreadySeated, isPendingMoveTarget,
-  onBetSlide, spectatorSits, betSide,
+  onBetSlide, spectatorSits, betSide, backCount, beyondCap,
 }) {
   const turnStartedAt = useTimerStore(s => s.turnStartedAt);
   const turnTimeout   = useTimerStore(s => s.turnTimeout);
@@ -347,7 +342,9 @@ const SeatPod = memo(function SeatPod({
   const chipDeltaTimerRef = useRef(null);
 
   const isOccupied   = serverSeat?.state === 'occupied';
-  const isSittingOut = serverSeat?.state === 'sitting_out';
+  // Gameplay audit G181 (2026-10-21) — the server never sets state
+  // 'sitting_out' (the seat stays 'occupied'); it sends `sittingOut` per seat.
+  const isSittingOut = seatSittingOut(serverSeat);
 
   useEffect(() => {
     if (!isOccupied && !isSittingOut) { prevChipsRef.current = null; return; }
@@ -412,6 +409,10 @@ const SeatPod = memo(function SeatPod({
      stays visibly seated (it just shows 0 chips) right through the reload;
      a real tournament bust still clears to Open. */
   if (!serverSeat || (!isOccupied && !isSittingOut) || (eliminated && isTournament)) {
+    // Gameplay audit G182 (2026-10-21) — a seat past the table's cap
+    // (heads-up, 6-max Draw / Omaha-6, a small home game) does not exist: no
+    // "Open" pod, no Sit Here / Move here (a move there could never happen).
+    if (beyondCap) return null;
     // Disable "Sit Here" for tournament tables — TournamentManager owns
     // seating there. Still show the "Open" placeholder so the oval layout
     // stays 9-wide and spectators can see where the empty seats are.
@@ -494,6 +495,11 @@ const SeatPod = memo(function SeatPod({
     ? serverSeat.hasCards
     : (Array.isArray(serverSeat?.holeCards) ? serverSeat.holeCards.length > 0 : true);
   const showCardBacks   = dealtIn && !isFolded && !isMyPlayer && phase !== 'WaitingForPlayers' && phase !== 'HandComplete';
+  // F125 / F136 — the face-down row (backs + Stud up-cards) and its fan class.
+  const cardSlots = opponentCardSlots(serverSeat, backCount);
+  const shownCount = showCardsFaceUp && holeCards?.length > 0 ? holeCards.length : cardSlots.length;
+  const cardRowClass = `${shownCount > 2 ? ' seat-pod__cards--many' : ''}${
+    showCardsFaceUp ? (shownCount > 2 ? ' seat-pod__cards--shown' : '') : (cardSlots.some((c) => c.card) ? ' seat-pod__cards--stud' : '')}`;
 
   // Derive timer % from server timestamp (timerTick forces re-render each second)
   const timerPct = (() => {
@@ -580,15 +586,21 @@ const SeatPod = memo(function SeatPod({
       {/* Action bubble */}
       <ActionBubble action={lastAction} />
 
-      {/* Hole cards (opponents: face-down; showdown: face-up) */}
+      {/* Hole cards (opponents: face-down; showdown: face-up).
+          Gameplay audit F125 / F136 (2026-10-21) — the variant's real card
+          count (Omaha 4-6, Draw 5, Badugi 4, Pineapple 3 until the discard)
+          and, in Stud / Razz / Stud 8, the server's public up-cards face up
+          (they were two blank backs). */}
       {!isMyPlayer && (showCardsFaceUp || showCardBacks) && (
-        <div className={`seat-pod__cards${hovered ? ' seat-pod__cards--hovered' : ''}`}>
+        <div className={`seat-pod__cards${hovered ? ' seat-pod__cards--hovered' : ''}${cardRowClass}`}>
           {showCardsFaceUp && holeCards?.length > 0
             ? holeCards.map((c, i) => (
                 <Card2D key={i} card={c} faceUp small dealDelay={i * 0.07} />
               ))
-            : [0, 1].map(i => (
-                <Card2D key={i} card={null} faceUp={false} small dealDelay={i * 0.07} backClass={look.cardBack} />
+            : cardSlots.map((slot, i) => (
+                slot.card
+                  ? <Card2D key={slot.key} card={slot.card} faceUp small dealDelay={i * 0.07} />
+                  : <Card2D key={slot.key} card={null} faceUp={false} small dealDelay={i * 0.07} backClass={look.cardBack} />
               ))
           }
         </div>
@@ -750,13 +762,27 @@ export default function PokerTable2D() {
   // Pending-seat-move state. When the server ACKs a `moveSeat` request it
   // emits `moveSeatPending { pendingSeat }`; on execution at the next
   // hand boundary it emits `moveSeatComplete { newSeat }` which clears.
-  const [pendingSeat, setPendingSeat] = useState(null);
+  // Gameplay audit G182 / F78 (2026-10-21) — the pill belongs to ONE table:
+  // a pending frame naming another table than the one on screen (multi-table)
+  // is ignored; a complete / cancelled frame ends only its own table's move
+  // (one naming no table — an older server — ends it); the pill shows only
+  // on its table.
+  const [pendingMove, setPendingMove] = useState(null); // { tableId, seat }
+  const shownTableIdRef = useRef(null);
+  const shownTableId = gameState?.tableId ?? null;
+  useEffect(() => { shownTableIdRef.current = shownTableId; }, [shownTableId]);
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
-    const onPending = (d) => { if (d?.pendingSeat != null) setPendingSeat(d.pendingSeat); };
-    const onComplete = () => setPendingSeat(null);
-    const onCancelled = () => setPendingSeat(null);
+    const onPending = (d) => {
+      if (d?.pendingSeat == null || !seatMoveFrameIsForTable(d, shownTableIdRef.current)) return;
+      setPendingMove({ tableId: d.tableId ?? shownTableIdRef.current, seat: d.pendingSeat });
+    };
+    const onEnded = (d) => setPendingMove((pm) => (
+      pm && (pm.tableId == null || seatMoveFrameIsForTable(d, pm.tableId)) ? null : pm
+    ));
+    const onComplete = onEnded;
+    const onCancelled = onEnded;
     socket.on('moveSeatPending', onPending);
     socket.on('moveSeatComplete', onComplete);
     socket.on('moveSeatCancelled', onCancelled);
@@ -767,9 +793,18 @@ export default function PokerTable2D() {
     };
   }, []);
 
-  const occupiedSeats = seats
-    .map((s, i) => (s?.state === 'occupied' ? i : -1))
-    .filter(i => i >= 0);
+  const pendingSeat = pendingMove
+    && (pendingMove.tableId == null || String(pendingMove.tableId) === String(gameState?.tableId ?? ''))
+    ? pendingMove.seat : null;
+
+  // Gameplay audit G175 (2026-10-21) — the seats the server rotates the
+  // button / blinds over this hand (busted seats, mid-hand joiners and Stud
+  // are out); only the position badges read it.
+  const occupiedSeats = rotationSeats(seats, { phase, isStudGame: gameState?.isStudGame === true });
+  // F136 — how many cards an opponent holds face down at this table.
+  const backCount = tableBackCount(gameState);
+  // G182 — seats this table can seat (the server's maxSeats; 9 when absent).
+  const seatCap = seatCapOf(gameState, SEAT_COUNT);
 
   // R2 (TABLEUI-15) — a spectator of a joinable table sees "Sit Here" on every open seat.
   const viewerCanSit = (yourSeat < 0 || gameState?.isSpectator === true) && spectatorCanSit(gameState);
@@ -994,6 +1029,8 @@ export default function PokerTable2D() {
   const onSitHere = useCallback((seatIndex) => {
     const socket = getSocket();
     if (!socket?.connected) return;
+    // G182 — no seat past the table's cap (the server refuses it).
+    if (!(seatIndex < seatCapOf(gameState, SEAT_COUNT))) return;
     const alreadySeated = yourSeat >= 0 && !gameState?.isSpectator;
     const isTournament =
       gameState?.isTournament === true ||
@@ -1021,10 +1058,12 @@ export default function PokerTable2D() {
       );
     }
   }, [yourSeat, gameState]);
+  // F78 — the cancel names the table on screen (the server answers
+  // moveSeatCancelled for it; an older server ignores the payload).
   const cancelPendingMove = useCallback(() => {
     const socket = getSocket();
-    if (socket?.connected) socket.emit('cancelMoveSeat');
-  }, []);
+    if (socket?.connected) socket.emit('cancelMoveSeat', { tableId: pendingMove?.tableId ?? gameState?.tableId ?? undefined });
+  }, [pendingMove, gameState?.tableId]);
 
   return (
     <div className="table2d-scene" ref={sceneRef}>
@@ -1235,6 +1274,8 @@ export default function PokerTable2D() {
             isPendingMoveTarget={pendingSeat === i}
             onBetSlide={handleBetSlide}
             betSide={betSide}
+            backCount={backCount}
+            beyondCap={i >= seatCap}
           />
         );
       })}

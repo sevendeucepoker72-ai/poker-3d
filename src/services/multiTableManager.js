@@ -224,6 +224,22 @@ export function sendMultiTableAction(slotId, type, amount) {
   return true;
 }
 
+// Gameplay audit G176 (2026-10-21) — the extra table's draw (Draw / Triple
+// Draw / Badugi), on that table's own socket, the same payload as the primary
+// path (tableStore.sendDraw): `playerDraw { discardIndices, tableId }`; no
+// indices = stand pat. Without it a seat opened here stood pat after the
+// server's 30s draw clock in every draw round. No queue (see above).
+export function sendMultiTableDraw(slotId, discardIndices) {
+  const slot = _slots.find((s) => s.id === slotId);
+  if (!slot?.socket?.connected) return false;
+  const idx = Array.isArray(discardIndices) ? discardIndices.filter((i) => Number.isInteger(i) && i >= 0) : [];
+  slot.socket.emit('playerDraw', {
+    discardIndices: [...new Set(idx)],
+    tableId: slot.gameState?.tableId ?? slot.tableId ?? undefined,
+  });
+  return true;
+}
+
 // Tear down every secondary connection (call when the multi-table view closes
 // if the user wants to free the seats; MultiTableView decides the policy).
 export function disconnectAllMultiTables() {
