@@ -1115,3 +1115,25 @@ seat-pod__away-badge
 YOUR DRAW
 mtv-draw-hint
 Straight, Ace to Nine
+
+# 2026-10-21 gameplay audit C3 (navigation, reconnect, join / leave flows,
+# lobby, toasts). F88: a seat the server ended on this socket (seatVacated)
+# leaves the view with a line (the extra-table tile too); F138: a seat
+# restored before the boot sign-in answered opens the table; F139: Back on
+# the table runs Back to Lobby (the seat is left, not kept dealt in); F140:
+# a waitlist link that seated him opens that table; F141: a club challenge
+# auto-joins only a seatless visible tab, else a Join challenge notice; F142:
+# a busted qualifier entrant gets Re-enter in late registration; F146 / F151:
+# the career stage buy-in and the quick games' buy-ins are shown; F155: a
+# resync names the table + wasSeated, a released seat / a gone table is said.
+seatVacated
+[seat-restore] restored before the sign-in answered
+[back-button] the table Back runs Back to Lobby
+[waitlist] seated -> table
+achievement-popup-challenge-join
+qualifier-reenter
+venue-buyin
+quick-game-cost
+seatReleased
+table_gone
+admin_force_close

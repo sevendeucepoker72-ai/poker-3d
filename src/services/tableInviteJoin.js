@@ -19,6 +19,27 @@ import { useProgressStore } from '../store/progressStore';
 import {
   inviteJoinRequest, inviteJoinErrorText, seatSigOf, INVITE_JOIN_NO_ANSWER_TEXT,
 } from '../utils/tableInvite';
+import { useTournamentSeatStore } from '../store/tournamentSeatStore';
+import { leaveForJoinConfirmText } from '../utils/tableFlows';
+import { followJoinToTable } from './joinFollow';
+
+/**
+ * Gameplay audit F145 / F141 (2026-10-21) — a join from a toast makes the
+ * server LEAVE every seat this socket holds (a Spin & Go entry is forfeited,
+ * a live cash hand folded, a tournament seat kept absent), like Back to
+ * Lobby — which asks first. Ask the same here; true = go ahead (nothing at
+ * stake, or he confirmed).
+ */
+export function confirmLeaveForJoin(targetTableId) {
+  let text = null;
+  try {
+    const seat = useTournamentSeatStore.getState().seat;
+    text = leaveForJoinConfirmText(useTableStore.getState(), targetTableId, { tournamentTableId: seat ? seat.tableId : null });
+  } catch { text = null; }
+  if (!text) return true;
+  try { console.warn('[join-from-toast] seated elsewhere: asking before the join leaves that seat'); } catch { /* ignore */ }
+  return typeof window !== 'undefined' && typeof window.confirm === 'function' ? !!window.confirm(text) : false;
+}
 
 const ACCEPT_WAIT_MS = 10_000;
 
@@ -107,7 +128,7 @@ function watchAndJoin(socket, req) {
  * fields from tableInviteFields). Returns false when there was nothing to
  * send (no table named, or not connected — said in a toast).
  */
-export function acceptTableInvite(n) {
+export function acceptTableInvite(n, { confirmed = false } = {}) {
   let me = {};
   try { me = useGameStore.getState(); } catch { /* ignore */ }
   const req = inviteJoinRequest(n, { playerName: me.playerName || '', avatar: me.avatar || null });
@@ -125,6 +146,39 @@ export function acceptTableInvite(n) {
     inviteNotice('Not connected to the game server. Try again in a moment.');
     return false;
   }
-  runPlayFlow(() => acceptTableInvite(n), () => watchAndJoin(socket, req));
+  // F145 — leaving a live seat for the invite is confirmed first (once: the
+  // play-refusal replay below does not ask again).
+  if (!confirmed && !confirmLeaveForJoin(req.tableId)) return false;
+  runPlayFlow(() => acceptTableInvite(n, { confirmed: true }), () => watchAndJoin(socket, req));
+  return true;
+}
+
+/**
+ * Gameplay audit F141 (2026-10-21) — the "Join challenge" button of a club
+ * challenge notice (a socket that was seated elsewhere / a background tab is
+ * not auto-joined any more): confirm leaving the current seat(s), then join
+ * the heads-up table and open it once the seat is confirmed (APPUI-53).
+ * `n` = the notification (challengeTableId, challengeStakes).
+ */
+export function acceptClubChallengeNotice(n) {
+  const tableId = n && n.challengeTableId != null ? String(n.challengeTableId) : null;
+  if (!tableId) return false;
+  const socket = getSocket();
+  if (!socket || !socket.connected) {
+    try { useProgressStore.getState().addNotification({ type: 'mission', message: 'Club challenge: not connected to the game server. Try again in a moment.' }); } catch { /* ignore */ }
+    return false;
+  }
+  try {
+    const gs = useTableStore.getState().gameState;
+    if (seatSigOf(gs) && String(gs.tableId) === tableId) { useGameStore.getState().setScreen?.('table'); return true; }
+  } catch { /* fall through to the join */ }
+  if (!confirmLeaveForJoin(tableId)) return false;
+  let me = {};
+  try { me = useGameStore.getState(); } catch { /* ignore */ }
+  followJoinToTable({
+    tableId,
+    onFailed: (message) => { try { useProgressStore.getState().addNotification({ type: 'mission', message: `Club challenge: ${message}` }); } catch { /* ignore */ } },
+  });
+  useTableStore.getState().joinTable(tableId, me.playerName, -1, n.challengeStakes, me.avatar);
   return true;
 }

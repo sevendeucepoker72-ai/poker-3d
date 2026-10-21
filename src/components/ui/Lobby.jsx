@@ -69,6 +69,7 @@ import { PlayerAvatar } from '../../hooks/useAvatar';
 import { profileTargetOf, profileTargetFromParam } from '../../utils/profileTarget';
 // R3 (contract I1) — which seated table a friend can be invited to; refusals in words.
 import { inviteTableIdOf, isSeatedAt, inviteErrorText, INVITE_KIND_HINT } from '../../utils/tableInvite';
+import { quickGameCostText } from '../../utils/tableFlows';
 import './Lobby.css';
 
 // Variant badge colour by game FAMILY (every server variant id has one; no red).
@@ -534,6 +535,9 @@ function InlineLeaderboard({ onOpenProfile }) {
 }
 
 // ─── Quick Games Grid (reusable) ───
+// Gameplay audit F151 (2026-10-21) — each card states what Play takes from the
+// wallet (the server's buy-ins; a Spin & Go entry is a fee, its prize a
+// multiple of it). Nothing on the cards said it before.
 function QuickGamesGrid({ nameInput, connected, onHeadsUp, onSpinGo, onAllIn }) {
   return (
     <div className="quick-games-grid">
@@ -542,6 +546,7 @@ function QuickGamesGrid({ nameInput, connected, onHeadsUp, onSpinGo, onAllIn }) 
         <div className="quick-game-info">
           <h3>Heads-Up Snap</h3>
           <p>1v1 | 5 min | Fast blinds</p>
+          <p className="quick-game-cost">{quickGameCostText('headsUp')}</p>
         </div>
         <button
           className="btn-quick-game"
@@ -556,6 +561,7 @@ function QuickGamesGrid({ nameInput, connected, onHeadsUp, onSpinGo, onAllIn }) 
         <div className="quick-game-info">
           <h3>Spin & Go</h3>
           <p>3 players | Random prize up to 25x</p>
+          <p className="quick-game-cost">{quickGameCostText('spinGo')}</p>
         </div>
         <button
           className="btn-quick-game"
@@ -570,6 +576,7 @@ function QuickGamesGrid({ nameInput, connected, onHeadsUp, onSpinGo, onAllIn }) 
         <div className="quick-game-info">
           <h3>All-In or Fold</h3>
           <p>Shove or fold | Fast & fun</p>
+          <p className="quick-game-cost">{quickGameCostText('allInOrFold')}</p>
         </div>
         <button
           className="btn-quick-game"

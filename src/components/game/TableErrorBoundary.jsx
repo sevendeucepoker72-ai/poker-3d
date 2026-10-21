@@ -17,6 +17,8 @@
 import { Component, Fragment } from 'react';
 import { getSocket } from '../../services/socketService';
 import { useGameStore } from '../../store/gameStore';
+import { useTableStore } from '../../store/tableStore';
+import { resyncPayloadOf } from '../../utils/tableFlows';
 
 const CHUNK_LOAD_ERROR_RE = /dynamically imported module|Importing a module script failed|error loading dynamically imported|Loading (CSS )?chunk|ChunkLoadError/i;
 const RESYNC_SETTLE_MS = 600;
@@ -51,9 +53,14 @@ export default class TableErrorBoundary extends Component {
       return;
     }
     // A fresh FULL frame of this socket's seat replaces whatever broke the view.
+    // Gameplay audit F155 — naming the table on screen (and whether he sat
+    // there): a newer server re-attaches a socket whose seat is gone as a
+    // spectator, or closes a table that is gone, instead of answering nothing.
     try {
       const s = getSocket();
-      if (s && s.connected) s.emit('requestState');
+      if (s && s.connected) {
+        s.emit('requestState', resyncPayloadOf(useTableStore.getState(), 'table') || {});
+      }
     } catch { /* best-effort */ }
     try { console.warn('[table-error-boundary] reload table: requested a full state and re-mounting the table view'); } catch { /* ignore */ }
     this.setState({ reloading: true });

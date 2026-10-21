@@ -7,6 +7,7 @@ import {
 } from './sessionResume';
 import { useGameStore } from '../store/gameStore';
 import { guardNeverEmittedEvents } from './socketService';
+import { newHandWipesYourCards, SLOT_VACATED_TEXT } from '../utils/tableFlows';
 
 // 2026-10-09 (contract R1 / D1) — how an extra socket signs in. A TICKET tab
 // ("Play Online": no OIDC access token to present) uses its resume record —
@@ -87,7 +88,10 @@ function applyGameState(slot, data) {
       // was dead code, so stale handResult lingered across hands (same bug fixed
       // in App.jsx). Compare handNumber so per-hand state actually resets.
       if (data.delta?.handNumber != null && data.delta.handNumber !== prev?.handNumber) {
-        if (!data.delta.yourCards) next.yourCards = [];
+        // Gameplay audit G174 (2026-10-21) — an absent yourCards means
+        // "unchanged" (the same two cards dealt again): wiped only on a
+        // cross-table merge, else the hero saw no cards for that hand.
+        if (newHandWipesYourCards(data.delta, prev)) next.yourCards = [];
         if (!data.delta.handResult) next.handResult = null;
       }
       slot.gameState = next;
@@ -121,7 +125,7 @@ export function joinMultiTable(tableId, { playerName, buyIn, avatar, expectedVar
 
   const slot = {
     id: ++_counter, socket, tableId, tableName: '', status: 'connecting',
-    gameState: null, mySeat: -1, error: null, joined: false,
+    gameState: null, mySeat: -1, error: null, joined: false, vacated: false,
   };
   _slots.push(slot);
 
@@ -157,7 +161,9 @@ export function joinMultiTable(tableId, { playerName, buyIn, avatar, expectedVar
       if (slot.resumedFor) {
         try { saveTicketResume(res, { keepIfMissing: true, expectUserId: slot.resumedFor }); } catch { /* ignore */ }
       }
-      if (!slot.joined) {
+      // F88 — the server ended this slot's seat (the same table was opened
+      // on another socket of the account): never join it again from here.
+      if (!slot.joined && !slot.vacated) {
         slot.joined = true;
         slot.status = 'joining';
         socket.emit('joinTable', { tableId, playerName: playerName || 'Player', seatIndex: -1, buyIn: buyIn || 0, avatar, expectedVariant });
@@ -184,10 +190,35 @@ export function joinMultiTable(tableId, { playerName, buyIn, avatar, expectedVar
   });
   socket.on('disconnect', () => {
     if (slot.status !== 'error') slot.status = 'disconnected';
-    // R2 (TABLEUI-18 / APPUI-21) — the server forgets this socket's seat with
-    // the connection; the reconnect's loginResult must join the table again
-    // (`joined` stayed true, so an extra table froze for good after any blip).
+    // R2 (TABLEUI-18 / APPUI-21) — the server RESERVES this socket's seat on
+    // a drop (it is not forgotten with the connection); the reconnect's
+    // loginResult sends joinTable again (`joined` stayed true, so an extra
+    // table froze for good after any blip), and a fixed server's joinTable
+    // RESTORES the reserved seat onto the new socket (gameplay audit F82:
+    // 'reconnectedToTable', same seat, same stack, no new buy-in). An older
+    // server re-seats it with a new buy-in.
     slot.joined = false;
+    notify();
+  });
+  // Gameplay audit F82 (2026-10-21) — the reserved seat is this socket's
+  // again (the full gameState that follows is applied by the handler above;
+  // its yourSeat drives mySeat).
+  socket.on('reconnectedToTable', () => {
+    slot.joined = true;
+    slot.status = 'playing';
+    notify();
+  });
+  // Gameplay audit F88 (2026-10-21) — `seatVacated { tableId, seatIndex,
+  // reason }`: the server ended this slot's seat (another socket of the
+  // account took that table) and left its room; no frame follows. The tile
+  // says so instead of freezing on the last frame.
+  socket.on('seatVacated', (d) => {
+    if (String(d?.tableId) !== String(slot.tableId)) return;
+    slot.vacated = true;
+    slot.status = 'error';
+    slot.error = SLOT_VACATED_TEXT;
+    slot.gameState = null;
+    slot.mySeat = -1;
     notify();
   });
 

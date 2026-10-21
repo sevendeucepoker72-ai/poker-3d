@@ -54,6 +54,11 @@ import {
 } from '../../store/tournamentSeatStore';
 import { returnToTournament } from '../../services/tournamentReturn';
 import { TournamentLeaveDialog } from '../ui/TournamentSeatNotice';
+// Gameplay audit 2026-10-21 (C3) — multi-table scope of the seat controls,
+// per-table Sit Out, replies for another table, the Back button, the Dealer's
+// Choice label.
+import { tableScope, isOtherTableReply, sittingOutHereOf, dealersChoiceTruthful } from '../../utils/tableFlows';
+import { setTableBackHandler } from '../../services/tableBack';
 import { loadHotkeys } from '../ui/HotkeySettings';
 import { useAFKTracker } from '../../hooks/useAFKTracker';
 import { notify } from '../../hooks/usePushNotifications';
@@ -236,6 +241,8 @@ export default function GameHUD() {
     setTrainingEnabled,
     sittingOut,
     toggleSitOut,
+    setSitOut,
+    currentTableId,
     isSpectating,
     stopSpectating,
     selectedDiscards,
@@ -256,6 +263,8 @@ export default function GameHUD() {
       setTrainingEnabled: s.setTrainingEnabled,
       sittingOut: s.sittingOut,
       toggleSitOut: s.toggleSitOut,
+      setSitOut: s.setSitOut,
+      currentTableId: s.currentTableId,
       isSpectating: s.isSpectating,
       stopSpectating: s.stopSpectating,
       selectedDiscards: s.selectedDiscards,
@@ -731,31 +740,52 @@ export default function GameHUD() {
   // `sittingOut` lives only in the in-memory store. On mount (first time we
   // see a seat), if the stored flag is TRUE and we aren't already sitting
   // out, replay the toggle. On every change, mirror to sessionStorage.
+  // Gameplay audit F156 / F87 (2026-10-21) — the Sit Out state of the seat ON
+  // SCREEN: multi-table mode reads that table's own frame (the server stamps
+  // `sittingOut` on every seat frame), single-table mode the store flag.
+  const sittingOutHere = sittingOutHereOf({ currentTableId, gameState, sittingOut });
   const sittingOutPersistDidRestore = useRef(false);
   useEffect(() => {
     if (sittingOutPersistDidRestore.current || !isSeated) return;
     sittingOutPersistDidRestore.current = true;
+    // F87 / F156 — the remembered Sit Out is the MAIN seat's (single-table
+    // mode only), replayed as an explicit Sit Out: a bare toggle sat him IN
+    // when the restored seat was already sitting out.
+    if (currentTableId) return;
     try {
       if (sessionStorage.getItem(SIT_OUT_PREF_KEY) === '1' && !sittingOut) {
-        toggleSitOut && toggleSitOut();
+        setSitOut && setSitOut(true);
       }
     } catch { /* ignore */ }
-  }, [isSeated, sittingOut, toggleSitOut]);
+  }, [isSeated, sittingOut, setSitOut, currentTableId]);
   useEffect(() => {
+    if (currentTableId) return; // (multi-table: per table, nothing to remember for a reload)
     try { sessionStorage.setItem(SIT_OUT_PREF_KEY, sittingOut ? '1' : '0'); }
     catch { /* ignore */ }
-  }, [sittingOut]);
+  }, [sittingOut, currentTableId]);
+
+  // F156 — away / back: single-table mode no table named (the main seat, as
+  // before); multi-table mode one per seated table, each naming its table.
+  // Always an object payload (a payload-taking server handler refuses a
+  // missing one; an older server ignores it).
+  const emitAwayAll = useCallback((event) => {
+    const socket = getSocket();
+    if (!socket) return;
+    const st = useTableStore.getState();
+    if (!st.currentTableId) { socket.emit(event, {}); return; }
+    const ids = liveTableIds(st.activeTables);
+    if (!ids.length) { socket.emit(event, { tableId: st.currentTableId }); return; }
+    ids.forEach((id) => socket.emit(event, { tableId: id }));
+  }, []);
 
   // AFK tracker — installed here so `isSeated` and `sittingOut` are in scope.
   const { isAFK } = useAFKTracker({
-    active: isSeated && !sittingOut,
+    active: isSeated && !sittingOutHere,
     onAFK: () => {
-      const socket = getSocket();
-      socket?.emit('playerAFK');
+      emitAwayAll('playerAFK');
     },
     onBack: () => {
-      const socket = getSocket();
-      socket?.emit('playerBack');
+      emitAwayAll('playerBack');
       setAfkWarning(false);
     },
     onWarning: (secsLeft) => {
@@ -977,6 +1007,10 @@ export default function GameHUD() {
 
   // Dealer's Choice info
   const isDealersChoice = gameState?.dealersChoice || false;
+  // Gameplay audit F15 (2026-10-21) — the Dealer's Choice label / Next line
+  // only when the label names the game actually dealt (the server never
+  // rebuilt the table: "Omaha" over a Hold'em deal); else the real game name.
+  const dcTruthful = isDealersChoice && dealersChoiceTruthful(gameState);
   const dealersChoiceVariant = gameState?.dealersChoiceVariant || null;
   const dealersChoiceNext = gameState?.dealersChoiceNext || null;
 
@@ -2382,14 +2416,18 @@ export default function GameHUD() {
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
+    // F156 — a reply for another table (multi-table) is not this table's.
+    const otherTable = (data) => isOtherTableReply(data, useTableStore.getState().gameState?.tableId);
     const handler = (data) => {
+      if (otherTable(data)) return;
       if (data && data.amount) {
         setMissedBlindsAmount(data.amount);
         if (data.type) setMissedBlindsType(data.type);
       }
     };
-    const postedHandler = () => { setMissedBlindsAmount(0); setMissedBlindsType(null); };
+    const postedHandler = (data) => { if (otherTable(data)) return; setMissedBlindsAmount(0); setMissedBlindsType(null); };
     const errorHandler = (data) => {
+      if (otherTable(data)) return;
       // Audit fix: surface server-side refusal to the player. Previously
       // insufficient_chips silently failed; now a toast explains why.
       if (data?.message) {
@@ -2490,12 +2528,12 @@ export default function GameHUD() {
     const inActiveHand =
       (phase === 'PreFlop' || phase === 'Flop' || phase === 'Turn' || phase === 'River') &&
       yourCards.length > 0 &&
-      !sittingOut;
+      !sittingOutHere;
     if (inActiveHand && missedBlindsAmount > 0) {
       setMissedBlindsAmount(0);
       setMissedBlindsType(null);
     }
-  }, [phase, yourCards.length, sittingOut, missedBlindsAmount]);
+  }, [phase, yourCards.length, sittingOutHere, missedBlindsAmount]);
 
   // === Mucked Hand Reveal: show button for 5 seconds after folding ===
   const prevFoldedRef = useRef(false);
@@ -2650,6 +2688,8 @@ export default function GameHUD() {
     const socket = getSocket();
     if (!socket) return;
     const handler = (data) => {
+      // F156 — another table's rabbit (multi-table) is not shown here.
+      if (isOtherTableReply(data, useTableStore.getState().gameState?.tableId)) return;
       // R1 (contract #4) — only a real card list (a board has at most 5).
       const cards = data && typeof data === 'object' ? sanitizeShownCards(data.cards, 5) : null;
       if (cards) {
@@ -3251,18 +3291,20 @@ export default function GameHUD() {
   const handleBackToLobby = useCallback(() => {
     // 2026-10-10 (S2) — a LIVE tournament seat: say what leaving means (the
     // seat stays in play, auto-folded, until he returns) before leaving.
+    // Gameplay audit F139 — answers what happened (the browser / Android Back
+    // button runs this too): 'dialog' | 'stayed' | 'left'.
     if (onTournamentSeat) {
       setTournamentLeaveVia('lobby');
-      return;
+      return 'dialog';
     }
     // R2 (S1) — a Spin & Go in play: leaving forfeits the entry (one confirm,
     // which also covers a hand in progress).
     if (spinGoEntryLive) {
       const ok = typeof window !== 'undefined' && window.confirm('Leaving forfeits your Spin & Go entry. Leave anyway?');
-      if (!ok) return;
+      if (!ok) return 'stayed';
       leaveTable();
       setScreen('lobby');
-      return;
+      return 'left';
     }
     // R2 (TABLEUI-15) — a SPECTATOR has nothing at stake: no forfeit confirm
     // (`!!undefined === false` made every watcher confirm "forfeit any chips
@@ -3272,7 +3314,7 @@ export default function GameHUD() {
       if (isSpectating || gameState?.isSpectator === true) stopSpectating();
       else leaveTable();
       setScreen('lobby');
-      return;
+      return 'left';
     }
     // Audit fix #10: require confirmation mid-hand so a misclick doesn't
     // abandon a live decision and auto-fold at the server. Waiting /
@@ -3287,11 +3329,18 @@ export default function GameHUD() {
     });
     if (confirmText) {
       const ok = typeof window !== 'undefined' && window.confirm(confirmText);
-      if (!ok) return;
+      if (!ok) return 'stayed';
     }
     leaveTable();
     setScreen('lobby');
+    return 'left';
   }, [leaveTable, setScreen, phase, gameState, yourSeat, isMyTurn, onTournamentSeat, isSpectating, isSeated, stopSpectating, spinGoEntryLive]);
+  // Gameplay audit F139 (2026-10-21) — the browser / Android Back button on
+  // the table runs this same Back to Lobby (App.jsx popstate; services/
+  // tableBack): it used to switch screens only, leaving the seat dealt in.
+  const backToLobbyRef = useRef(handleBackToLobby);
+  useEffect(() => { backToLobbyRef.current = handleBackToLobby; }, [handleBackToLobby]);
+  useEffect(() => setTableBackHandler(() => backToLobbyRef.current()), []);
 
   // S2 — the player confirmed leaving his LIVE tournament seat: the lobby
   // remembers it ("Return to tournament"), then the socket leaves the table
@@ -3499,12 +3548,12 @@ export default function GameHUD() {
             </div>
           )}
           <div className="hud-phase" data-phase={phaseLabel}>
-            {isDealersChoice && dealersChoiceVariant && (
+            {dcTruthful && (
               <span className="dealers-choice-label">
                 {dealersChoiceVariant.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
               </span>
             )}
-            {!isDealersChoice && variantName !== "Texas Hold'em" && (
+            {!dcTruthful && variantName !== "Texas Hold'em" && (
               <span style={{ color: '#ffd24a', marginRight: '6px', fontSize: '0.75rem' }}>
                 {variantName}
               </span>
@@ -3514,7 +3563,7 @@ export default function GameHUD() {
               Blinds: {(gameState?.smallBlind || 25).toLocaleString()}/{bigBlind.toLocaleString()}
               {anteAmount > 0 && ` Ante: ${anteAmount.toLocaleString()}`}
             </span>
-            {isDealersChoice && dealersChoiceNext && (
+            {dcTruthful && dealersChoiceNext && (
               <span className="dealers-choice-next">
                 Next: {dealersChoiceNext.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
               </span>
@@ -3535,25 +3584,25 @@ export default function GameHUD() {
               shown to a spectator (who also has no name / 0-chip stack here). */}
           {seatedHere && (
           <button
-            className={`sit-out-quick-btn ${sittingOut ? 'sit-out-quick-btn--active' : ''}`}
+            className={`sit-out-quick-btn ${sittingOutHere ? 'sit-out-quick-btn--active' : ''}`}
             onClick={toggleSitOut}
             /* Round 6 (P-j) — at a TOURNAMENT table sitting out = absent: the
                seat stays dealt in, posts its blinds and is auto-acted (P-i).
                Round 7 (Z11): said in visible text too (tournament-sitout-note). */
             title={onTournamentSeat
-              ? (sittingOut
+              ? (sittingOutHere
                 ? `Sitting Out — you are still dealt in: your blinds are posted and ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT}. Click to return`
                 : `Sit Out (you stay dealt in: your blinds are posted and ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT})`)
-              : (sittingOut ? 'Sitting Out — click to return' : 'Sit Out (auto-fold each hand)')}
+              : (sittingOutHere ? 'Sitting Out — click to return' : 'Sit Out (auto-fold each hand)')}
           >
-            {sittingOut ? '🪑 Sitting Out' : '🪑 Sit Out'}
+            {sittingOutHere ? '🪑 Sitting Out' : '🪑 Sit Out'}
           </button>
           )}
 
           {/* ⋯ Options dropdown — contains Sit Out, Training, and all settings */}
           <div className="hud-options-wrapper" ref={optionsRef}>
             <button
-              className={`hud-icon-btn ${showOptions ? 'hud-icon-btn-active' : ''} ${sittingOut ? 'hud-icon-btn-sitout' : ''}`}
+              className={`hud-icon-btn ${showOptions ? 'hud-icon-btn-active' : ''} ${sittingOutHere ? 'hud-icon-btn-sitout' : ''}`}
               onClick={() => setShowOptions(!showOptions)}
               title="Table Options"
             >
@@ -3612,7 +3661,8 @@ export default function GameHUD() {
                 <button className="options-action-btn options-bomb"
                   onClick={() => {
                     const socket = getSocket();
-                    if (socket?.connected) socket.emit('triggerBombPot', {});
+                    // F156 — the table on screen (multi-table), else the main seat.
+                    if (socket?.connected) socket.emit('triggerBombPot', { tableId: tableScope(useTableStore.getState().currentTableId) });
                     // A fresh bomb pot should actually show its banner
                     // even if the user previously dismissed a stale one.
                     setBombPotUserDismissed(false);
@@ -4039,8 +4089,7 @@ export default function GameHUD() {
           <span>🌙</span>
           <span>{onTournamentSeat ? `You're away — you stay dealt in: ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT}.` : "You're away — hands will be auto-folded"}</span>
           <button className="afk-back-btn" onClick={() => {
-            const socket = getSocket();
-            socket?.emit('playerBack');
+            emitAwayAll('playerBack');
             setAfkWarning(false);
           }}>I'm back</button>
         </div>
@@ -4050,15 +4099,21 @@ export default function GameHUD() {
           (the button's title is hover-only, never seen on a phone): the seat
           stays dealt in, posts its blinds and is checked or folded (P-j /
           P-i). Blue, never red. Cash tables keep the plain button. */}
-      {onTournamentSeat && sittingOut && !isAFK && (
+      {onTournamentSeat && sittingOutHere && !isAFK && (
         <div className="afk-away-banner afk-away-banner--tournament tournament-sitout-note" role="status">
           <span>🪑</span>
           <span>{`Sitting out — you stay dealt in: your blinds are posted and ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT}.`}</span>
           {/* Review (round 7): 'playerBack' ALWAYS means "not sitting out" (safe
               to repeat) — a toggle could sit him OUT when the local flag was stale. */}
           <button className="afk-back-btn" onClick={() => {
-            getSocket()?.emit('playerBack');
-            try { useTableStore.getState().setSittingOut(false); } catch { /* ignore */ }
+            // F156 — this table's seat (multi-table: named), else the main seat.
+            const st = useTableStore.getState();
+            const scope = tableScope(st.currentTableId);
+            getSocket()?.emit('playerBack', scope === undefined ? {} : { tableId: scope });
+            try {
+              st.setSittingOut(false);
+              if (scope !== undefined) st.patchTableState(scope, { sittingOut: false });
+            } catch { /* ignore */ }
           }}>I'm back</button>
         </div>
       )}
@@ -4071,7 +4126,7 @@ export default function GameHUD() {
           cards until dead blind is posted"). Now visible in EVERY phase
           as long as they owe, and the button shows a clear disabled state
           when chips are insufficient rather than silently failing. */}
-      {missedBlindsAmount > 0 && !sittingOut && (
+      {missedBlindsAmount > 0 && !sittingOutHere && (
         <div className="missed-blinds-panel">
           <div className="missed-blinds-text">
             {missedBlindsType === 'both'
@@ -4093,7 +4148,8 @@ export default function GameHUD() {
                 try { addToast('Not enough chips — rebuy first, then post.', 'error', 3000); } catch {}
                 return;
               }
-              socket.emit('postMissedBlinds');
+              // F156 — the table on screen (multi-table), else the main seat.
+              socket.emit('postMissedBlinds', { tableId: tableScope(useTableStore.getState().currentTableId) });
             }}
             style={{ fontSize: '0.85rem' }}
             aria-label={`Post dead blinds of ${missedBlindsAmount.toLocaleString()} chips to re-enter the hand rotation${myChips < missedBlindsAmount ? ' — not enough chips' : ''}`}
@@ -4783,7 +4839,8 @@ export default function GameHUD() {
                     // second tap is refused server-side — no longer first.)
                     const socket = getSocket();
                     if (!socket?.connected) return;
-                    socket.emit('straddle');
+                    // F156 — the table on screen (multi-table), else the main seat.
+                    socket.emit('straddle', { tableId: tableScope(useTableStore.getState().currentTableId) });
                     playSound('bet');
                   }}
                 >

@@ -7,6 +7,7 @@ import { markTableLeft, isTableLeft } from '../services/leftTables';
 // so no seat, winner or showdown row can crash the table for its viewers.
 import { sanitizeTableState, sanitizeHandHistory, sanitizeNamedEvent, viewerHoleCardsOf } from '../utils/tablePayload';
 import { drawSelectionKey } from '../utils/actionBar';
+import { tableScope, sittingOutHereOf } from '../utils/tableFlows';
 
 // 2026-10-07 — every gated play emit records how to replay itself, so a
 // login_required refusal that lands on a signed-out socket (reconnect race) can
@@ -117,6 +118,19 @@ function settleTables(s) {
   if (dropped.length) updates.activeTables = next;
   if (!Object.keys(updates).length) return null;
   return { updates, dropped };
+}
+
+// Gameplay audit F150 (2026-10-21) — what belongs to ONE table session and
+// must not carry into the next table once the shown table closes with no
+// other seat to show (closeTable / the career stage end): its chat, emotes,
+// training toggle + panel data, a draw selection and rabbit cards. Never the
+// quick-game / career result (an app-level overlay shown over the lobby) nor
+// handHistories (a cross-table log hydrated at sign-in for "Last Hand").
+export function perTableSessionReset() {
+  return {
+    chatMessages: [], emotes: [], trainingEnabled: false, trainingData: null,
+    selectedDiscards: [], rabbitCards: null,
+  };
 }
 
 export const useTableStore = create((set, get) => ({
@@ -307,7 +321,9 @@ export const useTableStore = create((set, get) => ({
     const clientMessageId = (typeof crypto !== 'undefined' && crypto.randomUUID)
       ? crypto.randomUUID()
       : `c_${now}_${Math.random().toString(36).slice(2, 10)}`;
-    socket.emit('chatMessage', { message: key, clientMessageId });
+    // Gameplay audit F156 (2026-10-21) — multi-table: the table on screen
+    // (an older server ignores it and posts to the main table, as before).
+    socket.emit('chatMessage', { message: key, clientMessageId, tableId: tableScope(get().currentTableId) });
   },
 
   leaveTable: () => {
@@ -422,9 +438,20 @@ export const useTableStore = create((set, get) => ({
 
   // Sit out
   sittingOut: false,
-  toggleSitOut: () => {
+  // Gameplay audit F87 / F156 (2026-10-21) — Sit Out says what it WANTS
+  // (`sittingOut`) for the table on screen (`tableId` in multi-table mode): a
+  // newer server sets that value on that seat (a repeat is answered
+  // 'unchanged'). It used to be a bare toggle of the MAIN seat, so a tap at an
+  // extra table sat the main one out (folding a live hand there), and a
+  // remembered Sit Out replayed over a seat already sitting out sat him IN.
+  // An older server ignores the payload and toggles the main seat (today).
+  setSitOut: (want) => {
     const socket = getSocket();
-    if (socket) socket.emit('sitOut');
+    if (socket) socket.emit('sitOut', { sittingOut: !!want, tableId: tableScope(get().currentTableId) });
+  },
+  toggleSitOut: () => {
+    const s = get();
+    s.setSitOut(!sittingOutHereOf(s));
   },
   setSittingOut: (val) => set({ sittingOut: val }),
 
@@ -433,7 +460,8 @@ export const useTableStore = create((set, get) => ({
   trainingData: null,
   toggleTraining: () => {
     const socket = getSocket();
-    if (socket) socket.emit('toggleTraining');
+    // F156 — the table on screen in multi-table mode (else the main seat).
+    if (socket) socket.emit('toggleTraining', { tableId: tableScope(get().currentTableId) });
   },
   setTrainingEnabled: (enabled) => set({ trainingEnabled: enabled }),
   setTrainingData: (data) => set({ trainingData: data }),
@@ -498,7 +526,8 @@ export const useTableStore = create((set, get) => ({
 
   requestRabbitHunt: () => {
     const socket = getSocket();
-    if (socket?.connected) socket.emit('rabbitHunt');
+    // F156 — the table on screen in multi-table mode (else the main seat).
+    if (socket?.connected) socket.emit('rabbitHunt', { tableId: tableScope(get().currentTableId) });
   },
 
   // ========== Emote System ==========
@@ -587,11 +616,33 @@ export const useTableStore = create((set, get) => ({
       const next = nextId !== null ? rest.get(nextId) : null;
       Object.assign(updates, next
         ? { gameState: next.gameState, mySeat: next.gameState?.yourSeat ?? -1, isSpectating: false, sittingOut: false }
-        : { gameState: null, mySeat: -1, isSpectating: false, sittingOut: false });
+        : { gameState: null, mySeat: -1, isSpectating: false, sittingOut: false, ...perTableSessionReset() });
     }
     set(updates);
     get().settleActiveTables();
     return { shown };
+  },
+
+  // Gameplay audit F87 / F156 (2026-10-21) — shallow-merge `patch` into the
+  // cached state of `tableId` (multi-table) and into the shown state when it
+  // is that table (e.g. a sitOutToggled for one table of several).
+  patchTableState: (tableId, patch) => {
+    const id = tableId != null ? String(tableId) : null;
+    if (!id || !patch || typeof patch !== 'object') return;
+    const { activeTables, gameState } = get();
+    const updates = {};
+    let key = null;
+    if (activeTables && typeof activeTables.forEach === 'function') activeTables.forEach((_e, k) => { if (String(k) === id) key = k; });
+    if (key !== null) {
+      const entry = activeTables.get(key);
+      if (entry && entry.gameState) {
+        const next = new Map(activeTables);
+        next.set(key, { ...entry, gameState: { ...entry.gameState, ...patch } });
+        updates.activeTables = next;
+      }
+    }
+    if (gameState && String(gameState.tableId) === id) updates.gameState = { ...gameState, ...patch };
+    if (Object.keys(updates).length) set(updates);
   },
 
   dropActiveTable: (tableId, { ignore = false } = {}) => {

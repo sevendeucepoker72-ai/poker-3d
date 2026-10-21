@@ -31,6 +31,8 @@ import {
   tableBackCount, opponentCardSlots, seatSittingOut, seatCapOf,
   seatMoveFrameIsForTable, rotationSeats, positionLabel,
 } from '../../utils/tableRender';
+// Gameplay audit F78 (C3) — a queued move that did not happen ends its pill.
+import { pendingMoveExpired } from '../../utils/tableFlows';
 import './PokerTable2D.css';
 import './TableCosmetics.css';
 
@@ -767,16 +769,19 @@ export default function PokerTable2D() {
   // is ignored; a complete / cancelled frame ends only its own table's move
   // (one naming no table — an older server — ends it); the pill shows only
   // on its table.
-  const [pendingMove, setPendingMove] = useState(null); // { tableId, seat }
+  const [pendingMove, setPendingMove] = useState(null); // { tableId, seat, handNumber }
   const shownTableIdRef = useRef(null);
   const shownTableId = gameState?.tableId ?? null;
   useEffect(() => { shownTableIdRef.current = shownTableId; }, [shownTableId]);
+  const shownHandRef = useRef(null);
+  const shownHandNo = gameState?.handNumber ?? null;
+  useEffect(() => { shownHandRef.current = shownHandNo; }, [shownHandNo]);
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
     const onPending = (d) => {
       if (d?.pendingSeat == null || !seatMoveFrameIsForTable(d, shownTableIdRef.current)) return;
-      setPendingMove({ tableId: d.tableId ?? shownTableIdRef.current, seat: d.pendingSeat });
+      setPendingMove({ tableId: d.tableId ?? shownTableIdRef.current, seat: d.pendingSeat, handNumber: shownHandRef.current });
     };
     const onEnded = (d) => setPendingMove((pm) => (
       pm && (pm.tableId == null || seatMoveFrameIsForTable(d, pm.tableId)) ? null : pm
@@ -792,6 +797,12 @@ export default function PokerTable2D() {
       socket.off('moveSeatCancelled', onCancelled);
     };
   }, []);
+
+  // F78 (C3) — a later hand at that table with him not in the target seat:
+  // the move was dropped at the boundary (an older server says nothing).
+  useEffect(() => {
+    if (pendingMoveExpired(pendingMove, gameState)) setPendingMove(null);
+  }, [pendingMove, gameState]);
 
   const pendingSeat = pendingMove
     && (pendingMove.tableId == null || String(pendingMove.tableId) === String(gameState?.tableId ?? ''))

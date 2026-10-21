@@ -426,6 +426,23 @@ function tearDownSession(set, get, skipRedirect, census = null) {
   }
 }
 
+// Gameplay audit F140 (2026-10-21) — a sign-in answer never pulls a player
+// off the TABLE screen while he holds a live seat there (a bridged sign-in
+// that answers after a waitlist link seated him used to send him to the lobby
+// while his seat was dealt in). App registers the probe (this store must not
+// import the table store); without one, the old rule (lobby).
+let _keepTableScreenProbe = null;
+export function setKeepTableScreenProbe(fn) {
+  _keepTableScreenProbe = typeof fn === 'function' ? fn : null;
+}
+function screenAfterSignIn(userData, current) {
+  if (userData.needsUsername) return 'chooseUsername';
+  if (current === 'table' && _keepTableScreenProbe) {
+    try { if (_keepTableScreenProbe()) return 'table'; } catch { /* the lobby, as before */ }
+  }
+  return 'lobby';
+}
+
 export const useGameStore = create((set, get) => ({
   // App state
   screen: 'login', // 'login' | 'lobby' | 'customizer' | 'table' | 'career'
@@ -510,7 +527,7 @@ export const useGameStore = create((set, get) => ({
       // non-admin users. Server enforcement still rejects non-admin
       // calls regardless; this is UX cleanup, not a security gate.
       isAdmin: !!userData.isAdmin,
-      screen: userData.needsUsername ? 'chooseUsername' : 'lobby',
+      screen: screenAfterSignIn(userData, get().screen),
     });
   },
 
@@ -536,7 +553,7 @@ export const useGameStore = create((set, get) => ({
       // isAdmin flag from the server's loginResult userData so admin-
       // only UI can hide itself for guest + regular players.
       isAdmin: !!userData.isAdmin,
-      screen: userData.needsUsername ? 'chooseUsername' : 'lobby',
+      screen: screenAfterSignIn(userData, get().screen),
     });
     // 2026-05-05 Phase 3 — broadcast login to other same-origin tabs
     // (e.g. user has .online open in two tabs and logs in on tab A;

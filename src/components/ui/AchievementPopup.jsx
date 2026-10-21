@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useProgressStore } from '../../store/progressStore';
-import { acceptTableInvite } from '../../services/tableInviteJoin';
+import { acceptTableInvite, acceptClubChallengeNotice } from '../../services/tableInviteJoin';
 import { inviteJoinRequest } from '../../utils/tableInvite';
 import './Progression.css';
 
@@ -39,6 +39,12 @@ function toastIcon(n) {
 }
 
 const TOAST_MS = 5000;
+// Gameplay audit F141 — a toast may ask to stay up longer (`durationMs`, e.g.
+// a club challenge's 3-minute join window); capped at 5 minutes.
+const toastMs = (n) => {
+  const d = Number(n && n.durationMs);
+  return Number.isFinite(d) && d > TOAST_MS ? Math.min(d, 300000) : TOAST_MS;
+};
 
 export default function AchievementPopup() {
   const notifications = useProgressStore((s) => s.notifications);
@@ -56,6 +62,12 @@ export default function AchievementPopup() {
     try { acceptTableInvite(notification); } catch { /* the toast still closes */ }
     dismissNotification(notification.id);
   };
+  // Gameplay audit F141 — a club challenge accepted while he plays another
+  // table (or in a background tab) is a notice, joined only on this tap.
+  const acceptChallenge = (notification) => {
+    try { acceptClubChallengeNotice(notification); } catch { /* the toast still closes */ }
+    dismissNotification(notification.id);
+  };
 
   useEffect(() => {
     const timers = timersRef.current;
@@ -65,7 +77,7 @@ export default function AchievementPopup() {
       timers.set(n.id, setTimeout(() => {
         timers.delete(n.id);
         dismissNotification(n.id);
-      }, TOAST_MS));
+      }, toastMs(n)));
     }
     for (const [id, t] of timers) {
       if (!live.has(id)) { clearTimeout(t); timers.delete(id); }
@@ -107,6 +119,15 @@ export default function AchievementPopup() {
                 style={{ pointerEvents: 'auto' }}
               >
                 Join Table
+              </button>
+            )}
+            {notification.challengeTableId != null && (
+              <button
+                className="achievement-popup-invite-join achievement-popup-challenge-join"
+                onClick={(e) => { e.stopPropagation(); acceptChallenge(notification); }}
+                style={{ pointerEvents: 'auto' }}
+              >
+                Join challenge
               </button>
             )}
             {notification.reward && (

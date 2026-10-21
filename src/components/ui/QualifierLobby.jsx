@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { getSocket } from '../../services/socketService';
 // 2026-10-20 — a registered player's way back to his seat in a running qualifier.
-import { awaySeatOfTournament } from '../../store/tournamentSeatStore';
+import { awaySeatOfTournament, noteTournamentSeat } from '../../store/tournamentSeatStore';
+import { clearTableLeft } from '../../services/leftTables';
+import { qualifierRunningActions } from '../../utils/tableFlows';
 import { returnToTournament } from '../../services/tournamentReturn';
 import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
 import {
@@ -155,6 +157,15 @@ export default function QualifierLobby({ onSpectate }) {
       if (data?.success) {
         setRegMsg(null);
         if (data.qualifierId) noteLocalReg(data.qualifierId, !data.unregistered);
+        // Gameplay audit F142 (2026-10-21) — a RE-ENTRY seated him at once
+        // (a fresh stack, blinds running): take him to that table. A newer
+        // server also sends qualifierTournamentStarted (App does the same;
+        // doing it twice is harmless); an older one sends only this.
+        if (data.reentry === true && data.tableId != null) {
+          try { noteTournamentSeat({ tournamentId: data.tournamentId, tableId: data.tableId, name: 'Qualifier Tournament' }); } catch { /* best-effort */ }
+          try { clearTableLeft(data.tableId); } catch { /* ignore */ }
+          try { useGameStore.getState().setScreen('table'); } catch { /* ignore */ }
+        }
         // The server's own flag + count, at once.
         try { socket.emit('getQualifierTournaments'); } catch { /* next poll */ }
         return;
@@ -340,25 +351,43 @@ export default function QualifierLobby({ onSpectate }) {
       );
     }
     if (state === 'running' || state === 'late') {
-      const canLate = state === 'late' && qualified && !mine;
+      // Gameplay audit F142 (2026-10-21) — a registrant whose entry is OUT
+      // (the server's per-viewer `eliminated`) gets Re-enter during late
+      // registration (a credit + re-entries left), else a plain "out" line —
+      // never "Go to my table", which the server refuses for a busted entry.
+      // `eliminated` absent (an older server): as before.
+      const acts = qualifierRunningActions({
+        state, mine, eliminated: q.eliminated, qualified, reEntriesLeft: q.reEntriesLeft, tournamentId: q.tournamentId,
+      });
+      const canLate = acts.lateRegister;
       return (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {acts.reenter && (
+            <button className="qualifier-reenter" onClick={(e) => { e.stopPropagation(); handleRegister(q); }} disabled={!!pend} style={{ flex: 1, minWidth: 140, padding: pad, borderRadius: 8, fontWeight: 800, fontSize: '0.88rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: pend ? 'default' : 'pointer', opacity: pend ? 0.7 : 1 }}>
+              {pend === 'register' ? 'Registering…' : 'Re-enter'}
+            </button>
+          )}
+          {acts.outLine && (
+            <div className="qualifier-out-line" style={box({ flex: 1, background: 'rgba(106,186,255,0.08)', border: '1px solid rgba(106,186,255,0.25)', color: '#cfe0ff' })}>
+              You are out of this qualifier.
+            </div>
+          )}
           {canLate && (
             <button onClick={(e) => { e.stopPropagation(); handleRegister(q); }} disabled={!!pend} style={{ flex: 1, minWidth: 140, padding: pad, borderRadius: 8, fontWeight: 700, fontSize: '0.88rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: pend ? 'default' : 'pointer', opacity: pend ? 0.7 : 1 }}>
               {pend === 'register' ? 'Registering…' : 'Late Register'}
             </button>
           )}
-          {q.tournamentId && mine && (
+          {acts.goToTable && (
             <button className="qualifier-go-to-my-table" onClick={(e) => { e.stopPropagation(); handleGoToMyTable(q); }} style={{ flex: 1, minWidth: 140, padding: pad, borderRadius: 8, fontWeight: 800, fontSize: '0.88rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: 'pointer' }}>
               ↩ Go to my table
             </button>
           )}
-          {q.tournamentId && !mine && (
+          {acts.watch && (
             <button onClick={(e) => { e.stopPropagation(); handleSpectate(q.tournamentId); }} style={{ flex: 1, minWidth: 120, padding: pad, borderRadius: 8, fontWeight: 700, fontSize: '0.88rem', background: 'rgba(106,186,255,0.14)', color: '#cfe0ff', border: '1px solid rgba(106,186,255,0.5)', cursor: 'pointer' }}>
               Watch Live
             </button>
           )}
-          {!canLate && !q.tournamentId && (
+          {!canLate && !acts.reenter && !acts.outLine && !q.tournamentId && (
             <div style={box({ flex: 1, background: 'rgba(106,186,255,0.08)', border: '1px solid rgba(106,186,255,0.25)', color: '#cfe0ff' })}>In progress</div>
           )}
         </div>

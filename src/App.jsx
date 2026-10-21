@@ -1,6 +1,13 @@
 import { useEffect, useState, useRef, useCallback, Component, lazy, Suspense } from 'react';
-import { useGameStore, clearOtherAccountOidcFromTicketTab } from './store/gameStore';
-import { useTableStore, forgetSitOutPreference } from './store/tableStore';
+import { useGameStore, clearOtherAccountOidcFromTicketTab, setKeepTableScreenProbe } from './store/gameStore';
+import { useTableStore, forgetSitOutPreference, SIT_OUT_PREF_KEY, isLiveSeatState, perTableSessionReset } from './store/tableStore';
+// Gameplay audit C3 (2026-10-21) — navigation / reconnect / join-leave rules.
+import {
+  isOtherTableReply, bootRestoreShowsTable, newHandWipesYourCards, resyncPayloadOf, wasSeatedOf,
+  SEAT_RELEASED_TEXT, seatVacatedText, leftTableIdOf, challengeAutoJoinAllowed, clubChallengeNoticeText,
+  CHALLENGE_JOIN_WINDOW_MS, deckFrameForShownTable, revealMatchesCommitment,
+} from './utils/tableFlows';
+import { runTableBack, consumeProgrammaticBack } from './services/tableBack';
 import { useTimerStore } from './store/timerStore';
 import { getAuthToken, setAuthToken, clearAuthToken, setOAuthItem, bearerForThisTab } from './services/tokenStorage';
 import { runSocketLogin, isCredentialDead, isDefinitiveLoginFailure } from './services/socketAuth';
@@ -140,7 +147,7 @@ class ErrorBoundary extends Component {
   }
 }
 import { useProgressStore, dailyLoginClaimable } from './store/progressStore';
-import { connectToServer, getSocket, subscribeConnectionStatus } from './services/socketService';
+import { connectToServer, getSocket, subscribeConnectionStatus, setResyncHint } from './services/socketService';
 import { initPersistence, syncToServer, installBeforeUnloadSync, restoreClientDataFromServer, applyServerPreferences } from './services/persistenceService';
 import { formatReward, purchaseResultText, itemName, setServerShopCatalog } from './utils/economyCatalog';
 import LoadingScreen from './components/ui/LoadingScreen';
@@ -200,7 +207,18 @@ const TABLE_CLOSED_TEXT = {
   private_table_idle: 'This private table closed after everyone left.',
   quick_game_over: 'The game is over and its table has closed.',
   tournament_finished: 'The tournament is over and its table has closed.',
+  // Gameplay audit F147 / F155 (2026-10-21).
+  admin_force_close: 'This table was closed by an administrator.',
+  table_gone: 'The game server restarted and this table closed. Your chips are back in your balance.',
 };
+
+// Gameplay audit F140 (2026-10-21) — the store's sign-in keeps the table
+// screen while this socket holds a live seat there (gameStore cannot import
+// the table store).
+setKeepTableScreenProbe(() => {
+  const ts = useTableStore.getState();
+  return isLiveSeatState(ts.gameState) && !ts.isSpectating;
+});
 
 /**
  * Decode a ?replay=... URL param into a history object (returns null on failure).
@@ -486,6 +504,36 @@ function App() {
     return () => clearTimeout(t);
   }, [bridgePending, isLoggedIn]);
 
+  // Gameplay audit F138 (2026-10-21) — a seat restore ('reconnectedToTable')
+  // that arrived BEFORE the boot sign-in's loginResult (the server restores
+  // first, then answers the login): login() put the player in the lobby while
+  // his seat kept playing (auto-folded, blinded). The restore is remembered
+  // here and the table opens the moment the sign-in lands (zustand subscribe:
+  // synchronous, so the lobby never mounts — a home-screen shortcut cannot
+  // fire first). Cleared on every sign-in edge, a disconnect, and by age.
+  const pendingBootRestoreRef = useRef(null);
+  useEffect(() => {
+    const unsub = useGameStore.subscribe((st, prev) => {
+      if (!prev || st.isLoggedIn === prev.isLoggedIn) return;
+      const pending = pendingBootRestoreRef.current;
+      pendingBootRestoreRef.current = null;
+      if (!st.isLoggedIn || !pending) return;
+      const ts = useTableStore.getState();
+      if (bootRestoreShowsTable(pending, { screen: st.screen, gameState: ts.gameState, isSpectating: ts.isSpectating })) {
+        try { console.warn('[seat-restore] restored before the sign-in answered: opening the table'); } catch { /* ignore */ }
+        useGameStore.getState().setScreen('table');
+      }
+    });
+    return unsub;
+  }, []);
+
+  // Gameplay audit F155 (2026-10-21) — the resume resync ('requestState' on
+  // visibility) names the table on screen and whether he sat there.
+  useEffect(() => {
+    setResyncHint(() => resyncPayloadOf(useTableStore.getState(), useGameStore.getState().screen));
+    return () => setResyncHint(null);
+  }, []);
+
   // Transition state
   const [displayedScreen, setDisplayedScreen] = useState(screen);
   const [transitionClass, setTransitionClass] = useState('');
@@ -504,21 +552,28 @@ function App() {
     // exiting the PWA's history stack.
     const guard = { __pokerGuard: true, at: Date.now() };
     try { window.history.pushState(guard, ''); } catch { /* ignore */ }
-    const onPopState = (e) => {
-      // Still on table → user wants to leave. Confirm if mid-hand.
-      const inLiveHand = useTableStore.getState().gameState?.phase &&
-        !['WaitingForPlayers', 'HandComplete', 'Showdown'].includes(
-          useTableStore.getState().gameState.phase
-        );
-      if (inLiveHand) {
-        const ok = window.confirm('Leave the table mid-hand? Your hand will be auto-folded.');
-        if (!ok) {
-          // Re-push guard so the next back press is still caught.
-          try { window.history.pushState(guard, ''); } catch {}
-          return;
-        }
+    const onPopState = () => {
+      // Gameplay audit F139 (2026-10-21) — Back means what "Back to Lobby"
+      // means: GameHUD's handler (the tournament leave dialog, the Spin & Go
+      // forfeit confirm, the mid-hand confirm, then leaveTable /
+      // stopSpectating). It used to switch the screen only: the seat was
+      // never left and was dealt in, blinded and auto-folded while he
+      // believed he had left. A modal's own history.back() is not his Back.
+      if (consumeProgrammaticBack()) {
+        try { if (!(window.history.state && window.history.state.__pokerGuard)) window.history.pushState(guard, ''); } catch { /* ignore */ }
+        return;
       }
-      useGameStore.getState().setScreen?.('lobby');
+      const res = runTableBack();
+      try { console.warn('[back-button] the table Back runs Back to Lobby:', res); } catch { /* ignore */ }
+      if (res === 'none') {
+        // No table view mounted (the table error card): to the lobby, the
+        // seat kept — as that card's own Lobby button does.
+        useGameStore.getState().setScreen?.('lobby');
+        return;
+      }
+      // Still on the table (a confirm was cancelled / the tournament dialog
+      // is up): re-push the guard so the next back press is still caught.
+      if (res !== 'left') { try { window.history.pushState(guard, ''); } catch { /* ignore */ } }
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -829,17 +884,25 @@ function App() {
       // answers syncTableState from the socket's seat session, which only the
       // oauthLogin seat restore creates — sent earlier, it gets a spectator
       // view. A superseded re-auth means a newer connection is doing its own.
+      // Gameplay audit F155 (2026-10-21) — and whether this socket SAT there
+      // (read now, before the re-auth answers): a newer server re-attaches a
+      // socket whose seat is gone as a spectator (+ 'seatReleased'), and
+      // closes a table that is gone ('tableClosed' table_gone), instead of a
+      // frozen snapshot / nothing.
       const ts = useTableStore.getState();
       if (ts.gameState?.tableId || ts.currentTableId) {
         const tableId = ts.gameState?.tableId || ts.currentTableId;
+        const wasSeated = wasSeatedOf(ts);
         reauth.then((r) => {
           if (r?.reason === 'superseded' || !socket.connected) return;
-          try { socket.emit('syncTableState', { tableId }); } catch { /* best-effort resync */ }
+          try { socket.emit('syncTableState', { tableId, wasSeated }); } catch { /* best-effort resync */ }
         });
       }
     };
     const handleDisconnect = () => {
       useTableStore.getState().setConnected(false);
+      // F138 — a restore seen on the dead connection is not this one's.
+      pendingBootRestoreRef.current = null;
       // S2 round 2 — the server-side socket is gone: no late frame of a table
       // it left can follow, and the next socket starts a fresh delta baseline.
       try { resetLeftTables(); } catch { /* ignore */ }
@@ -900,7 +963,11 @@ function App() {
           // between-turns pre-action pills after the first showdown, and left
           // stale winner banners/cards. Compare `handNumber` so it actually runs.
           if (data.delta?.handNumber != null && data.delta.handNumber !== prev?.handNumber) {
-            if (!data.delta.yourCards) state.yourCards = [];
+            // Gameplay audit G174 (2026-10-21) — an absent yourCards means
+            // "unchanged": the server leaves it out when the new hand dealt
+            // him the SAME two cards, and the old wipe hid them (and his
+            // action bar) for the whole hand. Wiped only on a cross-table merge.
+            if (newHandWipesYourCards(data.delta, prev)) state.yourCards = [];
             if (!data.delta.selectedDiscards) state.selectedDiscards = [];
             if (!data.delta.handResult) state.handResult = null;
             // R1 (TABLEUI-7, contract #5) — the previous hand's chop banner,
@@ -1023,12 +1090,26 @@ function App() {
     // auto-join, joinAdditionalTable, career start, rebuy, tournament register).
     // Those used to reach only this console.error, so the player saw nothing.
     // Route them to the shared PlayRefusalNotice; everything else logs as before.
+    // Gameplay audit F143 (2026-10-21) — a join refused AFTER the server left
+    // the player's old table in that same request names it (`leftTableId`):
+    // that seat is gone, so its view goes too (it froze: no frame follows),
+    // and the table screen falls back to the lobby when nothing is left.
+    const handleLeftTableRefusal = (err) => {
+      const left = leftTableIdOf(err);
+      if (!left) return;
+      try { useTableStore.getState().forgetTableSession(left); } catch { /* best-effort */ }
+      try {
+        const g = useGameStore.getState();
+        if (g.screen === 'table' && !useTableStore.getState().gameState) g.setScreen('lobby');
+      } catch { /* ignore */ }
+    };
     socket.on('error', (err) => {
+      handleLeftTableRefusal(err);
       if (reportPlayRefusal(err)) return;
       console.error('Server error:', err);
     });
     // joinByInviteCode answers on 'joinError' rather than 'error'.
-    const handleJoinErrorRefusal = (err) => { reportPlayRefusal(err); };
+    const handleJoinErrorRefusal = (err) => { handleLeftTableRefusal(err); reportPlayRefusal(err); };
     socket.on('joinError', handleJoinErrorRefusal);
 
     socket.on('handStarted', (state) => {
@@ -1041,13 +1122,28 @@ function App() {
     });
 
     // Training mode toggle acknowledgment
+    // Gameplay audit F156 — a reply for another table (multi-table) is not
+    // the table on screen's; an older server's reply (no tableId) is.
     socket.on('trainingToggled', (data) => {
-      useTableStore.getState().setTrainingEnabled(data.enabled);
+      const ts = useTableStore.getState();
+      if (isOtherTableReply(data, ts.gameState?.tableId)) return;
+      ts.setTrainingEnabled(data.enabled);
     });
 
     // Sit out toggle acknowledgment
+    // Gameplay audit F87 / F156 (2026-10-21) — multi-table: the reply names
+    // its table; that table's state takes the value (the Sit Out button reads
+    // the shown table's own flag there), the store flag only for the table on
+    // screen. Single-table mode / an older server: as before.
     socket.on('sitOutToggled', (data) => {
-      useTableStore.getState().setSittingOut(data.sittingOut);
+      if (!data || typeof data !== 'object') return;
+      const ts = useTableStore.getState();
+      if (ts.currentTableId != null && data.tableId != null) {
+        try { ts.patchTableState(data.tableId, { sittingOut: data.sittingOut === true }); } catch { /* best-effort */ }
+        if (!isOtherTableReply(data, ts.gameState?.tableId)) ts.setSittingOut(data.sittingOut);
+        return;
+      }
+      ts.setSittingOut(data.sittingOut);
     });
 
     // Spin & Go reveal
@@ -1271,9 +1367,13 @@ function App() {
         if (gs.screen === 'table' && !useTableStore.getState().gameState) gs.setScreen('lobby');
       } catch { /* ignore */ }
     };
-    socket.on('tableClosedByAdmin', () => {
-      useProgressStore.getState().addNotification({ type: 'system', title: 'Table Closed', message: 'This table was closed by an administrator.' });
-    });
+    // Gameplay audit F147 (2026-10-21) — an admin force-close ends the view
+    // like any closed table (closeTable, then the lobby when nothing else is
+    // left); it used to be a toast over a frozen table. A newer server also
+    // sends 'tableClosed' {reason:'admin_force_close'}: that second close
+    // finds nothing held, so there is one notice.
+    const handleTableClosedByAdmin = (d) => handleTableClosed({ tableId: d?.tableId, reason: 'admin_force_close' });
+    socket.on('tableClosedByAdmin', handleTableClosedByAdmin);
     // R2 (S1) — `tableClosed { tableId, reason }`: the server removed a table
     // (private_table_idle / quick_game_over / tournament_finished). Whatever
     // this tab held of it goes (tableStore.closeTable) and, when it was the
@@ -1281,6 +1381,34 @@ function App() {
     // short line — never a frozen table. (A quick game's / tournament's result
     // overlay is app-level and stays up over the lobby.)
     socket.on('tableClosed', handleTableClosed);
+    // Gameplay audit F88 (2026-10-21) — `seatVacated { tableId, seatIndex,
+    // reason }`: the server ENDED this socket's seat (the same table was
+    // opened on another socket of the account — 'joined_new_seat' — or a stale
+    // session was cleared after the hand — 'left_after_hand') and took it out
+    // of the room; no frame follows. The view goes (it froze with live-looking
+    // buttons), with a line. Only a table this socket was SEATED at
+    // (forgetTableSession); the tournament-seat memory is never touched.
+    const handleSeatVacated = (d) => {
+      if (!d || d.tableId == null) return;
+      let forgot = false;
+      try { forgot = useTableStore.getState().forgetTableSession(d.tableId); } catch { /* best-effort */ }
+      if (!forgot) return;
+      try { console.warn('[seat] seatVacated: the server ended this window seat', { reason: d.reason }); } catch { /* ignore */ }
+      useProgressStore.getState().addNotification({ type: 'system', title: 'Table', message: seatVacatedText(d.reason) });
+      try {
+        const g = useGameStore.getState();
+        if (g.screen === 'table' && !useTableStore.getState().gameState) g.setScreen('lobby');
+      } catch { /* ignore */ }
+    };
+    socket.on('seatVacated', handleSeatVacated);
+    // Gameplay audit F155 (2026-10-21) — after a resync, a newer server tells
+    // a socket whose seat was released while it was away (it now watches the
+    // table: the gameState it sent says isSpectator, 'spectating' follows).
+    const handleSeatReleased = (d) => {
+      if (!d || d.tableId == null) return;
+      useProgressStore.getState().addNotification({ type: 'system', title: 'Seat released', message: SEAT_RELEASED_TEXT });
+    };
+    socket.on('seatReleased', handleSeatReleased);
     socket.on('kickedByAdmin', (data) => {
       // The server disconnects this socket right after; just surface why.
       useProgressStore.getState().addNotification({ type: 'system', title: 'Removed', message: data?.reason || 'You were removed by an administrator.' });
@@ -1388,9 +1516,29 @@ function App() {
     // R2 (APPUI-53): the join is FOLLOWED — the table screen opens once the
     // server confirms the seat at that table (it never did: the player stayed
     // in the lobby while the match blinded him out); a refusal is said.
+    // Gameplay audit F141 (2026-10-21) — ONLY a socket with no seat anywhere,
+    // in the visible tab, auto-joins (the join makes the server leave every
+    // seat the socket holds: a Spin & Go entry forfeited, a live cash hand
+    // folded, a tournament seat kept absent — with no tap; and every other
+    // tab of the account joined too). Anyone else gets a notice with a "Join
+    // challenge" button (the leave is confirmed first) for the server's
+    // 3-minute join window.
     socket.on('clubChallengeAccepted', (payload) => {
       if (!payload?.tableId) return;
       const gs = useGameStore.getState();
+      let visible = true;
+      try { visible = typeof document === 'undefined' || document.visibilityState !== 'hidden'; } catch { visible = true; }
+      if (!challengeAutoJoinAllowed(useTableStore.getState(), { screen: gs.screen, visible })) {
+        try { console.warn('[club-challenge] seated elsewhere or a background tab: a Join challenge notice instead of the auto-join'); } catch { /* ignore */ }
+        useProgressStore.getState().addNotification({
+          type: 'mission', title: 'Club challenge',
+          message: clubChallengeNoticeText(payload.stakes),
+          challengeTableId: String(payload.tableId),
+          challengeStakes: payload.stakes,
+          durationMs: CHALLENGE_JOIN_WINDOW_MS,
+        });
+        return;
+      }
       try {
         followJoinToTable({
           tableId: payload.tableId,
@@ -1450,7 +1598,8 @@ function App() {
           markTableLeft(tid, (cached && cached.gameState) || shown || null);
           const updates = {};
           if (shown && String(shown.tableId) === tid) {
-            Object.assign(updates, { gameState: null, mySeat: -1, isSpectating: false, sittingOut: false, quickGameResult: null });
+            // Gameplay audit F150 — its chat / training / emotes end with it.
+            Object.assign(updates, { gameState: null, mySeat: -1, isSpectating: false, sittingOut: false, quickGameResult: null, ...perTableSessionReset() });
           }
           if (ts.activeTables && ts.activeTables.has(tid)) {
             const next = new Map(ts.activeTables);
@@ -1524,11 +1673,19 @@ function App() {
     });
 
     // Provably fair
+    // Gameplay audit F162 (2026-10-21) — another table's frame (multi-table:
+    // every room this socket is in sends them) is not the table on screen's;
+    // a reveal is kept only with the commitment of its own hand.
     socket.on('deckCommitment', (data) => {
-      useTableStore.getState().setDeckCommitment(data);
+      const ts = useTableStore.getState();
+      if (!deckFrameForShownTable(data, ts.gameState?.tableId)) return;
+      ts.setDeckCommitment(data);
     });
     socket.on('deckSeedRevealed', (data) => {
-      useTableStore.getState().setDeckRevelation(data);
+      const ts = useTableStore.getState();
+      if (!deckFrameForShownTable(data, ts.gameState?.tableId)) return;
+      if (!revealMatchesCommitment(data, ts.deckCommitment)) return;
+      ts.setDeckRevelation(data);
     });
 
     // Staking
@@ -1901,6 +2058,9 @@ function App() {
       socket.off('tournamentStarted');
       socket.off('qualifierTournamentStarted', handleQualifierTournamentStarted);
       socket.off('tableClosed', handleTableClosed);
+      socket.off('tableClosedByAdmin', handleTableClosedByAdmin);
+      socket.off('seatVacated', handleSeatVacated);
+      socket.off('seatReleased', handleSeatReleased);
       socket.off('stakingPayout', handleStakingPayout);
       socket.off('stakeRefunded', handleStakeRefunded);
       socket.off('eliminatedToSpectator', handleEliminatedToSpectator);
@@ -2565,18 +2725,36 @@ function App() {
       // rebalance may have moved the seat to another table while he was away).
       let wasReturning = false;
       try { wasReturning = !!useTournamentSeatStore.getState().returning; } catch { /* ignore */ }
-      // Round 7 (Z12) — every seat restore (a reconnect / sign-in reservation,
-      // a Return) starts the server's session NOT sitting out: the Sit Out
-      // button says so (a stale "Sitting Out" tapped would sit him OUT). An
-      // explicit Return also forgets the remembered Sit Out, so GameHUD does
-      // not replay it — he came back to play.
+      // Round 7 (Z12) — the Sit Out button follows the server after a seat
+      // restore (a stale "Sitting Out" tapped would sit him OUT). An explicit
+      // Return also forgets the remembered Sit Out, so GameHUD does not
+      // replay it — he came back to play.
+      // Gameplay audit F87 (2026-10-21) — a newer server KEEPS a chosen Sit Out
+      // on a cash seat across the restore and says so (`sittingOut`). An
+      // older one always restores NOT sitting out: a remembered Sit Out (this
+      // tab, not a Return) is sent again right away — an in-page reconnect
+      // never re-mounts GameHUD, so its replay never ran and he was dealt in.
       try {
         const tsNow = useTableStore.getState();
-        if (tsNow.sittingOut) {
-          tsNow.setSittingOut(false);
-          try { console.warn('[sit-out] seat restored: Sit Out follows the server (not sitting out)', { returning: wasReturning }); } catch { /* ignore */ }
+        if (typeof data?.sittingOut === 'boolean') {
+          if (tsNow.sittingOut !== data.sittingOut) tsNow.setSittingOut(data.sittingOut);
+          if (wasReturning) forgetSitOutPreference();
+        } else {
+          let pref = null;
+          try { pref = sessionStorage.getItem(SIT_OUT_PREF_KEY); } catch { pref = null; }
+          if (tsNow.sittingOut) {
+            tsNow.setSittingOut(false);
+            try { console.warn('[sit-out] seat restored: Sit Out follows the server (not sitting out)', { returning: wasReturning }); } catch { /* ignore */ }
+          }
+          if (wasReturning) forgetSitOutPreference();
+          else if (pref === '1') {
+            // (No tableId: a restore is the main seat. The older server
+            // toggles not-sitting-out -> sitting out and answers sitOutToggled.)
+            try { const s = getSocket(); if (s && s.connected) s.emit('sitOut', { sittingOut: true }); } catch { /* ignore */ }
+            useTableStore.getState().setSittingOut(true);
+            try { console.warn('[sit-out] seat restored: his Sit Out sent again'); } catch { /* ignore */ }
+          }
         }
-        if (wasReturning) forgetSitOutPreference();
       } catch { /* best-effort */ }
       try { noteTournamentSeatReturned(data); } catch { /* best-effort */ }
       try {
@@ -2590,6 +2768,10 @@ function App() {
             return;
           }
           store.setScreen('table');
+        } else {
+          // F138 — not signed in yet (a cold boot: the server restores the
+          // seat before it answers the sign-in): open the table once it lands.
+          pendingBootRestoreRef.current = { tableId: data?.tableId ?? null, seatIndex: data?.seatIndex ?? null, at: Date.now() };
         }
       } catch { /* ignore */ }
     };
@@ -2679,6 +2861,9 @@ function App() {
     let cancelled = false;
     let cancelFlow = null;
     let flowSocket = null;
+    // Gameplay audit F140 — the follower that opens the table once the
+    // waitlist ticket's seat shows (cancelled with the flow).
+    let cancelWaitlistFollow = null;
     // True once a timeout notice was shown for the current attempt, so a late
     // success can be recorded as such (the timeout already logged a failure).
     let timeoutReported = false;
@@ -2825,6 +3010,30 @@ function App() {
             });
             useGameStore.getState().login(result.userData, sameOidcTab ? (useGameStore.getState().authToken || result.token) : result.token);
             if (tabKind === 'ticket') clearOtherAccountOidcFromTicketTab();
+            // Gameplay audit F140 (2026-10-21) — the waitlist ticket SEATED him
+            // (buy-in taken, a hand dealt; the seated gameState follows this
+            // answer): open that table. login() used to leave him in the
+            // lobby while the seat was blinded and auto-folded. A newer server
+            // names the seat (`seatedAt`); an older one: the next fresh seat.
+            if (isWaitlist && !result.userData.needsUsername) {
+              if (cancelWaitlistFollow) { try { cancelWaitlistFollow(); } catch { /* ignore */ } cancelWaitlistFollow = null; }
+              const at = result.seatedAt && typeof result.seatedAt === 'object' && result.seatedAt.tableId != null ? result.seatedAt : null;
+              const tsNow = useTableStore.getState();
+              const shownSeat = tsNow.gameState && !tsNow.isSpectating && tsNow.gameState.isSpectator !== true ? tsNow.gameState : null;
+              if (at && shownSeat && String(shownSeat.tableId) === String(at.tableId) && Number(shownSeat.yourSeat) === Number(at.seatIndex)) {
+                try { console.warn('[waitlist] seated -> table'); } catch { /* ignore */ }
+                useGameStore.getState().setScreen('table');
+              } else {
+                cancelWaitlistFollow = followJoinToTable({
+                  tableId: at ? at.tableId : null,
+                  timeoutMs: 12000,
+                  // (Its default timeout text names the Clubs panel: nothing
+                  // to say here — the lobby's waitlist banner offers the table.)
+                  onFailed: null,
+                  onJoined: () => { try { console.warn('[waitlist] seated -> table'); } catch { /* ignore */ } },
+                });
+              }
+            }
             return;
           }
           // Surface the actual server reason (ticket_replayed / ticket_invalid /
@@ -2920,6 +3129,7 @@ function App() {
     return () => {
       cancelled = true;
       if (cancelFlow) cancelFlow();
+      if (cancelWaitlistFollow) { try { cancelWaitlistFollow(); } catch { /* ignore */ } cancelWaitlistFollow = null; }
       deepLinkRetryRef.current = null;
     };
     // 2026-05-05 — was `[deepLinkContext, connStatus]`. The connStatus

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { noteProgrammaticHistoryBack } from '../services/tableBack';
 
 /**
  * Intercepts the browser/mobile hardware back gesture while a modal/overlay is
@@ -49,6 +50,9 @@ export function useBackButtonClose(active, onClose) {
       // If the user closed the modal by clicking X (not by pressing back),
       // our sentinel is still on the stack — pop it so back-history stays clean.
       if (pushedOurState && window.history.state && window.history.state.__pokerModal) {
+        // Gameplay audit F139 — this pop is ours, not the player's Back: the
+        // table screen's Back (which now leaves the seat) ignores it.
+        noteProgrammaticHistoryBack();
         try { window.history.back(); } catch { /* ignore */ }
       }
     };

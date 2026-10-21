@@ -636,6 +636,13 @@
   color: #aaaaaa;
 }
 
+/* Gameplay audit F151 — what Play costs (gold, never red). */
+.quick-game-info p.quick-game-cost {
+  margin-top: 2px;
+  font-size: 0.74rem;
+  color: #ffd24a;
+}
+
 .btn-quick-game {
   padding: 8px 24px;
   border: none;

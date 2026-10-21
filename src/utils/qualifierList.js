@@ -142,6 +142,11 @@ export function normalizeQualifierItem(raw) {
     // the schedule): every credit it consumed was refunded.
     cancelled: raw.cancelled === true,
     registered: typeof raw.registered === 'boolean' ? raw.registered : null,
+    // Gameplay audit F142 (2026-10-21) — per viewer: his entry is OUT (busted;
+    // null = the server does not say), and how many re-entries he has left
+    // (null = unknown / not registered).
+    eliminated: typeof raw.eliminated === 'boolean' ? raw.eliminated : null,
+    reEntriesLeft: Number.isInteger(raw.reEntriesLeft) && raw.reEntriesLeft >= 0 ? raw.reEntriesLeft : null,
     players: Math.max(0, Math.floor(players) || 0),
     maxPlayers: posInt(raw.maxPlayers),
     structure: normalizeStructure(raw.structure),

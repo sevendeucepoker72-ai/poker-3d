@@ -3,6 +3,9 @@ import { useGameStore } from '../../store/gameStore';
 import { useProgressStore } from '../../store/progressStore';
 import { getSocket } from '../../services/socketService';
 import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
+// Gameplay audit F146 (2026-10-21) — the stage buy-in (the server's
+// venueConfigs) is shown before Play; it was never stated anywhere.
+import { careerBuyInText } from '../../utils/tableFlows';
 import './CareerMode.css';
 
 const VENUES = [
@@ -58,7 +61,7 @@ const VENUES = [
     name: 'Macau',
     level: 30,
     tagline: "The dragon's den",
-    opponents: '9 Hard-Expert AI',
+    opponents: '8 Hard-Expert AI',
     reward: '100,000 chips',
     rewardExtra: 'Exclusive Theme',
     icon: '🐉',
@@ -71,7 +74,7 @@ const VENUES = [
     name: 'WSOP Main Event',
     level: 50,
     tagline: 'The ultimate test',
-    opponents: '9 Expert AI',
+    opponents: '8 Expert AI',
     reward: '500,000 chips',
     rewardExtra: 'Legendary Card Back',
     icon: '🏆',
@@ -309,6 +312,12 @@ export default function CareerMode() {
                     })}
                   </div>
 
+                  {careerBuyInText(vi) && (
+                    <div className="venue-rewards venue-buyin">
+                      <span className="reward-label">Buy-in:</span>
+                      <span className="reward-value" style={{ color: '#ffd24a' }}>{careerBuyInText(vi)}</span>
+                    </div>
+                  )}
                   <div className="venue-rewards">
                     <span className="reward-label">Rewards:</span>
                     <span className="reward-value" style={{ color: venue.accent }}>

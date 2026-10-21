@@ -421,6 +421,21 @@ export const disconnect = () => {
 // longer existed. The handlers below reference the current socket via
 // the module-level `_socket` ref that connectToServer keeps in sync.
 // -----------------------------------------------------------------------
+// Gameplay audit F155 (2026-10-21) — what the resume resync names: App
+// registers a function returning `{ tableId, wasSeated }` for the table on
+// screen (null otherwise). This module must not import the stores (the table
+// store imports it), hence the registration. A newer server answers a socket
+// whose seat is gone with a spectator view + a notice, and a table that is
+// gone with `tableClosed` — instead of nothing (a frozen table).
+let _resyncHint = null;
+export const setResyncHint = (fn) => { _resyncHint = typeof fn === 'function' ? fn : null; };
+const resyncPayload = () => {
+  try {
+    const p = _resyncHint ? _resyncHint() : null;
+    return p && typeof p === 'object' ? p : null;
+  } catch { return null; }
+};
+
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   const onVisible = () => {
     if (document.visibilityState !== 'visible') return;
@@ -435,7 +450,12 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       // tab was hidden, so the table can look a few frames stale. Pull a fresh
       // full snapshot so we snap to the live hand instead of catching up
       // frame-by-frame. (Server handler: socket.on('requestState').)
-      try { _socket.emit('requestState'); } catch { /* ignore */ }
+      // F155 — with the table on screen (an older server ignores it).
+      try {
+        // (Always an object: a payload-taking server handler refuses a
+        // missing one; an older server ignores it.)
+        _socket.emit('requestState', resyncPayload() || {});
+      } catch { /* ignore */ }
     }
   };
   document.addEventListener('visibilitychange', onVisible);

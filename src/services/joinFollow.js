@@ -23,7 +23,9 @@ const seatSig = (gs) =>
 
 export const JOIN_FOLLOW_TIMEOUT_TEXT = "Couldn't reach the table — try again from the Clubs panel.";
 
-export function followJoinToTable({ tableId = null, timeoutMs = 12000, onFailed = null } = {}) {
+// `onJoined()` (optional, gameplay audit F140): called once the table screen
+// opened for the confirmed seat.
+export function followJoinToTable({ tableId = null, timeoutMs = 12000, onFailed = null, onJoined = null } = {}) {
   const want = tableId !== null && tableId !== undefined ? String(tableId) : null;
   const fromSig = seatSig(useTableStore.getState().gameState);
   const socket = getSocket();
@@ -42,6 +44,7 @@ export function followJoinToTable({ tableId = null, timeoutMs = 12000, onFailed 
     }
     if (ok) {
       try { useGameStore.getState().setScreen('table'); } catch { /* ignore */ }
+      if (typeof onJoined === 'function') { try { onJoined(); } catch { /* ignore */ } }
     } else if (message && typeof onFailed === 'function') {
       try { onFailed(message); } catch { /* ignore */ }
     }
