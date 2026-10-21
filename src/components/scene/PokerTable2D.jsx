@@ -1212,7 +1212,10 @@ export default function PokerTable2D() {
             seatIndex={i}
             serverSeat={seat}
             isMyPlayer={yourSeat === i}
-            isActive={activeSeat === i}
+            /* Gameplay audit G169 (2026-10-21) — in a draw round on the
+               server's draw clock every seat draws at once: no "to act" ring
+               (it was the closer's stale betting clock running out). */
+            isActive={activeSeat === i && !(gameState?.isDrawPhase && gameState?.drawStartedAt > 0)}
             style={{
               left: `${leftPct}%`,
               top:  `${topPct}%`,

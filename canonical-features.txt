@@ -1080,3 +1080,24 @@ Qualifier started without you
 # through 10th get 1 seat") - an event seat package: the lobby says it and the
 # Seats tab shows the seats per place.
 qualifier-seat-package-place
+
+# 2026-10-21 gameplay audit C1 (action bar, pre-actions, draw / pineapple
+# controls, leave / rebuy messages). F12/F41: the raise controls follow the
+# server's canRaise / maxRaise (the All-In button reads Pot / Max at a capped
+# table); F107: All-In-or-Fold offers only Fold + All-In; F126: a call above
+# the stack shows the stack + "All-In"; F133: an opening bet reads Bet;
+# F134/G169: draw controls only while a draw is owed, on the server's draw
+# clock; F34: a refused Pineapple pick is unmarked; F21: a folded hand is
+# shown at the hand's end; F148: an all-in ring leaver is not told he
+# forfeits; F149: the auto-rebuy waits for rebuyComplete.
+action-btn--max-raise
+ab-aof-note
+action-btn--aof-call
+action-call-allin-tag
+Bet Amount
+hud-draw-clock
+hud-draw-waiting
+pineappleDiscardAck
+Your hand will be shown when this hand ends.
+You are all-in: you stay in this hand
+rebuyComplete

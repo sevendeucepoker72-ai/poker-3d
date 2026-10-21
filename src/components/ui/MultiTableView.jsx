@@ -7,6 +7,7 @@ import {
   disconnectAllMultiTables, MAX_SECONDARY_TABLES,
 } from '../../services/multiTableManager';
 import { noRedHue } from '../../utils/noRedHue';
+import { isAllInOrFoldTable } from '../../utils/actionBar';
 import './MultiTableView.css';
 
 // 2026-06-18 — Phase 3f: REAL multi-tabling. Slot 0 is the app's primary table
@@ -92,7 +93,7 @@ function MiniTablePanel({ tableData, isActive, onAction, onLeave }) {
   }
 
   const {
-    tableName, pot, currentTurn, mySeatIndex, isMyTurn, callAmount = 0, status,
+    tableName, pot, currentTurn, mySeatIndex, isMyTurn, callAmount = 0, status, canRaise = true,
     players = [], communityCards = [], heroCards = [], isPrimary, holeCardCount = 2,
   } = tableData;
   const holeSlots = Math.max(2, Math.min(7, Math.max(Number(holeCardCount) || 2, heroCards?.length || 0)));
@@ -144,7 +145,12 @@ function MiniTablePanel({ tableData, isActive, onAction, onLeave }) {
           <button className="mtv-btn mtv-btn-call" onClick={() => (callAmount > 0 ? onAction?.call() : onAction?.check?.())}>
             {callAmount > 0 ? `Call ${callAmount.toLocaleString()}` : 'Check'}
           </button>
-          <button className="mtv-btn mtv-btn-raise" onClick={() => onAction?.raise()}>Raise</button>
+          {/* Gameplay audit F12 (2026-10-21) — not when the server says the
+              betting is not open to him (canRaise === false) or at an
+              All-In-or-Fold table (a 'raise' is refused there). */}
+          {canRaise && (
+            <button className="mtv-btn mtv-btn-raise" onClick={() => onAction?.raise()}>Raise</button>
+          )}
         </div>
       )}
     </div>
@@ -236,6 +242,7 @@ function mapGameStateToPanel(gs, { isPrimary }) {
     mySeatIndex: yourSeat,
     isMyTurn: active === yourSeat && yourSeat >= 0 && !!inHand,
     callAmount,
+    canRaise: gs.canRaise !== false && !isAllInOrFoldTable(gs),
     players: (gs.seats || [])
       .map((s, i) => (s && s.playerName ? {
         seatIndex: s.seatIndex ?? i,
@@ -321,6 +328,8 @@ export default function MultiTableView({ onClose }) {
   const gridCols = panels.length <= 1 ? 1 : 2;
   // R2 (APPUI-21) — the keyboard's C is Check when nothing is owed.
   const activeOwes = (panels[activeSlot]?.callAmount || 0) > 0;
+  // Gameplay audit F12 — R raises only where the panel offers Raise.
+  const activeCanRaise = panels[activeSlot]?.canRaise !== false;
 
   const makeActionHandler = useCallback((idx) => {
     if (idx === 0) {
@@ -351,11 +360,11 @@ export default function MultiTableView({ onClose }) {
       const act = makeActionHandler(activeSlot);
       if (e.key === 'f' || e.key === 'F') { if (activeOwes) act.fold?.(); }
       else if (e.key === 'c' || e.key === 'C') { if (activeOwes) act.call?.(); else act.check?.(); }
-      else if (e.key === 'r' || e.key === 'R') act.raise?.();
+      else if (e.key === 'r' || e.key === 'R') { if (activeCanRaise) act.raise?.(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeSlot, panels.length, activeOwes, makeActionHandler, onClose]);
+  }, [activeSlot, panels.length, activeOwes, activeCanRaise, makeActionHandler, onClose]);
 
   const handlePick = (t) => {
     setShowAdd(false);

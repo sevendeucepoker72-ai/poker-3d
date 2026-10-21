@@ -6,6 +6,7 @@ import { markTableLeft, isTableLeft } from '../services/leftTables';
 // setters; a non-string name (number / object / array) is made safe here once,
 // so no seat, winner or showdown row can crash the table for its viewers.
 import { sanitizeTableState, sanitizeHandHistory, sanitizeNamedEvent, viewerHoleCardsOf } from '../utils/tablePayload';
+import { drawSelectionKey } from '../utils/actionBar';
 
 // 2026-10-07 — every gated play emit records how to replay itself, so a
 // login_required refusal that lands on a signed-out socket (reconnect race) can
@@ -184,11 +185,13 @@ export const useTableStore = create((set, get) => ({
     return { selectedDiscards: [...current, index] };
   }),
 
-  // Send draw action to server
+  // Send draw action to server. (tableId: the table on screen in multi-table
+  // mode — the value sendAction sends; null in single-table mode → the main
+  // seat. An older server ignores it.)
   sendDraw: (discardIndices) => {
     const socket = getSocket();
     if (socket?.connected) {
-      socket.emit('playerDraw', { discardIndices });
+      socket.emit('playerDraw', { discardIndices, tableId: get().currentTableId || undefined });
     } else {
       console.warn('[sendDraw] Socket not connected');
     }
@@ -266,11 +269,17 @@ export const useTableStore = create((set, get) => ({
     else console.warn('[quickAllInOrFold] Socket not connected');
   },
 
+  // Gameplay audit F50 (2026-10-21) — Auto Deal / Deal now ask the server to
+  // deal; a fixed server runs its full hand-boundary step for it (bot stack
+  // cap, bomb pot, seat moves). Always an object payload (the server's socket
+  // guard refuses a payload-taking handler's missing one); tableId = the table
+  // on screen in multi-table mode, else the main seat (an older server
+  // ignores it).
   startHand: () => {
     const socket = getSocket();
     if (socket?.connected) {
       console.log('[startHand] Requesting new hand');
-      socket.emit('startHand');
+      socket.emit('startHand', { tableId: get().currentTableId || undefined });
     } else {
       console.warn('[startHand] Socket not connected!');
     }
@@ -662,3 +671,18 @@ export const useTableStore = create((set, get) => ({
     get().settleActiveTables();
   },
 }));
+
+// Gameplay audit G172 (2026-10-21) — the selected discards belong to ONE draw
+// round of one hand at one table. They used to be cleared only by a draw or a
+// leave, so a selection the draw clock stood pat stayed raised through the
+// betting and was pre-armed at the next round / the next hand ("Discard &
+// Draw 2" for cards he never picked). Every path that changes the shown state
+// (a frame, a table switch, a settle) lands here; frames inside the round
+// (other players' draws) keep the key, so a selection in progress survives.
+useTableStore.subscribe((state, prev) => {
+  if (!prev || state.gameState === prev.gameState) return;
+  if (!state.selectedDiscards || state.selectedDiscards.length === 0) return;
+  if (drawSelectionKey(state.gameState) !== drawSelectionKey(prev.gameState)) {
+    useTableStore.setState({ selectedDiscards: [] });
+  }
+});

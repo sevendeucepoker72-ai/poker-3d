@@ -6,6 +6,12 @@ import { useShallow } from 'zustand/react/shallow';
 import { SUIT_INDEX_TO_SYMBOL, SUIT_INDEX_TO_COLOR, serverRankDisplay, getCardColor } from '../../utils/cardUtils';
 import { evaluateHandStrength, getWinningCardIndices } from '../../utils/handStrength';
 import { calculateOuts, analyzeBoardTexture } from '../../utils/outsCalculator';
+// Gameplay audit 2026-10-21 (C1) — the action bar's rules, kept pure + probed.
+import {
+  raiseLimits, allInButtonMode, shownRaiseAmount, betVerb, callView, queuedCallAnyAction,
+  preActionKeysFor, turnDecisionKey, drawTurnInfo, preflopTierOf, leaveConfirmText,
+  handIsOver, revealDecision, pineappleAckRefused, SHOW_AT_HAND_END_TEXT,
+} from '../../utils/actionBar';
 // R1 (2026-10-11) — the table's defensive payload readers (names, shown cards,
 // the server's insurance quote, rebuy policy) and the sound settings keys.
 import {
@@ -435,6 +441,11 @@ export default function GameHUD() {
   // handlers (handleAction + the shared two-step fold).
   const optionsOpenRef = useRef(false);
   const canRaiseRef = useRef(false);
+  const aofRef = useRef(false); // gameplay audit F107 — All-In-or-Fold table
+  // Gameplay audit F130 / G169 — a draw round is not a betting decision: the
+  // seat that closed the betting stays in activeSeatIndex (isMyTurn), but no
+  // check / call / raise is legal until the next betting round.
+  const drawRoundRef = useRef(false);
   const gestureActRef = useRef({ handleAction: null, requestFold: null });
 
   // Chat state
@@ -659,7 +670,7 @@ export default function GameHUD() {
 
   // Track previous phase for sound triggers
   const prevPhaseRef = useRef(null);
-  const prevIsMyTurnRef = useRef(false);
+  const prevIsMyTurnRef = useRef(null);
 
   // Tracks whether we've already sent an action this turn — prevents timer auto-fold race
   const hasSentActionRef = useRef(false);
@@ -792,10 +803,26 @@ export default function GameHUD() {
   const yourCards = sittingOutUntilNextHand.current ? [] : rawCards;
   const serverThinksItsMyTurn = activeSeat === yourSeat && yourSeat >= 0;
   const isMyTurn = serverThinksItsMyTurn && yourCards.length > 0;
+  // Gameplay audit G169 / F134 (2026-10-21) — draw rounds are played by every
+  // seat at once on the server's own draw clock (`drawStartedAt`); the seat in
+  // activeSeatIndex is just whoever closed the betting. `isMyDraw` = he still
+  // owes a draw on that clock. isMyTurn keeps its meaning (actions, hotkeys).
+  const { canDrawNow, drawClockKnown, isMyDraw } = drawTurnInfo(gameState, {
+    yourSeat, yourCardsLen: yourCards.length, myPlayer,
+  });
+  // Gameplay audit F130 / F131 — one key per server decision point, so two
+  // decisions in a row (the big blind checks his option, then is first on the
+  // flop) each get a fresh per-turn lock + raise size.
+  const decisionKey = turnDecisionKey({
+    isMyTurn,
+    tableId: gameState?.tableId,
+    handNumber: gameState?.handNumber ?? gameState?.handId,
+    phase,
+  });
   // PWA audit #9: hold Screen Wake Lock while deciding so the phone
   // doesn't sleep and drop the socket / auto-fold. Released when turn
   // ends or component unmounts. Hook is a no-op on unsupported browsers.
-  useWakeLock(isMyTurn);
+  useWakeLock(isMyTurn || isMyDraw);
 
   // Keep refs in sync immediately after derivation (no render lag)
   isMyTurnRef.current = isMyTurn;
@@ -850,8 +877,23 @@ export default function GameHUD() {
   // (chipCount) already excludes chips committed this street, so a max of
   // myChips could never reach a true all-in when myCurrentBet > 0 (it left
   // myCurrentBet behind). The real max raise-to total is chipCount + currentBet.
-  const maxRaise = myChips + myCurrentBet;
-  canRaiseRef.current = maxRaise > 0 && minRaiseTotal <= maxRaise;
+  // Gameplay audit F12 / F41 / F107 (2026-10-21) — and never more than the
+  // server's `maxRaise` (pot limit / fixed limit), no raise controls when the
+  // server says the betting is not open to him (`canRaise === false`) or at an
+  // All-In-or-Fold table. Keys absent (older server): stack max, as before.
+  const limits = raiseLimits({ myChips, myCurrentBet, minRaiseTotal, callAmount, gameState });
+  const maxRaise = limits.maxRaise;
+  const raiseControlsOk = limits.raiseControlsOk;
+  const isAof = limits.isAof;
+  const allInMode = allInButtonMode(limits);
+  canRaiseRef.current = raiseControlsOk;
+  aofRef.current = isAof;
+  drawRoundRef.current = !!(gameState?.hasDrawPhase && gameState?.isDrawPhase);
+  // F126 — the Call button's real amount / pot odds (a call above his stack
+  // commits only the stack; the excess he cannot win).
+  const callShown = callView({ callAmount, myChips, myCurrentBet, pot, seats, yourSeat });
+  // F133 — an opening bet reads "Bet", not "Raise".
+  const raiseVerb = betVerb(currentBetToMatch);
 
   // Variant info
   const variantName = gameState?.variantName || "Texas Hold'em";
@@ -876,6 +918,24 @@ export default function GameHUD() {
       setPineappleDiscardIndex(null);
     }
   }, [phase]);
+  // Gameplay audit F34 (2026-10-21) — the server refused the pick (it came
+  // after the discard was made): unmark it and say so. An older server's
+  // refusals carry no tableId; a newer one names the table (only the table on
+  // screen counts).
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onAck = (d) => {
+      const gs = useTableStore.getState().gameState;
+      if (!pineappleAckRefused(d, gs?.tableId != null ? String(gs.tableId) : null)) return;
+      setPineappleDiscardIndex(null);
+      try { addToast('Too late to choose — the server discarded for you.', 'info', 3500); } catch { /* ignore */ }
+    };
+    socket.on('pineappleDiscardAck', onAck);
+    return () => socket.off('pineappleDiscardAck', onAck);
+  // (addToast is declared further down and stable)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Bomb Pot info
   // Bomb-pot banner gating. Two independent suppression states:
@@ -957,15 +1017,10 @@ export default function GameHUD() {
     ? getWinningCardIndices(yourCards, communityCards, handStrength.bestFive)
     : null;
 
-  // Pot odds calculation
-  const potOdds = callAmount > 0 ? (pot / callAmount) : 0;
-  // Audit fix #4: drop trailing .0 for whole-number ratios so "3:1" renders
-  // instead of "3.0:1". Consistent with how experienced players read pot-odds.
-  const potOddsDisplay = callAmount > 0
-    ? (Math.abs(potOdds - Math.round(potOdds)) < 0.05
-        ? `${Math.round(potOdds)}:1`
-        : `${potOdds.toFixed(1)}:1`)
-    : null;
+  // Pot odds calculation — gameplay audit F126: on the EFFECTIVE call and pot
+  // (callView). Audit fix #4 (no trailing ".0") lives in callView.
+  const potOdds = callShown.potOdds;
+  const potOddsDisplay = callAmount > 0 ? callShown.potOddsDisplay : null;
   // Determine if pot odds are "good" relative to hand strength
   // Good odds = pot odds ratio is favorable compared to hand strength
   const potOddsGood = handStrength ? potOdds > (1 / Math.max(handStrength.strength, 0.05)) : potOdds > 3;
@@ -989,22 +1044,11 @@ export default function GameHUD() {
   const sprColor = getSPRColor(spr);
   const sprLabel = getSPRLabel(spr);
 
-  // Pre-flop hand tier (for card glow) (Upgrade 3)
-  const preflopTier = (() => {
-    if (yourCards.length < 2 || communityCards.length > 0) return null;
-    const [c1, c2] = yourCards;
-    const r1 = Math.max(c1.rank, c2.rank);
-    const r2 = Math.min(c1.rank, c2.rank);
-    const suited = c1.suit === c2.suit;
-    const isPair = r1 === r2;
-    // Premium: AA, KK, QQ, JJ, AKs, AKo
-    if ((isPair && r1 >= 11) || (r1 === 14 && r2 === 13)) return 'premium';
-    // Strong: TT-88, AQ, AJ, KQ suited
-    if ((isPair && r1 >= 8) || (r1 === 14 && r2 >= 10) || (r1 === 13 && r2 === 12 && suited)) return 'strong';
-    // Playable: 77-55, suited aces, broadway
-    if ((isPair && r1 >= 5) || (r1 === 14 && suited) || (r1 >= 11 && r2 >= 10)) return 'playable';
-    return 'marginal';
-  })();
+  // Pre-flop hand tier (for card glow) (Upgrade 3). Gameplay audit G173: a
+  // Hold'em ladder, so only for a two-card hand before the board — Stud /
+  // Razz / Draw / Badugi / Omaha were rated from their first two cards all
+  // hand (K-K "Premium" in Razz).
+  const preflopTier = preflopTierOf(yourCards, communityCards, { isStudGame, hasDrawPhase });
 
   // Straddle — R2 (C11 / TABLEUI-19): the SERVER says when this seat may
   // straddle right now (`isFirstActor`: preflop, first to act, nothing
@@ -1113,40 +1157,63 @@ export default function GameHUD() {
     setRaiseAmount(snapRaiseToStep(val));
   }, [snapRaiseToStep]);
 
-  // Initialize raise amount when turn starts — single effect, reads all memory sources
-  const prevIsMyTurnForRaiseRef = useRef(false);
+  // Initialize raise amount when turn starts — single effect, reads all memory sources.
+  // Gameplay audit F130 / F131 (2026-10-21): keyed on the server DECISION
+  // point (decisionKey), not on the isMyTurn edge — a second decision in a row
+  // (big blind's option, then first on the flop) re-initialises instead of
+  // keeping the last street's size (which could exceed the new stack). It
+  // also owns the hand / table reset to 0 (it used to sit in a LATER effect,
+  // which ran after this one in the same commit when the hand's first frame
+  // put him on the clock — the size ended at 0 and the touch overlay sent
+  // 'raise 0').
+  const prevRaiseDecisionKeyRef = useRef(null);
+  const prevRaiseHandKeyRef = useRef(null);
+  const raiseHandNo = gameState?.handNumber ?? gameState?.handId ?? null;
+  const raiseHandKey = raiseHandNo == null ? null
+    : `${gameState?.tableId != null ? String(gameState.tableId) : ''}|${raiseHandNo}`;
   useEffect(() => {
-    if (isMyTurn && !prevIsMyTurnForRaiseRef.current) {
-      // #1 — if there's no legal raise (all-in already, or ≤0 effective stack),
-      // don't bother computing a raise amount; UI will hide the raise slider.
-      if (maxRaise <= 0 || minRaiseTotal > maxRaise) {
-        setRaiseAmount(0);
-        setShowRaiseSlider && setShowRaiseSlider(false);
-        prevIsMyTurnForRaiseRef.current = isMyTurn;
-        return;
-      }
-      // Try bet sizing memory in order: in-memory ref → sessionStorage → pot fraction → minRaise
-      let amount = null;
-      if (betMemoryRef.current != null && pot > 0) {
-        const pct = betMemoryRef.current / pot;
-        amount = Math.round(pot * pct);
-      } else {
-        try {
-          const pct = parseFloat(sessionStorage.getItem('poker_last_raise_pct'));
-          if (!isNaN(pct) && pot > 0) amount = Math.round(pot * pct);
-        } catch { /* ignore */ }
-      }
-      if (amount != null && amount >= minRaiseTotal && amount <= maxRaise) {
-        setRaiseAmount(amount);
-      } else {
-        // Clamp properly: the previous `Math.max(minRaiseTotal, Math.min(minRaiseTotal, maxRaise))`
-        // was a no-op that could exceed `maxRaise`. Use the real clamp so the
-        // slider's initial value is always legal.
-        setRaiseAmount(Math.min(Math.max(minRaiseTotal, 0), Math.max(maxRaise, 0)));
-      }
+    const handChanged = raiseHandKey != null && prevRaiseHandKeyRef.current != null
+      && prevRaiseHandKeyRef.current !== raiseHandKey;
+    if (raiseHandKey != null) prevRaiseHandKeyRef.current = raiseHandKey;
+    if (!decisionKey) {
+      prevRaiseDecisionKeyRef.current = null;
+      // Audit fix #3: a new hand (or another table on screen) starts from no
+      // remembered size ("Raise 678" from the previous hand).
+      if (handChanged) setRaiseAmount(0);
+      return;
     }
-    prevIsMyTurnForRaiseRef.current = isMyTurn;
-  }, [isMyTurn, minRaiseTotal, maxRaise, pot]);
+    if (decisionKey === prevRaiseDecisionKeyRef.current) return;
+    prevRaiseDecisionKeyRef.current = decisionKey;
+    // #1 — if there's no legal raise (all-in already, ≤0 effective stack, or
+    // the server says the betting is not open to him), don't bother computing
+    // a raise amount; UI will hide the raise slider.
+    if (!raiseControlsOk) {
+      setRaiseAmount(0);
+      setShowRaiseSlider && setShowRaiseSlider(false);
+      return;
+    }
+    // Try bet sizing memory in order: in-memory ref → sessionStorage → pot fraction → minRaise
+    let amount = null;
+    if (betMemoryRef.current != null && pot > 0) {
+      const pct = betMemoryRef.current / pot;
+      amount = Math.round(pot * pct);
+    } else {
+      try {
+        const pct = parseFloat(sessionStorage.getItem('poker_last_raise_pct'));
+        if (!isNaN(pct) && pot > 0) amount = Math.round(pot * pct);
+      } catch { /* ignore */ }
+    }
+    if (amount != null && amount >= minRaiseTotal && amount <= maxRaise) {
+      // (snapped like every other write, so the label and the thumb agree)
+      setRaiseAmount(snapRaiseToStep(amount));
+    } else {
+      // Clamp properly: the previous `Math.max(minRaiseTotal, Math.min(minRaiseTotal, maxRaise))`
+      // was a no-op that could exceed `maxRaise`. Use the real clamp so the
+      // slider's initial value is always legal.
+      setRaiseAmount(Math.min(Math.max(minRaiseTotal, 0), Math.max(maxRaise, 0)));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decisionKey, raiseHandKey, raiseControlsOk, minRaiseTotal, maxRaise, pot]);
 
   // Clear "checkOnly" pre-action when someone bets (check is no longer available)
   useEffect(() => {
@@ -1191,6 +1258,11 @@ export default function GameHUD() {
         // User already manually acted (or an action is mid-flight).
         // Clear the pre-action silently; don't double-send.
         setPreAction(null);
+      } else if (isAof && preAction !== 'fold') {
+        // Gameplay audit F107 — All-In-or-Fold: the server refuses check /
+        // call, so only a queued Fold may fire (one armed before the table
+        // kind was known is dropped, never turned into an all-in).
+        setPreAction(null);
       } else {
         const action = preAction;
         setPreAction(null);
@@ -1213,8 +1285,15 @@ export default function GameHUD() {
             preToast('⚡ Queued action fired: Folded (faced a bet)', 'warn');
           }
         } else if (action === 'callAny') {
-          playSound('bet'); sendAction('call');
-          preToast('⚡ Queued action fired: Called', 'info');
+          // Gameplay audit F132 — nothing to call is a CHECK ('call' with
+          // nothing owed is refused and the table waited on him).
+          if (queuedCallAnyAction(callAmount) === 'check') {
+            playSound('check'); sendAction('check');
+            preToast('⚡ Queued action fired: Checked', 'info');
+          } else {
+            playSound('bet'); sendAction('call');
+            preToast('⚡ Queued action fired: Called', 'info');
+          }
         } else if (action === 'checkOnly') {
           if (callAmount === 0) {
             playSound('check'); sendAction('check');
@@ -1226,7 +1305,7 @@ export default function GameHUD() {
       }
     }
     prevIsMyTurnForPreActionRef.current = isMyTurn;
-  }, [isMyTurn, preAction, callAmount, sendAction, playSound, preActionTableId, preActionHand]);
+  }, [isMyTurn, preAction, callAmount, sendAction, playSound, preActionTableId, preActionHand, isAof]);
 
   // Close raise slider and all-in confirm when turn ends
   useEffect(() => {
@@ -1257,7 +1336,8 @@ export default function GameHUD() {
     const tableChanged = prevHandTableRef.current != null && tid != null && prevHandTableRef.current !== tid;
     if (tid != null) prevHandTableRef.current = tid;
     if ((prevHandNumberRef.current != null && prevHandNumberRef.current !== hn) || tableChanged) {
-      setRaiseAmount(0);
+      // (the raise size's own reset lives in the raise-init effect above —
+      // gameplay audit F131: here it overwrote the new turn's size with 0)
       lastRaiseRef.current = null;
       setPreAction(null);
       clearTimeout(foldTimerRef.current);
@@ -1430,9 +1510,16 @@ export default function GameHUD() {
     prevPhaseRef.current = phase;
   }, [phase, playSound]);
 
+  // Gameplay audit G169 / F130 (2026-10-21) — every decision he owes rings:
+  // a new betting decision (also a second one in a row: big blind's option,
+  // then first on the flop) and, on the server's draw clock, a draw he still
+  // owes (every undrawn seat — not only the seat that closed the betting).
+  const turnAlertKey = drawClockKnown
+    ? (isMyDraw ? `draw|${gameState?.tableId ?? ''}|${gameState?.handNumber ?? ''}|${phase}` : null)
+    : decisionKey;
   useEffect(() => {
     // Play 'turn' when it becomes player's turn
-    if (isMyTurn && !prevIsMyTurnRef.current) {
+    if (turnAlertKey && turnAlertKey !== prevIsMyTurnRef.current) {
       playSound('turn');
       // Local push when the tab is backgrounded so a player who switched away
       // doesn't time out. Foreground players already see the on-screen turn UI,
@@ -1442,8 +1529,9 @@ export default function GameHUD() {
         notify.yourTurn();
       }
     }
-    prevIsMyTurnRef.current = isMyTurn;
-  }, [isMyTurn, playSound]);
+    // (holds the last alerted key now; null between turns)
+    prevIsMyTurnRef.current = turnAlertKey;
+  }, [turnAlertKey, playSound]);
 
   // Pot pulse + amount flash animation when pot increases
   useEffect(() => {
@@ -1747,6 +1835,15 @@ export default function GameHUD() {
   // Sync server turn timestamp to shared timer store (for all seat pod rings)
   const serverTurnStartedAt = gameState?.turnStartedAt || 0;
   const serverTurnTimeout   = gameState?.turnTimeout || 30000;
+  // Gameplay audit G169 (2026-10-21) — in a draw round the hero's clock is the
+  // server's DRAW clock (drawStartedAt + drawTimeout) while he still owes a
+  // draw; the betting clock in turnStartedAt belongs to whoever closed the
+  // betting and is stale there. No drawStartedAt (older server): as before.
+  const clockOn = drawClockKnown ? isMyDraw : isMyTurn;
+  const clockStart = drawClockKnown ? gameState.drawStartedAt : serverTurnStartedAt;
+  const clockTimeout = drawClockKnown
+    ? ((typeof gameState?.drawTimeout === 'number' && gameState.drawTimeout > 0) ? gameState.drawTimeout : 30000)
+    : serverTurnTimeout;
   useEffect(() => {
     if (serverTurnStartedAt > 0) {
       setTurnTiming(serverTurnStartedAt, serverTurnTimeout);
@@ -1765,21 +1862,21 @@ export default function GameHUD() {
   //    so a future-dated serverTurnStartedAt (clock skew) doesn't briefly
   //    show e.g. 120s on a 30s budget.
   useEffect(() => {
-    if (isMyTurn) {
+    if (clockOn) {
       timerWarningPlayed.current = false;
       timerStartedRef.current = false;
 
       const tick = () => {
         timerStartedRef.current = true;
         // Require a real server timestamp; skip ticks before reconnect settles.
-        if (!serverTurnStartedAt || !serverTurnTimeout) {
-          setTimeLeft(Math.ceil((serverTurnTimeout || 30000) / 1000));
+        if (!clockStart || !clockTimeout) {
+          setTimeLeft(Math.ceil((clockTimeout || 30000) / 1000));
           return;
         }
         // R2 (P3) — on the SERVER's clock (_serverTs offset), not the device's.
-        const elapsed = serverNow() - serverTurnStartedAt;
-        const timeoutSec = Math.max(1, Math.ceil(serverTurnTimeout / 1000));
-        const rawRemaining = Math.ceil((serverTurnTimeout - elapsed) / 1000);
+        const elapsed = serverNow() - clockStart;
+        const timeoutSec = Math.max(1, Math.ceil(clockTimeout / 1000));
+        const rawRemaining = Math.ceil((clockTimeout - elapsed) / 1000);
         const remaining = Math.max(0, Math.min(timeoutSec, rawRemaining));
         setTimeLeft(remaining);
         if (remaining <= 0) {
@@ -1799,7 +1896,7 @@ export default function GameHUD() {
         timerRef.current = null;
       }
     }
-  }, [isMyTurn, serverTurnStartedAt, serverTurnTimeout]);
+  }, [clockOn, clockStart, clockTimeout]);
 
   // Execute auto-action when it becomes your turn
   useEffect(() => {
@@ -1865,13 +1962,28 @@ export default function GameHUD() {
   // to. When our countdown shows 0 we simply leave the buttons live until the
   // server resolves the turn. This effect now only resets the per-turn action
   // guards when the turn ends.
+  // Gameplay audit F130 (2026-10-21) — and when a NEW decision point opens
+  // while it stays his turn (the big blind checks his option and is first on
+  // the flop: isMyTurn never went false, so hotkeys and felt gestures stayed
+  // locked by the previous street's action). Never on the turn's first frame
+  // (null → key): the pre-action effect may have just sent for it.
+  const prevDecisionKeyForLockRef = useRef(null);
   useEffect(() => {
-    if (!isMyTurn) {
+    const prev = prevDecisionKeyForLockRef.current;
+    prevDecisionKeyForLockRef.current = decisionKey;
+    if (!decisionKey || (prev && prev !== decisionKey)) {
       autoFoldedRef.current = false;
       hasSentActionRef.current = false;
       timerStartedRef.current = false;
     }
-  }, [isMyTurn]);
+    if (decisionKey && prev && prev !== decisionKey) {
+      // nothing armed for the previous decision carries over
+      clearTimeout(foldTimerRef.current);
+      foldPendingRef.current = false;
+      setFoldPending(false);
+      setShowAllInConfirm(false);
+    }
+  }, [decisionKey]);
 
   // All-In confirm modal watchdog — clear on turn end or after 10s idle.
   useEffect(() => {
@@ -1919,7 +2031,8 @@ export default function GameHUD() {
   // exactly one warning tone.
   const lastWarningTickRef = useRef(null);
   useEffect(() => {
-    if (!isMyTurn) {
+    // G169 — the clock on screen (betting turn, or his draw on the draw clock)
+    if (!clockOn) {
       lastWarningTickRef.current = null;
       return;
     }
@@ -1927,7 +2040,7 @@ export default function GameHUD() {
     if (lastWarningTickRef.current === timeLeft) return;
     lastWarningTickRef.current = timeLeft;
     playSound('timer');
-  }, [timeLeft, isMyTurn, playSound]);
+  }, [timeLeft, clockOn, playSound]);
 
   // Scroll chat to bottom when new messages arrive
   useEffect(() => {
@@ -1958,22 +2071,57 @@ export default function GameHUD() {
     : (rebuyFlag === true && !onTournamentSeat);
   const rebuySeatHere = rebuySeated && rebuyTableAllows;
   const rebuyOptionShown = rebuyFlag !== false;
+  // Gameplay audit F149 (2026-10-21) — the auto-rebuy says only what it SENT
+  // ("Rebuying…"); the success line waits for the server's `rebuyComplete`,
+  // and a refusal is the server's own words (actionErrorHandler). After an
+  // "Insufficient chips for rebuy" it pauses at that table (a busted seat sees
+  // HandComplete every hand — the same refused rebuy + toast pair repeated
+  // each hand) until his stack is back above 0, the table changes, or he
+  // turns Auto Rebuy off and on.
+  const autoRebuySentAtRef = useRef(0);
+  const autoRebuyPausedAtRef = useRef(null);
+  const shownTableIdForRebuy = gameState?.tableId != null ? String(gameState.tableId) : null;
+  useEffect(() => {
+    if (myChips > 0 || !autoRebuy || (autoRebuyPausedAtRef.current && autoRebuyPausedAtRef.current !== shownTableIdForRebuy)) {
+      autoRebuyPausedAtRef.current = null;
+    }
+  }, [myChips, autoRebuy, shownTableIdForRebuy]);
   useEffect(() => {
     if (autoRebuy && rebuySeatHere && phase === 'HandComplete' && prevPhaseForRebuyRef.current !== 'HandComplete') {
-      if (myChips <= 0) {
+      if (myChips <= 0 && !(autoRebuyPausedAtRef.current && autoRebuyPausedAtRef.current === shownTableIdForRebuy)) {
         const minBuyIn = rebuyAmountFor(gameState, 5000);
         const socket = getSocket();
         if (socket?.connected) {
+          // (tableId = the table on screen in multi-table mode, the main seat
+          // otherwise — an older server ignores it and tops up the main seat)
+          const payload = { amount: minBuyIn, tableId: useTableStore.getState().currentTableId || undefined };
           // 2026-10-07 — replayable once if refused login_required on a
           // still-signed-in tab (services/playRefusal.js).
-          notePlayAttempt(() => { const s = getSocket(); if (s?.connected) s.emit('rebuy', { amount: minBuyIn }); });
-          socket.emit('rebuy', { amount: minBuyIn });
-          addToast(`♻ Auto-rebuying ${minBuyIn.toLocaleString()} chips`, 'success');
+          notePlayAttempt(() => { const s = getSocket(); if (s?.connected) s.emit('rebuy', payload); });
+          socket.emit('rebuy', payload);
+          autoRebuySentAtRef.current = Date.now();
+          addToast(`♻ Rebuying ${minBuyIn.toLocaleString()} chips…`, 'info');
         }
       }
     }
     prevPhaseForRebuyRef.current = phase;
-  }, [phase, autoRebuy, myChips, gameState, rebuySeatHere]);
+  }, [phase, autoRebuy, myChips, gameState, rebuySeatHere, shownTableIdForRebuy]);
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onRebuyComplete = (d) => {
+      if (!d || d.success !== true) return;
+      autoRebuyPausedAtRef.current = null;
+      const added = Number(d.added);
+      if (Number.isFinite(added) && added > 0) {
+        addToast(`♻ Rebuy complete: +${added.toLocaleString()} chips`, 'success');
+      }
+    };
+    socket.on('rebuyComplete', onRebuyComplete);
+    return () => socket.off('rebuyComplete', onRebuyComplete);
+  // (addToast is declared further down and stable — not a dep here)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Record opponent stats from each completed hand's full action log. Phase 5:
   // driven by the handHistory record (which now carries the street-tagged
@@ -2259,6 +2407,12 @@ export default function GameHUD() {
       // racing the server's own auto-start) is answered "Hand already in
       // progress". Nothing went wrong for anyone, so no toast.
       if (data?.message === 'Hand already in progress') return;
+      // Gameplay audit F149 — our auto-rebuy was refused for lack of chips:
+      // pause it at this table (the toast below says why, once).
+      if (data?.message === 'Insufficient chips for rebuy' && Date.now() - autoRebuySentAtRef.current < 15000) {
+        const gsNow = useTableStore.getState().gameState;
+        autoRebuyPausedAtRef.current = gsNow?.tableId != null ? String(gsNow.tableId) : null;
+      }
       // 2026-10-07 — a play refusal (suspended / no account, e.g. on rebuy or
       // a career start) is shown by the shared PlayRefusalNotice, verbatim and
       // without the 3s auto-hide. Don't toast it a second time.
@@ -2352,11 +2506,69 @@ export default function GameHUD() {
     return () => { if (muckTimerRef.current) clearTimeout(muckTimerRef.current); };
   }, [myPlayer?.folded, phase, yourCards.length]);
 
+  // Gameplay audit F21 (2026-10-21) — a folded hand is shown to the table
+  // only once the hand is OVER (TDA: no disclosing a folded hand while action
+  // is pending; it gave the players still in the pot card-removal info).
+  // 'Show Hand' tapped mid-hand is remembered and sent when this hand reaches
+  // HandComplete / Showdown at this table (dropped if the hand or the table
+  // changes first). The server holds a mid-hand request the same way
+  // (`muckedHandShowQueued`).
+  const pendingShowRef = useRef(null); // { tableId, handNumber }
+  const emitShowMuckedHand = useCallback((handNumber) => {
+    const socket = getSocket();
+    if (!socket?.connected) return;
+    socket.emit('showMuckedHand', {
+      tableId: useTableStore.getState().currentTableId || undefined,
+      handNumber,
+    });
+  }, []);
+  const requestShowHand = useCallback(() => {
+    const gs = useTableStore.getState().gameState;
+    if (!gs) return;
+    if (handIsOver(gs.phase)) {
+      pendingShowRef.current = null;
+      emitShowMuckedHand(gs.handNumber);
+      return;
+    }
+    pendingShowRef.current = { tableId: gs.tableId != null ? String(gs.tableId) : null, handNumber: gs.handNumber };
+    addToast(SHOW_AT_HAND_END_TEXT, 'info');
+  }, [emitShowMuckedHand, addToast]);
+  const showTableId = gameState?.tableId != null ? String(gameState.tableId) : null;
+  const showHandNo = gameState?.handNumber ?? null;
+  useEffect(() => {
+    const p = pendingShowRef.current;
+    if (!p) return;
+    if (p.tableId !== showTableId || p.handNumber !== showHandNo) { pendingShowRef.current = null; return; }
+    if (handIsOver(phase)) {
+      pendingShowRef.current = null;
+      emitShowMuckedHand(p.handNumber);
+    }
+  }, [phase, showTableId, showHandNo, emitShowMuckedHand]);
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onQueued = () => { addToast(SHOW_AT_HAND_END_TEXT, 'info'); };
+    socket.on('muckedHandShowQueued', onQueued);
+    return () => socket.off('muckedHandShowQueued', onQueued);
+  }, [addToast]);
+
   // Listen for mucked hand reveals from other players.
   // R1 (TABLEUI-5, CONTRACTS R1 #4) — the payload is checked before it is
   // stored: an array of real cards ({rank 2-14, suit 0-3 or a suit name}),
   // else the whole reveal is dropped (`cards: [null]` / 'x' used to crash
   // every client at the table). The name is made safe too.
+  // F21 — a reveal for another table is ignored; one for the hand still being
+  // played here (an older server relaying an older client's mid-hand show) is
+  // HELD and shown when that hand ends (dropped if the hand changes first).
+  const heldRevealsRef = useRef([]); // [{ tableId, handNumber, entry }]
+  const showMuckedEntry = useCallback((entry) => {
+    const addedAt = Date.now() + Math.random();
+    setMuckedHands((prev) => [...prev, { ...entry, addedAt }]);
+    // Auto-dismiss after 4 seconds
+    setTimeout(() => {
+      setMuckedHands((prev) => prev.filter((m) => m.addedAt !== addedAt));
+    }, 4000);
+  }, []);
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
@@ -2369,16 +2581,37 @@ export default function GameHUD() {
       }
       const seatNo = Number.isInteger(data.seatIndex) && data.seatIndex >= 0 ? data.seatIndex + 1 : null;
       const playerName = safeName(data.playerName, '') || (seatNo ? `Seat ${seatNo}` : 'Player');
-      const addedAt = Date.now();
-      setMuckedHands((prev) => [...prev, { playerName, cards, addedAt }]);
-      // Auto-dismiss after 4 seconds
-      setTimeout(() => {
-        setMuckedHands((prev) => prev.filter((m) => m.addedAt !== addedAt));
-      }, 4000);
+      const gs = useTableStore.getState().gameState;
+      const verdict = revealDecision(data, {
+        shownTableId: gs?.tableId != null ? String(gs.tableId) : null,
+        handNumber: gs?.handNumber ?? null,
+        phase: gs?.phase,
+      });
+      if (verdict === 'ignore') return;
+      if (verdict === 'hold') {
+        heldRevealsRef.current = [...heldRevealsRef.current, {
+          tableId: gs?.tableId != null ? String(gs.tableId) : null,
+          handNumber: data.handNumber,
+          entry: { playerName, cards },
+        }];
+        return;
+      }
+      showMuckedEntry({ playerName, cards });
     };
     socket.on('muckedHandRevealed', handler);
     return () => socket.off('muckedHandRevealed', handler);
-  }, []);
+  }, [showMuckedEntry]);
+  useEffect(() => {
+    const held = heldRevealsRef.current;
+    if (!held.length) return;
+    const keep = [];
+    held.forEach((h) => {
+      if (h.tableId !== showTableId || h.handNumber !== showHandNo) return; // the hand moved on: dropped
+      if (handIsOver(phase)) showMuckedEntry(h.entry);
+      else keep.push(h);
+    });
+    heldRevealsRef.current = keep;
+  }, [phase, showTableId, showHandNo, showMuckedEntry]);
 
   // Track when player folds (for rabbit hunting)
   const prevMyPlayerRef = useRef(null);
@@ -2449,7 +2682,9 @@ export default function GameHUD() {
       try {
         addToast(
           snapped >= maxRaise
-            ? `Fav ${val.toLocaleString()} capped at all-in (${maxRaise.toLocaleString()})`
+            ? (limits.capBelowStack
+              ? `Fav ${val.toLocaleString()} capped at the max bet (${maxRaise.toLocaleString()})`
+              : `Fav ${val.toLocaleString()} capped at all-in (${maxRaise.toLocaleString()})`)
             : snapped <= minRaiseTotal
               ? `Fav ${val.toLocaleString()} raised to min (${minRaiseTotal.toLocaleString()})`
               : `Fav ${val.toLocaleString()} snapped to ${snapped.toLocaleString()}`,
@@ -2503,7 +2738,9 @@ export default function GameHUD() {
       try {
         addToast(
           clamped >= maxRaise
-            ? `Capped at all-in (${maxRaise.toLocaleString()})`
+            ? (limits.capBelowStack
+              ? `Capped at the max bet (${maxRaise.toLocaleString()})`
+              : `Capped at all-in (${maxRaise.toLocaleString()})`)
             : `Raised to minimum (${minRaiseTotal.toLocaleString()})`,
           'info'
         );
@@ -2642,6 +2879,8 @@ export default function GameHUD() {
     if (e.target?.isContentEditable) return;
 
     if (!isMyTurn) return;
+    // (a draw round: the draw bar's own controls only — F130 / G169)
+    if (drawRoundRef.current) return;
 
     // #7: touch device + no modifier → ignore. Physical BT keyboard users
     // almost always type with modifiers for chorded commands, so this is a
@@ -2663,6 +2902,9 @@ export default function GameHUD() {
     const handlers = [
       ['checkCall', () => {
         e.preventDefault();
+        // Gameplay audit F107 — All-In-or-Fold: the server refuses check and
+        // call, so the key does nothing there (never an all-in in disguise).
+        if (isAof) return;
         // Audit fix #6: on a free street, the configured check/call key
         // ALREADY routed to check — but a user remapping "F" to both fold
         // and checkCall used to fold a free card. Now we unify the fold key
@@ -2672,17 +2914,32 @@ export default function GameHUD() {
         else handleAction('call');
       }],
       ['raise', () => {
-        if (maxRaise <= 0 || minRaiseTotal > maxRaise) return;
+        // F12 / F41 / F107 — only when the server lets him raise, to its cap.
+        if (!raiseControlsOk) return;
         const amt = (typeof raiseAmount === 'number' && raiseAmount >= minRaiseTotal)
           ? snapRaiseToStep(raiseAmount)
           : minRaiseTotal;
         handleAction('raise', amt);
       }],
-      ['allIn', () => handleAction('allIn')],
+      ['allIn', () => {
+        // F12 — betting not reopened to him: the server would only call.
+        if (allInMode === 'hidden') {
+          addToast('You can only call or fold — the betting was not reopened.', 'info', 3500);
+          return;
+        }
+        handleAction('allIn');
+      }],
       ['fold', () => {
         // Free street → treat fold key as check (mirrors the now-hidden
         // Fold button's old click behavior so keyboard + UI agree).
-        if (callAmount === 0) { handleAction('check'); return; }
+        // F107 — at All-In-or-Fold there is no check: on a free street the
+        // key is the Fold button's two-step fold (never a one-key fold of a
+        // free hand).
+        if (callAmount === 0) {
+          if (isAof) requestFold();
+          else handleAction('check');
+          return;
+        }
         handleAction('fold');
       }],
     ];
@@ -2694,7 +2951,7 @@ export default function GameHUD() {
       seen.add(k);
       if (key === k) { fn(); return; }
     }
-  }, [isMyTurn, handleAction, callAmount, raiseAmount, hotkeys, showRaiseSlider, showAllInConfirm, isTouchDevice, minRaiseTotal, maxRaise, snapRaiseToStep]);
+  }, [isMyTurn, handleAction, requestFold, callAmount, raiseAmount, hotkeys, showRaiseSlider, showAllInConfirm, isTouchDevice, minRaiseTotal, raiseControlsOk, snapRaiseToStep, isAof, allInMode, addToast]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -2776,6 +3033,7 @@ export default function GameHUD() {
     touchStartRef.current = null;
     if (touchTimerRef.current) { clearTimeout(touchTimerRef.current); touchTimerRef.current = null; }
     if (!isTouchDevice || !isMyTurnRef.current) return;
+    if (drawRoundRef.current) return;                       // a draw round: no betting gestures
     if (!e.touches || e.touches.length !== 1) return;     // pinch / two fingers: never an action
     if (optionsOpenRef.current) return;                     // this tap only closes the Options menu
     if (hasSentActionRef.current) return;                   // already acted this turn
@@ -2810,7 +3068,7 @@ export default function GameHUD() {
     }
     const start = touchStartRef.current;
     touchStartRef.current = null;
-    if (!start || !isMyTurnRef.current || hasSentActionRef.current) return;
+    if (!start || !isMyTurnRef.current || hasSentActionRef.current || drawRoundRef.current) return;
     const touch = e.changedTouches && e.changedTouches[0];
     if (!touch) return;
     const { handleAction: act, requestFold: fold } = gestureActRef.current;
@@ -2821,8 +3079,12 @@ export default function GameHUD() {
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
     const free = callAmountRef.current === 0;
+    // Gameplay audit F107 — All-In-or-Fold: no check / call gestures (the
+    // server refuses them); swipe left is the two-step fold.
+    const aof = aofRef.current;
     // Tap — check (free) or call
     if (dt < 200 && absDx < 15 && absDy < 15) {
+      if (aof) return;
       flashGesture(free ? 'check' : 'call');
       act(free ? 'check' : 'call');
       return;
@@ -2831,11 +3093,12 @@ export default function GameHUD() {
     // right: check / call
     if (absDx > 60 && absDx > absDy * 1.5 && dt < 500) {
       if (dx < 0) {
-        if (free) { flashGesture('check'); act('check'); return; }
+        if (free && !aof) { flashGesture('check'); act('check'); return; }
         const r = fold();
         if (r === 'armed') flashGesture('foldArm');
         else if (r === 'folded') flashGesture('fold');
       } else {
+        if (aof) return;
         flashGesture(free ? 'check' : 'call');
         act(free ? 'check' : 'call');
       }
@@ -2998,17 +3261,19 @@ export default function GameHUD() {
     // complete / showdown states leave without asking (nothing at stake).
     const inLiveHand = phase && phase !== 'WaitingForPlayers' && phase !== 'HandComplete' && phase !== 'Showdown';
     const mySeatObj = gameState?.seats?.[yourSeat];
-    const myChipsAtRisk = (mySeatObj?.currentBet || 0) > 0 || !!mySeatObj?.folded === false;
-    if (inLiveHand && isMyTurn) {
-      const ok = typeof window !== 'undefined' && window.confirm('Leave the table mid-turn? Your hand will be auto-folded.');
-      if (!ok) return;
-    } else if (inLiveHand && myChipsAtRisk) {
-      const ok = typeof window !== 'undefined' && window.confirm('Leave mid-hand? You\'ll forfeit any chips already in the pot.');
+    // Gameplay audit F148 (2026-10-21) — an ALL-IN seat at a ring table keeps
+    // its hand on the server when he leaves (paid at the hand's end), so it
+    // is not told it forfeits the pot; elsewhere the old texts stay.
+    const confirmText = leaveConfirmText({
+      inLiveHand: !!inLiveHand, isMyTurn, seat: mySeatObj, rebuyAllowed: rebuyAllowedFlag(gameState),
+    });
+    if (confirmText) {
+      const ok = typeof window !== 'undefined' && window.confirm(confirmText);
       if (!ok) return;
     }
     leaveTable();
     setScreen('lobby');
-  }, [leaveTable, setScreen, phase, gameState?.seats, gameState?.isSpectator, yourSeat, isMyTurn, onTournamentSeat, isSpectating, isSeated, stopSpectating, spinGoEntryLive]);
+  }, [leaveTable, setScreen, phase, gameState, yourSeat, isMyTurn, onTournamentSeat, isSpectating, isSeated, stopSpectating, spinGoEntryLive]);
 
   // S2 — the player confirmed leaving his LIVE tournament seat: the lobby
   // remembers it ("Return to tournament"), then the socket leaves the table
@@ -3061,7 +3326,8 @@ export default function GameHUD() {
 
   // Timer percentage for circular indicator
   // R2 (P3) — against the table's real turn length (fast mode is shorter).
-  const turnSecs = Math.max(1, Math.ceil((serverTurnTimeout || 30000) / 1000));
+  // G169 — the clock on screen (the draw clock in a draw round).
+  const turnSecs = Math.max(1, Math.ceil((clockTimeout || 30000) / 1000));
   const timerPct = (timeLeft / turnSecs) * 100;
   const timerDanger = timeLeft <= 5;
 
@@ -3403,7 +3669,8 @@ export default function GameHUD() {
                       { key: 'checkFold', icon: '🔄', label: 'Check/Fold' },
                       { key: 'callAny',   icon: '✋', label: 'Call Any' },
                       { key: 'checkOnly', icon: '✓', label: 'Check' },
-                    ].map(({ key, icon, label }) => {
+                    // F107 — only Fold at an All-In-or-Fold table
+                    ].filter(({ key }) => preActionKeysFor(gameState).includes(key)).map(({ key, icon, label }) => {
                       const active = preAction === key;
                       return (
                         <button
@@ -3829,7 +4096,7 @@ export default function GameHUD() {
 
       <div className={`hud-bottom ${isMyTurn ? 'hud-bottom--my-turn' : ''}`}>
         {/* Turn timer progress bar — thin strip at very top of action bar */}
-        {isMyTurn && (
+        {clockOn && (
           <div className="action-timer-strip">
             <div
               className={`action-timer-strip-fill ${timeLeft <= 5 ? 'action-timer-strip--danger' : ''}`}
@@ -3879,7 +4146,10 @@ export default function GameHUD() {
         <div className={`hud-cards hud-cards-floating ${isMyTurn ? 'hud-cards-active' : ''} ${holeCardCount >= 4 ? 'hud-cards-many' : ''} ${preflopTier ? `hud-cards-tier-${preflopTier}` : ''} ${cardsDealt ? 'hud-cards--dealt' : ''}`}>
           {yourCards.length > 0 ? (
             yourCards.map((card, i) => {
-              const isSelected = selectedDiscards.includes(i) || (isPineapple && pineappleDiscardIndex === i);
+              // Gameplay audit G172 / F134 — a discard selection is drawn only
+              // while he can still draw this round (a stale one never raises
+              // cards in a betting round or the next hand).
+              const isSelected = (canDrawNow && selectedDiscards.includes(i)) || (isPineapple && pineappleDiscardIndex === i);
               const isSmall = holeCardCount >= 4;
               const isWinHoleCard = winningCardIndices && winningCardIndices.holeIndices.includes(i);
 
@@ -3892,13 +4162,19 @@ export default function GameHUD() {
               let cardClick;
               let cardTitle = 'Hover to peek';
               if (hasDrawPhase && isDrawPhase) {
-                cardClick = () => toggleDiscard(i);
-                cardTitle = isSelected ? 'Click to keep' : 'Click to discard';
+                // F134 — only while he still owes this round's draw (not
+                // folded, not already drawn): the server refuses the rest.
+                if (canDrawNow) {
+                  cardClick = () => toggleDiscard(i);
+                  cardTitle = isSelected ? 'Click to keep' : 'Click to discard';
+                }
               } else if (canPineappleDiscard) {
                 cardClick = () => {
                   setPineappleDiscardIndex(i);
                   const socket = getSocket();
-                  socket?.emit('selectPineappleDiscard', { cardIndex: i });
+                  // (tableId: the table on screen in multi-table mode — an
+                  // older server ignores it and uses the main seat)
+                  socket?.emit('selectPineappleDiscard', { cardIndex: i, tableId: useTableStore.getState().currentTableId || undefined });
                 };
                 cardTitle = isSelected ? 'Marked to discard — click another to change' : 'Click to discard this card';
               }
@@ -3973,7 +4249,7 @@ export default function GameHUD() {
           <div className={`hud-nameplate-me ${isMyTurn ? 'hud-nameplate-me--active' : ''}${heroLook.frameClass ? ` ${heroLook.frameClass}` : ''}`}>
             {heroLook.title && <span className={heroLook.titleClass}>{heroLook.title}</span>}
             {heroLook.vip && <span className="np-vip" title="VIP">VIP</span>}
-            {isMyTurn && (() => {
+            {clockOn && (() => {
               // Use the same 0–30s base as the seat-pod timer ring.
               const pct = Math.max(0, Math.min(100, timerPct));
               // R3 (K1-7) — the last 5s are blue, not red (the ring is gold).
@@ -4114,11 +4390,25 @@ export default function GameHUD() {
               </button>
             </div>
           ) : hasDrawPhase && isDrawPhase ? (
-            /* Draw Phase */
+            /* Draw Phase — gameplay audit F134 / G169 (2026-10-21): the draw
+               controls only while he still owes this round's draw (the server
+               refuses a folded seat or a second draw), with the server's draw
+               clock when it sends one; otherwise a passive line (never the
+               betting bar: its pre-actions would queue bets mid-draw). */
+            canDrawNow ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ color: '#ffd24a', fontSize: '0.85rem' }}>
                 Select cards to discard ({selectedDiscards.length} selected)
               </span>
+              {drawClockKnown && isMyDraw && (
+                <span
+                  className={`hud-draw-clock${timeLeft <= 5 ? ' hud-draw-clock--low' : ''}`}
+                  aria-label={`${timeLeft} seconds left to draw`}
+                  style={{ color: timeLeft <= 5 ? '#60a5fa' : '#ffd24a', fontWeight: 700, fontSize: '0.85rem', fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {timeLeft}s
+                </span>
+              )}
               <button
                 className="action-btn raise"
                 onClick={handleDraw}
@@ -4127,6 +4417,19 @@ export default function GameHUD() {
                 {selectedDiscards.length === 0 ? 'Stand Pat' : `Discard & Draw ${selectedDiscards.length}`}
               </button>
             </div>
+            ) : (
+            <div className="hud-draw-waiting" style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', width: '100%' }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                padding: '6px 14px', borderRadius: 999,
+                background: 'rgba(120, 160, 255,0.08)', color: '#ffd24a',
+                border: '1px solid rgba(120, 160, 255,0.25)', fontSize: 13, fontWeight: 600,
+              }}>
+                <span className="hud-waiting-dot" aria-hidden="true" />
+                {myPlayer?.folded ? 'You folded — waiting for the others to draw…' : 'Waiting for others to draw…'}
+              </span>
+            </div>
+            )
           ) : (
             /* Normal betting — always rendered, disabled when not our turn */
             <>
@@ -4154,6 +4457,9 @@ export default function GameHUD() {
                     <span className="pre-action-icon">🚫</span>
                     <span className="pre-action-label">Fold</span>
                   </button>
+                  {/* Gameplay audit F107 — All-In-or-Fold: the server refuses
+                      check / call, so only Fold may be queued. */}
+                  {!isAof && (<>
                   <button
                     className={`pre-action-btn${preAction === 'checkFold' ? ' active' : ''}`}
                     aria-label={preAction === 'checkFold' ? 'Cancel pre-action: check or fold' : 'Queue pre-action: check or fold on my turn'}
@@ -4181,6 +4487,7 @@ export default function GameHUD() {
                     <span className="pre-action-icon">✓</span>
                     <span className="pre-action-label">Check</span>
                   </button>
+                  </>)}
                 </div>
               )}
             {/* Audit fix #19: aria-live="polite" so screen readers announce
@@ -4203,7 +4510,10 @@ export default function GameHUD() {
                     its right — and clicking it routed to `check` anyway,
                     which confused users ("the button says Fold but I checked").
                     Hide it entirely when there's nothing to fold. */}
-                {callAmount > 0 && (
+                {/* Gameplay audit F107 — at an All-In-or-Fold table Fold is
+                    offered on a free street too: the server refuses Check
+                    there, so Fold / All-In are the only actions it takes. */}
+                {(callAmount > 0 || isAof) && (
                 <button
                   className={`action-btn fold ${foldPending ? 'fold-pending' : ''}`}
                   disabled={!isMyTurn}
@@ -4211,8 +4521,8 @@ export default function GameHUD() {
                     !isMyTurn
                       ? 'Fold button, not your turn'
                       : foldPending
-                        ? `Confirm fold by tapping again. You would give up a call of ${callAmount.toLocaleString()} chips.`
-                        : `Fold. Call amount ${callAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`
+                        ? `Confirm fold by tapping again. You would give up a call of ${callShown.effectiveCall.toLocaleString()} chips.`
+                        : `Fold. Call amount ${callShown.effectiveCall.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`
                   }
                   onClick={(e) => {
                     // Two-step fold, shared with the swipe-left gesture (R1):
@@ -4240,7 +4550,14 @@ export default function GameHUD() {
                 </button>
                 )}
 
-                {/* CHECK / CALL with pot odds below */}
+                {/* CHECK / CALL with pot odds below.
+                    Gameplay audit F107 — not at an All-In-or-Fold table (the
+                    server refuses both): a note says what the table allows. */}
+                {isAof ? (
+                  <span className="ab-aof-note" style={{ color: '#ffd24a', fontSize: '0.72rem', fontWeight: 700, alignSelf: 'center', whiteSpace: 'nowrap' }}>
+                    All-In or Fold
+                  </span>
+                ) : (
                 <div className="ab-call-group">
                   {callAmount === 0 ? (
                     <button
@@ -4255,7 +4572,7 @@ export default function GameHUD() {
                     <button
                       className="action-btn call"
                       disabled={!isMyTurn}
-                      aria-label={!isMyTurn ? `Call button, not your turn. Call amount ${callAmount.toLocaleString()} chips.` : `Call ${callAmount.toLocaleString()} chips. ${pot > 0 ? `Pot odds require ${Math.round(100 * callAmount / (pot + callAmount))} percent equity to break even.` : ''} ${handStrength ? `Current hand strength ${Math.round(handStrength.strength * 100)} percent.` : ''} ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
+                      aria-label={!isMyTurn ? `Call button, not your turn. Call amount ${callShown.effectiveCall.toLocaleString()} chips${callShown.callIsAllIn ? ', all-in' : ''}.` : `Call ${callShown.callIsAllIn ? 'all-in ' : ''}${callShown.effectiveCall.toLocaleString()} chips. ${callShown.effectivePot > 0 ? `Pot odds require ${callShown.breakEvenPct} percent equity to break even.` : ''} ${handStrength ? `Current hand strength ${Math.round(handStrength.strength * 100)} percent.` : ''} ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
                       onClick={() => handleAction('call')}
                     >
                       {/* Audit fix #2 + #5: each span is a block-level stacked
@@ -4267,12 +4584,17 @@ export default function GameHUD() {
                           Previously all four spans rendered inline, producing
                           `Call1,2003:1 · 14%Eq: 50%` on scan. */}
                       <span className="action-verb">Call</span>
-                      <span className="action-amount-sub">{callAmount.toLocaleString()}</span>
+                      {/* Gameplay audit F126 — a call above his stack commits
+                          only the stack (the server makes it an all-in). */}
+                      <span className="action-amount-sub">
+                        {callShown.effectiveCall.toLocaleString()}
+                        {callShown.callIsAllIn && <span className="action-call-allin-tag"> All-In</span>}
+                      </span>
                       {(potOddsDisplay || handStrength) && (
                         <span className="action-meta-row">
                           {potOddsDisplay && (
                             <span className="action-odds-sub">
-                              {potOddsDisplay}&nbsp;·&nbsp;{Math.round(100 * callAmount / (pot + callAmount))}%
+                              {potOddsDisplay}&nbsp;·&nbsp;{callShown.breakEvenPct}%
                             </span>
                           )}
                           {handStrength ? (
@@ -4295,13 +4617,14 @@ export default function GameHUD() {
                   )}
                   {/* Pot odds moved to table overlay */}
                 </div>
+                )}
 
                 {/* PRESETS — flat text buttons. Only show when a legal raise
                     is actually possible (min ≤ max and max > 0) — otherwise
                     the player is effectively all-in-or-fold. */}
                 {/* R2 — each preset carries a short label too (½ ⅔ Pot 3x):
                     phones show it so the presets share the slider's row. */}
-                {isMyTurn && maxRaise > 0 && minRaiseTotal <= maxRaise && (
+                {isMyTurn && raiseControlsOk && (
                   <div className="ab-presets">
                     <button className="ab-preset" aria-label="Half pot" onClick={() => setRaiseAmountSafe(potFraction(1/2))}><span className="ab-preset-full">½ Pot</span><span className="ab-preset-short" aria-hidden="true">½</span></button>
                     <button className="ab-preset" aria-label="Two thirds pot" onClick={() => setRaiseAmountSafe(potFraction(2/3))}><span className="ab-preset-full">2/3 Pot</span><span className="ab-preset-short" aria-hidden="true">⅔</span></button>
@@ -4313,10 +4636,13 @@ export default function GameHUD() {
                 {/* RAISE — inline slider with confirm. Hidden entirely when no
                     legal raise exists (was previously rendered as a disabled
                     slider, which confused users in all-in scenarios). */}
-                {maxRaise > 0 && minRaiseTotal <= maxRaise && (
+                {/* Gameplay audit F12 / F41 — only when the server lets him
+                    raise (canRaise) and up to its cap (maxRaise). */}
+                {raiseControlsOk && (
                   <div className="raise-inline-group">
                     <div className="raise-inline-slider-wrap">
-                      <span className="raise-inline-val">{raiseAmount.toLocaleString()}</span>
+                      {/* F131 — never "0": the amount the button sends */}
+                      <span className="raise-inline-val">{shownRaiseAmount(raiseAmount, minRaiseTotal, maxRaise).toLocaleString()}</span>
                       <input
                         type="range"
                         min={minRaiseTotal}
@@ -4354,28 +4680,51 @@ export default function GameHUD() {
                       // be a number, but a rapid re-render during `setRaiseAmount(undefined)`
                       // could briefly leave it falsy. Fall back to `minRaiseTotal` so the
                       // Raise button never renders "Raise\n(blank)".
-                      const displayAmount = (typeof raiseAmount === 'number' && raiseAmount > 0)
-                        ? raiseAmount
-                        : minRaiseTotal;
+                      // F130 — also never above the max (a size kept from an
+                      // earlier street could exceed the stack left).
+                      const displayAmount = shownRaiseAmount(raiseAmount, minRaiseTotal, maxRaise);
+                      // F133 — an opening bet is a Bet.
+                      const verbAria = raiseVerb === 'Bet' ? 'Bet' : 'Raise to';
                       return (
                         <button
                           className="action-btn raise"
                           disabled={!isMyTurn}
-                          aria-label={!isMyTurn ? `Raise button, not your turn. Amount ${displayAmount.toLocaleString()}.` : `Raise to ${displayAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
+                          aria-label={!isMyTurn ? `${raiseVerb} button, not your turn. Amount ${displayAmount.toLocaleString()}.` : `${verbAria} ${displayAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
                           onClick={() => handleAction('raise', displayAmount)}
                         >
-                          Raise<br />{displayAmount.toLocaleString()}
+                          {raiseVerb}<br />{displayAmount.toLocaleString()}
                         </button>
                       );
                     })()}
                   </div>
                 )}
 
-                {/* ALL-IN */}
+                {/* ALL-IN — gameplay audit F12 / F41 / F107 (2026-10-21):
+                    'hidden' when the server would only turn it into a call
+                    (betting not reopened: the Call button covers it); 'call'
+                    at an All-In-or-Fold table (no Call button there — it
+                    sends 'allIn', answered as a call); 'max' when pot / fixed
+                    limit caps the bet below his stack (it raises to the cap —
+                    the server clamps an 'allIn' to the same number). */}
+                {allInMode === 'call' ? (
                 <button
-                  className="action-btn allin"
+                  className="action-btn allin action-btn--aof-call"
                   disabled={!isMyTurn}
-                  aria-label={!isMyTurn ? 'All-in button, not your turn' : `Push all ${myChips.toLocaleString()} chips all-in. ${skipAllInConfirm ? 'Confirmation skipped — single tap commits.' : 'Opens confirmation dialog.'}`}
+                  aria-label={!isMyTurn ? 'Call button, not your turn' : `Call ${callShown.effectiveCall.toLocaleString()} chips.`}
+                  onClick={() => handleAction('allIn')}
+                >
+                  <span className="action-verb">Call</span>
+                  <span className="action-amount-sub">{callShown.effectiveCall.toLocaleString()}</span>
+                </button>
+                ) : allInMode !== 'hidden' && (
+                <button
+                  className={`action-btn allin${allInMode === 'max' ? ' action-btn--max-raise' : ''}`}
+                  disabled={!isMyTurn}
+                  aria-label={!isMyTurn
+                    ? (allInMode === 'max' ? 'Maximum raise button, not your turn' : 'All-in button, not your turn')
+                    : allInMode === 'max'
+                      ? `Raise to the maximum ${maxRaise.toLocaleString()}. ${skipAllInConfirm ? 'Confirmation skipped — single tap commits.' : 'Opens confirmation dialog.'}`
+                      : `Push all ${myChips.toLocaleString()} chips all-in. ${skipAllInConfirm ? 'Confirmation skipped — single tap commits.' : 'Opens confirmation dialog.'}`}
                   onClick={() => {
                     if (skipAllInConfirm) handleAction('allIn');
                     else setShowAllInConfirm(true);
@@ -4383,12 +4732,16 @@ export default function GameHUD() {
                 >
                   {/* Audit fix #20: label shows the actual shove amount so a
                       short-stack user can see "All-In 1,240" at a glance
-                      rather than just "All-In" and guess the commitment. */}
-                  <span className="action-verb">All-In</span>
-                  {myChips > 0 && (
+                      rather than just "All-In" and guess the commitment.
+                      F41 — at a capped table the raise-TO total of the cap. */}
+                  <span className="action-verb">{allInMode === 'max' ? limits.capVerb : 'All-In'}</span>
+                  {allInMode === 'max' ? (
+                    <span className="action-amount-sub">{maxRaise.toLocaleString()}</span>
+                  ) : myChips > 0 && (
                     <span className="action-amount-sub">{myChips.toLocaleString()}</span>
                   )}
                 </button>
+                )}
 
               </div>{/* end action-bar-flat */}
 
@@ -4630,8 +4983,8 @@ export default function GameHUD() {
       {showMuckButton && yourCards.length > 0 && (
         <div className="show-muck-prompt">
           <button className="show-muck-btn show-muck-btn--show" onClick={() => {
-            const socket = getSocket();
-            if (socket?.connected) socket.emit('showMuckedHand', { cards: yourCards });
+            // F21 — shown now only if the hand is over, else at its end.
+            requestShowHand();
             setShowMuckButton(false);
           }}>Show Hand</button>
           <button className="show-muck-btn show-muck-btn--muck" onClick={() => setShowMuckButton(false)}>Muck</button>
@@ -4642,8 +4995,8 @@ export default function GameHUD() {
       {showHandPrompt && yourCards.length > 0 && (
         <div className="show-muck-prompt">
           <button className="show-muck-btn show-muck-btn--show" onClick={() => {
-            const socket = getSocket();
-            if (socket?.connected) socket.emit('showMuckedHand', { cards: yourCards });
+            // (the uncontested winner's prompt shows at hand end — sent now)
+            emitShowMuckedHand(useTableStore.getState().gameState?.handNumber);
             setShowHandPrompt(false);
           }}>Show Hand</button>
           <button className="show-muck-btn show-muck-btn--muck" onClick={() => setShowHandPrompt(false)}>Muck</button>
@@ -4882,10 +5235,10 @@ export default function GameHUD() {
       )}
 
       {/* Raise slider overlay for touch */}
-      {showRaiseSlider && isMyTurn && (
+      {showRaiseSlider && isMyTurn && raiseControlsOk && (
         <div className="gesture-raise-overlay" onClick={() => setShowRaiseSlider(false)}>
           <div className="gesture-raise-panel" onClick={(e) => e.stopPropagation()}>
-            <div style={{ color: '#ffd24a', fontWeight: 700, marginBottom: '10px', textAlign: 'center' }}>Raise Amount</div>
+            <div style={{ color: '#ffd24a', fontWeight: 700, marginBottom: '10px', textAlign: 'center' }}>{raiseVerb === 'Bet' ? 'Bet Amount' : 'Raise Amount'}</div>
             {/* Quick-pick presets */}
             <div className="raise-quick-presets">
               {[
@@ -4902,7 +5255,7 @@ export default function GameHUD() {
             </div>
             {/* Slider with nudge buttons */}
             <div className="raise-slider-row">
-              <button className="raise-nudge-btn" onClick={() => setRaiseAmount(a => Math.max(minRaiseTotal, a - bigBlind))}>−</button>
+              <button className="raise-nudge-btn" onClick={() => setRaiseAmount(a => Math.max(minRaiseTotal, shownRaiseAmount(a, minRaiseTotal, maxRaise) - bigBlind))}>−</button>
               <input
                 type="range"
                 min={minRaiseTotal}
@@ -4912,18 +5265,20 @@ export default function GameHUD() {
                 onChange={(e) => setRaiseAmount(Number(e.target.value))}
                 className="raise-slider"
               />
-              <button className="raise-nudge-btn" onClick={() => setRaiseAmount(a => Math.min(maxRaise, a + bigBlind))}>+</button>
+              <button className="raise-nudge-btn" onClick={() => setRaiseAmount(a => Math.min(maxRaise, Math.max(minRaiseTotal, shownRaiseAmount(a, minRaiseTotal, maxRaise) + bigBlind)))}>+</button>
             </div>
+            {/* F131 — the amount shown and sent is never 0 (a hand's first
+                turn used to leave the size at 0: "Raise 0", refused). */}
             <div className="raise-amount-display">
-              {raiseAmount.toLocaleString()}
-              {pot > 0 && <span className="raise-pot-pct"> ({Math.round(raiseAmount / pot * 100)}% pot)</span>}
+              {shownRaiseAmount(raiseAmount, minRaiseTotal, maxRaise).toLocaleString()}
+              {pot > 0 && <span className="raise-pot-pct"> ({Math.round(shownRaiseAmount(raiseAmount, minRaiseTotal, maxRaise) / pot * 100)}% pot)</span>}
             </div>
             <button
               className="action-btn raise"
-              onClick={() => { handleAction('raise', raiseAmount); setShowRaiseSlider(false); }}
+              onClick={() => { handleAction('raise', shownRaiseAmount(raiseAmount, minRaiseTotal, maxRaise)); setShowRaiseSlider(false); }}
               style={{ width: '100%' }}
             >
-              Raise {raiseAmount.toLocaleString()}
+              {raiseVerb === 'Bet' ? 'Bet' : 'Raise to'} {shownRaiseAmount(raiseAmount, minRaiseTotal, maxRaise).toLocaleString()}
             </button>
           </div>
         </div>
@@ -5246,7 +5601,7 @@ export default function GameHUD() {
         <RangeVisualizer
           holeCards={yourCards}
           equity={equityResults?.[yourSeat] ?? null}
-          potOdds={callAmount > 0 ? Math.round(callAmount / (pot + callAmount) * 100) : 0}
+          potOdds={callAmount > 0 ? callShown.breakEvenPct : 0}
           visible={showRangeViz}
           onClose={() => setShowRangeViz(false)}
         />
@@ -5254,8 +5609,8 @@ export default function GameHUD() {
           visible={showPauseCoach}
           gameState={gameState}
           yourCards={yourCards}
-          pot={pot}
-          callAmount={callAmount}
+          pot={callShown.callIsAllIn ? callShown.effectivePot : pot}
+          callAmount={callShown.effectiveCall}
           raiseAmount={raiseAmount || minRaiseTotal}
           onResume={() => setShowPauseCoach(false)}
           onClose={() => setShowPauseCoach(false)}
@@ -5338,9 +5693,13 @@ export default function GameHUD() {
           onClick={(e) => { e.stopPropagation(); /* intentionally non-dismissive */ }}
         >
           <div className="allin-confirm-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="allin-confirm-title">Go All-In?</div>
+            {/* F41 — at a pot / fixed-limit cap below his stack it is a raise
+                to the maximum, not an all-in. */}
+            <div className="allin-confirm-title">{allInMode === 'max' ? `Raise to the maximum (${maxRaise.toLocaleString()})?` : 'Go All-In?'}</div>
             <div className="allin-confirm-amount">
-              {myChips.toLocaleString()} chips
+              {allInMode === 'max'
+                ? `${Math.max(0, maxRaise - myCurrentBet).toLocaleString()} more chips`
+                : `${myChips.toLocaleString()} chips`}
             </div>
             <div className="allin-confirm-actions">
               <button
@@ -5350,7 +5709,7 @@ export default function GameHUD() {
                   handleAction('allIn');
                 }}
               >
-                Confirm All-In
+                {allInMode === 'max' ? `Confirm ${limits.capVerb}` : 'Confirm All-In'}
               </button>
               <button
                 className="allin-confirm-btn allin-confirm-no"
