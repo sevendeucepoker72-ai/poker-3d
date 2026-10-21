@@ -52,7 +52,7 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
   const isFinished = state === 'finished';
   const color = q.type === 'monthly' ? '#9db8ff' : '#ffd24a';
   const levels = q.structure?.levels || [];
-  const seatsLine = seatsForTopText(q.seatsForTop);
+  const seatsLine = seatsForTopText(q.seatsForTop, q.seatPackage);
   const resultLine = qualifierResultText(q.result);
 
   // Local push when this qualifier transitions to running (rising edge), so a
@@ -198,7 +198,13 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
                   border: q.result?.place === i + 1 ? '1px solid rgba(255,210,74,0.4)' : '1px solid rgba(255,255,255,0.04)',
                 }}>
                   <span style={{ color: '#fff', fontWeight: 700 }}>{ordinal(i + 1)}</span>
-                  <span style={{ color: '#ffd24a' }}>Championship Seat</span>
+                  <span className="qualifier-seat-package-place" style={{ color: '#ffd24a' }}>
+                    {(() => {
+                      // 2026-10-21 — a seat package pays several seats per place.
+                      const n = q.seatPackage ? (q.seatPackage[i + 1] || 0) : 1;
+                      return n > 1 ? `${n} Championship Seats` : 'Championship Seat';
+                    })()}
+                  </span>
                 </div>
               )) : null}
               {resultLine && <div style={{ color: '#cfe0ff', textAlign: 'center', marginTop: 6 }}>{resultLine}</div>}

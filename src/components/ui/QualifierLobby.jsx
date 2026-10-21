@@ -465,7 +465,7 @@ export default function QualifierLobby({ onSpectate }) {
         const state = qualifierSignupState(q, now);
         const live = state === 'running' || state === 'late';
         const qs = qualStatus?.[q.type];
-        const seatsLine = seatsForTopText(q.seatsForTop);
+        const seatsLine = seatsForTopText(q.seatsForTop, q.seatPackage);
         return (
           <div key={q.qualifierId} className="qualifier-card" onClick={() => setOpenDashboard(q.qualifierId)} style={{
             background: 'linear-gradient(135deg, rgba(10,10,20,0.95), rgba(20,30,70,0.7))',

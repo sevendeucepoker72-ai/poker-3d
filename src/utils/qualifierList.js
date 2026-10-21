@@ -74,7 +74,46 @@ function normalizeResult(raw) {
     : (raw && typeof raw.myResult === 'object' && raw.myResult ? raw.myResult : raw);
   const place = posInt(src?.place);
   const wonSeat = typeof src?.wonSeat === 'boolean' ? src.wonSeat : null;
-  return place || wonSeat !== null ? { place, wonSeat } : null;
+  // 2026-10-21 — a seat package can pay several seats for one place.
+  const seats = posInt(src?.seats);
+  return place || wonSeat !== null ? { place, wonSeat, ...(seats ? { seats } : {}) } : null;
+}
+
+/**
+ * 2026-10-21 (owner: "1st gets 3 seats, 2nd thru 4th get 2 seats and 5th
+ * through 10th get 1 seat") — the server's `seatPackage` ({place: seats}) →
+ * a clean {place: seats}, or null.
+ */
+export function normalizeSeatPackage(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  let total = 0;
+  for (const [k, v] of Object.entries(raw)) {
+    const place = Number(k);
+    const seats = Number(v);
+    if (!Number.isInteger(place) || place < 1 || place > 100 || !Number.isInteger(seats) || seats < 1 || seats > 10) return null;
+    out[place] = seats;
+    total += seats;
+  }
+  return total > 0 ? out : null;
+}
+
+/** {total, topN, parts: ['1st: 3', '2nd–4th: 2 each', ...]} for a seat package (null without one). */
+export function seatPackageSummary(pkg) {
+  const p = normalizeSeatPackage(pkg);
+  if (!p) return null;
+  const places = Object.keys(p).map(Number).sort((a, b) => a - b);
+  const groups = [];
+  for (const pl of places) {
+    const g = groups[groups.length - 1];
+    if (g && g.to === pl - 1 && g.n === p[pl]) g.to = pl;
+    else groups.push({ from: pl, to: pl, n: p[pl] });
+  }
+  return {
+    total: places.reduce((s, pl) => s + p[pl], 0),
+    topN: places[places.length - 1],
+    parts: groups.map((g) => (g.from === g.to ? `${ordinal(g.from)}: ${g.n}` : `${ordinal(g.from)}–${ordinal(g.to)}: ${g.n} each`)),
+  };
 }
 
 /** One list item → the shape the lobby renders; null when it has no id. */
@@ -107,6 +146,7 @@ export function normalizeQualifierItem(raw) {
     maxPlayers: posInt(raw.maxPlayers),
     structure: normalizeStructure(raw.structure),
     seatsForTop: posInt(raw.seatsForTop),
+    seatPackage: normalizeSeatPackage(raw.seatPackage),
     tournamentId: raw.tournamentId != null && raw.tournamentId !== '' ? String(raw.tournamentId) : null,
     result: normalizeResult(raw),
     // An older server's own window verdict (it had no status for "not open yet").
@@ -169,17 +209,25 @@ export function qualifierStatusCounts(list, now = Date.now()) {
   return counts;
 }
 
-/** "You finished 3rd — you won a championship seat!" (null without a place). */
+/** "You finished 3rd — you won a championship seat!" / "... you won 3 championship seats!" (null without a place). */
 export function qualifierResultText(result) {
   const place = posInt(result?.place);
   if (!place) return null;
+  const seats = posInt(result?.seats);
+  if (result?.wonSeat === true && seats > 1) return `You finished ${ordinal(place)} — you won ${seats} championship seats!`;
   return result?.wonSeat === true
     ? `You finished ${ordinal(place)} — you won a championship seat!`
     : `You finished ${ordinal(place)}.`;
 }
 
-/** "Top 3 win a championship seat" — only when the server said how many. */
-export function seatsForTopText(seatsForTop) {
+/**
+ * "Top 3 win a championship seat" — only when the server said how many. With
+ * a seat package (2026-10-21): "The top 10 win 15 championship seats (1st: 3,
+ * 2nd–4th: 2 each, 5th–10th: 1 each)".
+ */
+export function seatsForTopText(seatsForTop, seatPackage) {
+  const pkg = seatPackageSummary(seatPackage);
+  if (pkg) return `The top ${pkg.topN} win ${pkg.total} championship seats (${pkg.parts.join(', ')})`;
   const n = posInt(seatsForTop);
   if (!n) return null;
   return n === 1 ? 'The winner earns a championship seat' : `Top ${n} win a championship seat`;
@@ -197,10 +245,11 @@ export function tournamentCompleteMessage(data, myUserId) {
   const place = posInt(data?.place) || posInt(mine?.place) || posInt(mine?.position);
   const wonSeat = typeof data?.wonSeat === 'boolean' ? data.wonSeat
     : (typeof mine?.wonSeat === 'boolean' ? mine.wonSeat : null);
+  const seats = posInt(data?.myResult?.seats) || posInt(data?.seats) || posInt(mine?.seats);
   const isQualifier = data?.isQualifier === true || data?.qualifierId != null || wonSeat !== null
     || rows.some((r) => typeof r.wonSeat === 'boolean');
   if (isQualifier) {
-    const line = qualifierResultText({ place, wonSeat });
+    const line = qualifierResultText({ place, wonSeat, seats });
     return line ? `Qualifier complete! ${line}` : 'Qualifier complete!';
   }
   const winner = rows.find((r) => Number(r.position) === 1);

@@ -1076,3 +1076,7 @@ qualifier-go-to-my-table
 # the qualifier starts is released (credit refunded) and told at the next
 # sign-in: qualifierCancelled reason absent_at_start.
 Qualifier started without you
+# 2026-10-21 (owner: "1st gets 3 seats, 2nd thru 4th get 2 seats and 5th
+# through 10th get 1 seat") - an event seat package: the lobby says it and the
+# Seats tab shows the seats per place.
+qualifier-seat-package-place
