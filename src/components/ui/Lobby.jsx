@@ -1713,7 +1713,11 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
             <div className="recent-hands-list">
               {recentOwn.map(({ rec, r }, i) => {
                 const label = r.won ? (r.handName || 'Won') : r.folded ? 'Folded' : (r.handName || 'Lost');
-                const amount = r.won ? `+${r.chipsWon.toLocaleString()}` : (typeof r.net === 'number' && r.net < 0 ? r.net.toLocaleString() : '—');
+                // Gameplay audit G165 — an insured hand reads its real result
+                // (pot +/- the settlement), not the gross pot it was paid.
+                const insured = typeof r.insuranceDelta === 'number' && r.insuranceDelta !== 0 && typeof r.net === 'number';
+                const amount = insured ? `${r.net > 0 ? '+' : ''}${r.net.toLocaleString()}`
+                  : r.won ? `+${r.chipsWon.toLocaleString()}` : (typeof r.net === 'number' && r.net < 0 ? r.net.toLocaleString() : '—');
                 return (
                   <div key={`${rec.handNumber}-${i}`} className={`recent-hand-item ${r.won ? 'rhi--win' : 'rhi--loss'}`} onClick={() => setReplayHand(rec)} role="button" tabIndex={0}>
                     <span className="rhi-icon">{r.won ? '🏆' : r.folded ? '🃏' : '📉'}</span>
@@ -1721,7 +1725,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
                       <span className="rhi-hand">{label}</span>
                       <span className="rhi-table">{rec.tableName || `Hand #${rec.handNumber ?? '—'}`}</span>
                     </div>
-                    <span className="rhi-amount" style={{ color: r.won ? '#4ADE80' : '#93C5FD' }}>{amount}</span>
+                    <span className="rhi-amount" style={{ color: (insured ? r.net > 0 : r.won) ? '#4ADE80' : '#93C5FD' }}>{amount}</span>
                   </div>
                 );
               })}

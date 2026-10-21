@@ -1,58 +1,60 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTableStore } from '../../store/tableStore';
-import { isNextHandAtSameTable } from '../../utils/tableRender';
+import { getSocket } from '../../services/socketService';
+import {
+  createSessionLedger, observeSessionFrame, creditSessionRebuy, rebuySessionKey,
+  liveSessionKeys, sessionView,
+} from '../../utils/sessionLedger';
 import './SessionTracker.css';
 
 export default function SessionTracker() {
   const gameState = useTableStore((s) => s.gameState);
   const mySeat = useTableStore((s) => s.mySeat);
+  const activeTables = useTableStore((s) => s.activeTables);
+  const connected = useTableStore((s) => s.connected);
 
   const [expanded, setExpanded] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [, setLedgerVersion] = useState(0);
 
   // Session data stored in refs to persist across renders
   const startTimeRef = useRef(Date.now());
-  const startChipsRef = useRef(null);
-  const chipHistoryRef = useRef([]);
-  const handsPlayedRef = useRef(0);
-  const prevHandRef = useRef(null);
+  // Gameplay audit G178 (2026-10-21) — one session per table (a tournament's
+  // table move keeps its own): its start stack, the wallet chips rebought
+  // onto it (`rebuyComplete`), its chip history and hands. A bust + rebuy is
+  // no longer "+0", and a Multi-Table switch shows that table's own P/L
+  // (utils/sessionLedger.js).
+  const ledgerRef = useRef(null);
+  if (ledgerRef.current === null) ledgerRef.current = createSessionLedger();
 
   // Get current chip count
   const seats = gameState?.seats || [];
   const myPlayer = mySeat >= 0 && seats[mySeat] ? seats[mySeat] : null;
-  const myChips = myPlayer?.chipCount ?? 0;
-  const handTableId = gameState?.tableId ?? null;
-  const handNumber = gameState?.handNumber ?? null;
 
-  // Initialize starting chips on first valid chip count
+  // Each frame of the table on screen: baseline, history, hands (G171: one per
+  // new hand number at the same table — a switch or the first frame is not one).
   useEffect(() => {
-    if (myChips > 0 && startChipsRef.current === null) {
-      startChipsRef.current = myChips;
-      chipHistoryRef.current = [myChips];
-    }
-  }, [myChips]);
+    const ledger = ledgerRef.current;
+    const before = JSON.stringify(sessionView(ledger, gameState, myPlayer));
+    observeSessionFrame(ledger, gameState, myPlayer, liveSessionKeys(gameState, activeTables));
+    if (JSON.stringify(sessionView(ledger, gameState, myPlayer)) !== before) setLedgerVersion((v) => v + 1);
+  }, [gameState, myPlayer, activeTables]);
 
-  // Track chip count changes over time (when gameState changes)
+  // Wallet chips put on a seat are not profit. The listener follows the socket
+  // (a reconnect can replace it).
   useEffect(() => {
-    if (startChipsRef.current === null || myChips === 0) return;
-
-    const history = chipHistoryRef.current;
-    const last = history.length > 0 ? history[history.length - 1] : null;
-    if (last !== myChips) {
-      chipHistoryRef.current = [...history.slice(-19), myChips];
-    }
-  }, [myChips, gameState]);
-
-  // Count hands played
-  // Gameplay audit G171 (2026-10-21) — one per new hand number at the same
-  // table: Stud never shows 'PreFlop' (it counted 0 for a whole session); a
-  // table switch or a reconnect's first frame is not a hand.
-  useEffect(() => {
-    if (handTableId == null || handNumber == null) return;
-    const next = { tableId: handTableId, handNumber };
-    if (isNextHandAtSameTable(prevHandRef.current, next)) handsPlayedRef.current += 1;
-    prevHandRef.current = next;
-  }, [handTableId, handNumber]);
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onRebuyComplete = (d) => {
+      if (!d || d.success !== true) return;
+      const ts = useTableStore.getState();
+      const key = rebuySessionKey(d, ts);
+      creditSessionRebuy(ledgerRef.current, key, d.added, d.newStack);
+      setLedgerVersion((v) => v + 1);
+    };
+    socket.on('rebuyComplete', onRebuyComplete);
+    return () => socket.off('rebuyComplete', onRebuyComplete);
+  }, [connected]);
 
   // Session timer - updates every second
   useEffect(() => {
@@ -70,15 +72,16 @@ export default function SessionTracker() {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }, []);
 
-  // Calculate profit/loss
-  const startChips = startChipsRef.current ?? myChips;
-  const profit = myChips - startChips;
+  // Calculate profit/loss (stack - start - wallet chips added, this table's session)
+  const view = sessionView(ledgerRef.current, gameState, myPlayer);
+  const myChips = view ? view.stack : (myPlayer?.chipCount ?? 0);
+  const profit = view ? view.profit : 0;
   const profitDisplay = profit >= 0 ? `+${profit.toLocaleString()}` : profit.toLocaleString();
   const profitClass = profit > 0 ? 'positive' : profit < 0 ? 'negative' : 'neutral';
 
   // Build sparkline SVG path
   const renderSparkline = () => {
-    const data = chipHistoryRef.current;
+    const data = view ? view.history : [];
     if (data.length < 2) return null;
 
     const width = 190;
@@ -126,7 +129,7 @@ export default function SessionTracker() {
     );
   };
 
-  if (startChipsRef.current === null) return null;
+  if (!view) return null;
 
   if (!expanded) {
     return (
@@ -162,7 +165,7 @@ export default function SessionTracker() {
 
           <div className="session-stat-row">
             <span className="session-stat-label">Hands Played</span>
-            <span className="session-stat-value">{handsPlayedRef.current}</span>
+            <span className="session-stat-value">{view.hands}</span>
           </div>
 
           <div className="session-stat-row">

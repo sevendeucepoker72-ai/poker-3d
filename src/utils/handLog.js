@@ -47,6 +47,56 @@ export function ownSeatOfRecord(rec, myName) {
   return -1;
 }
 
+/**
+ * Gameplay audit G177 / G179 (2026-10-21) — a record row of a seat that was
+ * never dealt into the hand. poker-server lists EVERY occupied seat: a seat
+ * sitting out starts the hand folded with no cards, and a player who sits down
+ * mid-hand (or waits out the dead zone) is folded too — none of them posts,
+ * acts or holds cards. Every real fold is logged ('folded' / 'folded (left
+ * table)'), so "folded, no cards, not one logged action" means not dealt in.
+ * A record with neither `actions` nor an `actionLog` cannot tell (false).
+ */
+export function rowNotDealtIn(rec, row) {
+  if (!row || typeof row !== 'object' || row.folded !== true) return false;
+  if (Array.isArray(row.holeCards) && row.holeCards.length > 0) return false;
+  const seat = row.seatIndex;
+  if (rec && isInt(rec.viewerSeat) && rec.viewerSeat === seat
+    && Array.isArray(rec.viewerHoleCards) && rec.viewerHoleCards.length > 0) return false;
+  const own = Array.isArray(row.actions) ? row.actions.length : null;
+  const log = rec && Array.isArray(rec.actionLog) && rec.actionLog.length > 0
+    ? rec.actionLog.filter((a) => a && a.seatIndex === seat).length
+    : null;
+  if (own === null && log === null) return false;
+  return (own || 0) === 0 && (log || 0) === 0;
+}
+
+/**
+ * G177 / G179 — the row of a player who sat down while the hand was running:
+ * not dealt in and no starting stack (the server records startChips 0 and his
+ * buy-in as endChips). It is not his hand and not a player of it.
+ */
+export function rowIsMidHandJoiner(rec, row) {
+  return rowNotDealtIn(rec, row) && row.startChips === 0;
+}
+
+/**
+ * Gameplay audit G180 (2026-10-21) — the variant to stamp on a live record
+ * that does not carry one (an older poker-server): the `variant` of the live
+ * state of the SAME table (the one on screen or a multi-table entry), else
+ * null. A record that names its table only; stored rows are never guessed.
+ */
+export function recordVariantFromTable(rec, gameState, activeTables) {
+  if (!rec || typeof rec !== 'object') return null;
+  if (typeof rec.variant === 'string' && rec.variant) return null;
+  if (rec.tableId == null || rec.tableId === '') return null;
+  const tid = String(rec.tableId);
+  let gs = gameState && gameState.tableId != null && String(gameState.tableId) === tid ? gameState : null;
+  if (!gs && activeTables && typeof activeTables.forEach === 'function') {
+    activeTables.forEach((e, id) => { if (!gs && String(id) === tid && e && e.gameState) gs = e.gameState; });
+  }
+  return gs && typeof gs.variant === 'string' && gs.variant ? gs.variant : null;
+}
+
 /** Total chips in the hand's pots (the record's `pots`), else the winners' total. */
 export function potTotal(rec) {
   if (rec && Array.isArray(rec.pots) && rec.pots.length > 0) {
@@ -58,21 +108,34 @@ export function potTotal(rec) {
 
 /**
  * The player's result in one record, or null when the record has no own row:
- * { seat, won, chipsWon, net, folded, handName, pot, holeCards }.
+ * { seat, won, chipsWon, net, insuranceDelta, folded, handName, pot, holeCards }.
+ *
+ * Gameplay audit G177 (2026-10-21) — the hand he sat down during is not his
+ * (null: no hand, no +buy-in "win"); a folded seat that won nothing cannot end
+ * a hand above its start (a folded stack only falls), so any rise there is a
+ * top-up from his wallet, not a result (net capped at 0).
+ * G165 — `insuranceDelta` (poker-server, when it sends it: what the insurance
+ * settlement changed his stack by after the pot — + paid to him, - collected)
+ * is part of the hand's result; `endChips` stays the post-pot stack.
  */
 export function ownHandResult(rec, myName) {
   const seat = ownSeatOfRecord(rec, myName);
   if (seat < 0) return null;
   const row = rec.players.find((p) => p && p.seatIndex === seat);
   if (!row) return null;
+  if (rowIsMidHandJoiner(rec, row)) return null;
   const wins = (Array.isArray(rec.winners) ? rec.winners : []).filter((w) => w && w.seatIndex === seat);
   const chipsWon = wins.reduce((s, w) => s + (Number(w.chipsWon) || 0), 0);
-  const net = (typeof row.endChips === 'number' && typeof row.startChips === 'number') ? row.endChips - row.startChips : null;
+  const insuranceDelta = Number.isFinite(row.insuranceDelta) ? row.insuranceDelta : null;
+  let net = (typeof row.endChips === 'number' && typeof row.startChips === 'number') ? row.endChips - row.startChips : null;
+  if (net !== null && net > 0 && row.folded === true && wins.length === 0) net = 0;
+  if (net !== null && insuranceDelta !== null) net += insuranceDelta;
   return {
     seat,
     won: wins.length > 0,
     chipsWon,
     net,
+    insuranceDelta,
     folded: !!row.folded,
     handName: (wins.find((w) => w.handName)?.handName) || row.handName || null,
     pot: potTotal(rec),
@@ -131,12 +194,15 @@ function amountIn(re, text) {
  */
 export function buildReplaySteps(history) {
   if (!history || typeof history !== 'object') return [];
-  const players = (Array.isArray(history.players) ? history.players : [])
-    .filter((p) => p && isInt(p.seatIndex))
+  // G179 — a mid-hand joiner was no player of this hand (left out); a seat
+  // sitting out is listed but folded from the start (never "contested").
+  const rows = (Array.isArray(history.players) ? history.players : [])
+    .filter((p) => p && isInt(p.seatIndex) && !rowIsMidHandJoiner(history, p));
+  const players = rows
     .map((p) => ({ seatIndex: p.seatIndex, name: String(p.name ?? `Seat ${p.seatIndex + 1}`), holeCards: Array.isArray(p.holeCards) ? p.holeCards : null, folded: false }));
   const board = Array.isArray(history.communityCards) ? history.communityCards : [];
   const nameOf = (seat, fallback) => players.find((p) => p.seatIndex === seat)?.name || (fallback ? String(fallback) : `Seat ${Number(seat) + 1}`);
-  const folded = new Set();
+  const folded = new Set(rows.filter((p) => rowNotDealtIn(history, p)).map((p) => p.seatIndex));
   const snapshot = () => players.map((p) => ({ ...p, folded: folded.has(p.seatIndex) }));
   const steps = [];
   let street = 'preflop';
@@ -228,8 +294,11 @@ function stamp(ms) {
 export function recordToPokerStarsText(rec, myName) {
   const seat = ownSeatOfRecord(rec, myName);
   if (seat < 0) return null;
-  const players = rec.players.filter((p) => p && isInt(p.seatIndex));
+  // G177 — the hand he sat down during is not his; a mid-hand joiner is no
+  // seat of it ("(0 in chips)").
+  const players = rec.players.filter((p) => p && isInt(p.seatIndex) && !rowIsMidHandJoiner(rec, p));
   const me = players.find((p) => p.seatIndex === seat);
+  if (!me) return null;
   const nameOf = (s) => players.find((p) => p.seatIndex === s)?.name || `Seat ${s + 1}`;
   const log = Array.isArray(rec.actionLog) ? rec.actionLog : [];
   const sb = amountIn(/^posted (?:SB|small blind) (\d+)/i, (log.find((a) => /^posted (SB|small blind)/i.test(a?.action || '')) || {}).action || '') || 0;

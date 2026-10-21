@@ -100,7 +100,7 @@ export function sanitizeReplayHistory(raw) {
     // R3 (TABLEUI-6, contract H1) — a hand name only with its shown cards (a
     // record stored before the R1 fix, shared as a link, named hidden hands).
     const handName = holeCards.length > 0 ? cleanText(p.handName, 40) : '';
-    players.push({
+    const row = {
       seatIndex,
       name: cleanText(p.name, 40) || `Seat ${seatIndex + 1}`,
       holeCards: holeCards.length > 0 ? holeCards : null,
@@ -109,7 +109,11 @@ export function sanitizeReplayHistory(raw) {
       actions,
       folded: p.folded === true,
       handName: handName || null,
-    });
+    };
+    // Gameplay audit G165 (2026-10-21) — an insured seat's settlement (may be
+    // negative: the house collected), so the replay's end stack is his real one.
+    if (Number.isInteger(p.insuranceDelta) && Math.abs(p.insuranceDelta) <= 1e9) row.insuranceDelta = p.insuranceDelta;
+    players.push(row);
   });
   if (players.length === 0) return null;
 

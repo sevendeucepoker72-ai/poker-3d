@@ -33,6 +33,7 @@ import {
 } from '../../utils/tableRender';
 // Gameplay audit F78 (C3) — a queued move that did not happen ends its pill.
 import { pendingMoveExpired } from '../../utils/tableFlows';
+import { rowNotDealtIn } from '../../utils/handLog';
 import './PokerTable2D.css';
 import './TableCosmetics.css';
 
@@ -838,6 +839,8 @@ export default function PokerTable2D() {
       for (const p of (hist.players || [])) {
         const pName = p.playerName || p.name;
         if (!pName) continue;
+        // Gameplay audit G179 — a hand he sat out / sat down during is no loss.
+        if (!winnerNames.has(pName) && rowNotDealtIn(hist, p)) continue;
         if (!playerResults.has(pName)) playerResults.set(pName, []);
         playerResults.get(pName).push(winnerNames.has(pName));
       }

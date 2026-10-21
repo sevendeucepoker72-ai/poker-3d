@@ -186,6 +186,7 @@ import MultiTableTabs from './components/game/MultiTableTabs';
 import TableErrorBoundary from './components/game/TableErrorBoundary';
 import TableReconnectBanner from './components/game/TableReconnectBanner';
 import { clearStalePerHandKeys, viewerHoleCardsOf } from './utils/tablePayload';
+import { recordVariantFromTable } from './utils/handLog';
 // R3 (contract I1) — a friend's table invite keeps how to enter that table.
 import { tableInviteFields } from './utils/tableInvite';
 import PlayerNotes from './components/ui/PlayerNotes';
@@ -1658,8 +1659,12 @@ function App() {
           // server's viewerHoleCards when sent (an older server: his live
           // cards of that same hand), never anyone else's.
           const viewerHoleCards = viewerHoleCardsOf(history, yourSeat, seated ? src : null);
+          // Gameplay audit G180 — an older server's record names no variant:
+          // that same table's live one (the lobby replay rates Omaha right).
+          const variantOfTable = recordVariantFromTable(history, ts.gameState, ts.activeTables);
           const stamped = {
             ...history,
+            ...(variantOfTable ? { variant: variantOfTable } : {}),
             yourSeat,
             viewerSeat: viewerHoleCards ? yourSeat : history.viewerSeat,
             viewerHoleCards: viewerHoleCards || undefined,

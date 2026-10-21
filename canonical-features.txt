@@ -1137,3 +1137,9 @@ quick-game-cost
 seatReleased
 table_gone
 admin_force_close
+
+# 2026-10-21 gameplay audit C4 (hand log, session stats, replay). G165: an
+# insured hand's result (hand log net, session net, bankroll / profile graphs,
+# Recent Hands, the replay's end stack, shared links) includes the record's
+# per-row insurance settlement.
+insuranceDelta

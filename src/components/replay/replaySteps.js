@@ -23,6 +23,8 @@
  * Pure (no React, no DOM) so it can be exercised in Node.
  */
 
+import { rowNotDealtIn, rowIsMidHandJoiner } from '../../utils/handLog';
+
 const BOARD_STREETS = { Flop: 3, Turn: 4, River: 5 };
 const STREET_LABEL = {
   PreFlop: 'Pre-Flop', Flop: 'Flop', Turn: 'Turn', River: 'River', Showdown: 'Showdown',
@@ -100,8 +102,15 @@ function orderedActions(history) {
 /** Build the replay's steps (each a full snapshot the viewer renders). */
 export function buildReplaySteps(history) {
   if (!history || typeof history !== 'object' || !Array.isArray(history.players) || history.players.length === 0) return [];
-  const players = history.players.filter((p) => p && Number.isInteger(p.seatIndex));
+  // Gameplay audit G179 (2026-10-21) — the record lists every occupied seat.
+  // A player who sat down mid-hand (no stack at the deal, his buy-in as the
+  // end stack) was no player of it: left out — his row also broke the ante
+  // reconciliation below (0 - buy-in). A seat sitting out (dealt no cards,
+  // never acted) stays listed but folded from the start, never '?? ??' and
+  // never an ante payer.
+  const players = history.players.filter((p) => p && Number.isInteger(p.seatIndex) && !rowIsMidHandJoiner(history, p));
   if (!players.length) return [];
+  const notDealt = new Set(players.filter((p) => rowNotDealtIn(history, p)).map((p) => p.seatIndex));
   const board = Array.isArray(history.communityCards) ? history.communityCards.filter(Boolean) : [];
   const usesBoard = board.length > 0 || BOARD_VARIANTS.test(String(history.variant || 'texas-holdem'));
   const viewerSeat = Number.isInteger(history.viewerSeat) ? history.viewerSeat : null;
@@ -150,7 +159,7 @@ export function buildReplaySteps(history) {
   const missing = finalPot - loggedPot;
   const antes = new Map();
   if (missing > 0) {
-    const per = players.map((p) => {
+    const per = players.filter((p) => !notDealt.has(p.seatIndex)).map((p) => {
       const out = int(p.startChips) - int(p.endChips) + (wonBySeat.get(p.seatIndex) || 0);
       return [p.seatIndex, out - (dryRun.get(p.seatIndex) || 0)];
     });
@@ -172,7 +181,7 @@ export function buildReplaySteps(history) {
     handName: typeof p.handName === 'string' && Array.isArray(p.holeCards) && p.holeCards.length ? p.handName : null,
     startChips: int(p.startChips),
     chips: int(p.startChips),
-    folded: false,
+    folded: notDealt.has(p.seatIndex),
     currentAction: null,
     revealed: false,
   }]));
@@ -255,6 +264,12 @@ export function buildReplaySteps(history) {
   if (usesBoard) for (const [st, n] of Object.entries(BOARD_STREETS)) revealBoardTo(n, st);
 
   // Showdown: the record's own end state — final pots, end stacks, shown hands.
+  // G165 — an insured seat's stack after the settlement: the post-pot stack
+  // plus the record's insuranceDelta (when poker-server sends it).
+  const endStackOf = (seat) => {
+    const row = players.find((p) => p.seatIndex === seat);
+    return int(row?.endChips) + (Number.isFinite(row?.insuranceDelta) ? int(row.insuranceDelta) : 0);
+  };
   const shownSeats = new Set();
   for (const s of states.values()) if (s.holeCards && !s.folded) shownSeats.add(s.seatIndex);
   steps.push({
@@ -268,7 +283,7 @@ export function buildReplaySteps(history) {
       ...s,
       revealed: !!s.holeCards && (shownSeats.has(s.seatIndex) || s.seatIndex === viewerSeat),
       currentAction: null,
-      chips: int(players.find((p) => p.seatIndex === s.seatIndex)?.endChips),
+      chips: endStackOf(s.seatIndex),
     })),
     winners: (Array.isArray(history.winners) ? history.winners : []).map((w) => ({ ...w, name: nameOf(w) })),
   });

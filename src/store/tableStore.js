@@ -8,6 +8,7 @@ import { markTableLeft, isTableLeft } from '../services/leftTables';
 import { sanitizeTableState, sanitizeHandHistory, sanitizeNamedEvent, viewerHoleCardsOf } from '../utils/tablePayload';
 import { drawSelectionKey } from '../utils/actionBar';
 import { tableScope, sittingOutHereOf } from '../utils/tableFlows';
+import { recordVariantFromTable } from '../utils/handLog';
 
 // 2026-10-07 — every gated play emit records how to replay itself, so a
 // login_required refusal that lands on a signed-out socket (reconnect race) can
@@ -489,6 +490,13 @@ export const useTableStore = create((set, get) => ({
       const mine = seat !== null && rec ? viewerHoleCardsOf(rec, seat, live) : null;
       if (mine) rec = { ...rec, viewerSeat: seat, viewerHoleCards: mine };
       else if (rec && rec.viewerHoleCards !== undefined) rec = { ...rec, viewerHoleCards: undefined };
+    } catch { /* best-effort */ }
+    // Gameplay audit G180 (2026-10-21) — the replay rates hands by the record's
+    // variant (Omaha: exactly two hole cards); a server that does not send it
+    // gets the variant of that same table's live state (never a guess).
+    try {
+      const variant = recordVariantFromTable(rec, state.gameState, state.activeTables);
+      if (variant) rec = { ...rec, variant };
     } catch { /* best-effort */ }
     return { handHistories: [...state.handHistories, rec].slice(-20) };
   }),

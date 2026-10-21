@@ -260,7 +260,9 @@ export function evaluateHandStrength(holeCards, communityCards, options = {}) {
   //     that depended on a single hole card (illegal in Omaha).
   //   - Short Deck, Texas Hold'em, default: any 5 of all cards.
   const variant = (options.variant || 'texas-holdem').toLowerCase();
-  const isOmaha = variant === 'omaha' || variant === 'omaha-hi-lo';
+  // Gameplay audit G180 (2026-10-21) — every Omaha id (omaha-5 / omaha-6 / hi-lo
+  // spellings included) plays exactly two hole cards.
+  const isOmaha = variant.startsWith('omaha');
   const shortDeck = variant === 'short-deck';
 
   let combos;
