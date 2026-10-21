@@ -403,7 +403,14 @@ export default function MultiTableView({ onClose }) {
         call: () => sendAction('call'),
         check: () => sendAction('check'),
         raise: () => sendAction('raise', computeMinRaiseTo(gameState)), // #10: send a valid amount
-        draw: (discardIndices) => sendDraw(discardIndices), // G176
+        // G176 (fix-up) — false = the primary socket is down, nothing was
+        // sent: the tile keeps Stand Pat / Draw N to try again (sendDraw only
+        // warns then, and the tile hid its draw for the round).
+        draw: (discardIndices) => {
+          if (!getSocket()?.connected) return false;
+          sendDraw(discardIndices);
+          return true;
+        },
       };
     }
     const slot = secondary[idx - 1];

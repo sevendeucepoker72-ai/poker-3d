@@ -30,6 +30,7 @@ import { feltForTheme, seatLook } from './tableCosmetics';
 import {
   tableBackCount, opponentCardSlots, seatSittingOut, seatCapOf,
   seatMoveFrameIsForTable, rotationSeats, positionLabel,
+  blindSeatsOf, shownCardKey,
 } from '../../utils/tableRender';
 // Gameplay audit F78 (C3) — a queued move that did not happen ends its pill.
 import { pendingMoveExpired } from '../../utils/tableFlows';
@@ -115,9 +116,12 @@ function getAvatarColor(name) {
    Gameplay audit G175 (2026-10-21) — the rules live in utils/tableRender.js:
    positions go round the seats the SERVER rotates the button over (no busted
    seat, no player who sat down mid-hand, nothing in Stud), and 3-handed the
-   big blind reads BB (it read CO). */
-function getPositionLabel(seatIndex, dealerButtonSeat, occupiedSeats) {
-  return positionLabel(seatIndex, dealerButtonSeat, occupiedSeats, SEAT_COUNT);
+   big blind reads BB (it read CO). G175 fix-up: when the server names this
+   hand's blind seats (sbSeat -1 = a dead small blind; dead button) the
+   badges follow them; an older server (no seats: null) keeps the walk. */
+function getPositionLabel(seatIndex, dealerButtonSeat, occupiedSeats, sbSeat = null, bbSeat = null) {
+  const blinds = Number.isInteger(bbSeat) && Number.isInteger(sbSeat) ? { sb: sbSeat, bb: bbSeat } : null;
+  return positionLabel(seatIndex, dealerButtonSeat, occupiedSeats, SEAT_COUNT, blinds);
 }
 
 /* R2 (TABLEUI-15) — can a SPECTATOR sit at this table through joinTable? Only
@@ -317,11 +321,11 @@ function ActionBubble({ action }) {
    ============================================================ */
 const SeatPod = memo(function SeatPod({
   seatIndex, serverSeat, isMyPlayer, isActive,
-  style, dealerButtonSeat, occupiedSeats,
+  style, dealerButtonSeat, occupiedSeats, sbSeat, bbSeat,
   handResult, phase, onClickNameplate,
   bigBlind, heroEmoji, onSitHere, winStreak,
   isTournament, heroAlreadySeated, isPendingMoveTarget,
-  onBetSlide, spectatorSits, betSide, backCount, beyondCap,
+  onBetSlide, spectatorSits, betSide, backCount, beyondCap, handNumber,
 }) {
   const turnStartedAt = useTimerStore(s => s.turnStartedAt);
   const turnTimeout   = useTimerStore(s => s.turnTimeout);
@@ -464,7 +468,7 @@ const SeatPod = memo(function SeatPod({
   }
 
   const isFolded = !!folded;
-  const posLabel = getPositionLabel(seatIndex, dealerButtonSeat, occupiedSeats);
+  const posLabel = getPositionLabel(seatIndex, dealerButtonSeat, occupiedSeats, sbSeat, bbSeat);
   // Use avatar seatColor > skinTone > name-hash color
   const avatarColor = serverSeat?.avatar?.seatColor || serverSeat?.avatar?.skinTone || getAvatarColor(name || '?');
   const avatarPhoto = serverSeat?.avatar?.photo || null;
@@ -500,6 +504,7 @@ const SeatPod = memo(function SeatPod({
   const showCardBacks   = dealtIn && !isFolded && !isMyPlayer && phase !== 'WaitingForPlayers' && phase !== 'HandComplete';
   // F125 / F136 — the face-down row (backs + Stud up-cards) and its fan class.
   const cardSlots = opponentCardSlots(serverSeat, backCount);
+  const cardKeyTag = handNumber != null ? `${handNumber}:` : '';
   const shownCount = showCardsFaceUp && holeCards?.length > 0 ? holeCards.length : cardSlots.length;
   const cardRowClass = `${shownCount > 2 ? ' seat-pod__cards--many' : ''}${
     showCardsFaceUp ? (shownCount > 2 ? ' seat-pod__cards--shown' : '') : (cardSlots.some((c) => c.card) ? ' seat-pod__cards--stud' : '')}`;
@@ -596,14 +601,19 @@ const SeatPod = memo(function SeatPod({
           (they were two blank backs). */}
       {!isMyPlayer && (showCardsFaceUp || showCardBacks) && (
         <div className={`seat-pod__cards${hovered ? ' seat-pod__cards--hovered' : ''}${cardRowClass}`}>
+          {/* F125 fix-up — face up under the key the same card had face
+              down, so the showdown turns it over in place (a new key
+              remounted it and replayed the deal-in, every variant). The
+              hand number is part of the key: a new hand's cards deal in
+              fresh, even where the last hand's shown cards were still up. */}
           {showCardsFaceUp && holeCards?.length > 0
             ? holeCards.map((c, i) => (
-                <Card2D key={i} card={c} faceUp small dealDelay={i * 0.07} />
+                <Card2D key={`${cardKeyTag}${shownCardKey(cardSlots, i)}`} card={c} faceUp small dealDelay={i * 0.07} />
               ))
             : cardSlots.map((slot, i) => (
                 slot.card
-                  ? <Card2D key={slot.key} card={slot.card} faceUp small dealDelay={i * 0.07} />
-                  : <Card2D key={slot.key} card={null} faceUp={false} small dealDelay={i * 0.07} backClass={look.cardBack} />
+                  ? <Card2D key={`${cardKeyTag}${slot.key}`} card={slot.card} faceUp small dealDelay={i * 0.07} />
+                  : <Card2D key={`${cardKeyTag}${slot.key}`} card={null} faceUp={false} small dealDelay={i * 0.07} backClass={look.cardBack} />
               ))
           }
         </div>
@@ -813,6 +823,8 @@ export default function PokerTable2D() {
   // button / blinds over this hand (busted seats, mid-hand joiners and Stud
   // are out); only the position badges read it.
   const occupiedSeats = rotationSeats(seats, { phase, isStudGame: gameState?.isStudGame === true });
+  // G175 fix-up — this hand's blind seats when the server sends them.
+  const blindSeats = blindSeatsOf(gameState);
   // F136 — how many cards an opponent holds face down at this table.
   const backCount = tableBackCount(gameState);
   // G182 — seats this table can seat (the server's maxSeats; 9 when absent).
@@ -1275,6 +1287,8 @@ export default function PokerTable2D() {
             }}
             dealerButtonSeat={dealerSeat}
             occupiedSeats={occupiedSeats}
+            sbSeat={blindSeats ? blindSeats.sb : null}
+            bbSeat={blindSeats ? blindSeats.bb : null}
             handResult={handResult}
             phase={phase}
             onClickNameplate={onClickNameplate}
@@ -1290,6 +1304,7 @@ export default function PokerTable2D() {
             betSide={betSide}
             backCount={backCount}
             beyondCap={i >= seatCap}
+            handNumber={gameState?.handNumber ?? null}
           />
         );
       })}

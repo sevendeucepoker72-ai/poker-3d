@@ -2560,7 +2560,11 @@ export default function GameHUD() {
       if (muckTimerRef.current) clearTimeout(muckTimerRef.current);
       muckTimerRef.current = setTimeout(() => setShowMuckButton(false), 5000);
     }
-    if (phase === 'WaitingForPlayers' || phase === 'PreFlop') {
+    // G171 fix-up — not while the phase reads 'PreFlop': a pre-flop fold
+    // raised the prompt and this cleared it in the same run (no Show / Muck
+    // after a pre-flop fold in Hold'em, Omaha, Draw), and every PreFlop re-run
+    // wiped the shown hands. The new-hand edge above clears both per hand.
+    if (phase === 'WaitingForPlayers') {
       setShowMuckButton(false);
       setMuckedHands([]);
     }

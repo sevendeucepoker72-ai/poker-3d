@@ -72,6 +72,18 @@ export function opponentCardSlots(seat, backCount = 2) {
   return Array.from({ length: n }, (_, i) => ({ key: `d${i}`, card: null }));
 }
 
+/**
+ * The React key of his i-th card when it is shown face up (F125 fix-up): the
+ * key the same position had face down (`opponentCardSlots`), so the showdown
+ * turns his cards over in place. Keys 0,1.. there remounted every card and
+ * replayed the deal-in animation at every showdown, Hold'em included. Stud's
+ * cards come in deal order (down, down, up x4, down), the slots' order.
+ */
+export function shownCardKey(cardSlots, i) {
+  const slot = Array.isArray(cardSlots) ? cardSlots[i] : null;
+  return (slot && typeof slot.key === 'string' && slot.key) || `d${i}`;
+}
+
 // ── Seat ring (G175 / G181 / G182) ──────────────────────────────────────────
 
 /** The seat sits out (G181): the server's per-seat `sittingOut`, or the old state value. */
@@ -128,12 +140,61 @@ export function rotationSeats(seats, { phase, isStudGame } = {}) {
 const POSITION_LABELS = ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO', ''];
 
 /**
+ * This hand's real blind seats when the server sends them (G175 fix-up):
+ * `smallBlindSeat` (-1 = a dead small blind) and `bigBlindSeat`. With the TDA
+ * dead small blind / dead button (poker-server S2 F11 / F13) the blinds are
+ * no longer "the next two seats after the button", so walking from the button
+ * labelled the real big blind SB and UTG BB. `deadSmallBlind: true` also
+ * means no small blind. null when either seat is missing (an older server):
+ * the button walk below, as before.
+ * → null | { sb, bb }
+ */
+export function blindSeatsOf(gs) {
+  if (!gs || typeof gs !== 'object') return null;
+  const { smallBlindSeat: sb, bigBlindSeat: bb } = gs;
+  if (!Number.isInteger(bb) || bb < 0 || !Number.isInteger(sb) || sb < -1) return null;
+  return { sb: gs.deadSmallBlind === true ? -1 : sb, bb };
+}
+
+/**
+ * The badge from the server's blind seats (G175 fix-up): BTN = the button
+ * seat (none when the button is dead on an empty seat), SB / BB = the seats
+ * the server named (no SB when it is dead), heads-up BTN/SB + BB; UTG.., HJ,
+ * CO = the rotation seats after the big blind, up to the button (or the small
+ * blind when the button seat is not before it), numbered as on a full ring.
+ */
+function positionFromBlinds(seatIndex, btn, { sb, bb }, rotation, seatCount) {
+  if (!rotation.includes(seatIndex)) return '';
+  const isBtn = Number.isInteger(btn) && btn >= 0 && seatIndex === btn;
+  if (isBtn && seatIndex === sb) return 'BTN/SB';
+  if (seatIndex === bb) return 'BB';
+  if (isBtn) return 'BTN';
+  if (sb >= 0 && seatIndex === sb) return 'SB';
+  const dist = (x) => (((x - bb) % seatCount) + seatCount) % seatCount;
+  const stops = [btn, sb].filter((x) => Number.isInteger(x) && x >= 0 && x !== bb).map(dist);
+  const end = stops.length > 0 ? Math.min(...stops) : seatCount;
+  const after = rotation.filter((x) => x !== bb && dist(x) > 0 && dist(x) < end).sort((a, b) => dist(a) - dist(b));
+  const j = after.indexOf(seatIndex);
+  if (j === -1) return '';
+  const n = 3 + after.length;
+  const pos = 3 + j;
+  if (pos === n - 1) return 'CO';
+  if (pos === n - 2 && n >= 5) return 'HJ';
+  return POSITION_LABELS[pos] ?? '';
+}
+
+/**
  * The seat's position badge from the button (G175): heads-up BTN/SB + BB;
  * 3-handed BTN / SB / BB (the big blind read "CO"); then UTG.., HJ, CO.
  * '' when the seat is not in `rotation` or there is no button yet.
+ * `blinds` (`blindSeatsOf`): the server's own SB / BB seats this hand — used
+ * when present (dead small blind, dead button); else the button walk.
  */
-export function positionLabel(seatIndex, dealerButtonSeat, rotation, seatCount = 9) {
+export function positionLabel(seatIndex, dealerButtonSeat, rotation, seatCount = 9, blinds = null) {
   if (!Array.isArray(rotation) || rotation.length < 2) return '';
+  if (blinds && Number.isInteger(blinds.bb) && blinds.bb >= 0 && Number.isInteger(blinds.sb)) {
+    return positionFromBlinds(seatIndex, dealerButtonSeat, blinds, rotation, seatCount);
+  }
   if (!Number.isInteger(dealerButtonSeat) || dealerButtonSeat < 0) return '';
   const sorted = [...rotation].sort((a, b) => {
     const da = (a - dealerButtonSeat + seatCount) % seatCount;
@@ -279,8 +340,13 @@ export function isNextHandAtSameTable(prev, next) {
 
 /**
  * The rabbit hunt deals the board a folded player would have seen: only a
- * board game has one (G171 — Stud / Draw answered nothing, a dead button).
+ * board game has one (G171 — Stud / Draw answered nothing, a dead button),
+ * and only while the board is not complete — with all 5 cards out (a river
+ * bet folded to, a showdown) the server has nothing to deal and answers
+ * nothing (computeRabbitBoard: `communityCards.length >= 5` → []).
  */
 export function rabbitHuntOffered(gs) {
-  return !!gs && gs.isStudGame !== true && gs.hasDrawPhase !== true;
+  if (!gs || gs.isStudGame === true || gs.hasDrawPhase === true) return false;
+  const board = Array.isArray(gs.communityCards) ? gs.communityCards.length : 0;
+  return board < 5;
 }
