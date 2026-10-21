@@ -1143,6 +1143,23 @@ seatReleased
 table_gone
 admin_force_close
 
+# 2026-10-21 C3 fix-up (review): F141 a Join challenge from a multi-table seat
+# opens the new table (its seat lands in activeTables) and forgets the tables
+# the join left; a cancelled leave-confirm keeps the challenge / invite toast.
+# F143 a refusal naming leftTableId forgets the extra seats too. F87 the
+# remembered Sit Out follows the server's explicit restore value and the main
+# seat's multi-table replies. F156 an older server's bare Sit Out reply in
+# multi-table mode is shown on the main table with a line. F162 deck
+# commitments kept per table (the join's first hand is no longer dropped).
+# F147 a background table that closes is said. F155 table_gone is neutral
+# unless a seated cash-kind seat. F88 the slot tile's line follows the reason.
+[join-follow] the new seat arrived as a background table
+an older server applied Sit Out to the main seat
+deckByTable
+This table is no longer running.
+Your chips from it are back in your balance
+so this seat was released and its chips went back to your balance
+
 # 2026-10-21 gameplay audit C4 (hand log, session stats, replay). G165: an
 # insured hand's result (hand log net, session net, bankroll / profile graphs,
 # Recent Hands, the replay's end stack, shared links) includes the record's

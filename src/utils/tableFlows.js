@@ -38,6 +38,27 @@ export function isOtherTableReply(data, shownTableId) {
 }
 
 /**
+ * C3 fix-up (F87 / F156) — the MAIN seat's table in multi-table mode: the
+ * live cached entry that is not an extra (joinAdditionalTable) seat. It is
+ * the seat a reload restores (the remembered Sit Out is its), and the one an
+ * older server's bare `sitOut` toggles. null in single-table mode / none held.
+ * Returns the activeTables key.
+ */
+export function mainTableIdOf(ts) {
+  if (!ts || ts.currentTableId === null || ts.currentTableId === undefined || ts.currentTableId === '') return null;
+  const at = ts.activeTables;
+  if (!at || typeof at.forEach !== 'function') return null;
+  let key = null;
+  at.forEach((entry, id) => {
+    if (key !== null || !entry || entry.extra) return;
+    const gs = entry.gameState;
+    if (!gs || typeof gs !== 'object' || gs.isSpectator === true || !(Number(gs.yourSeat) >= 0)) return;
+    key = id;
+  });
+  return key;
+}
+
+/**
  * Is the seat on screen sitting out (F156 / F87)? Multi-table mode: the shown
  * table's own frame (`gameState.sittingOut`, stamped by the server on every
  * seat frame — main deltas and extra full snapshots); single-table mode: the
@@ -119,6 +140,23 @@ export function resyncPayloadOf(ts, screen = 'table') {
   return { tableId, wasSeated: wasSeatedOf(ts) };
 }
 
+/**
+ * C3 fix-up (F155) — `tableClosed {reason:'table_gone'}` (a newer server: the
+ * table a resync named no longer exists — a restart, or any other end). The
+ * chips sentence is only for a socket that SAT at a table whose stack the
+ * server credits back (the shutdown flush / teardown cash every seat that is
+ * not a tournament or a Spin & Go one); a spectator, a tournament / Spin & Go
+ * seat, or a frame of unknown kind (no `tableKind`) gets the neutral line.
+ */
+export const TABLE_GONE_TEXT = 'This table is no longer running.';
+export const TABLE_GONE_CHIPS_TEXT = 'This table is no longer running. Your chips from it are back in your balance.';
+export function tableGoneCreditsChips(gs, seated) {
+  if (!seated || !gs || typeof gs !== 'object') return false;
+  if (gs.isTournament === true || (gs.tournamentId !== null && gs.tournamentId !== undefined)) return false;
+  const kind = gs.tableKind;
+  return typeof kind === 'string' && kind !== '' && kind !== 'tournament' && kind !== 'spingo';
+}
+
 export const SEAT_RELEASED_TEXT = 'Your seat was released while you were away - your chips are back in your balance. You are watching the table; tap Sit Here on an open seat to play again.';
 
 // ── A seat the server ended on this socket (F88) ────────────────────────────
@@ -126,15 +164,30 @@ export const SEAT_RELEASED_TEXT = 'Your seat was released while you were away - 
 export const SEAT_VACATED_TEXT = Object.freeze({
   joined_new_seat: 'This table was opened in another window or device, so this window left it.',
   left_after_hand: 'Your seat at this table has ended.',
+  // C3 fix-up (F88) — a newer server stands an extra seat up after the
+  // sit-out limit (teardownSeat credits its stack).
+  sit_out_limit: 'You were sitting out for a while, so this seat was released and its chips went back to your balance.',
 });
 
 /** The line for socket `seatVacated { tableId, seatIndex, reason }`. */
 export function seatVacatedText(reason) {
-  return reason === 'joined_new_seat' ? SEAT_VACATED_TEXT.joined_new_seat : SEAT_VACATED_TEXT.left_after_hand;
+  if (reason === 'joined_new_seat') return SEAT_VACATED_TEXT.joined_new_seat;
+  if (reason === 'sit_out_limit') return SEAT_VACATED_TEXT.sit_out_limit;
+  return SEAT_VACATED_TEXT.left_after_hand;
 }
 
 /** The text an extra-table slot shows when the server ended its seat (F88). */
 export const SLOT_VACATED_TEXT = 'This table is open in another window - this view has ended.';
+
+/**
+ * C3 fix-up (F88) — the slot tile's line for `seatVacated.reason`: the "open
+ * in another window" text only for 'joined_new_seat' (the server sends
+ * 'left_after_hand' — a stale session cleared after the hand — and
+ * 'sit_out_limit' to slot sockets too); otherwise seatVacatedText.
+ */
+export function slotVacatedText(reason) {
+  return reason === 'joined_new_seat' ? SLOT_VACATED_TEXT : seatVacatedText(reason);
+}
 
 // ── A refused join that already left the old table (F143) ───────────────────
 
@@ -206,6 +259,54 @@ export function leaveForJoinConfirmText(ts, targetTableId, { tournamentTableId =
   if (seats.length > 1) parts.push('Every table you are playing is left.');
   parts.push('Join anyway?');
   return parts.join(' ');
+}
+
+/**
+ * C3 fix-up (F141 / F143) — the tables a join from THIS socket's main seat
+ * ends server-side. joinTable / joinByInviteCode run handlePlayerLeave when
+ * the socket has a main session, and that also tears down EVERY extra
+ * (joinAdditionalTable) seat of the socket. So in multi-table mode, when a
+ * live MAIN (non-extra) entry is held, every live cached entry other than
+ * `targetTableId` is gone once the join lands; with only extra seats (no main
+ * session) the server leaves them alone, so nothing is listed. Single-table
+ * mode: [] (the new seat replaces the view; the store settles the old entry).
+ * Returns the activeTables keys.
+ */
+export function tablesLeftByMainJoin(ts, targetTableId) {
+  const out = [];
+  if (!ts || ts.currentTableId === null || ts.currentTableId === undefined) return out;
+  const at = ts.activeTables;
+  if (!at || typeof at.forEach !== 'function') return out;
+  const target = idStr(targetTableId);
+  let hadMain = false;
+  at.forEach((entry, id) => {
+    const gs = entry && entry.gameState;
+    if (!gs || typeof gs !== 'object' || gs.isSpectator === true || !(Number(gs.yourSeat) >= 0)) return;
+    if (target !== null && idStr(id) === target) return;
+    if (!entry.extra) hadMain = true;
+    out.push(id);
+  });
+  return hadMain ? out : [];
+}
+
+/**
+ * C3 fix-up (F143) — a refusal that names `leftTableId` came AFTER the server
+ * left the socket's main seat, and that leave ended every extra seat too:
+ * the tables to forget = the named one(s) (`leftTableId`, and a newer
+ * server's optional `leftTableIds` list) plus every cached EXTRA entry.
+ */
+export function tablesEndedByRefusal(frame, activeTables) {
+  const ids = [];
+  const seen = new Set();
+  const add = (v) => { const s = idStr(v); if (s !== null && !seen.has(s)) { seen.add(s); ids.push(s); } };
+  const left = leftTableIdOf(frame);
+  if (!left) return ids;
+  add(left);
+  if (Array.isArray(frame.leftTableIds)) frame.leftTableIds.forEach((v) => { if (typeof v === 'string') add(v); });
+  if (activeTables && typeof activeTables.forEach === 'function') {
+    activeTables.forEach((entry, id) => { if (entry && entry.extra) add(id); });
+  }
+  return ids;
 }
 
 /**
@@ -324,10 +425,13 @@ export function dealersChoiceTruthful(gs) {
 /**
  * F162 — a `deckCommitment` / `deckSeedRevealed` frame naming another table
  * than the one on screen is not this table's (multi-table: every room this
- * socket is in sends them).
+ * socket is in sends them). C3 fix-up: with NO table on screen it is accepted
+ * — the server deals the first hand after a join (and sends its commitment)
+ * BEFORE it sends the joining socket its first gameState.
  */
 export function deckFrameForShownTable(frame, shownTableId) {
   if (!frame || typeof frame !== 'object') return false;
+  if (idStr(shownTableId) === null) return true;
   return !isOtherTableReply(frame, shownTableId);
 }
 
@@ -335,5 +439,72 @@ export function deckFrameForShownTable(frame, shownTableId) {
 export function revealMatchesCommitment(reveal, commitment) {
   if (!reveal || typeof reveal !== 'object') return false;
   if (!commitment || typeof commitment !== 'object') return true;
+  const rt = idStr(reveal.tableId);
+  const ct = idStr(commitment.tableId);
+  if (rt !== null && ct !== null && rt !== ct) return false;
   return commitment.handNumber === reveal.handNumber;
+}
+
+// C3 fix-up (F162) — the latest commitment (+ its reveal) of EACH table a newer
+// server names (`tableId`), kept in the table store's `deckByTable`
+// (tableId -> { commitment, revelation }); `deckCommitment` / `deckRevelation`
+// are the shown table's. A background table never overwrites the shown one,
+// the first hand after a join (its commitment comes before the first
+// gameState) is kept and shown once that table is on screen, and a reveal is
+// checked against ITS table's commitment. A frame without `tableId` (an older
+// server) works exactly as before.
+export const DECK_TABLES_KEPT = 12;
+
+const shownIdOf = (s) => idStr(s && s.gameState ? s.gameState.tableId : null);
+const deckMapOf = (s) => (s && s.deckByTable instanceof Map ? s.deckByTable : null);
+
+/** The table-store update for a `deckCommitment` frame (`s` = store state), or null. */
+export function deckCommitmentUpdate(s, c) {
+  if (!c || typeof c !== 'object') return null;
+  const id = idStr(c.tableId);
+  if (id === null) return { deckCommitment: c, deckRevelation: null };
+  const byTable = new Map(deckMapOf(s) || []);
+  byTable.delete(id);
+  byTable.set(id, { commitment: c, revelation: null });
+  while (byTable.size > DECK_TABLES_KEPT) byTable.delete(byTable.keys().next().value);
+  const out = { deckByTable: byTable };
+  const shown = shownIdOf(s);
+  if (shown === null || shown === id) { out.deckCommitment = c; out.deckRevelation = null; }
+  return out;
+}
+
+/** The table-store update for a `deckSeedRevealed` frame, or null (dropped). */
+export function deckRevelationUpdate(s, r) {
+  if (!r || typeof r !== 'object') return null;
+  const id = idStr(r.tableId);
+  const cur = s ? s.deckCommitment : null;
+  if (id === null) return revealMatchesCommitment(r, cur) ? { deckRevelation: r } : null;
+  const out = {};
+  const byTable = deckMapOf(s);
+  const entry = byTable ? byTable.get(id) : null;
+  if (entry && revealMatchesCommitment(r, entry.commitment)) {
+    const next = new Map(byTable);
+    next.set(id, { ...entry, revelation: r });
+    out.deckByTable = next;
+  }
+  const shown = shownIdOf(s);
+  if ((shown === null || shown === id) && revealMatchesCommitment(r, cur)) out.deckRevelation = r;
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * The shown commitment / reveal once the table on screen changed, or null
+ * (keep): that table's own when one was kept, none when the one shown is
+ * another table's. An older server's (no `tableId`) is kept as before.
+ */
+export function deckViewForShownTable(s) {
+  const shown = shownIdOf(s);
+  if (shown === null) return null;
+  const cur = s.deckCommitment;
+  if (cur && typeof cur === 'object' && idStr(cur.tableId) === null) return null;
+  if (cur && idStr(cur.tableId) === shown) return null;
+  const byTable = deckMapOf(s);
+  const entry = byTable ? byTable.get(shown) : null;
+  if (!entry && !cur) return null;
+  return { deckCommitment: entry ? entry.commitment : null, deckRevelation: entry ? entry.revelation : null };
 }

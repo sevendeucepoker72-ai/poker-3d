@@ -20,7 +20,7 @@ import {
   inviteJoinRequest, inviteJoinErrorText, seatSigOf, INVITE_JOIN_NO_ANSWER_TEXT,
 } from '../utils/tableInvite';
 import { useTournamentSeatStore } from '../store/tournamentSeatStore';
-import { leaveForJoinConfirmText } from '../utils/tableFlows';
+import { leaveForJoinConfirmText, tablesLeftByMainJoin } from '../utils/tableFlows';
 import { followJoinToTable } from './joinFollow';
 
 /**
@@ -169,15 +169,37 @@ export function acceptClubChallengeNotice(n) {
     return false;
   }
   try {
-    const gs = useTableStore.getState().gameState;
+    const ts = useTableStore.getState();
+    const gs = ts.gameState;
     if (seatSigOf(gs) && String(gs.tableId) === tableId) { useGameStore.getState().setScreen?.('table'); return true; }
+    // C3 fix-up (F141) — already seated there as a background multi-table
+    // entry: show it.
+    if (ts.currentTableId != null && liveTableIds(ts.activeTables).some((id) => String(id) === tableId)) {
+      let key = tableId;
+      ts.activeTables.forEach((_e, k) => { if (String(k) === tableId) key = k; });
+      ts.switchActiveTable(key);
+      useGameStore.getState().setScreen?.('table');
+      return true;
+    }
   } catch { /* fall through to the join */ }
   if (!confirmLeaveForJoin(tableId)) return false;
   let me = {};
   try { me = useGameStore.getState(); } catch { /* ignore */ }
+  // C3 fix-up (F141) — multi-table: the join from the main seat ends every
+  // other seat of this socket server-side (handlePlayerLeave: the main seat
+  // and every extra seat). followJoinToTable switches to the new table when
+  // its seat lands in activeTables; then those dead tables are forgotten (no
+  // frozen tab that answers every tap 'Not at a table').
+  let leftByJoin = [];
+  try { leftByJoin = tablesLeftByMainJoin(useTableStore.getState(), tableId); } catch { leftByJoin = []; }
   followJoinToTable({
     tableId,
     onFailed: (message) => { try { useProgressStore.getState().addNotification({ type: 'mission', message: `Club challenge: ${message}` }); } catch { /* ignore */ } },
+    onJoined: () => {
+      for (const id of leftByJoin) {
+        try { useTableStore.getState().forgetTableSession(id); } catch { /* best-effort */ }
+      }
+    },
   });
   useTableStore.getState().joinTable(tableId, me.playerName, -1, n.challengeStakes, me.avatar);
   return true;

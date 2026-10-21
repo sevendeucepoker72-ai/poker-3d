@@ -1,11 +1,12 @@
 import { useEffect, useState, useRef, useCallback, Component, lazy, Suspense } from 'react';
 import { useGameStore, clearOtherAccountOidcFromTicketTab, setKeepTableScreenProbe } from './store/gameStore';
-import { useTableStore, forgetSitOutPreference, SIT_OUT_PREF_KEY, isLiveSeatState, perTableSessionReset } from './store/tableStore';
+import { useTableStore, forgetSitOutPreference, rememberSitOutPreference, SIT_OUT_PREF_KEY, isLiveSeatState, perTableSessionReset } from './store/tableStore';
 // Gameplay audit C3 (2026-10-21) — navigation / reconnect / join-leave rules.
 import {
   isOtherTableReply, bootRestoreShowsTable, newHandWipesYourCards, resyncPayloadOf, wasSeatedOf,
   SEAT_RELEASED_TEXT, seatVacatedText, leftTableIdOf, challengeAutoJoinAllowed, clubChallengeNoticeText,
-  CHALLENGE_JOIN_WINDOW_MS, deckFrameForShownTable, revealMatchesCommitment,
+  CHALLENGE_JOIN_WINDOW_MS, tablesEndedByRefusal, mainTableIdOf,
+  TABLE_GONE_TEXT, TABLE_GONE_CHIPS_TEXT, tableGoneCreditsChips,
 } from './utils/tableFlows';
 import { runTableBack, consumeProgrammaticBack } from './services/tableBack';
 import { useTimerStore } from './store/timerStore';
@@ -210,7 +211,10 @@ const TABLE_CLOSED_TEXT = {
   tournament_finished: 'The tournament is over and its table has closed.',
   // Gameplay audit F147 / F155 (2026-10-21).
   admin_force_close: 'This table was closed by an administrator.',
-  table_gone: 'The game server restarted and this table closed. Your chips are back in your balance.',
+  // C3 fix-up (F155) — neutral: a spectator, a tournament / Spin & Go seat
+  // (stacks the shutdown flush does not cash) and a table gone for another
+  // reason get no chips claim; a seated cash-kind seat gets TABLE_GONE_CHIPS_TEXT.
+  table_gone: TABLE_GONE_TEXT,
 };
 
 // Gameplay audit F140 (2026-10-21) — the store's sign-in keeps the table
@@ -1095,10 +1099,17 @@ function App() {
     // the player's old table in that same request names it (`leftTableId`):
     // that seat is gone, so its view goes too (it froze: no frame follows),
     // and the table screen falls back to the lobby when nothing is left.
+    // C3 fix-up (F143) — that leave (handlePlayerLeave) also ended every EXTRA
+    // multi-table seat of the socket: those go too (they used to become the
+    // shown table — frozen, every tap 'Not at a table').
     const handleLeftTableRefusal = (err) => {
       const left = leftTableIdOf(err);
       if (!left) return;
-      try { useTableStore.getState().forgetTableSession(left); } catch { /* best-effort */ }
+      let ended = [left];
+      try { ended = tablesEndedByRefusal(err, useTableStore.getState().activeTables); } catch { ended = [left]; }
+      for (const id of ended) {
+        try { useTableStore.getState().forgetTableSession(id); } catch { /* best-effort */ }
+      }
       try {
         const g = useGameStore.getState();
         if (g.screen === 'table' && !useTableStore.getState().gameState) g.setScreen('lobby');
@@ -1136,13 +1147,43 @@ function App() {
     // its table; that table's state takes the value (the Sit Out button reads
     // the shown table's own flag there), the store flag only for the table on
     // screen. Single-table mode / an older server: as before.
+    // C3 fix-up (F87) — multi-table: a reply for the MAIN seat (the one a
+    // reload restores) also updates the remembered Sit Out (GameHUD mirrors it
+    // in single-table mode only, so it went stale here).
+    // C3 fix-up (F156) — a reply WITHOUT tableId in multi-table mode is an
+    // older server's: it toggled the MAIN seat whatever table is on screen.
+    // That table's state takes the value (its tab / its view show it), and
+    // when another table is on screen a line says where it applied (the
+    // button there reads its own table and did not change).
     socket.on('sitOutToggled', (data) => {
       if (!data || typeof data !== 'object') return;
       const ts = useTableStore.getState();
-      if (ts.currentTableId != null && data.tableId != null) {
-        try { ts.patchTableState(data.tableId, { sittingOut: data.sittingOut === true }); } catch { /* best-effort */ }
-        if (!isOtherTableReply(data, ts.gameState?.tableId)) ts.setSittingOut(data.sittingOut);
-        return;
+      if (ts.currentTableId != null) {
+        let mainId = null;
+        try { mainId = mainTableIdOf(ts); } catch { mainId = null; }
+        const value = data.sittingOut === true;
+        if (data.tableId != null) {
+          try { ts.patchTableState(data.tableId, { sittingOut: value }); } catch { /* best-effort */ }
+          if (!isOtherTableReply(data, ts.gameState?.tableId)) ts.setSittingOut(data.sittingOut);
+          if (mainId != null && String(mainId) === String(data.tableId)) rememberSitOutPreference(value);
+          return;
+        }
+        if (mainId != null) {
+          const mainEntry = ts.activeTables.get(mainId);
+          const was = !!(mainEntry && mainEntry.gameState && mainEntry.gameState.sittingOut === true);
+          try { ts.patchTableState(mainId, { sittingOut: value }); } catch { /* best-effort */ }
+          rememberSitOutPreference(value);
+          if (String(ts.gameState?.tableId) !== String(mainId) && was !== value) {
+            const name = (mainEntry && mainEntry.gameState && mainEntry.gameState.tableName) || 'your first table';
+            try { console.warn('[sit-out] an older server applied Sit Out to the main seat, not the table on screen'); } catch { /* ignore */ }
+            useProgressStore.getState().addNotification({
+              type: 'system', title: 'Sit Out',
+              message: value ? `You are sitting out at ${name}.` : `You are playing again at ${name}.`,
+            });
+          }
+          if (String(ts.gameState?.tableId) === String(mainId)) ts.setSittingOut(data.sittingOut);
+          return;
+        }
       }
       ts.setSittingOut(data.sittingOut);
     });
@@ -1354,15 +1395,30 @@ function App() {
       try { noteMaintenanceMode(!!data?.enabled); } catch { /* ignore */ }
       if (data?.enabled) useProgressStore.getState().addNotification({ type: 'system', title: 'Maintenance', message: 'Server maintenance in progress — play may be briefly interrupted.' });
     });
+    // C3 fix-up (F147) — a BACKGROUND table this tab sat at (an extra
+    // multi-table seat, a cached entry) that closes is said too, titled with
+    // its name (it used to vanish with no word; the old admin listener always
+    // said it). F155 — the 'table_gone' line names chips only for a seated
+    // cash-kind seat (tableGoneCreditsChips), read before closeTable drops it.
     const handleTableClosed = (data) => {
       if (!data || data.tableId == null) return;
-      let res = { shown: false };
+      let held = null;
+      try {
+        const tsBefore = useTableStore.getState();
+        if (tsBefore.gameState && String(tsBefore.gameState.tableId) === String(data.tableId)) held = tsBefore.gameState;
+        else if (tsBefore.activeTables) tsBefore.activeTables.forEach((e, k) => { if (!held && String(k) === String(data.tableId)) held = (e && e.gameState) || null; });
+      } catch { held = null; }
+      let res = { shown: false, removed: false, heldSeat: false };
       try { res = useTableStore.getState().closeTable(data.tableId) || res; } catch { /* best-effort */ }
-      if (!res.shown) return;
+      if (!res.shown && !(res.removed && res.heldSeat)) return;
+      let message = TABLE_CLOSED_TEXT[data.reason] || 'This table has closed.';
+      if (data.reason === 'table_gone' && tableGoneCreditsChips(held, !!res.heldSeat)) message = TABLE_GONE_CHIPS_TEXT;
+      const name = held && typeof held.tableName === 'string' && held.tableName.trim() ? held.tableName.trim() : '';
       useProgressStore.getState().addNotification({
-        type: 'system', title: 'Table closed',
-        message: TABLE_CLOSED_TEXT[data.reason] || 'This table has closed.',
+        type: 'system', title: !res.shown && name ? `Table closed — ${name}` : 'Table closed',
+        message,
       });
+      if (!res.shown) return;
       try {
         const gs = useGameStore.getState();
         if (gs.screen === 'table' && !useTableStore.getState().gameState) gs.setScreen('lobby');
@@ -1681,16 +1737,16 @@ function App() {
     // Gameplay audit F162 (2026-10-21) — another table's frame (multi-table:
     // every room this socket is in sends them) is not the table on screen's;
     // a reveal is kept only with the commitment of its own hand.
+    // C3 fix-up (F162) — kept PER TABLE (tableStore.deckByTable): the first
+    // hand's commitment after a join arrives before that table's first
+    // gameState (no table on screen yet) and used to be dropped; it now shows
+    // once the table is on screen, and a background table never overwrites
+    // the shown one. A frame without tableId (an older server): as before.
     socket.on('deckCommitment', (data) => {
-      const ts = useTableStore.getState();
-      if (!deckFrameForShownTable(data, ts.gameState?.tableId)) return;
-      ts.setDeckCommitment(data);
+      useTableStore.getState().noteDeckCommitment(data);
     });
     socket.on('deckSeedRevealed', (data) => {
-      const ts = useTableStore.getState();
-      if (!deckFrameForShownTable(data, ts.gameState?.tableId)) return;
-      if (!revealMatchesCommitment(data, ts.deckCommitment)) return;
-      ts.setDeckRevelation(data);
+      useTableStore.getState().noteDeckRevelation(data);
     });
 
     // Staking
@@ -2743,7 +2799,13 @@ function App() {
         const tsNow = useTableStore.getState();
         if (typeof data?.sittingOut === 'boolean') {
           if (tsNow.sittingOut !== data.sittingOut) tsNow.setSittingOut(data.sittingOut);
+          // C3 fix-up (F87) — the remembered Sit Out takes the server's
+          // explicit value (it used to be kept): on a cold boot GameHUD's
+          // mount replay reads it BEFORE its mirror rewrites it, and a stale
+          // '1' sat out a seat the server restored playing (every
+          // tournament reservation; a cash seat he had sat back in).
           if (wasReturning) forgetSitOutPreference();
+          else rememberSitOutPreference(data.sittingOut);
         } else {
           let pref = null;
           try { pref = sessionStorage.getItem(SIT_OUT_PREF_KEY); } catch { pref = null; }

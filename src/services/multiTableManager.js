@@ -7,7 +7,7 @@ import {
 } from './sessionResume';
 import { useGameStore } from '../store/gameStore';
 import { guardNeverEmittedEvents } from './socketService';
-import { newHandWipesYourCards, SLOT_VACATED_TEXT } from '../utils/tableFlows';
+import { newHandWipesYourCards, slotVacatedText } from '../utils/tableFlows';
 
 // 2026-10-09 (contract R1 / D1) — how an extra socket signs in. A TICKET tab
 // ("Play Online": no OIDC access token to present) uses its resume record —
@@ -212,11 +212,14 @@ export function joinMultiTable(tableId, { playerName, buyIn, avatar, expectedVar
   // reason }`: the server ended this slot's seat (another socket of the
   // account took that table) and left its room; no frame follows. The tile
   // says so instead of freezing on the last frame.
+  // C3 fix-up (F88) — in the words of its `reason`: "open in another window"
+  // only for 'joined_new_seat'; 'left_after_hand' / 'sit_out_limit' (or any
+  // other) get App's line for that reason (seatVacatedText).
   socket.on('seatVacated', (d) => {
     if (String(d?.tableId) !== String(slot.tableId)) return;
     slot.vacated = true;
     slot.status = 'error';
-    slot.error = SLOT_VACATED_TEXT;
+    slot.error = slotVacatedText(d && d.reason);
     slot.gameState = null;
     slot.mySeat = -1;
     notify();

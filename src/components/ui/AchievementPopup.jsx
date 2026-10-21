@@ -58,15 +58,21 @@ export default function AchievementPopup() {
   // (a home game through its invite code, a club table through the club, a
   // cash table through joinTable); the table opens once the seat is
   // confirmed, and a refused Join is said in a toast (services/tableInviteJoin).
+  // C3 fix-up (F145 / F141) — the toast closes only when the Join went ahead.
+  // `false` = he cancelled the "leaves the table you are playing" confirm (or
+  // the socket was down, said in its own toast): the invite / challenge stays
+  // up for the rest of its window, so "not yet — let me finish this hand"
+  // never throws it away. (A Join that threw still closes it, as before.)
+  const joinWentAhead = (accept, notification) => {
+    try { return accept(notification) !== false; } catch { return true; }
+  };
   const acceptInvite = (notification) => {
-    try { acceptTableInvite(notification); } catch { /* the toast still closes */ }
-    dismissNotification(notification.id);
+    if (joinWentAhead(acceptTableInvite, notification)) dismissNotification(notification.id);
   };
   // Gameplay audit F141 — a club challenge accepted while he plays another
   // table (or in a background tab) is a notice, joined only on this tap.
   const acceptChallenge = (notification) => {
-    try { acceptClubChallengeNotice(notification); } catch { /* the toast still closes */ }
-    dismissNotification(notification.id);
+    if (joinWentAhead(acceptClubChallengeNotice, notification)) dismissNotification(notification.id);
   };
 
   useEffect(() => {

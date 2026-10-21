@@ -7,7 +7,9 @@ import { markTableLeft, isTableLeft } from '../services/leftTables';
 // so no seat, winner or showdown row can crash the table for its viewers.
 import { sanitizeTableState, sanitizeHandHistory, sanitizeNamedEvent, viewerHoleCardsOf } from '../utils/tablePayload';
 import { drawSelectionKey } from '../utils/actionBar';
-import { tableScope, sittingOutHereOf } from '../utils/tableFlows';
+import {
+  tableScope, sittingOutHereOf, deckCommitmentUpdate, deckRevelationUpdate, deckViewForShownTable,
+} from '../utils/tableFlows';
 import { recordVariantFromTable } from '../utils/handLog';
 
 // 2026-10-07 — every gated play emit records how to replay itself, so a
@@ -29,6 +31,13 @@ function emitPlay(socket, event, payload) {
 export const SIT_OUT_PREF_KEY = 'app_poker_sittingOut';
 export function forgetSitOutPreference() {
   try { sessionStorage.setItem(SIT_OUT_PREF_KEY, '0'); } catch { /* ignore */ }
+}
+// C3 fix-up (F87) — the remembered Sit Out takes a value the SERVER stated
+// for the main seat (a restore's explicit `sittingOut`, a multi-table
+// sitOutToggled for the main table), so a reload's replay can never sit him
+// out (or in) against the seat's real state.
+export function rememberSitOutPreference(sittingOut) {
+  try { sessionStorage.setItem(SIT_OUT_PREF_KEY, sittingOut ? '1' : '0'); } catch { /* ignore */ }
 }
 
 // ── R2 (TABLEUI-14, 2026-10-11) — the multi-table map holds only real tables ──
@@ -506,6 +515,11 @@ export const useTableStore = create((set, get) => ({
   deckRevelation: null,
   setDeckCommitment: (c) => set({ deckCommitment: c, deckRevelation: null }),
   setDeckRevelation: (r) => set({ deckRevelation: r }),
+  // C3 fix-up (F162) — tableId -> { commitment, revelation } (newer server);
+  // deckCommitment / deckRevelation above are the shown table's (utils/tableFlows).
+  deckByTable: new Map(),
+  noteDeckCommitment: (c) => { const u = deckCommitmentUpdate(get(), c); if (u) set(u); },
+  noteDeckRevelation: (r) => { const u = deckRevelationUpdate(get(), r); if (u) set(u); },
 
   // Tournament bracket
   activeTournament: null,
@@ -600,15 +614,20 @@ export const useTableStore = create((set, get) => ({
   // this tab held of it goes — the shown table, a cached / extra entry, a
   // watched table — and its late frames are ignored. Another live seat (multi
   // table) takes the screen. → { shown } — was the closed table on screen.
+  // C3 fix-up (F147): + `removed` (something of it was held — the shown table
+  // or a cached entry) and `heldSeat` (this socket SAT there: the shown table
+  // not watched, or a cached live seat), so a background table that closes
+  // is said too, never silently dropped.
   closeTable: (tableId) => {
     const id = tableId != null ? String(tableId) : null;
-    if (!id) return { shown: false };
-    const { activeTables, currentTableId, gameState } = get();
+    if (!id) return { shown: false, removed: false, heldSeat: false };
+    const { activeTables, currentTableId, gameState, isSpectating } = get();
     let key = null;
     if (activeTables && typeof activeTables.forEach === 'function') activeTables.forEach((_e, k) => { if (String(k) === id) key = k; });
     const cached = key !== null ? activeTables.get(key) : null;
     const shown = !!gameState && String(gameState.tableId) === id;
-    if (!shown && !cached) return { shown: false };
+    if (!shown && !cached) return { shown: false, removed: false, heldSeat: false };
+    const heldSeat = (shown && !isSpectating && isLiveSeatState(gameState)) || (!!cached && isLiveSeatState(cached.gameState));
     markTableLeft(key !== null ? key : id, (cached && cached.gameState) || (shown ? gameState : null), { ignore: true });
     const updates = {};
     let rest = activeTables;
@@ -628,7 +647,7 @@ export const useTableStore = create((set, get) => ({
     }
     set(updates);
     get().settleActiveTables();
-    return { shown };
+    return { shown, removed: true, heldSeat };
   },
 
   // Gameplay audit F87 / F156 (2026-10-21) — shallow-merge `patch` into the
@@ -730,6 +749,30 @@ export const useTableStore = create((set, get) => ({
     get().settleActiveTables();
   },
 }));
+
+// C3 fix-up (F162) — the table on screen changed (a join's first frame, a
+// multi-table switch, a close): show THAT table's kept commitment (or none
+// when the one shown is another table's). An older server's is kept.
+useTableStore.subscribe((state, prev) => {
+  if (!prev) return;
+  const id = state.gameState && state.gameState.tableId != null ? String(state.gameState.tableId) : null;
+  const was = prev.gameState && prev.gameState.tableId != null ? String(prev.gameState.tableId) : null;
+  if (id === was) return;
+  const u = deckViewForShownTable(state);
+  if (u) useTableStore.setState(u);
+});
+
+// C3 fix-up (F87) — back to single-table mode (currentTableId cleared): the
+// store's Sit Out flag (what the button and GameHUD's remembered Sit Out read
+// there) takes the shown seat's own value. In multi-table mode the flag
+// followed whichever table was on screen, so it could carry another table's
+// Sit Out to the main seat — and into the remembered preference.
+useTableStore.subscribe((state, prev) => {
+  if (!prev || prev.currentTableId == null || state.currentTableId != null) return;
+  const gs = state.gameState;
+  if (!isLiveSeatState(gs) || state.isSpectating || typeof gs.sittingOut !== 'boolean') return;
+  if (state.sittingOut !== gs.sittingOut) useTableStore.setState({ sittingOut: gs.sittingOut });
+});
 
 // Gameplay audit G172 (2026-10-21) — the selected discards belong to ONE draw
 // round of one hand at one table. They used to be cleared only by a draw or a
