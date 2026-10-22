@@ -12,6 +12,8 @@
  * (`rebuyComplete.added`), a chip history in "stack minus added" terms and its
  * hand count (a hand-number rise while that table is on screen, G171: a table
  * switch or the first frame is not a hand). Profit = stack - start - added.
+ * A rebuy is left out only when the baseline was taken from the very frame
+ * that carried it (C4 fix-up: by frame identity, not by "one frame seen").
  *
  * Pure (no React, no store) so it can be exercised in Node.
  */
@@ -66,10 +68,14 @@ export function observeSessionFrame(ledger, gs, seat, liveKeys) {
   let e = ledger.entries.get(key);
   if (!e) {
     if (chips === null || chips <= 0) return ledger;
-    e = { start: chips, added: 0, history: [chips], hands: 0, lastHand: null, lastChips: chips, frames: 1, lastPushFrame: 1 };
+    // bornFrame / lastFrame: the state objects of the baseline frame and of
+    // the last frame seen here (creditSessionRebuy compares them with the
+    // newest frame the client holds for the table).
+    e = { start: chips, added: 0, history: [chips], hands: 0, lastHand: null, lastChips: chips, frames: 1, lastPushFrame: 1, bornFrame: gs, lastFrame: gs };
     ledger.entries.set(key, e);
   } else if (chips !== null) {
     e.lastChips = chips;
+    e.lastFrame = gs;
     e.frames += 1;
     // (an empty stack is not drawn, as before: an all-in reads 0 mid-hand)
     if (chips > 0) pushPoint(e, chips - e.added);
@@ -89,21 +95,41 @@ export function observeSessionFrame(ledger, gs, seat, liveKeys) {
  * Wallet chips put on a table's seat (`rebuyComplete` { success, added,
  * newStack }). Ignored when that table has no baseline yet (the baseline taken
  * next already holds them) or when the baseline IS the frame that carried the
- * top-up (the only frame seen there, at newStack: a rebuy needs a bust frame
- * before it otherwise). When the frame carrying the top-up was already seen
- * (its stack === newStack), its history point is rewritten so the sparkline
- * does not spike.
+ * top-up. When the frame carrying the top-up was already seen, its history
+ * point is rewritten so the sparkline does not spike.
+ *
+ * "The frame that carried the top-up": poker-server broadcasts the topped-up
+ * seat right before it sends rebuyComplete, so it is the newest frame the
+ * client holds for that table — `latestFrame` (rebuySessionTarget().frame:
+ * the shown state, or that table's Multi-Table entry; null = none held). The
+ * baseline holds the top-up only when it was taken from that very frame.
+ * C4 fix-up (G178 review): this used to be "the only frame seen there is at
+ * newStack" — a Multi-Table table looked at for one frame and then left off
+ * screen (it busts and is topped up there, frames the ledger never sees) met
+ * that too, so its real rebuy was skipped and its P/L read 0, not -1 buy-in.
+ * Without `latestFrame` (an older caller) only the table ON SCREEN can have its
+ * baseline taken from the top-up frame: it needs that frame seen last.
  */
-export function creditSessionRebuy(ledger, key, added, newStack) {
+export function creditSessionRebuy(ledger, key, added, newStack, latestFrame) {
   if (!ledger || !key) return ledger;
   const a = finite(Number(added));
   if (a === null || a <= 0) return ledger;
   const e = ledger.entries.get(key);
   if (!e) return ledger;
   const ns = finite(Number(newStack));
-  if (ns !== null && e.frames === 1 && e.start === ns) return ledger;
+  const given = latestFrame !== undefined;
+  const shownHere = ledger.shownKey === key;
+  // the baseline frame IS the top-up frame (it already holds these chips)
+  const baselineIsTopUp = given
+    ? latestFrame !== null && e.bornFrame === latestFrame
+    : shownHere && e.frames === 1;
+  if (ns !== null && e.start === ns && baselineIsTopUp) return ledger;
   e.added += a;
-  if (ns !== null && ns > 0 && e.lastChips === ns && e.history.length) {
+  // the top-up frame was the last one seen here (its point is redrawn)
+  const topUpSeen = given
+    ? latestFrame !== null && e.lastFrame === latestFrame
+    : shownHere;
+  if (ns !== null && ns > 0 && topUpSeen && e.lastChips === ns && e.history.length) {
     const v = e.lastChips - e.added;
     if (e.lastPushFrame !== e.frames) pushPoint(e, v); // that frame drew nothing new
     else if (e.history.length >= 2 && e.history[e.history.length - 2] === v) e.history = e.history.slice(0, -1);
@@ -113,11 +139,15 @@ export function creditSessionRebuy(ledger, key, added, newStack) {
 }
 
 /**
- * The ledger key a `rebuyComplete` belongs to: its `tableId` (a newer server
- * names the table it topped up); else the seat an older server tops up — the
- * MAIN seat: the non-extra Multi-Table entry, or the table on screen.
+ * The table a `rebuyComplete` topped up: { key, frame } or null. `key` = its
+ * ledger key; `frame` = that table's newest state the client holds (the shown
+ * state when it is on screen, else its Multi-Table entry; null when none),
+ * which is the topped-up frame the server sent just before rebuyComplete.
+ * The table is its `tableId` (a newer server names the table it topped up);
+ * else the seat an older server tops up — the MAIN seat: the non-extra
+ * Multi-Table entry, or the table on screen.
  */
-export function rebuySessionKey(data, { gameState, activeTables, currentTableId } = {}) {
+export function rebuySessionTarget(data, { gameState, activeTables, currentTableId } = {}) {
   const has = (v) => v != null && v !== '';
   const stateOf = (tid) => {
     if (gameState && has(gameState.tableId) && String(gameState.tableId) === tid) return gameState;
@@ -134,7 +164,13 @@ export function rebuySessionKey(data, { gameState, activeTables, currentTableId 
   if (tid === null && gameState && has(gameState.tableId)) tid = String(gameState.tableId);
   if (tid === null) return null;
   const gs = stateOf(tid);
-  return (gs && sessionKeyOf(gs)) || `table:${tid}`;
+  return { key: (gs && sessionKeyOf(gs)) || `table:${tid}`, frame: gs || null };
+}
+
+/** The ledger key a `rebuyComplete` belongs to (rebuySessionTarget's key), or null. */
+export function rebuySessionKey(data, tableState) {
+  const t = rebuySessionTarget(data, tableState);
+  return t ? t.key : null;
 }
 
 /** Keys of the table sessions the hero still holds (the shown table + live Multi-Table entries). */

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTableStore } from '../../store/tableStore';
 import { getSocket } from '../../services/socketService';
 import {
-  createSessionLedger, observeSessionFrame, creditSessionRebuy, rebuySessionKey,
+  createSessionLedger, observeSessionFrame, creditSessionRebuy, rebuySessionTarget,
   liveSessionKeys, sessionView,
 } from '../../utils/sessionLedger';
 import './SessionTracker.css';
@@ -41,15 +41,17 @@ export default function SessionTracker() {
   }, [gameState, myPlayer, activeTables]);
 
   // Wallet chips put on a seat are not profit. The listener follows the socket
-  // (a reconnect can replace it).
+  // (a reconnect can replace it). C4 fix-up — the topped-up table's newest
+  // frame here goes along: only a baseline taken from that very frame already
+  // holds the top-up (a Multi-Table table seen once and topped up off screen
+  // had its real rebuy skipped).
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return undefined;
     const onRebuyComplete = (d) => {
       if (!d || d.success !== true) return;
-      const ts = useTableStore.getState();
-      const key = rebuySessionKey(d, ts);
-      creditSessionRebuy(ledgerRef.current, key, d.added, d.newStack);
+      const target = rebuySessionTarget(d, useTableStore.getState());
+      if (target) creditSessionRebuy(ledgerRef.current, target.key, d.added, d.newStack, target.frame);
       setLedgerVersion((v) => v + 1);
     };
     socket.on('rebuyComplete', onRebuyComplete);
