@@ -1644,6 +1644,12 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       {/* ── LEFT COLUMN ── */}
       <div className="lobby-home-main">
 
+        {/* 2026-10-22 (owner: "the qualifier should be at the top of the home
+            page at .online") — the next / current online qualifier, first on
+            the home tab (nothing while none is listed). Only one QualifierLobby
+            is mounted at a time: this one (home) or the Play tab's list. */}
+        <QualifierLobby variant="home" onSpectate={() => setScreen('table')} onSeeAll={onTabChange ? () => onTabChange('play') : undefined} />
+
         {/* Return player banner (upgrade #8) */}
         {isReturningPlayer && !returnBannerDismissed && (
           <div className="return-banner">

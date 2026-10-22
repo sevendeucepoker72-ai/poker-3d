@@ -1165,3 +1165,16 @@ so this seat was released and its chips went back to your balance
 # Recent Hands, the replay's end stack, shared links) includes the record's
 # per-row insurance settlement.
 insuranceDelta
+
+# 2026-10-22 (owner: "There should be late entries until 2pm, re entries if
+# they have more credits and each entry consume a credit and the qualifier
+# should be at the top of the home page at .online") - the home tab's first
+# card is the next / current online qualifier (Denver start, seat package,
+# status with late entry until the SERVER's lateRegUntil, his credits and
+# re-entries); Re-enter / Late Register say they use a credit; re-entries
+# shown never exceed the credits he holds (server creditsHeld, else the
+# qualifications answer).
+home-qualifier-card
+late entry until
+re-enter with a credit
+uses 1 credit

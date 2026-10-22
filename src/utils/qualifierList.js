@@ -18,6 +18,8 @@
  * Pure module (no React): the lobby, the dashboard and the offline harness.
  */
 
+import { ECONOMY_TIME_ZONE, denverDateKey } from './denverTime.js';
+
 const STATUSES = new Set(['scheduled', 'registering', 'running', 'finished']);
 
 function ms(v) {
@@ -29,6 +31,10 @@ function ms(v) {
 function posInt(v) {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
+function nonNegInt(v) {
+  return Number.isInteger(v) && v >= 0 ? v : null;
 }
 
 export function ordinal(n) {
@@ -147,6 +153,14 @@ export function normalizeQualifierItem(raw) {
     // (null = unknown / not registered).
     eliminated: typeof raw.eliminated === 'boolean' ? raw.eliminated : null,
     reEntriesLeft: Number.isInteger(raw.reEntriesLeft) && raw.reEntriesLeft >= 0 ? raw.reEntriesLeft : null,
+    // 2026-10-22 (owner: "re entries if they have more credits and each entry
+    // consume a credit") — per viewer, from a newer server: his unused credits
+    // of this tier, the per-event re-entry cap (null = none: each re-entry
+    // uses one credit) and how many re-entries he has made. null = the server
+    // did not say (an older server, anonymous, or not loaded yet).
+    creditsHeld: nonNegInt(raw.creditsHeld),
+    maxReEntries: nonNegInt(raw.maxReEntries),
+    reEntries: nonNegInt(raw.reEntries),
     players: Math.max(0, Math.floor(players) || 0),
     maxPlayers: posInt(raw.maxPlayers),
     structure: normalizeStructure(raw.structure),
@@ -189,7 +203,7 @@ export function qualifierSignupState(q, now = Date.now()) {
   if (q.status === 'finished') return 'finished';
   if (q.status === 'running') {
     if (q.lateRegUntil != null) return now < q.lateRegUntil ? 'late' : 'running';
-    // An older server's window end IS its late-registration end (start + 1.5h).
+    // An older server's window end IS its late-registration end.
     if (q.legacySignupOpen === true || (q.signupClosesAt != null && now < q.signupClosesAt && q.legacySignupOpen !== false)) return 'late';
     return 'running';
   }
@@ -236,6 +250,145 @@ export function seatsForTopText(seatsForTop, seatPackage) {
   const n = posInt(seatsForTop);
   if (!n) return null;
   return n === 1 ? 'The winner earns a championship seat' : `Top ${n} win a championship seat`;
+}
+
+// ── The .online home page's qualifier (owner 2026-10-22) ─────────────────────
+// "the qualifier should be at the top of the home page at .online": one card,
+// the next / current event, its start in Denver time, its seat package, its
+// status (late entry until the SERVER's lateRegUntil — the client never
+// computes a late time) and the player's own credits / re-entries.
+
+let denverClockFmt = null;
+let denverDayFmt = null;
+const tidy = (s) => String(s).replace(/[\u202f\u00a0]/g, ' ');
+
+/** "2:00 PM MT" — a time on the Denver clock ('' without one). */
+export function formatDenverTime(t) {
+  const v = ms(t);
+  if (v == null) return '';
+  try {
+    if (!denverClockFmt) denverClockFmt = new Intl.DateTimeFormat('en-US', { timeZone: ECONOMY_TIME_ZONE, hour: 'numeric', minute: '2-digit' });
+    return `${tidy(denverClockFmt.format(new Date(v)))} MT`;
+  } catch { return new Date(v).toISOString(); }
+}
+
+/** "Sun, Oct 25 · 11:00 AM MT" — a day + time on the Denver clock ('' without one). */
+export function formatDenverWhen(t) {
+  const v = ms(t);
+  if (v == null) return '';
+  try {
+    if (!denverDayFmt) denverDayFmt = new Intl.DateTimeFormat('en-US', { timeZone: ECONOMY_TIME_ZONE, weekday: 'short', month: 'short', day: 'numeric' });
+    return `${tidy(denverDayFmt.format(new Date(v)))} · ${formatDenverTime(v)}`;
+  } catch { return new Date(v).toISOString(); }
+}
+
+/**
+ * The one qualifier the home page shows: a live one first, else the soonest
+ * one not finished (open / upcoming / waiting to start), else the latest
+ * finished one the server still lists (its result); null when none.
+ */
+export function featuredQualifier(list, now = Date.now()) {
+  const items = (Array.isArray(list) ? list : []).filter((q) => q && q.qualifierId);
+  if (items.length === 0) return null;
+  const byStart = [...items].sort((a, b) => (a.scheduledAt ?? Infinity) - (b.scheduledAt ?? Infinity));
+  const states = new Map(byStart.map((q) => [q, qualifierSignupState(q, now)]));
+  const live = byStart.find((q) => states.get(q) === 'late' || states.get(q) === 'running');
+  if (live) return live;
+  const next = byStart.find((q) => states.get(q) !== 'finished');
+  if (next) return next;
+  const dated = byStart.filter((q) => q.scheduledAt != null);
+  return dated.length ? dated[dated.length - 1] : byStart[0];
+}
+
+/**
+ * The home card's status line: { state, text }.
+ *   scheduled  "Sign-up opens 8:00 AM MT"
+ *   open       "Sign-up open · starts 11:00 AM MT"
+ *   late       "Running · late entry until 2:00 PM MT"
+ *   running    "Running · late entry closed"
+ *   closed     "Sign-up closed"
+ *   finished   "Finished" / "Cancelled"
+ */
+export function qualifierHomeStatus(q, now = Date.now()) {
+  const state = qualifierSignupState(q, now);
+  if (!q) return { state, text: '' };
+  switch (state) {
+    case 'scheduled': {
+      if (q.signupOpensAt == null) return { state, text: 'Sign-up opens soon' };
+      const sameDay = q.scheduledAt != null && denverDateKey(q.signupOpensAt) === denverDateKey(q.scheduledAt);
+      return { state, text: `Sign-up opens ${sameDay ? formatDenverTime(q.signupOpensAt) : formatDenverWhen(q.signupOpensAt)}` };
+    }
+    case 'open':
+      return { state, text: q.scheduledAt != null && q.scheduledAt > now ? `Sign-up open · starts ${formatDenverTime(q.scheduledAt)}` : 'Sign-up open · starting soon' };
+    case 'late':
+      return { state, text: q.lateRegUntil != null ? `Running · late entry until ${formatDenverTime(q.lateRegUntil)}` : 'Running · late entry open' };
+    case 'running':
+      return { state, text: 'Running · late entry closed' };
+    case 'closed':
+      return { state, text: 'Sign-up closed' };
+    case 'finished':
+      return { state, text: q.cancelled ? 'Cancelled' : 'Finished' };
+    default:
+      return { state, text: q.scheduledAt != null ? `Starts ${formatDenverWhen(q.scheduledAt)}` : 'Start time to be announced' };
+  }
+}
+
+/**
+ * The viewer's unused credits of this qualifier's tier: the list item's
+ * `creditsHeld` (a newer server), else the 'qualifications' answer for the
+ * tier ({qualified, credits} | false); null = unknown (not loaded yet).
+ */
+export function qualifierCreditsHeld(q, qualForType) {
+  if (q && Number.isInteger(q.creditsHeld) && q.creditsHeld >= 0) return q.creditsHeld;
+  if (qualForType === false) return 0;
+  if (qualForType && typeof qualForType === 'object') {
+    const n = Number(qualForType.credits);
+    if (Number.isInteger(n) && n >= 0) return n;
+    return qualForType.qualified ? null : 0;
+  }
+  return null;
+}
+
+/** He holds a credit of this tier (what the server's entry gate checks). */
+export function qualifierIsQualified(q, qualForType) {
+  if (q && Number.isInteger(q.creditsHeld) && q.creditsHeld >= 0) return q.creditsHeld > 0;
+  return !!(qualForType && qualForType.qualified);
+}
+
+/**
+ * How many more times he can re-enter (each re-entry uses one credit): the
+ * server's `reEntriesLeft`, never more than the credits he holds; null =
+ * unknown (then the 'qualifications' answer decides, as before).
+ */
+export function qualifierReentriesAvailable(q, credits) {
+  const left = q && Number.isInteger(q.reEntriesLeft) && q.reEntriesLeft >= 0 ? q.reEntriesLeft : null;
+  const held = Number.isInteger(credits) && credits >= 0 ? credits : null;
+  if (left == null) return held;
+  if (held == null) return left;
+  return Math.min(left, held);
+}
+
+/**
+ * The home card's "you" line (null when there is nothing to add to the
+ * action area): credits held, registered, out + re-entries available.
+ */
+export function qualifierHomeYouText(q, { state, registered, credits, reentries, qualified } = {}) {
+  if (!q || state === 'finished') return null;
+  const unit = q.type === 'monthly' ? 'monthly' : (q.type === 'weekly' ? 'weekly' : 'qualifier');
+  const creditsText = (n) => `${n} ${unit} credit${n === 1 ? '' : 's'}`;
+  if (registered && q.eliminated === true) {
+    if (state === 'late') {
+      const n = Number.isInteger(reentries) ? reentries : null;
+      if (n !== null && n > 0) return `You're out · re-enter with a credit (${n} left)`;
+      if (n === null && qualified) return "You're out · re-enter with a credit";
+      return "You're out · no credits left to re-enter";
+    }
+    return "You're out · late entry is closed";
+  }
+  const held = Number.isInteger(credits) && credits >= 0 ? credits : null;
+  if (registered) return held !== null ? `You're entered · ${creditsText(held)} left` : "You're entered";
+  if (held !== null && held > 0) return `You hold ${creditsText(held)} · each entry uses 1`;
+  return null;
 }
 
 /**

@@ -10,7 +10,10 @@ import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '..
 import {
   normalizeQualifierList, qualifierSignupState, qualifierStatusCounts,
   qualifierResultText, seatsForTopText,
+  featuredQualifier, qualifierHomeStatus, formatDenverWhen,
+  qualifierCreditsHeld, qualifierIsQualified, qualifierReentriesAvailable, qualifierHomeYouText,
 } from '../../utils/qualifierList';
+import { useProgressStore } from '../../store/progressStore';
 import QualifierDashboard from './QualifierDashboard';
 
 // A first entry waits on the master API's credit consume (awaited server-side),
@@ -63,7 +66,17 @@ const box = (extra = {}) => ({
   padding: '10px 14px', borderRadius: 8, fontSize: '0.82rem', textAlign: 'center', lineHeight: 1.45, ...extra,
 });
 
-export default function QualifierLobby({ onSpectate }) {
+export const QUALIFIER_WAITING_FOR_PLAYERS_TEXT = 'You have a seat at a new table. The first hand is dealt as soon as another player joins it.';
+
+/**
+ * variant 'home' (owner 2026-10-22: "the qualifier should be at the top of the
+ * home page at .online") — ONE card, the next / current qualifier
+ * (`featuredQualifier`), at the top of the lobby's home tab; nothing at all
+ * while there is none. Same data, actions and registration flow as the Play
+ * tab's full list (only one of the two is mounted at a time).
+ */
+export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
+  const home = variant === 'home';
   const playerName = useGameStore((s) => s.playerName);
   const userId = useGameStore((s) => s.userId);
   const owner = userId != null ? String(userId) : null;
@@ -154,9 +167,17 @@ export default function QualifierLobby({ onSpectate }) {
     };
     const regResultHandler = (data) => {
       setPendingReg(null);
+      // 2026-10-22 — every entry and re-entry uses one credit (a refusal
+      // refunds it): read his credits again after every answer, so Register /
+      // Re-enter and "N left" follow what he holds now.
+      try { socket.emit('getQualifications'); } catch { /* next mount */ }
       if (data?.success) {
         setRegMsg(null);
         if (data.qualifierId) noteLocalReg(data.qualifierId, !data.unregistered);
+        // A newer server may seat a late entry / re-entry alone at a new table.
+        if (data.waitingForPlayers === true) {
+          try { useProgressStore.getState().addNotification({ type: 'mission', title: 'Qualifier seat', message: QUALIFIER_WAITING_FOR_PLAYERS_TEXT }); } catch { /* best-effort */ }
+        }
         // Gameplay audit F142 (2026-10-21) — a RE-ENTRY seated him at once
         // (a fresh stack, blinds running): take him to that table. A newer
         // server also sends qualifierTournamentStarted (App does the same;
@@ -311,8 +332,11 @@ export default function QualifierLobby({ onSpectate }) {
 
   const isRegistered = useCallback((q) => (q.registered !== null ? q.registered : localRegs.has(q.qualifierId)), [localRegs]);
   const counts = useMemo(() => qualifierStatusCounts(list, now), [list, now]);
+  const featured = useMemo(() => (home ? featuredQualifier(list, now) : null), [home, list, now]);
 
   if (list.length === 0) {
+    // The home page shows nothing until there is a qualifier to show.
+    if (home) return null;
     if (!listLoaded) {
       return (
         <div style={{ color: '#8298c4', fontSize: '0.85rem', padding: '12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -327,7 +351,9 @@ export default function QualifierLobby({ onSpectate }) {
   const renderAction = (q, compact = false) => {
     const state = qualifierSignupState(q, now);
     const qs = qualStatus?.[q.type];
-    const qualified = !!(qs && qs.qualified);
+    // 2026-10-22 — a newer server's per-viewer `creditsHeld` first (fresh with
+    // every list), else the 'qualifications' answer, as before.
+    const qualified = qualifierIsQualified(q, qs);
     const mine = isRegistered(q);
     const pend = pendingReg && pendingReg.id === q.qualifierId ? pendingReg.kind : null;
     const pad = compact ? '10px 14px' : '12px 18px';
@@ -356,15 +382,19 @@ export default function QualifierLobby({ onSpectate }) {
       // registration (a credit + re-entries left), else a plain "out" line —
       // never "Go to my table", which the server refuses for a busted entry.
       // `eliminated` absent (an older server): as before.
+      // 2026-10-22 (owner: "re entries if they have more credits") — the
+      // re-entries he can make: the server's count, never more than the
+      // credits he holds (each re-entry uses one).
+      const reEntriesLeft = qualifierReentriesAvailable(q, qualLoaded ? qualifierCreditsHeld(q, qs) : null);
       const acts = qualifierRunningActions({
-        state, mine, eliminated: q.eliminated, qualified, reEntriesLeft: q.reEntriesLeft, tournamentId: q.tournamentId,
+        state, mine, eliminated: q.eliminated, qualified, reEntriesLeft, tournamentId: q.tournamentId,
       });
       const canLate = acts.lateRegister;
       return (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {acts.reenter && (
             <button className="qualifier-reenter" onClick={(e) => { e.stopPropagation(); handleRegister(q); }} disabled={!!pend} style={{ flex: 1, minWidth: 140, padding: pad, borderRadius: 8, fontWeight: 800, fontSize: '0.88rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: pend ? 'default' : 'pointer', opacity: pend ? 0.7 : 1 }}>
-              {pend === 'register' ? 'Registering…' : 'Re-enter'}
+              {pend === 'register' ? 'Registering…' : 'Re-enter (uses 1 credit)'}
             </button>
           )}
           {acts.outLine && (
@@ -374,7 +404,7 @@ export default function QualifierLobby({ onSpectate }) {
           )}
           {canLate && (
             <button onClick={(e) => { e.stopPropagation(); handleRegister(q); }} disabled={!!pend} style={{ flex: 1, minWidth: 140, padding: pad, borderRadius: 8, fontWeight: 700, fontSize: '0.88rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: pend ? 'default' : 'pointer', opacity: pend ? 0.7 : 1 }}>
-              {pend === 'register' ? 'Registering…' : 'Late Register'}
+              {pend === 'register' ? 'Registering…' : 'Late Register (uses 1 credit)'}
             </button>
           )}
           {acts.goToTable && (
@@ -434,28 +464,119 @@ export default function QualifierLobby({ onSpectate }) {
     return <div style={box({ background: 'rgba(130,152,196,0.08)', border: '1px solid rgba(130,152,196,0.2)', color: '#9fb4d8' })}>Signup times have not been announced yet</div>;
   };
 
+  // Registration failure, verbatim. Fixed + above the QualifierDashboard
+  // modal (zIndex 1000). Blue + gold, not red.
+  const regMsgNode = regMsg ? (
+    <div
+      className="qualifier-register-msg"
+      role="alert"
+      onClick={() => setRegMsg(null)}
+      style={{
+        position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)',
+        zIndex: 3100, width: 'min(92vw, 360px)', boxSizing: 'border-box',
+        padding: '10px 16px', borderRadius: 10, cursor: 'pointer',
+        background: 'linear-gradient(135deg, rgba(12,28,72,0.97), rgba(8,18,48,0.97))',
+        border: '1px solid rgba(255,210,74,0.55)', color: '#ffd24a',
+        fontSize: 13, fontWeight: 600, lineHeight: 1.4, textAlign: 'center',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+      }}
+    >
+      {regMsg} <span style={{ opacity: 0.7, fontWeight: 400, marginLeft: 6 }}>(tap to dismiss)</span>
+    </div>
+  ) : null;
+
+  // Dashboard modal
+  const dashboardNode = (() => {
+    if (!openDashboard) return null;
+    const q = list.find((x) => x.qualifierId === openDashboard);
+    if (!q) return null;
+    const qs = qualStatus?.[q.type];
+    return (
+      <QualifierDashboard
+        qualifier={q}
+        now={now}
+        isRegistered={isRegistered(q)}
+        isQualified={qualifierIsQualified(q, qs)}
+        action={renderAction(q, true)}
+        onClose={() => setOpenDashboard(null)}
+      />
+    );
+  })();
+
+  if (home) {
+    // 2026-10-22 (owner) — the home page's qualifier card: one event, its
+    // start in Denver time, its seat package, where it stands (late entry
+    // until the server's lateRegUntil) and his own credits / re-entries.
+    const q = featured;
+    if (!q) return null;
+    const state = qualifierSignupState(q, now);
+    const live = state === 'running' || state === 'late';
+    const color = TYPE_COLORS[q.type] || '#ffd24a';
+    const status = qualifierHomeStatus(q, now);
+    const seatsLine = seatsForTopText(q.seatsForTop, q.seatPackage);
+    const qs = qualStatus?.[q.type];
+    const credits = qualLoaded ? qualifierCreditsHeld(q, qs) : (Number.isInteger(q.creditsHeld) ? q.creditsHeld : null);
+    const youText = qualLoaded ? qualifierHomeYouText(q, {
+      state, registered: isRegistered(q), credits,
+      reentries: qualifierReentriesAvailable(q, credits), qualified: qualifierIsQualified(q, qs),
+    }) : null;
+    const eyebrow = live ? 'Qualifier live now' : (state === 'finished' ? 'Latest qualifier' : 'Next online qualifier');
+    return (
+      <>
+        {regMsgNode}
+        <div className="home-qualifier-card" onClick={() => setOpenDashboard(q.qualifierId)} style={{
+          background: 'linear-gradient(135deg, rgba(12,28,72,0.96), rgba(20,30,70,0.78))',
+          border: `1px solid ${live ? 'rgba(106,186,255,0.6)' : 'rgba(255,210,74,0.45)'}`,
+          borderRadius: 14, padding: '14px', marginBottom: 14, cursor: 'pointer', minWidth: 0,
+          boxSizing: 'border-box', boxShadow: '0 6px 22px rgba(0,0,0,0.35)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: '0.66rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: live ? '#6abaff' : '#ffd24a' }}>{eyebrow}</span>
+            <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: `${color}22`, color, border: `1px solid ${color}55`, textTransform: 'uppercase', flexShrink: 0 }}>{q.typeLabel}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>{TYPE_ICONS[q.type] || '🏆'}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: '1.02rem', color: '#fff', overflowWrap: 'anywhere' }}>{q.name}</div>
+              <div style={{ color: '#cfe0ff', fontSize: '0.8rem', marginTop: 2 }}>
+                {q.scheduledAt != null ? formatDenverWhen(q.scheduledAt) : 'Start time not announced yet'}
+              </div>
+            </div>
+            {!live && state !== 'finished' && q.scheduledAt != null && q.scheduledAt > now && (
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ color, fontWeight: 800, fontSize: '0.9rem' }}>{formatCountdown(q.scheduledAt, now)}</div>
+                <div style={{ color: '#8298c4', fontSize: '0.66rem' }}>until start</div>
+              </div>
+            )}
+          </div>
+          <div className="home-qualifier-status" style={{ marginTop: 8, fontSize: '0.82rem', fontWeight: 700, color: live ? '#6abaff' : (state === 'finished' || state === 'closed' ? '#9fb4d8' : '#ffd24a') }}>
+            ⏱ {status.text}
+          </div>
+          {seatsLine && (
+            <div style={{ marginTop: 4, fontSize: '0.78rem', color: '#ffd24a', lineHeight: 1.4 }}>🎟 {seatsLine}</div>
+          )}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4, fontSize: '0.76rem', color: '#9fb4d8' }}>
+            <span>👥 <strong style={{ color: '#fff' }}>{q.players}{q.maxPlayers ? `/${q.maxPlayers}` : ''}</strong> registered</span>
+            {youText && <span className="home-qualifier-you" style={{ color: '#cfe0ff', fontWeight: 600 }}>{youText}</span>}
+          </div>
+          <div style={{ marginTop: 10 }}>{renderAction(q, true)}</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <span style={{ color: '#8298c4', fontSize: '0.7rem' }}>Tap for details</span>
+            {onSeeAll && (
+              <button className="home-qualifier-all" onClick={(e) => { e.stopPropagation(); onSeeAll(); }} style={{ background: 'transparent', border: 'none', color: '#6abaff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', padding: '6px 0', minHeight: 32 }}>
+                All qualifiers →
+              </button>
+            )}
+          </div>
+        </div>
+        {dashboardNode}
+      </>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Registration failure, verbatim. Fixed + above the QualifierDashboard
-          modal (zIndex 1000). Blue + gold, not red. */}
-      {regMsg && (
-        <div
-          className="qualifier-register-msg"
-          role="alert"
-          onClick={() => setRegMsg(null)}
-          style={{
-            position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)',
-            zIndex: 3100, width: 'min(92vw, 360px)', boxSizing: 'border-box',
-            padding: '10px 16px', borderRadius: 10, cursor: 'pointer',
-            background: 'linear-gradient(135deg, rgba(12,28,72,0.97), rgba(8,18,48,0.97))',
-            border: '1px solid rgba(255,210,74,0.55)', color: '#ffd24a',
-            fontSize: 13, fontWeight: 600, lineHeight: 1.4, textAlign: 'center',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-          }}
-        >
-          {regMsg} <span style={{ opacity: 0.7, fontWeight: 400, marginLeft: 6 }}>(tap to dismiss)</span>
-        </div>
-      )}
+      {regMsgNode}
 
       <div className="qualifier-status-counts" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.75rem', color: '#9fb4d8' }}>
         <span>{counts.upcoming} upcoming</span>
@@ -557,22 +678,7 @@ export default function QualifierLobby({ onSpectate }) {
         );
       })}
 
-      {/* Dashboard modal */}
-      {openDashboard && (() => {
-        const q = list.find((x) => x.qualifierId === openDashboard);
-        if (!q) return null;
-        const qs = qualStatus?.[q.type];
-        return (
-          <QualifierDashboard
-            qualifier={q}
-            now={now}
-            isRegistered={isRegistered(q)}
-            isQualified={!!(qs && qs.qualified)}
-            action={renderAction(q, true)}
-            onClose={() => setOpenDashboard(null)}
-          />
-        );
-      })()}
+      {dashboardNode}
     </div>
   );
 }
