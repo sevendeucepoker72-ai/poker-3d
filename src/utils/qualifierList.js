@@ -369,6 +369,20 @@ export function qualifierReentriesAvailable(q, credits) {
 }
 
 /**
+ * The server's re-entry CAP, not his credits, is what stops him: the per-event
+ * cap (`maxReEntries`) is used up (`reEntries`), or the server's
+ * `reEntriesLeft` is 0 while he still holds a credit of the tier (the live
+ * server's reEntriesLeft is a cap of 3 minus re-entries made; a newer one's is
+ * min(cap left, credits held)). Review fix-up 2026-10-22: the home line said
+ * "no credits left" to a player holding credits.
+ */
+export function qualifierReentryCapReached(q, credits) {
+  if (!q) return false;
+  if (Number.isInteger(q.maxReEntries) && Number.isInteger(q.reEntries) && q.reEntries >= q.maxReEntries) return true;
+  return q.reEntriesLeft === 0 && Number.isInteger(credits) && credits > 0;
+}
+
+/**
  * The home card's "you" line (null when there is nothing to add to the
  * action area): credits held, registered, out + re-entries available.
  */
@@ -381,6 +395,7 @@ export function qualifierHomeYouText(q, { state, registered, credits, reentries,
       const n = Number.isInteger(reentries) ? reentries : null;
       if (n !== null && n > 0) return `You're out · re-enter with a credit (${n} left)`;
       if (n === null && qualified) return "You're out · re-enter with a credit";
+      if (qualifierReentryCapReached(q, credits)) return "You're out · re-entry limit reached";
       return "You're out · no credits left to re-enter";
     }
     return "You're out · late entry is closed";
@@ -389,6 +404,59 @@ export function qualifierHomeYouText(q, { state, registered, credits, reentries,
   if (registered) return held !== null ? `You're entered · ${creditsText(held)} left` : "You're entered";
   if (held !== null && held > 0) return `You hold ${creditsText(held)} · each entry uses 1`;
   return null;
+}
+
+// ── When to read his credits ('getQualifications') again ────────────────────
+// Review fix-up 2026-10-22. A credit comes BACK after poker-server answers:
+// a withdraw is answered before its refund lands, a cancellation /
+// server-restart notice is sent before the release, a no-show release happens
+// while he is offline. Read too early, the answer is the post-entry count (0
+// for a one-credit player) and Register / Late Register stay hidden. So the
+// lobby asks again QUALIFICATIONS_RECHECK_MS after such an event, on a
+// signed-in socket. And a lobby mount reuses an answer under
+// QUALIFICATIONS_REUSE_MS old (the home tab mounts on every visit; each ask can
+// make poker-server download the whole credit list), unless a re-read is due.
+
+/** How long after a withdraw / cancellation / release the credits are read again. */
+export const QUALIFICATIONS_RECHECK_MS = 2500;
+/** A mount reuses a 'qualifications' answer younger than this (same account). */
+export const QUALIFICATIONS_REUSE_MS = 60 * 1000;
+
+/**
+ * The qualifiers he WAS registered for (server `registered: true`) that the
+ * new list says he no longer is (`registered: false` — withdrawn on another
+ * device, released at the start, restarted): a credit may be on its way back.
+ * `prevIds` = the ids registered in the previous list (a Set). An event no
+ * longer listed, or one whose flag is unknown (null), is not a drop.
+ * Returns { registeredIds, dropped }.
+ */
+export function qualifierRegistrationsDropped(prevIds, list) {
+  const registeredIds = new Set();
+  const nowFalse = new Set();
+  for (const q of Array.isArray(list) ? list : []) {
+    if (!q || !q.qualifierId) continue;
+    if (q.registered === true) registeredIds.add(q.qualifierId);
+    else if (q.registered === false) nowFalse.add(q.qualifierId);
+  }
+  let dropped = false;
+  for (const id of prevIds instanceof Set ? prevIds : []) {
+    if (nowFalse.has(id)) { dropped = true; break; }
+  }
+  return { registeredIds, dropped };
+}
+
+/**
+ * What a lobby mount does about his credits:
+ *   'wait'  — a re-read is already scheduled (its answer reaches this mount);
+ *   'reuse' — the cached answer is this account's and under reuseMs old;
+ *   'ask'   — ask now.
+ * cache = { owner, data, at } | null.
+ */
+export function qualificationsMountPlan({ cache, owner, now = Date.now(), recheckPending = false, reuseMs = QUALIFICATIONS_REUSE_MS } = {}) {
+  if (recheckPending) return 'wait';
+  if (cache && owner != null && cache.owner === owner && cache.data && typeof cache.data === 'object'
+      && Number.isFinite(cache.at) && now >= cache.at && now - cache.at < reuseMs) return 'reuse';
+  return 'ask';
 }
 
 /**

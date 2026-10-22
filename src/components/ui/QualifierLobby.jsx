@@ -10,8 +10,9 @@ import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '..
 import {
   normalizeQualifierList, qualifierSignupState, qualifierStatusCounts,
   qualifierResultText, seatsForTopText,
-  featuredQualifier, qualifierHomeStatus, formatDenverWhen,
+  featuredQualifier, qualifierHomeStatus, formatDenverWhen, formatDenverTime,
   qualifierCreditsHeld, qualifierIsQualified, qualifierReentriesAvailable, qualifierHomeYouText,
+  QUALIFICATIONS_RECHECK_MS, qualificationsMountPlan, qualifierRegistrationsDropped,
 } from '../../utils/qualifierList';
 import { useProgressStore } from '../../store/progressStore';
 import QualifierDashboard from './QualifierDashboard';
@@ -52,11 +53,55 @@ function formatCountdown(target, now = Date.now()) {
   return `${Math.max(1, m)}m`;
 }
 
+// Review fix-up 2026-10-22 — every qualifier time on the Denver clock with its
+// zone ("Sun, Oct 25 · 2:00 PM MT"), as the home card says it; it was the
+// browser's zone with no label, so the two surfaces disagreed away from Denver.
 function formatWhen(t) {
-  if (t == null) return '';
-  try {
-    return new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  } catch { return new Date(t).toISOString(); }
+  return formatDenverWhen(t);
+}
+
+// Review fix-up 2026-10-22 — his credits ('qualifications'), shared by every
+// mount of this lobby (the home card / the Play tab; one at a time): the last
+// answer, and a re-read that waits for a refund to land. Module state, so a
+// re-read one mount scheduled outlives it and its answer reaches the next.
+let qualCache = null;              // { owner, data, at } — reused by a mount (QUALIFICATIONS_REUSE_MS)
+let qualRecheckTimer = null;       // a scheduled re-read (QUALIFICATIONS_RECHECK_MS)
+let qualRecheckOnSignIn = false;   // due while the socket was down / not signed in: ask after the next sign-in
+let qualSocketSignedIn = false;    // the socket signed in since it last connected (kept by the mounted lobby)
+let qualListAfterAnswer = false;   // ask for the list once the answer is in (its creditsHeld reads the fresh cache)
+
+/** Ask for his credits now; a mount meanwhile asks too (never reuses the old count). */
+function askQualificationsNow({ listAfter = false } = {}) {
+  const socket = getSocket();
+  if (!socket) return;
+  qualCache = null;
+  if (listAfter) qualListAfterAnswer = true;
+  try { socket.emit('getQualifications'); } catch { /* the next mount asks */ }
+}
+
+/**
+ * A credit may be on its way back (a withdraw answered before its refund, a
+ * cancellation / restart notice sent before the release, a released entry):
+ * read his credits again QUALIFICATIONS_RECHECK_MS from now, on a signed-in
+ * socket (an unsigned socket is answered "not qualified"; then the next
+ * sign-in asks). One at a time. `alsoAfterSignIn` (a game-server restart):
+ * ask again after the next sign-in as well, whatever the timer got.
+ */
+function scheduleQualificationsRecheck({ alsoAfterSignIn = false } = {}) {
+  qualCache = null;
+  if (alsoAfterSignIn) qualRecheckOnSignIn = true;
+  if (qualRecheckTimer) return;
+  qualRecheckTimer = setTimeout(() => {
+    qualRecheckTimer = null;
+    const socket = getSocket();
+    if (!socket || !socket.connected || !qualSocketSignedIn) { qualRecheckOnSignIn = true; return; }
+    askQualificationsNow({ listAfter: true });
+  }, QUALIFICATIONS_RECHECK_MS);
+}
+
+function reusableQualifications(owner) {
+  return qualificationsMountPlan({ cache: qualCache, owner, now: Date.now(), recheckPending: !!qualRecheckTimer }) === 'reuse'
+    ? qualCache.data : null;
 }
 
 const TYPE_ICONS = { weekly: '🗓️', monthly: '🏆' };
@@ -83,8 +128,9 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
 
   const [list, setList] = useState([]);
   const [listLoaded, setListLoaded] = useState(false);
-  const [qualStatus, setQualStatus] = useState({ weekly: false, monthly: false });
-  const [qualLoaded, setQualLoaded] = useState(false);
+  // A recent answer for this account (another mount's) is shown at once.
+  const [qualStatus, setQualStatus] = useState(() => reusableQualifications(owner) || { weekly: false, monthly: false });
+  const [qualLoaded, setQualLoaded] = useState(() => reusableQualifications(owner) != null);
   const [localRegs, setLocalRegs] = useState(() => readLocalRegs(owner));
   const [openDashboard, setOpenDashboard] = useState(null); // qualifierId or null
   const [now, setNow] = useState(() => Date.now());
@@ -126,7 +172,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       if (res?.success) {
         setRedeemMsg({ ok: true, text: `Code redeemed — ${res.tier || 'weekly'} qualifier credit added!` });
         setRedeemCode('');
-        socket.emit('getQualifications'); // refresh qualification status
+        askQualificationsNow({ listAfter: true }); // refresh qualification status
       } else {
         setRedeemMsg({ ok: false, text: res?.error || 'Could not redeem code' });
       }
@@ -141,14 +187,41 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
     const socket = getSocket();
     if (!socket) { setQualLoaded(true); return undefined; }
     // AUTH-9 — identity is the signed-in account (server side): no phone, no name.
-    socket.emit('getQualifications');
+    // Review fix-up 2026-10-22 — the lobby renders signed in; a reconnect signs
+    // in again ('loginResult'). His credits: a recent answer of this account is
+    // reused, a scheduled re-read is waited for, else asked now (after the
+    // sign-in when the socket is down: an unsigned ask is answered "not qualified").
+    qualSocketSignedIn = socket.connected;
+    const plan = qualificationsMountPlan({ cache: qualCache, owner, now: Date.now(), recheckPending: !!qualRecheckTimer });
+    if (plan === 'reuse') { setQualStatus(qualCache.data); setQualLoaded(true); }
+    else if (plan === 'ask') {
+      if (socket.connected) { qualRecheckOnSignIn = false; askQualificationsNow(); }
+      else qualRecheckOnSignIn = true;
+    }
     socket.emit('getQualifierTournaments');
     const loadingTimeout = setTimeout(() => { setQualLoaded(true); setListLoaded(true); }, 8000);
 
     const qualHandler = (data) => {
-      setQualStatus(data && typeof data === 'object' ? data : { weekly: false, monthly: false });
+      const answer = data && typeof data === 'object' ? data : { weekly: false, monthly: false };
+      if (qualSocketSignedIn && owner != null) qualCache = { owner, data: answer, at: Date.now() };
+      setQualStatus(answer);
       setQualLoaded(true);
+      if (qualListAfterAnswer) {
+        qualListAfterAnswer = false;
+        try { socket.emit('getQualifierTournaments'); } catch { /* next poll */ }
+      }
     };
+    // A (re)connected socket signs in again; a re-read that came due while it
+    // could not ask runs now.
+    const signInHandler = (res) => {
+      if (!res || res.success !== true) return;
+      qualSocketSignedIn = true;
+      if (qualRecheckOnSignIn && !qualRecheckTimer) { qualRecheckOnSignIn = false; askQualificationsNow({ listAfter: true }); }
+    };
+    const disconnectHandler = () => { qualSocketSignedIn = false; };
+    // A qualifier he was registered for was cancelled / released / the game
+    // server restarted: the notice comes before the refund lands.
+    const cancelHandler = (d) => { scheduleQualificationsRecheck({ alsoAfterSignIn: d?.reason === 'server_restart' }); };
     const updateHandler = (data) => {
       // An older server's delta: status / count only (its player names are not used).
       if (!data?.qualifierId) return;
@@ -169,8 +242,12 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       setPendingReg(null);
       // 2026-10-22 — every entry and re-entry uses one credit (a refusal
       // refunds it): read his credits again after every answer, so Register /
-      // Re-enter and "N left" follow what he holds now.
-      try { socket.emit('getQualifications'); } catch { /* next mount */ }
+      // Re-enter and "N left" follow what he holds now. Review fix-up: an entry
+      // is consumed (and a refused one refunded) BEFORE its answer, so ask at
+      // once; a WITHDRAW is answered before its refund lands, so ask once it
+      // has had time to (asked at once, he read 0 and Register stayed hidden).
+      if (data?.success && data.unregistered) scheduleQualificationsRecheck();
+      else askQualificationsNow({ listAfter: true });
       if (data?.success) {
         setRegMsg(null);
         if (data.qualifierId) noteLocalReg(data.qualifierId, !data.unregistered);
@@ -202,10 +279,17 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
     let currentDelay = BASE_MS;
     let lastListAt = Date.now();
     let pollTimer = null;
+    // Review fix-up 2026-10-22 — a registration the server dropped (released
+    // at the start, withdrawn on another device, a restart): re-read his credits.
+    let prevRegistered = new Set();
     const listHandler = (raw) => {
       currentDelay = BASE_MS;
       lastListAt = Date.now();
-      setList(normalizeQualifierList(raw));
+      const next = normalizeQualifierList(raw);
+      const { registeredIds, dropped } = qualifierRegistrationsDropped(prevRegistered, next);
+      prevRegistered = registeredIds;
+      if (dropped) scheduleQualificationsRecheck();
+      setList(next);
       setListLoaded(true);
     };
     const scheduleNextPoll = () => {
@@ -222,16 +306,23 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
     socket.on('qualifierTournamentUpdate', updateHandler);
     socket.on('qualifierRegistrationResult', regResultHandler);
     socket.on('qualifierTournamentStarted', startHandler);
+    socket.on('loginResult', signInHandler);
+    socket.on('disconnect', disconnectHandler);
+    socket.on('qualifierCancelled', cancelHandler);
     return () => {
       socket.off('qualifications', qualHandler);
       socket.off('qualifierTournamentList', listHandler);
       socket.off('qualifierTournamentUpdate', updateHandler);
       socket.off('qualifierRegistrationResult', regResultHandler);
       socket.off('qualifierTournamentStarted', startHandler);
+      socket.off('loginResult', signInHandler);
+      socket.off('disconnect', disconnectHandler);
+      socket.off('qualifierCancelled', cancelHandler);
       if (pollTimer) clearTimeout(pollTimer);
       clearTimeout(loadingTimeout);
+      // (a scheduled re-read of his credits is module state: it outlives this mount)
     };
-  }, [noteLocalReg]);
+  }, [noteLocalReg, owner]);
 
   // While a Register / Withdraw is in flight: some refusals arrive on the
   // shared 'error' event instead of qualifierRegistrationResult, so listen for
@@ -446,8 +537,9 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       }
       return (
         <div style={box({ background: 'rgba(12,28,72,0.6)', border: '1px solid rgba(255,210,74,0.25)', color: '#cfe0ff' })}>
+          {/* Review fix-up 2026-10-22 — "(see above)" only where HOW TO QUALIFY is above (the Play tab). */}
           {q.type === 'monthly'
-            ? 'Not yet qualified — qualify via a Weekly, league standings, or attendance (see above)'
+            ? `Not yet qualified — qualify via a Weekly, league standings, or attendance${home ? '' : ' (see above)'}`
             : 'Not yet qualified — finish top 5 in any live game to earn entry'}
         </div>
       );
@@ -659,7 +751,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
                 <span style={{ color: '#ffd24a' }}>⏱ Signup closes in {formatCountdown(q.signupClosesAt, now)}</span>
               )}
               {state === 'late' && q.lateRegUntil != null && (
-                <span style={{ color: '#6abaff' }}>⏱ Late registration until {formatWhen(q.lateRegUntil)}</span>
+                <span style={{ color: '#6abaff' }}>⏱ Late registration until {formatDenverTime(q.lateRegUntil)}</span>
               )}
             </div>
 

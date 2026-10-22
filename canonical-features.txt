@@ -1178,3 +1178,11 @@ home-qualifier-card
 late entry until
 re-enter with a credit
 uses 1 credit
+
+# 2026-10-22 review fix-up (a499a45): his credits are read again once a
+# refund has landed (a withdraw answered before its refund, a cancellation /
+# restart / no-show release notice), so Register / Late Register come back;
+# a home-tab mount reuses an answer under a minute old; the re-entry CAP is
+# named as such ("re-entry limit reached", not "no credits left"); every
+# qualifier time is on the Denver clock with "MT" (lobby, home card, details).
+re-entry limit reached

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 import { notify } from '../../hooks/usePushNotifications';
-import { qualifierSignupState, qualifierResultText, seatsForTopText, ordinal } from '../../utils/qualifierList';
+import { qualifierSignupState, qualifierResultText, seatsForTopText, ordinal, formatDenverWhen } from '../../utils/qualifierList';
 
 function formatCountdown(target, now) {
   if (target == null) return '';
@@ -16,11 +16,11 @@ function formatCountdown(target, now) {
   return `${m}m ${s}s`;
 }
 
+// Review fix-up 2026-10-22 — on the Denver clock with its zone ("Sun, Oct 25 ·
+// 2:00 PM MT"), as the home card and the lobby say it (it was the browser's
+// zone with no label).
 function formatWhen(t) {
-  if (t == null) return '';
-  try {
-    return new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  } catch { return new Date(t).toISOString(); }
+  return formatDenverWhen(t);
 }
 
 /**
