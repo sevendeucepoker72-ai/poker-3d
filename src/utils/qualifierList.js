@@ -9,8 +9,9 @@
  *     structure:{ startingStack, levels:[{sb,bb,ante,minutes}] }, seatsForTop }
  * and results carry the asking player's own `place` and `wonSeat`. A newer
  * server adds (2026-10-23, all optional) `tablesOpen` + `dealsAt` (the tables
- * are open early and the cards held until then) and `structure.breaks`
- * {everyLevels, minutes}.
+ * are open early and the cards held until then; only with status 'running')
+ * and `structure.breaks` {everyLevels, minutes} (only while breaks are ON:
+ * an explicit `enabled: false` / `on: false` reads as no breaks).
  *
  * The lobby renders this list ONLY (never a built-in default qualifier, never
  * the admin config store). Every field the server did not send stays unknown:
@@ -66,9 +67,14 @@ function defaultName(type) {
  * 2026-10-23 (owner: "take breaks") — a newer server's additive
  * `structure.breaks` {everyLevels, minutes} (a break after every Nth level);
  * null when absent or not usable. `seconds` is read when `minutes` is not sent.
+ * Review fix-up: breaks can be switched off live on the server (QUALIFIER_BREAKS=0
+ * or POST /api/qualifiers/breaks {on:0}), so the card must not promise them then.
+ * The server sends `structure.breaks` only while breaks are on; an explicit
+ * `enabled: false` (or `on: false`) is read as off as well.
  */
 function normalizeBreaks(raw) {
   if (!raw || typeof raw !== 'object') return null;
+  if (raw.enabled === false || raw.on === false) return null;
   const everyLevels = Number(raw.everyLevels);
   const min = Number(raw.minutes);
   const sec = Number(raw.seconds);
@@ -324,11 +330,16 @@ export function qualifierDealsAt(q) {
 }
 
 /**
- * The tables are open and the cards are held: the server's `tablesOpen`, until
- * `dealsAt` on this device's clock (the list after the deal says false).
+ * The tables are open and the cards are held: the server's `tablesOpen` on a
+ * RUNNING event (the open sets status 'running'), until `dealsAt` on this
+ * device's clock (the list after the deal says false).
+ * Review fix-up: only with status 'running', so every place that reads it (the
+ * home eyebrow, the Play tab's hold line, the status line, "Take your seat")
+ * agrees with qualifierSignupState's 'late' / 'running'. A tablesOpen beside
+ * any other status is ignored and the card follows the status.
  */
 export function qualifierTablesHeld(q, now = Date.now()) {
-  if (!q || q.tablesOpen !== true || q.status === 'finished') return false;
+  if (!q || q.tablesOpen !== true || q.status !== 'running') return false;
   return q.dealsAt == null || now < q.dealsAt;
 }
 
@@ -355,7 +366,8 @@ export function qualifierTablesOpenStatusText(q) {
 /** "5-min break every 5 levels" from a structure's breaks (null without). */
 export function qualifierBreaksText(structure) {
   const b = structure && structure.breaks;
-  if (!b || !Number.isInteger(b.everyLevels) || b.everyLevels < 1 || !(Number(b.minutes) > 0)) return null;
+  if (!b || b.enabled === false || b.on === false) return null;
+  if (!Number.isInteger(b.everyLevels) || b.everyLevels < 1 || !(Number(b.minutes) > 0)) return null;
   return `${b.minutes}-min break every ${b.everyLevels === 1 ? 'level' : `${b.everyLevels} levels`}`;
 }
 
