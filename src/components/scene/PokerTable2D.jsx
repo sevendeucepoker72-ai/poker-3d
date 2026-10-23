@@ -19,6 +19,8 @@ import {
 import { getPlayerTag, COLOR_TAGS } from '../ui/PlayerNotes';
 import { getRankInfo } from '../ui/RankBadge';
 import { getOpponentStats } from '../../utils/opponentTracker';
+// 2026-10-23 (owner: "Turn all off") — no VPIP/PFR seat stats at a qualifier table.
+import { helpToolsOffAt } from '../../utils/qualifierHelpTools';
 import { useAvatar, PlayerAvatar } from '../../hooks/useAvatar';
 // R1 (AUTH-6, contract #3) — a seat name is shown as text and indexed for the
 // avatar initial; a non-string name used to throw for every viewer.
@@ -326,6 +328,7 @@ const SeatPod = memo(function SeatPod({
   bigBlind, heroEmoji, onSitHere, winStreak,
   isTournament, heroAlreadySeated, isPendingMoveTarget,
   onBetSlide, spectatorSits, betSide, backCount, beyondCap, handNumber,
+  hideStats,
 }) {
   const turnStartedAt = useTimerStore(s => s.turnStartedAt);
   const turnTimeout   = useTimerStore(s => s.turnTimeout);
@@ -535,7 +538,8 @@ const SeatPod = memo(function SeatPod({
   const tag    = !isMyPlayer && name ? getPlayerTag(name) : null;
   const tagDef = tag?.color ? COLOR_TAGS.find(t => t.id === tag.color) : null;
 
-  const stats     = !isMyPlayer && name ? getOpponentStats(name) : null;
+  // 2026-10-23 — `hideStats`: a qualifier table (help tools off), no HUD stats.
+  const stats     = !isMyPlayer && name && !hideStats ? getOpponentStats(name) : null;
   const showStats = stats && stats.hands >= 5;
 
   const rankInfo = serverSeat?.rank ? getRankInfo(serverSeat.rank) : null;
@@ -771,6 +775,8 @@ export default function PokerTable2D() {
   const pot            = gameState?.pot ?? 0;
   const bigBlind       = gameState?.bigBlind ?? (gameState?.smallBlind ?? 0) * 2;
   const communityCards = gameState?.communityCards ?? [];
+  // 2026-10-23 (owner: "Turn all off") — a qualifier table: no seat HUD stats.
+  const helpToolsOff = helpToolsOffAt(gameState);
 
   // Pending-seat-move state. When the server ACKs a `moveSeat` request it
   // emits `moveSeatPending { pendingSeat }`; on execution at the next
@@ -1305,6 +1311,7 @@ export default function PokerTable2D() {
             backCount={backCount}
             beyondCap={i >= seatCap}
             handNumber={gameState?.handNumber ?? null}
+            hideStats={helpToolsOff}
           />
         );
       })}

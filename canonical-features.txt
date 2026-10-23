@@ -1220,3 +1220,18 @@ qualifier-be-online-note
 qualifier-tables-open
 Tables are open — take your seat
 Be on americanpubpoker.online by
+
+# 2026-10-23 (owner: "Turn all off") - no help tools at a QUALIFIER table
+# (start + overflow tables, seated or watching; utils/qualifierHelpTools.js).
+# The Options menu says so in place of Training, and does not offer Range
+# Chart, Equity Calc, Range Matrix, Equity Heatmap, Timing Tells, GTO Overlay,
+# GTO Solver or Coach Mode (AI Coach Rail, Table Commentary, Pause & Coach,
+# Post-Hand Review); their overlays are closed and not mounted; the HUD's own
+# aids (training badge, strength bar / tier, Eq + odds line on Call, outs,
+# card hover popup, board texture, pot-odds badge, SPR, post-hand "GTO
+# suggests", VPIP/PFR seat stats) are not drawn; the hand pill keeps only the
+# hand's name. Cash tables unchanged.
+Help tools are off in qualifier tournaments.
+options-help-off-note
+hand-strength-portal hand-strength-portal--plain
+help tools off at this qualifier table

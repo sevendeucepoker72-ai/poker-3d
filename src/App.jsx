@@ -79,6 +79,8 @@ import {
   stampTournamentClockReceipt, blindLevelUpText, tournamentPausedToastText, TOURNAMENT_RESUMED_TOAST,
 } from './utils/tournamentClock';
 import { useTournamentClockStore } from './store/tournamentClockStore';
+// 2026-10-23 (owner: "Turn all off") — a qualifier's tournament id: no help tools at its tables.
+import { noteQualifierTournamentId } from './utils/qualifierHelpTools';
 import { noteMaintenanceMode, noteServerConnected } from './services/serverFlags';
 import { shouldApplyRemoteSignOut, noteIgnoredRemoteSignOut } from './services/crossTabSignOut';
 import { maybeOfferGuestCarryOver, resetGuestCarryOver } from './services/guestCarryOver';
@@ -1820,6 +1822,8 @@ function App() {
     // Qualifier tournaments start on their own event (QualifierLobby has its
     // own listener — specific handler refs on both sides).
     const handleQualifierTournamentStarted = (data) => {
+      // 2026-10-23 — every table of this tournament is a qualifier table (help tools off).
+      try { noteQualifierTournamentId(data?.tournamentId); } catch { /* best-effort */ }
       try { noteTournamentSeat({ tournamentId: data?.tournamentId, tableId: data?.tableId, name: 'Qualifier Tournament' }); } catch { /* best-effort */ }
       if (data?.tableId) { try { clearTableLeft(data.tableId); } catch { /* ignore */ } }
       // R2 (S1) — a LATE entrant was seated in a qualifier already running

@@ -60,6 +60,8 @@ import { TournamentLeaveDialog } from '../ui/TournamentSeatNotice';
 import { TournamentClockStrip, TournamentHeldBanner } from './TournamentClockStrip';
 import { tableTournamentClock, formatSecondsClock } from '../../utils/tournamentClock';
 import { useTournamentClockStore } from '../../store/tournamentClockStore';
+// 2026-10-23 (owner: "Turn all off") — no help tools at a QUALIFIER table.
+import { helpToolsOffAt, QUALIFIER_HELP_TOOLS_OFF_TEXT } from '../../utils/qualifierHelpTools';
 // Gameplay audit 2026-10-21 (C3) — multi-table scope of the seat controls,
 // per-table Sit Out, replies for another table, the Back button, the Dealer's
 // Choice label.
@@ -743,6 +745,33 @@ export default function GameHUD() {
   const tournamentSeat = useTournamentSeatStore((s) => s.seat);
   const onTournamentSeat = isTournamentSeatView(gameState, yourSeat, tournamentSeat);
   const [tournamentLeaveVia, setTournamentLeaveVia] = useState(null);
+
+  // 2026-10-23 (owner: "Turn all off") — the table on screen is a QUALIFIER
+  // table (start or overflow, seated or watching): no help tool is offered or
+  // drawn here (utils/qualifierHelpTools.js). Every one that is open when the
+  // player lands on such a table (moved by a rebalance, a tab switch, the
+  // qualifier start) is closed. Cash tables are unchanged.
+  const helpToolsOff = helpToolsOffAt(gameState);
+  const helpToolsOffRef = useRef(helpToolsOff);
+  useEffect(() => {
+    helpToolsOffRef.current = helpToolsOff;
+    if (!helpToolsOff) return;
+    setShowRangeChart(false);
+    setShowEquityCalc(false);
+    setShowPostHandCoach(false);
+    setGtoVisible(false);
+    setShowTimingTells(false);
+    setShowCommentary(false);
+    setShowCoachingRail(false);
+    setShowRangeViz(false);
+    setShowPauseCoach(false);
+    setShowGTOSolver(false);
+    setShowHeatmap(false);
+    setOpponentStats(null);
+    setToolbarGroups((g) => (g.coach ? { ...g, coach: false } : g));
+    // eslint-disable-next-line no-console
+    console.info('[GameHUD] help tools off at this qualifier table');
+  }, [helpToolsOff]);
 
   // Persist sit-out preference across a refresh or reconnect. Without this,
   // an intentionally sat-out player gets re-seated on every reload because
@@ -2242,6 +2271,8 @@ export default function GameHUD() {
   // Opponent stats popup — triggered by 'viewOpponentStats' custom event from table seats
   useEffect(() => {
     const handler = (e) => {
+      // 2026-10-23 — no opponent stats (a HUD) at a qualifier table.
+      if (helpToolsOffRef.current) return;
       const name = e.detail;
       const stats = getOpponentStats(name);
       setOpponentStats(stats && stats.hands > 0 ? { name, ...stats } : { name, hands: 0 });
@@ -3542,7 +3573,8 @@ export default function GameHUD() {
         {/* R2 (TABLEUI-10) — the badge is the training panel's DOCK: it shows
             the hand's equity and opens / minimizes the panel (which has its
             own close = turn training off). It used to turn training off. */}
-        {trainingEnabled && (
+        {/* 2026-10-23 — never at a qualifier table (help tools off). */}
+        {trainingEnabled && !helpToolsOff && (
           <button
             className={`hud-training-badge${trainingPanelOpen ? ' hud-training-badge--open' : ''}`}
             onClick={() => setTrainingPanelOpen(!trainingPanelOpen)}
@@ -3560,8 +3592,8 @@ export default function GameHUD() {
             {anteAmount > 0 && (
               <span className="hud-ante-badge">Ante: {anteAmount.toLocaleString()}</span>
             )}
-            {/* SPR badge (#3) */}
-            {pot > 0 && myChips > 0 && phase !== 'WaitingForPlayers' && (() => {
+            {/* SPR badge (#3) — 2026-10-23: not at a qualifier table (help tools off). */}
+            {!helpToolsOff && pot > 0 && myChips > 0 && phase !== 'WaitingForPlayers' && (() => {
               const spr = myChips / pot;
               // R3 (K1-7) — no red: short SPR is blue (amber is mid).
               const sprColor = spr < 3 ? '#60a5fa' : spr < 8 ? '#f59e0b' : '#4ade80';
@@ -3667,7 +3699,16 @@ export default function GameHUD() {
                     "🪑 Sit Out" button directly above the Options gear
                     already toggles the same `sittingOut` state. Leaving
                     both rendered was confusing redundant UI. */}
-                {/* Training row */}
+                {/* Training row. 2026-10-23 (owner: "Turn all off") — at a
+                    qualifier table every help tool is off: one line says so
+                    in its place (blue / gold), and Training, Range Chart,
+                    Equity Calc, the hand-reading Analysis tools and Coach
+                    Mode are not offered below. */}
+                {helpToolsOff ? (
+                  <div className="options-help-off-note" role="note">
+                    {QUALIFIER_HELP_TOOLS_OFF_TEXT}
+                  </div>
+                ) : (
                 <div className="options-row">
                   <span className="options-label">🎓 Training</span>
                   <button
@@ -3675,6 +3716,7 @@ export default function GameHUD() {
                     onClick={toggleTraining}
                   >{trainingEnabled ? 'ON' : 'OFF'}</button>
                 </div>
+                )}
                 <div className="options-divider" />
                 <div className="options-row">
                   <span className="options-label">Auto Deal</span>
@@ -3732,12 +3774,16 @@ export default function GameHUD() {
                   ✕ Dismiss Bomb Pot Banner
                 </button>
                 )}
+                {!helpToolsOff && (
                 <button className="options-action-btn" onClick={() => { setShowRangeChart(true); setShowOptions(false); }}>
                   📊 Range Chart
                 </button>
+                )}
+                {!helpToolsOff && (
                 <button className="options-action-btn" onClick={() => { setShowEquityCalc(true); setShowOptions(false); }}>
                   🔢 Equity Calc
                 </button>
+                )}
                 <button className="options-action-btn" onClick={() => { setShowAchievements(true); setShowOptions(false); }}>
                   🏆 Achievements
                 </button>
@@ -3947,24 +3993,29 @@ export default function GameHUD() {
                     className={`options-adv-header ${toolbarGroups.analysis ? 'options-adv-header--open' : ''}`}
                     onClick={() => setToolbarGroups(g => ({ ...g, analysis: !g.analysis }))}
                   >📊 Analysis Tools {toolbarGroups.analysis ? '▾' : '▸'}</button>
+                  {/* 2026-10-23 — at a qualifier table only Predict Winner and
+                      Provably Fair (neither reads his hand) stay here. */}
                   {toolbarGroups.analysis && (
                     <div className="options-adv-grid">
-                      <button className={`options-adv-btn ${showRangeViz ? 'active' : ''}`} onClick={() => setShowRangeViz(v => !v)}>🎯 Range Matrix</button>
-                      <button className={`options-adv-btn ${showHeatmap ? 'active' : ''}`} onClick={() => setShowHeatmap(v => !v)}>🌡 Equity Heatmap</button>
-                      <button className={`options-adv-btn ${showTimingTells ? 'active' : ''}`} onClick={() => setShowTimingTells(v => !v)}>⏱ Timing Tells</button>
+                      {!helpToolsOff && <button className={`options-adv-btn ${showRangeViz ? 'active' : ''}`} onClick={() => setShowRangeViz(v => !v)}>🎯 Range Matrix</button>}
+                      {!helpToolsOff && <button className={`options-adv-btn ${showHeatmap ? 'active' : ''}`} onClick={() => setShowHeatmap(v => !v)}>🌡 Equity Heatmap</button>}
+                      {!helpToolsOff && <button className={`options-adv-btn ${showTimingTells ? 'active' : ''}`} onClick={() => setShowTimingTells(v => !v)}>⏱ Timing Tells</button>}
                       <button className={`options-adv-btn ${showSpectatorPredict ? 'active' : ''}`} onClick={() => setShowSpectatorPredict(v => !v)}>🔮 Predict Winner</button>
-                      <button className={`options-adv-btn ${gtoVisible ? 'active' : ''}`} onClick={() => setGtoVisible(v => !v)}>📈 GTO Overlay</button>
-                      <button className={`options-adv-btn ${showGTOSolver ? 'active' : ''}`} onClick={() => setShowGTOSolver(v => !v)}>♟ GTO Solver</button>
+                      {!helpToolsOff && <button className={`options-adv-btn ${gtoVisible ? 'active' : ''}`} onClick={() => setGtoVisible(v => !v)}>📈 GTO Overlay</button>}
+                      {!helpToolsOff && <button className={`options-adv-btn ${showGTOSolver ? 'active' : ''}`} onClick={() => setShowGTOSolver(v => !v)}>♟ GTO Solver</button>}
                       <button className="options-adv-btn" onClick={() => setShowProvablyFair(true)}>🔐 Provably Fair</button>
                     </div>
                   )}
 
-                  {/* Coach group — AI rail, commentary, pause-and-coach, post-hand review */}
+                  {/* Coach group — AI rail, commentary, pause-and-coach, post-hand review.
+                      2026-10-23 — the whole group is off at a qualifier table. */}
+                  {!helpToolsOff && (
                   <button
                     className={`options-adv-header ${toolbarGroups.coach ? 'options-adv-header--open' : ''}`}
                     onClick={() => setToolbarGroups(g => ({ ...g, coach: !g.coach }))}
                   >🧠 Coach Mode {toolbarGroups.coach ? '▾' : '▸'}</button>
-                  {toolbarGroups.coach && (
+                  )}
+                  {toolbarGroups.coach && !helpToolsOff && (
                     <div className="options-adv-grid">
                       <button className={`options-adv-btn ${showCoachingRail ? 'active' : ''}`} onClick={() => setShowCoachingRail(v => !v)}>🧠 AI Coach Rail</button>
                       <button className={`options-adv-btn ${showCommentary ? 'active' : ''}`} onClick={() => setShowCommentary(v => !v)}>🎓 Table Commentary</button>
@@ -4049,7 +4100,8 @@ export default function GameHUD() {
               >
                 <span className="card-rank">{serverRankDisplay(card.rank)}</span>
                 <span className="card-suit">{SUIT_INDEX_TO_SYMBOL[card.suit]}</span>
-                {hoveredCardIdx === i && (outsInfo || boardTexture) && (
+                {/* 2026-10-23 — no outs / texture popup at a qualifier table. */}
+                {hoveredCardIdx === i && !helpToolsOff && (outsInfo || boardTexture) && (
                   <div className="card-hover-popup">
                     {outsInfo && outsInfo.outs > 0 && (
                       <>
@@ -4072,8 +4124,9 @@ export default function GameHUD() {
           })}
           {/* Board Texture Badge — color-coded. Gated on live phase so it
               doesn't linger during WaitingForPlayers / new-hand preload (where
-              the memo still has cached labels from the previous board). */}
-          {boardTexture && boardTexture.labels.length > 0 &&
+              the memo still has cached labels from the previous board).
+              2026-10-23 — not at a qualifier table (help tools off). */}
+          {!helpToolsOff && boardTexture && boardTexture.labels.length > 0 &&
            (phase === 'Flop' || phase === 'Turn' || phase === 'River' || phase === 'Showdown' || phase === 'HandComplete') && (
             <div className={`board-texture-badge ${
               boardTexture.labels.some(l => l === 'Monotone') ? 'board-texture--monotone' :
@@ -4270,7 +4323,8 @@ export default function GameHUD() {
               : '⚠️ Pick one card to discard'}
           </div>
         )}
-        <div className={`hud-cards hud-cards-floating ${isMyTurn ? 'hud-cards-active' : ''} ${holeCardCount >= 4 ? 'hud-cards-many' : ''} ${preflopTier ? `hud-cards-tier-${preflopTier}` : ''} ${cardsDealt ? 'hud-cards--dealt' : ''}`}>
+        {/* 2026-10-23 — the starting-hand tier glow is a hint: not at a qualifier table. */}
+        <div className={`hud-cards hud-cards-floating ${isMyTurn ? 'hud-cards-active' : ''} ${holeCardCount >= 4 ? 'hud-cards-many' : ''} ${preflopTier && !helpToolsOff ? `hud-cards-tier-${preflopTier}` : ''} ${cardsDealt ? 'hud-cards--dealt' : ''}`}>
           {yourCards.length > 0 ? (
             yourCards.map((card, i) => {
               // Gameplay audit G172 / F134 — a discard selection is drawn only
@@ -4424,8 +4478,9 @@ export default function GameHUD() {
             pill per user request ("pair of sevens queen kicker on top left
             + pair weak up top middle — combine these"). The .hand-strength-bar
             block here was the duplicate. This container is kept only for the
-            Outs Counter + draws info below, which isn't shown by the pill. */}
-        {showHandStrength && handStrength && (
+            Outs Counter + draws info below, which isn't shown by the pill.
+            2026-10-23 — no outs counter at a qualifier table. */}
+        {!helpToolsOff && showHandStrength && handStrength && (
           <div className="hand-strength-container">
             {/* Outs Counter */}
             {outsInfo && outsInfo.outs > 0 && (
@@ -4718,7 +4773,7 @@ export default function GameHUD() {
                     <button
                       className="action-btn call"
                       disabled={!isMyTurn}
-                      aria-label={!isMyTurn ? `Call button, not your turn. Call amount ${callShown.effectiveCall.toLocaleString()} chips${callShown.callIsAllIn ? ', all-in' : ''}.` : `Call ${callShown.callIsAllIn ? 'all-in ' : ''}${callShown.effectiveCall.toLocaleString()} chips. ${callShown.effectivePot > 0 ? `Pot odds require ${callShown.breakEvenPct} percent equity to break even.` : ''} ${handStrength ? `Current hand strength ${Math.round(handStrength.strength * 100)} percent.` : ''} ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
+                      aria-label={!isMyTurn ? `Call button, not your turn. Call amount ${callShown.effectiveCall.toLocaleString()} chips${callShown.callIsAllIn ? ', all-in' : ''}.` : `Call ${callShown.callIsAllIn ? 'all-in ' : ''}${callShown.effectiveCall.toLocaleString()} chips. ${!helpToolsOff && callShown.effectivePot > 0 ? `Pot odds require ${callShown.breakEvenPct} percent equity to break even.` : ''} ${!helpToolsOff && handStrength ? `Current hand strength ${Math.round(handStrength.strength * 100)} percent.` : ''} ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
                       onClick={() => handleAction('call')}
                     >
                       {/* Audit fix #2 + #5: each span is a block-level stacked
@@ -4736,7 +4791,8 @@ export default function GameHUD() {
                         {callShown.effectiveCall.toLocaleString()}
                         {callShown.callIsAllIn && <span className="action-call-allin-tag"> All-In</span>}
                       </span>
-                      {(potOddsDisplay || handStrength) && (
+                      {/* 2026-10-23 — no odds / equity line at a qualifier table. */}
+                      {!helpToolsOff && (potOddsDisplay || handStrength) && (
                         <span className="action-meta-row">
                           {potOddsDisplay && (
                             <span className="action-odds-sub">
@@ -4949,7 +5005,19 @@ export default function GameHUD() {
       {/* R2 (P3) — rendered INSIDE the HUD (was a <body> portal at z 180, above
           the Options menu and the all-in confirm); TableLayout.css places it
           clear of the pot and Options. */}
-      {handStrength && yourCards.length > 0 && !myPlayer?.folded && phase !== 'HandComplete' && (
+      {/* 2026-10-23 — at a qualifier table only the plain hand name (what he
+          holds, no strength bar / tier / percent: help tools off). */}
+      {helpToolsOff && handStrength && yourCards.length > 0 && !myPlayer?.folded && phase !== 'HandComplete' && (
+        <div
+          className="hand-strength-portal hand-strength-portal--plain"
+          role="status"
+          aria-live="polite"
+          aria-label={`Your hand: ${handStrength.detailedName || handStrength.name}`}
+        >
+          <span className="hsp-label">{handStrength.detailedName || handStrength.name}</span>
+        </div>
+      )}
+      {!helpToolsOff && handStrength && yourCards.length > 0 && !myPlayer?.folded && phase !== 'HandComplete' && (
         <div
           className={`hand-strength-portal hand-strength-portal--${
             handStrength.strength < 0.2 ? 'weak' :
@@ -4997,8 +5065,9 @@ export default function GameHUD() {
       {/* Pot odds — on the table below "AMERICAN PUB POKER".
           Gate by phase so the badge doesn't render "Pot Odds: 0:1" on
           HandComplete (pot reset to 0 but callAmount can linger from
-          the final street). 2026-04-22 audit fix. */}
-      {callAmount > 0 && potOddsDisplay && phase !== 'HandComplete' && phase !== 'Showdown' && phase !== 'WaitingForPlayers' && createPortal(
+          the final street). 2026-04-22 audit fix.
+          2026-10-23 — not at a qualifier table (its good / bad colour is advice). */}
+      {!helpToolsOff && callAmount > 0 && potOddsDisplay && phase !== 'HandComplete' && phase !== 'Showdown' && phase !== 'WaitingForPlayers' && createPortal(
         <div className={`table-pot-odds ${potOddsGood ? 'table-pot-odds--good' : 'table-pot-odds--bad'}`}>
           Pot Odds: {potOddsDisplay}
         </div>,
@@ -5503,8 +5572,9 @@ export default function GameHUD() {
         </Suspense>
       </OverlayBoundary>
 
-      {/* Training overlay */}
-      {trainingEnabled && <TrainingOverlay />}
+      {/* Training overlay — 2026-10-23: never at a qualifier table (the
+          server's trainingData, if any, is not drawn there). */}
+      {trainingEnabled && !helpToolsOff && <TrainingOverlay />}
 
       {/* Floating Hotkey gear button removed — moved into Options menu
           per user request ("move hotkey settings up into the options
@@ -5529,8 +5599,8 @@ export default function GameHUD() {
         </div>
       )}
 
-      {/* Opponent quick-stats popup */}
-      {opponentStats && (
+      {/* Opponent quick-stats popup — 2026-10-23: never at a qualifier table. */}
+      {opponentStats && !helpToolsOff && (
         <div className="opp-stats-popup" onClick={() => setOpponentStats(null)}>
           <div className="opp-stats-name">{safeName(opponentStats.name, 'Player')}</div>
           {opponentStats.hands > 0 ? (
@@ -5607,8 +5677,8 @@ export default function GameHUD() {
 
       {/* Range Chart and Equity Calc - hidden until needed, no floating buttons */}
 
-      {/* Hand Range Chart overlay */}
-      {showRangeChart && <HandRangeChart onClose={() => setShowRangeChart(false)} />}
+      {/* Hand Range Chart overlay (2026-10-23: never at a qualifier table) */}
+      {showRangeChart && !helpToolsOff && <HandRangeChart onClose={() => setShowRangeChart(false)} />}
 
       {/* Equity Calculator, GTO, Provably Fair, Share, Coach, Voice — lazy loaded.
           Wrapped in OverlayBoundary so a failed chunk load for any of these
@@ -5636,7 +5706,7 @@ export default function GameHUD() {
       >
       <Suspense fallback={null}>
         {showAchievements && <AchievementsPanel onClose={() => setShowAchievements(false)} />}
-        {showEquityCalc && <EquityCalculator onClose={() => setShowEquityCalc(false)} />}
+        {showEquityCalc && !helpToolsOff && <EquityCalculator onClose={() => setShowEquityCalc(false)} />}
 
         {showProvablyFair && (
           <ProvablyFair
@@ -5653,7 +5723,7 @@ export default function GameHUD() {
           />
         )}
 
-        {showPostHandCoach && lastHandHistory && (
+        {showPostHandCoach && !helpToolsOff && lastHandHistory && (
           <PostHandCoach
             handHistory={lastHandHistory}
             playerName={gameState?.seats?.[yourSeat]?.playerName || ''}
@@ -5663,8 +5733,9 @@ export default function GameHUD() {
       </Suspense>
       </OverlayBoundary>
 
-      {/* Post-Hand Analysis Panel */}
-      {(phase === 'Showdown' || phase === 'HandComplete') && handResult && (
+      {/* Post-Hand Analysis Panel ("GTO suggests") — 2026-10-23: never at a
+          qualifier table (help tools off). */}
+      {!helpToolsOff && (phase === 'Showdown' || phase === 'HandComplete') && handResult && (
         <PostHandAnalysis
           gameState={gameState}
           yourSeat={yourSeat}
@@ -5713,7 +5784,9 @@ export default function GameHUD() {
               username={gameState?.seats?.[yourSeat]?.playerName || 'Player'}
               visible={showVoiceChat}
             />
-            {/* GTO Overlay — always mounted, toggled via visibility */}
+            {/* GTO Overlay — always mounted, toggled via visibility.
+                2026-10-23: neither GTO panel is mounted at a qualifier table. */}
+            {!helpToolsOff && (
             <GTOOverlay
               holeCards={yourCards}
               communityCards={gameState?.communityCards}
@@ -5724,6 +5797,8 @@ export default function GameHUD() {
               omaha={/omaha/i.test(gameVariant)}
               visible={gtoVisible && isMyTurn}
             />
+            )}
+            {!helpToolsOff && (
             <GTOSolver
               gameState={gameState}
               yourCards={yourCards}
@@ -5732,23 +5807,34 @@ export default function GameHUD() {
               visible={showGTOSolver}
               onClose={() => setShowGTOSolver(false)}
             />
+            )}
           </Suspense>
         </div>
       </OverlayBoundary>
 
-      {/* Lazy-loaded overlays — code-split, loaded on first open */}
+      {/* Lazy-loaded overlays — code-split, loaded on first open.
+          2026-10-23 (owner: "Turn all off") — at a qualifier table the help
+          tools (Timing Tells, Table Commentary, Range Matrix, Pause & Coach,
+          AI Coach Rail and its coach whispers, Equity Heatmap) are NOT
+          mounted: nothing to show, no socket listener. Go Live and the
+          session recap stay. */}
       <Suspense fallback={null}>
+        {!helpToolsOff && (
         <TimingTellTracker
           gameState={gameState}
           visible={showTimingTells}
           onClose={() => setShowTimingTells(false)}
         />
+        )}
+        {!helpToolsOff && (
         <TableCommentary
           socket={getSocket()}
           gameState={gameState}
           visible={showCommentary}
           onClose={() => setShowCommentary(false)}
         />
+        )}
+        {!helpToolsOff && (
         <RangeVisualizer
           holeCards={yourCards}
           equity={equityResults?.[yourSeat] ?? null}
@@ -5756,6 +5842,8 @@ export default function GameHUD() {
           visible={showRangeViz}
           onClose={() => setShowRangeViz(false)}
         />
+        )}
+        {!helpToolsOff && (
         <PauseCoach
           visible={showPauseCoach}
           gameState={gameState}
@@ -5766,12 +5854,14 @@ export default function GameHUD() {
           onResume={() => setShowPauseCoach(false)}
           onClose={() => setShowPauseCoach(false)}
         />
+        )}
         <StreamOverlay
           gameState={gameState}
           yourCards={yourCards}
           visible={showStream}
           onClose={() => setShowStream(false)}
         />
+        {!helpToolsOff && (
         <CoachingRail
           gameState={gameState}
           yourCards={yourCards}
@@ -5781,6 +5871,7 @@ export default function GameHUD() {
           visible={showCoachingRail}
           onClose={() => setShowCoachingRail(false)}
         />
+        )}
         {/* GAP: notify.sessionEnd(net) has no wiring point here — there is no
             setShowSessionRecap(true) call site in this client, so the recap
             modal is never opened and the session-end rising edge doesn't
@@ -5810,6 +5901,7 @@ export default function GameHUD() {
             setShowReplay(true);
           }}
         />
+        {!helpToolsOff && (
         <HandHeatmap
           seats={gameState?.seats || []}
           equityResults={equityResults || {}}
@@ -5817,6 +5909,7 @@ export default function GameHUD() {
           communityCards={communityCards}
           visible={showHeatmap}
         />
+        )}
       </Suspense>
 
       {/* Advanced-tools toolbar — moved inside the Options dropdown per

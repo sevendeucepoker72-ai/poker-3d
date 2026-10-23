@@ -290,6 +290,20 @@
   margin: 2px 0;
 }
 
+/* 2026-10-23 (owner: "Turn all off") — at a qualifier table the Options menu
+   says the help tools are off, in their place. Blue + gold, never red. */
+.options-help-off-note {
+  padding: 6px 10px;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-left: 3px solid #ffd24a;
+  border-radius: 6px;
+  background: rgba(30, 58, 138, 0.35);
+  color: #ffd24a;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .options-action-btn {
   padding: 5px 10px;
   border: 1px solid #3A3A5A;
@@ -3619,6 +3633,14 @@
   text-overflow: ellipsis;
   max-width: 240px;
   flex: 1 1 auto;
+}
+/* 2026-10-23 — a qualifier table shows only the hand's name (no bar / tier). */
+.hand-strength-portal.hand-strength-portal--plain {
+  justify-content: center;
+  border-color: rgba(96, 165, 250, 0.45);
+}
+.hand-strength-portal.hand-strength-portal--plain .hsp-label {
+  text-align: center;
 }
 .hand-strength-portal .hsp-tier {
   font-size: 0.7rem;

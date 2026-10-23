@@ -4,6 +4,8 @@ import { getSocket } from '../../services/socketService';
 // 2026-10-20 — a registered player's way back to his seat in a running qualifier.
 import { awaySeatOfTournament, noteTournamentSeat } from '../../store/tournamentSeatStore';
 import { clearTableLeft } from '../../services/leftTables';
+// 2026-10-23 (owner: "Turn all off") — a qualifier's tournament id: no help tools at its tables.
+import { noteQualifierTournamentId, noteQualifierTournamentIds } from '../../utils/qualifierHelpTools';
 import { qualifierRunningActions } from '../../utils/tableFlows';
 import { returnToTournament } from '../../services/tournamentReturn';
 import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
@@ -248,6 +250,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       if (!data?.qualifierId) return;
       const id = String(data.qualifierId);
       const validStatus = ['scheduled', 'registering', 'running', 'finished'].includes(data.status) ? data.status : null;
+      try { noteQualifierTournamentId(data.tournamentId); } catch { /* best-effort */ }
       if (validStatus && knownStatus.has(id) && knownStatus.get(id) !== validStatus) askListSoon();
       if (validStatus && knownStatus.has(id)) knownStatus.set(id, validStatus);
       const extras = qualifierUpdateExtras(data);
@@ -261,6 +264,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       })));
     };
     const startHandler = (data) => {
+      try { noteQualifierTournamentId(data?.tournamentId); } catch { /* best-effort */ }
       if (!data?.qualifierId) return;
       setList((prev) => prev.map((q) => (q.qualifierId !== String(data.qualifierId) ? q
         : { ...q, status: 'running', tournamentId: data.tournamentId != null ? String(data.tournamentId) : q.tournamentId })));
@@ -288,6 +292,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
         // server also sends qualifierTournamentStarted (App does the same;
         // doing it twice is harmless); an older one sends only this.
         if (data.reentry === true && data.tableId != null) {
+          try { noteQualifierTournamentId(data.tournamentId); } catch { /* best-effort */ }
           try { noteTournamentSeat({ tournamentId: data.tournamentId, tableId: data.tableId, name: 'Qualifier Tournament' }); } catch { /* best-effort */ }
           try { clearTableLeft(data.tableId); } catch { /* ignore */ }
           try { useGameStore.getState().setScreen('table'); } catch { /* ignore */ }
@@ -314,6 +319,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       currentDelay = BASE_MS;
       lastListAt = Date.now();
       const next = normalizeQualifierList(raw);
+      try { noteQualifierTournamentIds(next); } catch { /* best-effort */ }
       const { registeredIds, dropped } = qualifierRegistrationsDropped(prevRegistered, next);
       prevRegistered = registeredIds;
       if (dropped) scheduleQualificationsRecheck();
