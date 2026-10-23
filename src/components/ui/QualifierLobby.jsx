@@ -13,6 +13,8 @@ import {
   featuredQualifier, qualifierHomeStatus, formatDenverWhen, formatDenverTime,
   qualifierCreditsHeld, qualifierIsQualified, qualifierReentriesAvailable, qualifierHomeYouText,
   QUALIFICATIONS_RECHECK_MS, qualificationsMountPlan, qualifierRegistrationsDropped,
+  qualifierTablesHeld, qualifierBeOnlineText, qualifierTablesOpenText, qualifierTablesOpenStatusText,
+  qualifierBreaksText, qualifierUpdateExtras,
 } from '../../utils/qualifierList';
 import { useProgressStore } from '../../store/progressStore';
 import QualifierDashboard from './QualifierDashboard';
@@ -110,6 +112,12 @@ const TYPE_COLORS = { weekly: '#ffd24a', monthly: '#9db8ff' };
 const box = (extra = {}) => ({
   padding: '10px 14px', borderRadius: 8, fontSize: '0.82rem', textAlign: 'center', lineHeight: 1.45, ...extra,
 });
+
+// 2026-10-23 — the registrant's notes (blue + gold, never red): 'gold' = the
+// tables are open, 'blue' = be online at the start.
+const noteStyle = (tone) => (tone === 'gold'
+  ? box({ background: 'rgba(255,210,74,0.12)', border: '1px solid rgba(255,210,74,0.5)', color: '#ffd24a', fontWeight: 700, fontSize: '0.8rem', overflowWrap: 'anywhere' })
+  : box({ background: 'rgba(106,186,255,0.08)', border: '1px solid rgba(106,186,255,0.32)', color: '#cfe0ff', fontSize: '0.76rem', overflowWrap: 'anywhere' }));
 
 export const QUALIFIER_WAITING_FOR_PLAYERS_TEXT = 'You have a seat at a new table. The first hand is dealt as soon as another player joins it.';
 
@@ -222,21 +230,41 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
     // A qualifier he was registered for was cancelled / released / the game
     // server restarted: the notice comes before the refund lands.
     const cancelHandler = (d) => { scheduleQualificationsRecheck({ alsoAfterSignIn: d?.reason === 'server_restart' }); };
+    // 2026-10-23 — the per-viewer fields of a started / finished event (the
+    // tables-open hold, eliminated, results) come with the LIST, not with the
+    // update broadcast: when an event's status changes, ask for the list once,
+    // a moment later (spread over ~2 s: the update goes to every lobby at once).
+    const knownStatus = new Map();
+    let listAskTimer = null;
+    const askListSoon = () => {
+      if (listAskTimer) return;
+      listAskTimer = setTimeout(() => {
+        listAskTimer = null;
+        try { socket.emit('getQualifierTournaments'); } catch { /* next poll */ }
+      }, 300 + Math.floor(Math.random() * 1700));
+    };
     const updateHandler = (data) => {
       // An older server's delta: status / count only (its player names are not used).
       if (!data?.qualifierId) return;
-      setList((prev) => prev.map((q) => (q.qualifierId !== String(data.qualifierId) ? q : {
+      const id = String(data.qualifierId);
+      const validStatus = ['scheduled', 'registering', 'running', 'finished'].includes(data.status) ? data.status : null;
+      if (validStatus && knownStatus.has(id) && knownStatus.get(id) !== validStatus) askListSoon();
+      if (validStatus && knownStatus.has(id)) knownStatus.set(id, validStatus);
+      const extras = qualifierUpdateExtras(data);
+      setList((prev) => prev.map((q) => (q.qualifierId !== id ? q : {
         ...q,
-        status: ['scheduled', 'registering', 'running', 'finished'].includes(data.status) ? data.status : q.status,
+        status: validStatus || q.status,
         cancelled: data.cancelled === true ? true : q.cancelled,
         players: Number.isFinite(Number(data.registeredCount)) ? Number(data.registeredCount)
           : (typeof data.players === 'number' ? data.players : q.players),
+        ...extras,
       })));
     };
     const startHandler = (data) => {
       if (!data?.qualifierId) return;
       setList((prev) => prev.map((q) => (q.qualifierId !== String(data.qualifierId) ? q
         : { ...q, status: 'running', tournamentId: data.tournamentId != null ? String(data.tournamentId) : q.tournamentId })));
+      askListSoon();
     };
     const regResultHandler = (data) => {
       setPendingReg(null);
@@ -289,6 +317,11 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       const { registeredIds, dropped } = qualifierRegistrationsDropped(prevRegistered, next);
       prevRegistered = registeredIds;
       if (dropped) scheduleQualificationsRecheck();
+      knownStatus.clear();
+      for (const q of next) knownStatus.set(q.qualifierId, q.status);
+      // 2026-10-23 — the windows / countdowns move with every list (the local
+      // tick is 30 s; the state used to lag the server's flip by up to ~40 s).
+      setNow(Date.now());
       setList(next);
       setListLoaded(true);
     };
@@ -319,6 +352,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       socket.off('disconnect', disconnectHandler);
       socket.off('qualifierCancelled', cancelHandler);
       if (pollTimer) clearTimeout(pollTimer);
+      if (listAskTimer) clearTimeout(listAskTimer);
       clearTimeout(loadingTimeout);
       // (a scheduled re-read of his credits is module state: it outlives this mount)
     };
@@ -481,7 +515,18 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
         state, mine, eliminated: q.eliminated, qualified, reEntriesLeft, tournamentId: q.tournamentId,
       });
       const canLate = acts.lateRegister;
-      return (
+      // 2026-10-23 (owner: "open the rooms 10 minutes before game start") — a
+      // newer server's tables are open and the cards held until dealsAt: an
+      // entry now is a plain Register, his own seat is "Take your seat", and a
+      // registrant still in is told to sit down and to be here at the start.
+      const held = qualifierTablesHeld(q, now);
+      const heldNotes = held && mine && q.eliminated !== true ? (
+        <>
+          <div className="qualifier-tables-open" style={noteStyle('gold')}>{qualifierTablesOpenText(q)}</div>
+          <div className="qualifier-be-online-note" style={noteStyle('blue')}>{qualifierBeOnlineText(q)}</div>
+        </>
+      ) : null;
+      const row = (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {acts.reenter && (
             <button className="qualifier-reenter" onClick={(e) => { e.stopPropagation(); handleRegister(q); }} disabled={!!pend} style={{ flex: 1, minWidth: 140, padding: pad, borderRadius: 8, fontWeight: 800, fontSize: '0.88rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: pend ? 'default' : 'pointer', opacity: pend ? 0.7 : 1 }}>
@@ -495,12 +540,12 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
           )}
           {canLate && (
             <button onClick={(e) => { e.stopPropagation(); handleRegister(q); }} disabled={!!pend} style={{ flex: 1, minWidth: 140, padding: pad, borderRadius: 8, fontWeight: 700, fontSize: '0.88rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: pend ? 'default' : 'pointer', opacity: pend ? 0.7 : 1 }}>
-              {pend === 'register' ? 'Registering…' : 'Late Register (uses 1 credit)'}
+              {pend === 'register' ? 'Registering…' : (held ? 'Register (uses 1 credit)' : 'Late Register (uses 1 credit)')}
             </button>
           )}
           {acts.goToTable && (
             <button className="qualifier-go-to-my-table" onClick={(e) => { e.stopPropagation(); handleGoToMyTable(q); }} style={{ flex: 1, minWidth: 140, padding: pad, borderRadius: 8, fontWeight: 800, fontSize: '0.88rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: 'pointer' }}>
-              ↩ Go to my table
+              {held ? 'Take your seat' : '↩ Go to my table'}
             </button>
           )}
           {acts.watch && (
@@ -513,10 +558,12 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
           )}
         </div>
       );
+      if (!heldNotes) return row;
+      return <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{heldNotes}{row}</div>;
     }
     if (mine) {
       const canWithdraw = state === 'open' || state === 'scheduled';
-      return (
+      const registeredRow = (
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={box({ flex: 1, background: 'rgba(255,210,74,0.1)', border: '1px solid rgba(255,210,74,0.35)', color: '#ffd24a', fontWeight: 700 })}>✓ Registered</div>
           {canWithdraw && (
@@ -524,6 +571,15 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
               {pend === 'withdraw' ? 'Withdrawing…' : 'Withdraw'}
             </button>
           )}
+        </div>
+      );
+      // 2026-10-23 — before the start, a registrant learns what the no-show
+      // rule does (only the "started without you" notice said it, afterwards).
+      if (!canWithdraw) return registeredRow;
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {registeredRow}
+          <div className="qualifier-be-online-note" style={noteStyle('blue')}>{qualifierBeOnlineText(q)}</div>
         </div>
       );
     }
@@ -612,7 +668,8 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       state, registered: isRegistered(q), credits,
       reentries: qualifierReentriesAvailable(q, credits), qualified: qualifierIsQualified(q, qs),
     }) : null;
-    const eyebrow = live ? 'Qualifier live now' : (state === 'finished' ? 'Latest qualifier' : 'Next online qualifier');
+    const held = qualifierTablesHeld(q, now);
+    const eyebrow = held ? 'Tables are open' : (live ? 'Qualifier live now' : (state === 'finished' ? 'Latest qualifier' : 'Next online qualifier'));
     return (
       <>
         {regMsgNode}
@@ -708,6 +765,8 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
         const live = state === 'running' || state === 'late';
         const qs = qualStatus?.[q.type];
         const seatsLine = seatsForTopText(q.seatsForTop, q.seatPackage);
+        const held = qualifierTablesHeld(q, now);
+        const breaksLine = qualifierBreaksText(q.structure);
         return (
           <div key={q.qualifierId} className="qualifier-card" onClick={() => setOpenDashboard(q.qualifierId)} style={{
             background: 'linear-gradient(135deg, rgba(10,10,20,0.95), rgba(20,30,70,0.7))',
@@ -734,7 +793,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
                     <div style={{ color: '#8298c4', fontSize: '0.68rem' }}>until start</div>
                   </>
                 )}
-                {live && <div style={{ color: '#6abaff', fontWeight: 700, fontSize: '0.82rem' }}>In Progress</div>}
+                {live && <div style={{ color: '#6abaff', fontWeight: 700, fontSize: '0.82rem' }}>{held ? 'Tables open' : 'In Progress'}</div>}
                 {state === 'finished' && <div style={{ color: '#9fb4d8', fontWeight: 700, fontSize: '0.82rem' }}>{q.cancelled ? 'Cancelled' : 'Finished'}</div>}
               </div>
             </div>
@@ -743,6 +802,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
             <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: '0.76rem', color: '#9fb4d8', flexWrap: 'wrap' }}>
               <span>👥 <strong style={{ color: '#fff' }}>{q.players}{q.maxPlayers ? `/${q.maxPlayers}` : ''}</strong> registered</span>
               {q.structure?.startingStack && <span>🎰 Stack: <strong style={{ color: '#fff' }}>{q.structure.startingStack.toLocaleString()}</strong></span>}
+              {breaksLine && <span className="qualifier-breaks-line">☕ {breaksLine}</span>}
               {seatsLine && <span style={{ color: '#ffd24a' }}>🎟 {seatsLine}</span>}
               {qs && qs.qualified && !live && state !== 'finished' && (
                 <span style={{ color: '#ffd24a' }}>✓ {qs.credits} credit{qs.credits === 1 ? '' : 's'}</span>
@@ -750,7 +810,10 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
               {state === 'open' && q.signupClosesAt != null && (
                 <span style={{ color: '#ffd24a' }}>⏱ Signup closes in {formatCountdown(q.signupClosesAt, now)}</span>
               )}
-              {state === 'late' && q.lateRegUntil != null && (
+              {held && (
+                <span className="qualifier-hold-status" style={{ color: '#ffd24a' }}>⏱ {qualifierTablesOpenStatusText(q)}</span>
+              )}
+              {state === 'late' && !held && q.lateRegUntil != null && (
                 <span style={{ color: '#6abaff' }}>⏱ Late registration until {formatDenverTime(q.lateRegUntil)}</span>
               )}
             </div>

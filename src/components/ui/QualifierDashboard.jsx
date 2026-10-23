@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 import { notify } from '../../hooks/usePushNotifications';
-import { qualifierSignupState, qualifierResultText, seatsForTopText, ordinal, formatDenverWhen } from '../../utils/qualifierList';
+import { qualifierSignupState, qualifierResultText, seatsForTopText, ordinal, formatDenverWhen, qualifierBreaksText } from '../../utils/qualifierList';
 
 function formatCountdown(target, now) {
   if (target == null) return '';
@@ -85,6 +85,9 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
   if (q.signupOpensAt != null && q.signupClosesAt != null) windowLines.push(`Signup is open from ${formatWhen(q.signupOpensAt)} to ${formatWhen(q.signupClosesAt)}.`);
   else if (q.signupOpensAt != null) windowLines.push(`Signup opens ${formatWhen(q.signupOpensAt)}.`);
   if (q.lateRegUntil != null) windowLines.push(`Late registration closes ${formatWhen(q.lateRegUntil)}.`);
+  // 2026-10-23 (owner: "take breaks") — a newer server sends structure.breaks.
+  const breaksText = qualifierBreaksText(q.structure);
+  if (breaksText) windowLines.push(`${breaksText}.`);
 
   return (
     <div style={{

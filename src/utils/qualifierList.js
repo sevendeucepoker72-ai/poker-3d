@@ -7,7 +7,10 @@
  *     signupClosesAt, lateRegUntil, status:'scheduled'|'registering'|'running'|
  *     'finished', registered:boolean, players:number,
  *     structure:{ startingStack, levels:[{sb,bb,ante,minutes}] }, seatsForTop }
- * and results carry the asking player's own `place` and `wonSeat`.
+ * and results carry the asking player's own `place` and `wonSeat`. A newer
+ * server adds (2026-10-23, all optional) `tablesOpen` + `dealsAt` (the tables
+ * are open early and the cards held until then) and `structure.breaks`
+ * {everyLevels, minutes}.
  *
  * The lobby renders this list ONLY (never a built-in default qualifier, never
  * the admin config store). Every field the server did not send stays unknown:
@@ -59,6 +62,21 @@ function defaultName(type) {
   return 'Qualifier Tournament';
 }
 
+/**
+ * 2026-10-23 (owner: "take breaks") — a newer server's additive
+ * `structure.breaks` {everyLevels, minutes} (a break after every Nth level);
+ * null when absent or not usable. `seconds` is read when `minutes` is not sent.
+ */
+function normalizeBreaks(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const everyLevels = Number(raw.everyLevels);
+  const min = Number(raw.minutes);
+  const sec = Number(raw.seconds);
+  const minutes = Number.isFinite(min) && min > 0 ? min : (Number.isFinite(sec) && sec > 0 ? sec / 60 : null);
+  if (!Number.isInteger(everyLevels) || everyLevels < 1 || everyLevels > 60 || minutes == null || minutes > 120) return null;
+  return { everyLevels, minutes: Math.round(minutes * 10) / 10 };
+}
+
 function normalizeStructure(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const startingStack = posInt(raw.startingStack);
@@ -71,7 +89,8 @@ function normalizeStructure(raw) {
     })).filter((l) => l.bb > 0).slice(0, 60)
     : [];
   if (!startingStack && levels.length === 0) return null;
-  return { startingStack, levels };
+  const breaks = normalizeBreaks(raw.breaks);
+  return breaks ? { startingStack, levels, breaks } : { startingStack, levels };
 }
 
 function normalizeResult(raw) {
@@ -167,6 +186,11 @@ export function normalizeQualifierItem(raw) {
     seatsForTop: posInt(raw.seatsForTop),
     seatPackage: normalizeSeatPackage(raw.seatPackage),
     tournamentId: raw.tournamentId != null && raw.tournamentId !== '' ? String(raw.tournamentId) : null,
+    // 2026-10-23 (owner: "open the rooms 10 minutes before game start") — a
+    // newer server opens the tables early and HOLDS the cards until `dealsAt`:
+    // `tablesOpen` true while held. Absent (an older server) = false / null.
+    tablesOpen: raw.tablesOpen === true,
+    dealsAt: ms(raw.dealsAt),
     result: normalizeResult(raw),
     // An older server's own window verdict (it had no status for "not open yet").
     legacySignupOpen: typeof raw.signupOpen === 'boolean' ? raw.signupOpen : null,
@@ -207,6 +231,10 @@ export function qualifierSignupState(q, now = Date.now()) {
     if (q.legacySignupOpen === true || (q.signupClosesAt != null && now < q.signupClosesAt && q.legacySignupOpen !== false)) return 'late';
     return 'running';
   }
+  // 2026-10-23 — the server says 'registering' only once ITS clock has passed
+  // signupOpensAt (qualifierStatusOf), so that wins over this device's clock:
+  // a device running a couple of minutes slow hid Register after the 8:00 flip.
+  if (q.status === 'registering' && !(q.signupClosesAt != null && now > q.signupClosesAt)) return 'open';
   if (q.signupOpensAt != null && now < q.signupOpensAt) return 'scheduled';
   if (q.signupClosesAt != null && now > q.signupClosesAt) return 'closed';
   if (q.status === 'registering') return 'open';
@@ -282,6 +310,72 @@ export function formatDenverWhen(t) {
   } catch { return new Date(v).toISOString(); }
 }
 
+// ── Early tables, the "be online" note, breaks (2026-10-23) ─────────────────
+// Owner 2026-10-22: "open the rooms 10 minutes before game start so people can
+// join and then start the game on time ... take breaks". A newer server seats
+// the entrants from 10:50 and holds the cards until `dealsAt` (11:00). Every
+// field is additive: an older server sends none, and then nothing changes.
+
+/** When the cards are dealt: the server's dealsAt, else the start (null = unknown). */
+export function qualifierDealsAt(q) {
+  if (!q) return null;
+  if (q.dealsAt != null) return q.dealsAt;
+  return q.scheduledAt != null ? q.scheduledAt : null;
+}
+
+/**
+ * The tables are open and the cards are held: the server's `tablesOpen`, until
+ * `dealsAt` on this device's clock (the list after the deal says false).
+ */
+export function qualifierTablesHeld(q, now = Date.now()) {
+  if (!q || q.tablesOpen !== true || q.status === 'finished') return false;
+  return q.dealsAt == null || now < q.dealsAt;
+}
+
+/** A registrant's note before the start: be online at the start or be released (+ refund). */
+export function qualifierBeOnlineText(q) {
+  const at = q && q.scheduledAt != null ? formatDenverTime(q.scheduledAt) : '';
+  return at
+    ? `Be on americanpubpoker.online by ${at} — anyone not here when it starts is released and the credit refunded.`
+    : 'Be on americanpubpoker.online when it starts — anyone not here then is released and the credit refunded.';
+}
+
+/** "Tables are open — take your seat. Cards are dealt at 11:00 AM MT." */
+export function qualifierTablesOpenText(q) {
+  const at = formatDenverTime(qualifierDealsAt(q));
+  return at ? `Tables are open — take your seat. Cards are dealt at ${at}.` : 'Tables are open — take your seat.';
+}
+
+/** The status line while the tables are held: "Tables open · cards at 11:00 AM MT". */
+export function qualifierTablesOpenStatusText(q) {
+  const at = formatDenverTime(qualifierDealsAt(q));
+  return at ? `Tables open · cards at ${at}` : 'Tables open';
+}
+
+/** "5-min break every 5 levels" from a structure's breaks (null without). */
+export function qualifierBreaksText(structure) {
+  const b = structure && structure.breaks;
+  if (!b || !Number.isInteger(b.everyLevels) || b.everyLevels < 1 || !(Number(b.minutes) > 0)) return null;
+  return `${b.minutes}-min break every ${b.everyLevels === 1 ? 'level' : `${b.everyLevels} levels`}`;
+}
+
+/**
+ * The additive fields of a 'qualifierTournamentUpdate' frame to merge into a
+ * listed item: `tablesOpen` / `dealsAt` ONLY when the frame carries them (an
+ * older server's update has neither, and they are then left as listed).
+ */
+export function qualifierUpdateExtras(data) {
+  const out = {};
+  if (!data || typeof data !== 'object') return out;
+  if (typeof data.tablesOpen === 'boolean') out.tablesOpen = data.tablesOpen;
+  if (data.dealsAt === null) out.dealsAt = null;
+  else if (data.dealsAt !== undefined) {
+    const v = ms(data.dealsAt);
+    if (v != null) out.dealsAt = v;
+  }
+  return out;
+}
+
 /**
  * The one qualifier the home page shows: a live one first, else the soonest
  * one not finished (open / upcoming / waiting to start), else the latest
@@ -305,6 +399,7 @@ export function featuredQualifier(list, now = Date.now()) {
  *   scheduled  "Sign-up opens 8:00 AM MT"
  *   open       "Sign-up open · starts 11:00 AM MT"
  *   late       "Running · late entry until 2:00 PM MT"
+ *              (tables open early, cards held: "Tables open · cards at 11:00 AM MT")
  *   running    "Running · late entry closed"
  *   closed     "Sign-up closed"
  *   finished   "Finished" / "Cancelled"
@@ -312,6 +407,9 @@ export function featuredQualifier(list, now = Date.now()) {
 export function qualifierHomeStatus(q, now = Date.now()) {
   const state = qualifierSignupState(q, now);
   if (!q) return { state, text: '' };
+  if ((state === 'late' || state === 'running') && qualifierTablesHeld(q, now)) {
+    return { state, text: qualifierTablesOpenStatusText(q) };
+  }
   switch (state) {
     case 'scheduled': {
       if (q.signupOpensAt == null) return { state, text: 'Sign-up opens soon' };

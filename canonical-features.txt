@@ -1208,3 +1208,15 @@ Break — play resumes at
 Tournament clock:
 tsl-part tsl-left
 Play is on hold
+
+# 2026-10-23 (owner: "open registration on time ... open the rooms 10 minutes
+# before game start so people can join and then start the game on time") - the
+# qualifier card: Register shows at the SERVER's 8:00 flip (its 'registering'
+# wins over a slow device clock), a registrant is told to be on .online by the
+# start (no-shows are released + refunded), and a newer server's early tables
+# (tablesOpen / dealsAt) read "Tables are open - take your seat" with
+# "Take your seat" and a plain Register until the cards are dealt.
+qualifier-be-online-note
+qualifier-tables-open
+Tables are open — take your seat
+Be on americanpubpoker.online by
