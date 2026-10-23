@@ -20,6 +20,9 @@ import {
 } from '../../utils/qualifierList';
 import { useProgressStore } from '../../store/progressStore';
 import QualifierDashboard from './QualifierDashboard';
+// 2026-10-23 (owner) — the Weekly Qualifier Rules (text: content/qualifierRules.js).
+import QualifierRules from './QualifierRules';
+import { qualifierHasWeeklyRules } from '../../content/qualifierRules';
 
 // A first entry waits on the master API's credit consume (awaited server-side),
 // so allow longer than a table join before calling the server unreachable.
@@ -152,6 +155,8 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
   // to the shared PlayRefusalNotice instead.
   const [pendingReg, setPendingReg] = useState(null); // { id, kind }
   const [regMsg, setRegMsg] = useState(null);
+  // 2026-10-23 (owner) — the Weekly Qualifier Rules window (the card's "Rules" link).
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   // Another account on this tab: its own (empty) local registrations.
   useEffect(() => { setLocalRegs(readLocalRegs(owner)); }, [owner]);
@@ -639,6 +644,23 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
     </div>
   ) : null;
 
+  // 2026-10-23 (owner) — the weekly card's "Rules" link (blue + gold). It
+  // opens the rules on their own, never the detail window under them.
+  const rulesLink = (q, label) => (qualifierHasWeeklyRules(q) ? (
+    <button
+      className="qualifier-rules-link"
+      onClick={(e) => { e.stopPropagation(); setRulesOpen(true); }}
+      aria-label="Weekly Qualifier Rules"
+      style={{
+        background: 'rgba(255,210,74,0.08)', border: '1px solid rgba(255,210,74,0.45)', color: '#ffd24a',
+        borderRadius: 16, padding: '6px 12px', minHeight: 32, fontWeight: 700, fontSize: '0.76rem', cursor: 'pointer',
+      }}
+    >
+      📋 {label}
+    </button>
+  ) : null);
+  const rulesNode = rulesOpen ? <QualifierRules onClose={() => setRulesOpen(false)} /> : null;
+
   // Dashboard modal
   const dashboardNode = (() => {
     if (!openDashboard) return null;
@@ -717,14 +739,18 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
           <div style={{ marginTop: 10 }}>{renderAction(q, true)}</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
             <span style={{ color: '#8298c4', fontSize: '0.7rem' }}>Tap for details</span>
-            {onSeeAll && (
-              <button className="home-qualifier-all" onClick={(e) => { e.stopPropagation(); onSeeAll(); }} style={{ background: 'transparent', border: 'none', color: '#6abaff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', padding: '6px 0', minHeight: 32 }}>
-                All qualifiers →
-              </button>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              {rulesLink(q, 'Rules')}
+              {onSeeAll && (
+                <button className="home-qualifier-all" onClick={(e) => { e.stopPropagation(); onSeeAll(); }} style={{ background: 'transparent', border: 'none', color: '#6abaff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', padding: '6px 0', minHeight: 32 }}>
+                  All qualifiers →
+                </button>
+              )}
+            </div>
           </div>
         </div>
         {dashboardNode}
+        {rulesNode}
       </>
     );
   }
@@ -832,6 +858,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
               ) : (
                 <>Finish <strong style={{ color: '#fff' }}>top 5 in any live game</strong> at any venue to earn a credit and an entry here.{seatsLine ? ` ${seatsLine} at Bally's Blackhawk;` : ''} the top 10% advance to the Monthly Major.</>
               )}
+              {qualifierHasWeeklyRules(q) && <div style={{ marginTop: 8 }}>{rulesLink(q, 'Weekly Qualifier Rules')}</div>}
             </div>
 
             {renderAction(q)}
@@ -840,6 +867,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       })}
 
       {dashboardNode}
+      {rulesNode}
     </div>
   );
 }

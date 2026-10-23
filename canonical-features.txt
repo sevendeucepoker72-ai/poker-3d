@@ -1241,3 +1241,14 @@ help tools off at this qualifier table
 # without its strength percent while a qualifier table is open.
 coach whisper not shown: a qualifier table is open
 replay-player-equity replay-player-equity--plain
+
+# 2026-10-23 (owner) - the Weekly Qualifier Rules on .online. The text is ONE
+# data module (src/content/qualifierRules.js: sections of plain rules + an
+# 'updated' date). The weekly qualifier card (home card "Rules", Play tab
+# "Weekly Qualifier Rules") opens the rules window; the qualifier's detail
+# window has a Rules tab. Blue + gold; the play-money statement is locked.
+qualifier-rules-link
+qualifier-rules-modal
+qualifier-dashboard-rules
+Weekly Qualifier Rules
+The qualifier is free. Chips have no cash value. Prizes are seats to the live championship only.

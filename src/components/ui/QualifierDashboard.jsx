@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 import { notify } from '../../hooks/usePushNotifications';
 import { qualifierSignupState, qualifierResultText, seatsForTopText, ordinal, formatDenverWhen, qualifierBreaksText } from '../../utils/qualifierList';
+// 2026-10-23 (owner) — a weekly qualifier's detail window has a Rules tab.
+import { QualifierRulesBody } from './QualifierRules';
+import { qualifierHasWeeklyRules } from '../../content/qualifierRules';
 
 function formatCountdown(target, now) {
   if (target == null) return '';
@@ -70,6 +73,8 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
   const tabs = [{ key: 'overview', label: 'Overview' }];
   if (levels.length > 0) tabs.push({ key: 'blinds', label: 'Blind Schedule' });
   if (seatsLine || resultLine) tabs.push({ key: 'prizes', label: 'Seats' });
+  const hasRules = qualifierHasWeeklyRules(q);
+  if (hasRules) tabs.push({ key: 'rules', label: 'Rules' });
 
   const startCountdown = !isRunning && !isFinished ? formatCountdown(q.scheduledAt, now) : '';
   const stats = [
@@ -211,6 +216,12 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
                 </div>
               )) : null}
               {resultLine && <div style={{ color: '#cfe0ff', textAlign: 'center', marginTop: 6 }}>{resultLine}</div>}
+            </div>
+          )}
+
+          {activeTab === 'rules' && hasRules && (
+            <div className="qualifier-dashboard-rules">
+              <QualifierRulesBody />
             </div>
           )}
         </div>
