@@ -11,10 +11,14 @@
  *   levelEndsAt              — when the current level ends (epoch ms or ISO)
  *   levelDurationMs          — the level's length (also `durationMs` /
  *                              `duration`; a value <= 7200 is read as seconds)
- *   levelRemainingMs         — the frozen time left while the clock is paused
+ *   levelRemainingMs         — the time left in the level at `serverNow`: frozen
+ *                              while paused; while running it ticks from
+ *                              serverNow (else from the receipt) when no
+ *                              levelEndsAt is sent
  *   serverNow                — the server's clock when the frame was built
  *   paused                   — true (or the reason string) while no cards are dealt
- *   pauseReason              — 'prestart' | 'break' | 'director' (also `reason`)
+ *   pauseReason              — 'prestart' | 'break' | 'director' (also `reason`);
+ *                              any other reason is shown as a neutral hold
  *   dealsAt                  — prestart: when the first cards are dealt
  *   resumesAt                — break: when play resumes
  *   playersLeft, entries, avgStack, paidPlaces — the standings line
@@ -22,6 +26,12 @@
  * clock arrived — stampTournamentClockReceipt) and `skewMs` so the countdown
  * ticks locally: skew = receivedAt - serverNow (the smallest of the recent
  * frames), server time = Date.now() - skew.
+ *
+ * Review fix-up (2026-10-22): "final level" only when level >= levels are both
+ * sent (an omitted `next` is not the top); a resume EVENT newer than the clock
+ * frame ends the held state (resumedClock); the HUD shows the strip only on a
+ * table whose gameState says isTournament (a stale merged clock on a cash table
+ * never renders).
  *
  * An older server sends none of it: the HUD keeps its old widgets.
  * Pure module (no React): GameHUD, App.jsx's toasts and the node probes.
@@ -69,12 +79,21 @@ function normalizeBlinds(raw) {
   };
 }
 
-const PRESTART_REASONS = new Set(['prestart', 'pre_start', 'pre-start', 'waiting_start', 'start', 'scheduled', 'held']);
+const PRESTART_REASONS = new Set([
+  'prestart', 'pre_start', 'pre-start', 'waiting_start', 'start', 'scheduled', 'held',
+  'not_started', 'not-started', 'notstarted', 'before_start', 'registering', 'starting',
+]);
 const BREAK_REASONS = new Set(['break', 'scheduled_break', 'level_break']);
 const DIRECTOR_REASONS = new Set(['director', 'td', 'admin', 'manual', 'paused']);
+// A `paused` string that means "not paused" (never read as a reason).
+const NOT_PAUSED_STRINGS = new Set(['false', '0', 'no', 'off', 'none', 'running', 'resumed']);
+
+function reasonString(v) {
+  return typeof v === 'string' ? v.trim().toLowerCase() : '';
+}
 
 function normalizeReason(v) {
-  const r = typeof v === 'string' ? v.trim().toLowerCase() : '';
+  const r = reasonString(v);
   if (!r) return null;
   if (PRESTART_REASONS.has(r)) return 'prestart';
   if (BREAK_REASONS.has(r)) return 'break';
@@ -91,14 +110,20 @@ export function normalizeTournamentClock(raw) {
   const blinds = normalizeBlinds(raw.blinds && typeof raw.blinds === 'object' ? { ...raw.blinds, ...raw } : raw);
   const levels = posInt(raw.levels ?? raw.levelCount ?? raw.totalLevels);
   const level = posInt(raw.level ?? raw.blindLevel);
-  const pausedFlag = raw.paused === true || (typeof raw.paused === 'string' && raw.paused.trim() !== '');
+  const pausedStr = reasonString(raw.paused);
+  const pausedFlag = raw.paused === true || (pausedStr !== '' && !NOT_PAUSED_STRINGS.has(pausedStr));
   const dealsAt = toEpochMs(raw.dealsAt);
   const resumesAt = toEpochMs(raw.resumesAt);
   let pauseReason = null;
   if (pausedFlag) {
-    pauseReason = normalizeReason(typeof raw.paused === 'string' ? raw.paused : null)
-      || normalizeReason(raw.pauseReason ?? raw.reason)
-      || (dealsAt ? 'prestart' : (resumesAt ? 'break' : 'director'));
+    const sentReason = pausedStr !== 'true' ? pausedStr : '';
+    const fieldReason = reasonString(raw.pauseReason ?? raw.reason);
+    // A reason this client does not know is a neutral 'held' (never the
+    // director's pause): only a pause with NO reason is the director's — the
+    // one pause an older server sends (pauseTournament).
+    pauseReason = normalizeReason(sentReason)
+      || normalizeReason(fieldReason)
+      || (dealsAt ? 'prestart' : (resumesAt ? 'break' : ((sentReason || fieldReason) ? 'held' : 'director')));
   }
   const next = normalizeBlinds(raw.next ?? raw.nextLevel);
   return {
@@ -172,7 +197,11 @@ export function clockSkewMs(clock, fallbackSkewMs = 0) {
   return Number.isFinite(f) ? f : 0;
 }
 
-/** ms left in the level (null when unknown). Frozen while paused. */
+/**
+ * ms left in the level (null when unknown). Frozen while paused. Running:
+ * from levelEndsAt, else from levelRemainingMs counted down from the frame's
+ * serverNow (else from its local receipt) — never a number that does not tick.
+ */
 export function levelRemainingMs(clock, localNow = Date.now(), skewMs = 0) {
   if (!clock) return null;
   if (clock.paused) {
@@ -181,8 +210,13 @@ export function levelRemainingMs(clock, localNow = Date.now(), skewMs = 0) {
     if (clock.pauseReason === 'prestart' && clock.durationMs) return clock.durationMs;
     return null;
   }
-  if (!clock.levelEndsAt) return null;
-  return Math.max(0, clock.levelEndsAt - (localNow - skewMs));
+  if (clock.levelEndsAt) return Math.max(0, clock.levelEndsAt - (localNow - skewMs));
+  if (clock.frozenRemainingMs != null) {
+    // The level ends at server time serverNow + remaining; server now = localNow - skew.
+    if (clock.serverNow) return Math.max(0, clock.serverNow + clock.frozenRemainingMs - (localNow - skewMs));
+    if (clock.receivedAt) return Math.max(0, clock.frozenRemainingMs - (localNow - clock.receivedAt));
+  }
+  return null;
 }
 
 /** ms until a server instant (dealsAt / resumesAt), never negative; null without one. */
@@ -234,31 +268,52 @@ export function blindsText(b) {
 }
 
 /**
- * The strip's line: "Level 3/26 · 100/200 · ante 25 · next 150/300 in 11:42".
- * Paused: the frozen time (or what holds it); the top level: "final level".
- * '' when the clock has no blinds to show.
+ * The strip's line in two parts, so a clipped line (landscape phones) cuts the
+ * blinds, never the countdown:
+ *   main  "Level 3/26 · 100/200 · ante 25 · next 150/300"
+ *   tail  "in 11:42" (+ " · clock paused" …), joined to main by `joiner`
+ *         (' ' before "in m:ss", ' · ' before a status word).
+ * "final level" only when level >= levels (both sent); an omitted `next`
+ * below the top reads "next level in m:ss". Paused: the frozen time (or what
+ * holds it). null when the clock has no blinds to show.
  */
-export function clockStripText(clock, remainingMs) {
-  if (!clock || !clock.bb) return '';
-  const parts = [];
-  if (clock.level) parts.push(clock.levels ? `Level ${clock.level}/${clock.levels}` : `Level ${clock.level}`);
-  parts.push(blindsText(clock));
-  const atTop = !clock.next || (clock.levels && clock.level && clock.level >= clock.levels);
+export function clockStripParts(clock, remainingMs) {
+  if (!clock || !clock.bb) return null;
+  const head = [];
+  if (clock.level) head.push(clock.levels ? `Level ${clock.level}/${clock.levels}` : `Level ${clock.level}`);
+  head.push(blindsText(clock));
+  const atTop = !!(clock.levels && clock.level && clock.level >= clock.levels);
   const clockText = remainingMs != null ? formatClock(remainingMs) : '';
+  const tail = [];
   if (atTop) {
-    parts.push('final level');
-  } else if (clockText) {
-    parts.push(`next ${chipsFmt(clock.next.sb)}/${chipsFmt(clock.next.bb)} in ${clockText}`);
+    head.push('final level');
   } else {
-    parts.push(`next ${chipsFmt(clock.next.sb)}/${chipsFmt(clock.next.bb)}`);
+    if (clock.next) head.push(`next ${chipsFmt(clock.next.sb)}/${chipsFmt(clock.next.bb)}`);
+    else if (clockText) head.push('next level');
+    if (clockText) tail.push(`in ${clockText}`);
   }
   if (clock.paused) {
     // Prestart: the held-table banner names the start time and counts down.
-    if (clock.pauseReason === 'prestart') parts.push('not started');
-    else if (clock.pauseReason === 'break') parts.push('on break');
-    else parts.push('clock paused');
+    if (clock.pauseReason === 'prestart') tail.push('not started');
+    else if (clock.pauseReason === 'break') tail.push('on break');
+    else if (clock.pauseReason === 'held') tail.push('on hold');
+    else tail.push('clock paused');
   }
-  return parts.join(' · ');
+  const startsWithTime = !atTop && !!clockText;
+  return {
+    main: head.join(' · '),
+    tail: tail.join(' · '),
+    joiner: tail.length ? (startsWithTime ? ' ' : ' · ') : '',
+  };
+}
+
+/**
+ * The strip's whole line: "Level 3/26 · 100/200 · ante 25 · next 150/300 in 11:42".
+ * '' when the clock has no blinds to show.
+ */
+export function clockStripText(clock, remainingMs) {
+  const p = clockStripParts(clock, remainingMs);
+  return p ? `${p.main}${p.joiner}${p.tail}` : '';
 }
 
 /**
@@ -285,6 +340,8 @@ export function standingsText(clock) {
 
 export const TOURNAMENT_DIRECTOR_PAUSE_TEXT = 'Paused by the tournament director';
 export const TOURNAMENT_DIRECTOR_PAUSE_TOAST = 'Play paused by the tournament director';
+// A hold whose reason this client does not know: neutral, never "director".
+export const TOURNAMENT_HOLD_TEXT = 'Play is on hold';
 export const TOURNAMENT_RESUMED_TOAST = 'Play resumed';
 
 /** "Break — play resumes at 1:05 PM MT" (the toast and the banner's head). */
@@ -295,7 +352,7 @@ export function breakResumesText(resumesAt) {
 
 /**
  * The waiting area while a tournament table is held (no cards dealt):
- * { kind: 'prestart' | 'break' | 'director', text, countdownTo } or null.
+ * { kind: 'prestart' | 'break' | 'director' | 'held', text, countdownTo } or null.
  * `countdownTo` is the server instant the HUD counts down to (m:ss), if any.
  */
 export function heldBannerFor(clock) {
@@ -307,20 +364,67 @@ export function heldBannerFor(clock) {
   if (clock.pauseReason === 'break') {
     return { kind: 'break', text: breakResumesText(clock.resumesAt), countdownTo: clock.resumesAt || null };
   }
+  if (clock.pauseReason === 'held') return { kind: 'held', text: TOURNAMENT_HOLD_TEXT, countdownTo: null };
   return { kind: 'director', text: TOURNAMENT_DIRECTOR_PAUSE_TEXT, countdownTo: null };
 }
 
 /**
- * The 'tournamentPaused' toast: a break with its resume time, else the
- * director's pause; null for a prestart hold (the table banner says it).
+ * The 'tournamentPaused' toast: a break with its resume time, a director's
+ * pause (no reason, or 'director'), a neutral hold for a reason this client
+ * does not know; null for a prestart hold (the table banner says it).
  */
 export function tournamentPausedToastText(data) {
-  const reason = normalizeReason(data?.reason ?? data?.pauseReason);
+  const sent = reasonString(data?.reason ?? data?.pauseReason);
+  const reason = normalizeReason(sent);
   if (reason === 'prestart') return null;
   const resumesAt = toEpochMs(data?.resumesAt);
   if (reason === 'break') return breakResumesText(resumesAt);
   if (!reason && resumesAt) return breakResumesText(resumesAt);
+  if (!reason && sent) return TOURNAMENT_HOLD_TEXT;
   return TOURNAMENT_DIRECTOR_PAUSE_TOAST;
+}
+
+/**
+ * Does this 'tournamentPaused' payload mark a DIRECTOR pause (the lobby's TD
+ * Pause / Resume control)? A scheduled break or the prestart hold is not one;
+ * no reason (an older server: only the director pauses) or any other reason is.
+ */
+export function marksDirectorPause(data) {
+  const reason = normalizeReason(data?.reason ?? data?.pauseReason);
+  return reason !== 'break' && reason !== 'prestart';
+}
+
+/**
+ * The clock as of a 'tournamentResumed' EVENT received at local time
+ * `resumedAt` (App.jsx noteTournamentResumed): when that is newer than the
+ * frame that brought this paused clock, the table is no longer held — the
+ * server may resume without broadcasting a gameState. The frozen time and
+ * levelEndsAt are dropped (the server's next frame brings the running clock).
+ * Otherwise the clock unchanged. Never throws.
+ */
+export function resumedClock(clock, resumedAt) {
+  if (!clock || !clock.paused) return clock;
+  const at = num(resumedAt);
+  if (at == null || clock.receivedAt == null || at < clock.receivedAt) return clock;
+  return { ...clock, paused: false, pauseReason: null, frozenRemainingMs: null, levelEndsAt: null, resumedLocally: true };
+}
+
+/**
+ * What GameHUD shows for a table's gameState: { clock, show, held }.
+ * `clock` — the normalized clock as of the last resume event (resumedClock);
+ * `show`  — the strip renders (a tournament table — gameState.isTournament,
+ *           which the server ALWAYS sends, false on cash — with blinds): a
+ *           clock the delta merge kept after a move to a cash table never shows;
+ * `held`  — the held banner replaces "Waiting for players…" and Deal now.
+ */
+export function tableTournamentClock(gameState, resumedAt) {
+  const onTournamentTable = gameState?.isTournament === true;
+  const clock = resumedClock(normalizeTournamentClock(gameState?.tournamentClock), resumedAt);
+  return {
+    clock,
+    show: onTournamentTable && !!(clock && clock.bb),
+    held: onTournamentTable && !!heldBannerFor(clock),
+  };
 }
 
 /** "Blind Level Up — Level 4: 150/300 · ante 25" (an older server: no level → "Blind Level Up: 150/300"). */

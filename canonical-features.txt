@@ -1200,3 +1200,11 @@ tournament-standings-line
 tournament-break-banner
 qualifier-deals-at
 Break — play resumes at
+# Review fix-up (2026-10-22): two of the lines above (tournament-clock-strip,
+# tournament-standings-line) are also CSS class rules, so the grep passed on
+# the CSS alone. These are in the JSX only: the strip's accessible label and
+# the standings line's first part. Plus the neutral hold banner (a pause whose
+# reason this client does not know is never "Paused by the tournament director").
+Tournament clock:
+tsl-part tsl-left
+Play is on hold

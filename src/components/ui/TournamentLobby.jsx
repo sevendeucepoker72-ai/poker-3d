@@ -3,6 +3,7 @@ import { useGameStore } from '../../store/gameStore';
 import { useTournamentRegistrationStore, tournamentCancelledText, pendingKind } from '../../store/tournamentRegistrationStore';
 import { getSocket } from '../../services/socketService';
 import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
+import { marksDirectorPause } from '../../utils/tournamentClock';
 import './TournamentLobby.css';
 
 // How long a Register / Withdraw tap waits for its answer (or an `error`)
@@ -55,8 +56,11 @@ export default function TournamentLobby({ onOpenBracket = null }) {
     if (!socket) return undefined;
     socket.emit('getTournaments');
     // GAP 15 — reflect live pause state pushed to the tournament's table rooms.
+    // 2026-10-22 review fix-up: only a DIRECTOR pause (no reason, 'director' or
+    // a reason this client does not know) marks the TD control paused — a
+    // scheduled break or the prestart hold ('break' / 'prestart') does not.
     const handlePaused = (data) => {
-      if (!data?.tournamentId) return;
+      if (!data?.tournamentId || !marksDirectorPause(data)) return;
       setPausedIds((prev) => new Set([...prev, data.tournamentId]));
     };
     const handleResumed = (data) => {
@@ -207,7 +211,9 @@ export default function TournamentLobby({ onOpenBracket = null }) {
           // (an admin in the LOBBY isn't in the tournament's table room, so the
           // tournamentPaused echo alone never reaches them); the echo just gives
           // instant feedback between 5s polls.
-          const isPaused = !!t.paused || pausedIds.has(id);
+          // (A list item that names its pause a break / prestart hold is not a
+          // director pause either — review fix-up; no pauseReason: unchanged.)
+          const isPaused = (!!t.paused && marksDirectorPause({ reason: t.pauseReason })) || pausedIds.has(id);
           const startsIn = t.status === 'registering' ? formatTime(t.nextStartTime) : null;
           const buyIn = Number(t.buyIn) || 0;
 

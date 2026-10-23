@@ -4206,6 +4206,8 @@
   text-align: center;
   line-height: 1.25;
 }
+/* The countdown ("in 4:01 · on break") never breaks apart or gets clipped. */
+.tournament-clock-line .tcl-tail { white-space: nowrap; }
 .tournament-clock-bar {
   width: 100%;
   min-width: 80px;
@@ -4286,10 +4288,15 @@
 @media (max-width: 400px) {
   .tournament-standings-line .tsl-avg { display: none; }
 }
-/* Landscape phones: the top bar is a 30px strip — one clipped line, no standings. */
+/* Landscape phones: the top bar is a 30px strip — one clipped line, no standings.
+   Review fix-up: the line is a flex row — the blinds part (.tcl-main) takes the
+   ellipsis, the countdown (.tcl-tail) never shrinks (it was the part cut off
+   from level 17 on at 667x375). */
 @media (max-height: 500px) and (orientation: landscape) {
   .tournament-clock-strip { padding: 0 6px; gap: 1px; border-radius: 6px; }
-  .tournament-clock-line { font-size: 0.6rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
+  .tournament-clock-line { font-size: 0.6rem; white-space: nowrap; max-width: 46vw; display: flex; justify-content: center; min-width: 0; }
+  .tournament-clock-line .tcl-main { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .tournament-clock-line .tcl-tail { flex-shrink: 0; }
   .tournament-clock-bar { height: 2px; }
   .tournament-standings-line { display: none; }
 }

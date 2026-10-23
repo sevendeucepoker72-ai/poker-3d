@@ -58,7 +58,8 @@ import { TournamentLeaveDialog } from '../ui/TournamentSeatNotice';
 // 2026-10-22 — the tournament's running level clock, standings line and
 // held-table banner, from the OPTIONAL gameState.tournamentClock.
 import { TournamentClockStrip, TournamentHeldBanner } from './TournamentClockStrip';
-import { normalizeTournamentClock, heldBannerFor, formatSecondsClock } from '../../utils/tournamentClock';
+import { tableTournamentClock, formatSecondsClock } from '../../utils/tournamentClock';
+import { useTournamentClockStore } from '../../store/tournamentClockStore';
 // Gameplay audit 2026-10-21 (C3) — multi-table scope of the seat controls,
 // per-table Sit Out, replies for another table, the Back button, the Dealer's
 // Choice label.
@@ -3386,10 +3387,21 @@ export default function GameHUD() {
   // tournament table (prestart, break, director pause) shows why instead of
   // "Waiting for players…" and offers no "Deal now" (the server refuses it:
   // 'tournament_hand_held').
+  // Review fix-up: only on a table whose gameState says isTournament (the
+  // server ALWAYS sends it, false on cash — a merged clock the server left out
+  // after a move to a cash table never renders), and a 'tournamentResumed'
+  // event newer than the clock frame ends the held state (resumedClock).
   const rawTournamentClock = gameState?.tournamentClock;
-  const tournamentClock = useMemo(() => normalizeTournamentClock(rawTournamentClock), [rawTournamentClock]);
-  const showTournamentClock = !!(tournamentClock && tournamentClock.bb);
-  const tournamentHeld = gameState?.isTournament === true && !!heldBannerFor(tournamentClock);
+  const isTournamentState = gameState?.isTournament;
+  const tournamentResumedAt = useTournamentClockStore((s) => (
+    gameState?.tournamentId != null ? s.resumedAt[String(gameState.tournamentId)] : undefined));
+  const tournamentView = useMemo(
+    () => tableTournamentClock({ isTournament: isTournamentState, tournamentClock: rawTournamentClock }, tournamentResumedAt),
+    [isTournamentState, rawTournamentClock, tournamentResumedAt],
+  );
+  const tournamentClock = tournamentView.clock;
+  const showTournamentClock = tournamentView.show;
+  const tournamentHeld = tournamentView.held;
   const isShowdown = phase === 'Showdown';
   const lastHandHistory = handHistories.length > 0 ? handHistories[handHistories.length - 1] : null;
   const winnerSeatSet = handResult ? new Set((handResult.winners ?? []).map((w) => w.seatIndex)) : new Set();
@@ -3574,7 +3586,7 @@ export default function GameHUD() {
               from levelEndsAt) + standings line, when the server sends
               tournamentClock; else the old blind level timer (#4), in m:ss. */}
           {showTournamentClock ? (
-            <TournamentClockStrip rawClock={rawTournamentClock} />
+            <TournamentClockStrip clock={tournamentClock} />
           ) : gameState?.blindLevel && gameState?.nextBlindIn > 0 && (
             <div className="blind-level-timer">
               <div className="blind-level-bar">
@@ -4485,7 +4497,7 @@ export default function GameHUD() {
               {/* 2026-10-22 — a HELD tournament table says why (cards at
                   11:00 / break / director pause) and offers no Deal now. */}
               {tournamentHeld ? (
-                <TournamentHeldBanner rawClock={rawTournamentClock} />
+                <TournamentHeldBanner clock={tournamentClock} />
               ) : (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8,

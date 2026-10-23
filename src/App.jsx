@@ -78,6 +78,7 @@ import { tournamentCompleteMessage } from './utils/qualifierList';
 import {
   stampTournamentClockReceipt, blindLevelUpText, tournamentPausedToastText, TOURNAMENT_RESUMED_TOAST,
 } from './utils/tournamentClock';
+import { useTournamentClockStore } from './store/tournamentClockStore';
 import { noteMaintenanceMode, noteServerConnected } from './services/serverFlags';
 import { shouldApplyRemoteSignOut, noteIgnoredRemoteSignOut } from './services/crossTabSignOut';
 import { maybeOfferGuestCarryOver, resetGuestCarryOver } from './services/guestCarryOver';
@@ -1924,11 +1925,16 @@ function App() {
       return true;
     };
     const handleTournamentPausedToast = (data) => {
+      // Review fix-up — a pause ends an earlier resume mark (the last frame applies).
+      try { useTournamentClockStore.getState().noteTournamentPaused(data); } catch { /* best-effort */ }
       const message = tournamentPausedToastText(data);
       if (!message || !claimPauseToast('paused', data)) return;
       useProgressStore.getState().addNotification({ type: 'mission', message });
     };
     const handleTournamentResumedToast = (data) => {
+      // Review fix-up — the resume EVENT ends the held table (banner off, Deal
+      // now back) even when no gameState follows it (GameHUD: resumedClock).
+      try { useTournamentClockStore.getState().noteTournamentResumed(data); } catch { /* best-effort */ }
       if (!claimPauseToast('resumed', data)) return;
       useProgressStore.getState().addNotification({ type: 'mission', message: TOURNAMENT_RESUMED_TOAST });
     };
