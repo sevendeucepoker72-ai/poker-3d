@@ -1235,3 +1235,9 @@ Help tools are off in qualifier tournaments.
 options-help-off-note
 hand-strength-portal hand-strength-portal--plain
 help tools off at this qualifier table
+# Review fix-up (same day): a coach whisper names no table, so the AI Coach
+# Rail shows none while ANY of his tables is a qualifier table (an extra cash
+# tab included); the table's Last Hand replay shows a revealed hand's name
+# without its strength percent while a qualifier table is open.
+coach whisper not shown: a qualifier table is open
+replay-player-equity replay-player-equity--plain

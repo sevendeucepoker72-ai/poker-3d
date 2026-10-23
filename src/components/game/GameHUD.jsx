@@ -61,7 +61,7 @@ import { TournamentClockStrip, TournamentHeldBanner } from './TournamentClockStr
 import { tableTournamentClock, formatSecondsClock } from '../../utils/tournamentClock';
 import { useTournamentClockStore } from '../../store/tournamentClockStore';
 // 2026-10-23 (owner: "Turn all off") — no help tools at a QUALIFIER table.
-import { helpToolsOffAt, QUALIFIER_HELP_TOOLS_OFF_TEXT } from '../../utils/qualifierHelpTools';
+import { helpToolsOffAt, helpToolsOffAtAnyTable, QUALIFIER_HELP_TOOLS_OFF_TEXT } from '../../utils/qualifierHelpTools';
 // Gameplay audit 2026-10-21 (C3) — multi-table scope of the seat controls,
 // per-table Sit Out, replies for another table, the Back button, the Dealer's
 // Choice label.
@@ -752,6 +752,11 @@ export default function GameHUD() {
   // player lands on such a table (moved by a rebalance, a tab switch, the
   // qualifier start) is closed. Cash tables are unchanged.
   const helpToolsOff = helpToolsOffAt(gameState);
+  // Review fix-up: ANY of his tables (on screen, a multi-table entry, his live
+  // tournament seat) is a qualifier table. The Last Hand replay then shows no
+  // hand-strength percent (handHistories holds every table's hands, so on an
+  // extra cash tab the last hand can be the qualifier's).
+  const qualifierTableOpen = useTableStore((s) => helpToolsOffAtAnyTable(s.gameState, s.activeTables, tournamentSeat));
   const helpToolsOffRef = useRef(helpToolsOff);
   useEffect(() => {
     helpToolsOffRef.current = helpToolsOff;
@@ -5566,8 +5571,10 @@ export default function GameHUD() {
           blank the whole HUD. OverlayBoundary falls back to a small toast. */}
       <OverlayBoundary name="Hand Replay" onClose={() => setShowReplay(false)}>
         <Suspense fallback={null}>
+          {/* 2026-10-23 review fix-up: while a qualifier table is open the
+              replay shows a revealed hand's name only, no strength percent. */}
           {showReplay && lastHandHistory && (
-            <HandReplayViewer history={lastHandHistory} onClose={() => setShowReplay(false)} />
+            <HandReplayViewer history={lastHandHistory} onClose={() => setShowReplay(false)} hideStrength={helpToolsOff || qualifierTableOpen} />
           )}
         </Suspense>
       </OverlayBoundary>

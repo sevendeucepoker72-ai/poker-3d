@@ -84,7 +84,11 @@ function generateHandSummary(history) {
   return lines.join('\n');
 }
 
-export default function HandReplayViewer({ history, onClose }) {
+// 2026-10-23 review fix-up (owner: "Turn all off") — `hideStrength`: opened
+// from a QUALIFIER table (GameHUD's helpToolsOff), a revealed hand shows only
+// its name on each street, never the hand-strength percent (the same metric
+// the live hand pill no longer shows there). Lobby / shared replays unchanged.
+export default function HandReplayViewer({ history, onClose, hideStrength = false }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
@@ -250,6 +254,13 @@ export default function HandReplayViewer({ history, onClose }) {
                   // Omaha replay uses the must-use-exactly-2 rule, not Hold'em any-5.
                   const hs = evaluateHandStrength(p.holeCards, step.communityCards, { variant: history.variant });
                   if (!hs) return null;
+                  if (hideStrength) {
+                    return (
+                      <span className="replay-player-equity replay-player-equity--plain">
+                        {hs.name}
+                      </span>
+                    );
+                  }
                   const pct = Math.round(hs.strength * 100);
                   const color = pct >= 60 ? '#4ADE80' : pct >= 30 ? '#FBBF24' : '#F59E0B';
                   return (

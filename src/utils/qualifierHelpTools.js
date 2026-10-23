@@ -35,8 +35,13 @@
  * A tournament table with none of these (a regular tournament, Sit & Go, an
  * older server's qualifier we were never told about) keeps its tools.
  *
+ * Also (review fix-up): a coach whisper names no table, so CoachingRail drops
+ * every whisper while ANY of his tables is a qualifier table
+ * (helpToolsOffAtAnyTable), and the table's Last Hand replay shows a revealed
+ * hand's name without its strength percent at a qualifier table.
+ *
  * Pure module (no React, no store): GameHUD, PokerTable2D, App.jsx,
- * QualifierLobby and the node probes.
+ * QualifierLobby, CoachingRail and the node probes.
  */
 
 export const QUALIFIER_HELP_TOOLS_OFF_TEXT = 'Help tools are off in qualifier tournaments.';
@@ -126,4 +131,37 @@ export function qualifierTableEvidence(gs, known = knownQualifierTournamentIds) 
 /** Help tools are OFF at the table on screen (a qualifier table). */
 export function helpToolsOffAt(gs, known = knownQualifierTournamentIds) {
   return qualifierTableEvidence(gs, known) !== null;
+}
+
+/**
+ * Help tools are OFF at ANY table of this socket (review fix-up 2026-10-23):
+ * the table on screen (`shown`), any multi-table entry (`activeTables`: a Map
+ * or array of { gameState } / states, e.g. his qualifier seat while an extra
+ * cash tab is on screen) or his live tournament seat (`seat`:
+ * tournamentSeatStore's { tournamentId }) when its tournamentId is a noted
+ * qualifier's. For a socket event that names no table (a `coachWhisper` is
+ * relayed from ANY table room the socket shares with the sender): while one of
+ * his tables is a qualifier table it may have come from there, so it is not
+ * shown anywhere. Never throws.
+ */
+export function helpToolsOffAtAnyTable(shown, activeTables, seat, known = knownQualifierTournamentIds) {
+  try {
+    if (helpToolsOffAt(shown, known)) return true;
+    let off = false;
+    if (activeTables && typeof activeTables.forEach === 'function') {
+      activeTables.forEach((entry) => {
+        if (off || !entry || typeof entry !== 'object') return;
+        const gs = entry.gameState && typeof entry.gameState === 'object' ? entry.gameState : entry;
+        if (helpToolsOffAt(gs, known)) off = true;
+      });
+    }
+    if (off) return true;
+    if (seat && typeof seat === 'object' && !Array.isArray(seat)) {
+      const tid = idString(seat.tournamentId);
+      if (tid && hasId(known, tid)) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }

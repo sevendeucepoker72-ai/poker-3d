@@ -95,6 +95,11 @@
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.3);
 }
+/* 2026-10-23 — a qualifier table's replay: the hand name only (gold on blue). */
+.replay-player-equity--plain {
+  color: #ffd24a;
+  background: rgba(30, 64, 175, 0.35);
+}
 .replay-player-chips {
   margin-left: auto;
   color: #ffd24a;

@@ -1,5 +1,27 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { useTableStore } from '../../store/tableStore';
+import { useTournamentSeatStore } from '../../store/tournamentSeatStore';
+// 2026-10-23 review fix-up (owner: "Turn all off") — no coach whispers while
+// any of his tables is a qualifier table (a whisper names no table).
+import { helpToolsOffAtAnyTable } from '../../utils/qualifierHelpTools';
 import './CoachingRail.css';
+
+// A `coachWhisper` frame carries no table id: poker-server relays it from ANY
+// `table:` room this socket shares with the sender. With a qualifier seat AND
+// an extra cash tab on screen (where this rail can be open), a whisper sent
+// from the QUALIFIER table's room would show here. So while one of his tables
+// (on screen, multi-table entry, live tournament seat) is a qualifier table,
+// no whisper is shown at all. Never throws (a store read that fails shows it,
+// as before).
+function whispersOffNow() {
+  try {
+    const t = useTableStore.getState();
+    const seat = useTournamentSeatStore.getState().seat;
+    return helpToolsOffAtAnyTable(t.gameState, t.activeTables, seat);
+  } catch {
+    return false;
+  }
+}
 
 // R1 (TABLEUI-3, 2026-10-11) — the rail sits just BELOW the table's top bar
 // (.hud-top), whatever its height: on phones that bar wraps to ~140px, and at
@@ -130,7 +152,12 @@ export default function CoachingRail({
 
   useEffect(() => {
     if (!socket) return;
-    const handler = ({ message, coachName }) => {
+    const handler = ({ message, coachName } = {}) => {
+      if (whispersOffNow()) {
+        // eslint-disable-next-line no-console
+        console.info('[CoachingRail] coach whisper not shown: a qualifier table is open');
+        return;
+      }
       addMessage({ text: message, source: 'human', coach: coachName || 'Coach' });
     };
     socket.on('coachWhisper', handler);
