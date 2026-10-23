@@ -4178,6 +4178,122 @@
   transition: width 1s linear;
 }
 
+/* ── Tournament clock strip (2026-10-22) ─────────────────────
+   The server's optional gameState.tournamentClock: the level clock (m:ss,
+   ticking locally), its bar (blue -> gold -> amber, never red) and the
+   standings line. Lives in .hud-center-info under the pot. */
+.tournament-clock-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 2px auto 0;
+  padding: 3px 10px;
+  max-width: min(520px, 100%);
+  border-radius: 8px;
+  background: rgba(30, 58, 138, 0.28);
+  border: 1px solid rgba(120, 160, 255, 0.28);
+  font-variant-numeric: tabular-nums;
+}
+.tournament-clock-strip--paused {
+  border-color: rgba(255, 210, 74, 0.45);
+}
+.tournament-clock-line {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #ffd24a;
+  letter-spacing: 0.2px;
+  text-align: center;
+  line-height: 1.25;
+}
+.tournament-clock-bar {
+  width: 100%;
+  min-width: 80px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.tournament-clock-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s linear, background-color 0.5s ease;
+}
+.tournament-standings-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 0;
+  font-size: 0.66rem;
+  color: #bfd3ff;
+  line-height: 1.25;
+  text-align: center;
+}
+.tournament-standings-line .tsl-part { white-space: nowrap; }
+.tournament-standings-line .tsl-part + .tsl-part::before {
+  content: '\00a0\00b7\00a0';
+  color: rgba(191, 211, 255, 0.6);
+}
+
+/* The held-table banner in the action area (prestart / break / director). */
+.tournament-held-banner {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(30, 58, 138, 0.35);
+  border: 1px solid rgba(120, 160, 255, 0.4);
+  color: #ffd24a;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.tournament-held-banner .tournament-held-countdown { color: #bfd3ff; white-space: nowrap; }
+
+/* Tablet / desktop: the top-left corner under the top bar, OUT of the top
+   bar's flow — that layout does not size the table from the top bar, so a
+   taller bar covered the top seats (1280x620, 900x600). Phones (TableLayout.css:
+   portrait <= 600px wide, landscape <= 500px tall) keep it in the bar: their
+   table is laid out below the measured bar. */
+@media (min-width: 601px) and (min-height: 501px) {
+  .tournament-clock-strip {
+    position: fixed;
+    top: calc(var(--hud-top-h, 64px) + 6px);
+    left: 16px;
+    margin: 0;
+    width: max-content;
+    max-width: min(360px, 32vw);
+    align-items: stretch;
+    padding: 5px 10px;
+    background: rgba(10, 22, 60, 0.82);
+    z-index: 25;
+  }
+  .tournament-clock-line { text-align: left; }
+  .tournament-standings-line { justify-content: flex-start; text-align: left; }
+}
+
+@media (max-width: 480px) {
+  .tournament-clock-strip { padding: 2px 6px; max-width: 100%; }
+  .tournament-clock-line { font-size: 0.64rem; }
+  .tournament-standings-line { font-size: 0.6rem; }
+  .tournament-held-banner { font-size: 12px; padding: 5px 10px; border-radius: 12px; }
+}
+/* Narrow phones: the average stack is the part that goes. */
+@media (max-width: 400px) {
+  .tournament-standings-line .tsl-avg { display: none; }
+}
+/* Landscape phones: the top bar is a 30px strip — one clipped line, no standings. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .tournament-clock-strip { padding: 0 6px; gap: 1px; border-radius: 6px; }
+  .tournament-clock-line { font-size: 0.6rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
+  .tournament-clock-bar { height: 2px; }
+  .tournament-standings-line { display: none; }
+}
+
 /* ── Pot Odds dim when not player's turn ─────────────────── */
 .pot-odds-dim {
   opacity: 0.45;

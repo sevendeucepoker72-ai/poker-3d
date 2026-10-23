@@ -1186,3 +1186,17 @@ uses 1 credit
 # named as such ("re-entry limit reached", not "no credits left"); every
 # qualifier time is on the Denver clock with "MT" (lobby, home card, details).
 re-entry limit reached
+
+# 2026-10-22 (owner: "open the rooms 10 minutes before game start so people can
+# join and then start the game on time ... run the blinds and raise them, take
+# breaks") - the table HUD reads the server's OPTIONAL gameState.tournamentClock:
+# a level clock in m:ss that ticks locally from levelEndsAt (blue, then gold,
+# then amber), the standings line ("12 left of 45 · avg ... · top 10 win
+# seats"), and the held-table banners (cards dealt at 11:00 / break / director
+# pause) with no Deal now. Toasts for a break, a pause and the resume; Blind
+# Level Up names the level. With no tournamentClock the HUD is unchanged.
+tournament-clock-strip
+tournament-standings-line
+tournament-break-banner
+qualifier-deals-at
+Break — play resumes at

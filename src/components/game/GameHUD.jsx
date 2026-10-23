@@ -55,6 +55,10 @@ import {
 } from '../../store/tournamentSeatStore';
 import { returnToTournament } from '../../services/tournamentReturn';
 import { TournamentLeaveDialog } from '../ui/TournamentSeatNotice';
+// 2026-10-22 — the tournament's running level clock, standings line and
+// held-table banner, from the OPTIONAL gameState.tournamentClock.
+import { TournamentClockStrip, TournamentHeldBanner } from './TournamentClockStrip';
+import { normalizeTournamentClock, heldBannerFor, formatSecondsClock } from '../../utils/tournamentClock';
 // Gameplay audit 2026-10-21 (C3) — multi-table scope of the seat controls,
 // per-table Sit Out, replies for another table, the Back button, the Dealer's
 // Choice label.
@@ -3377,6 +3381,15 @@ export default function GameHUD() {
   }, [tournamentLeaveVia, gameState, leaveTable, setScreen]);
 
   const isWaiting = phase === 'WaitingForPlayers' || phase === 'HandComplete';
+  // 2026-10-22 — the server's OPTIONAL tournament clock (null / absent on a
+  // cash table and on an older server: then nothing below changes). A held
+  // tournament table (prestart, break, director pause) shows why instead of
+  // "Waiting for players…" and offers no "Deal now" (the server refuses it:
+  // 'tournament_hand_held').
+  const rawTournamentClock = gameState?.tournamentClock;
+  const tournamentClock = useMemo(() => normalizeTournamentClock(rawTournamentClock), [rawTournamentClock]);
+  const showTournamentClock = !!(tournamentClock && tournamentClock.bb);
+  const tournamentHeld = gameState?.isTournament === true && !!heldBannerFor(tournamentClock);
   const isShowdown = phase === 'Showdown';
   const lastHandHistory = handHistories.length > 0 ? handHistories[handHistories.length - 1] : null;
   const winnerSeatSet = handResult ? new Set((handResult.winners ?? []).map((w) => w.seatIndex)) : new Set();
@@ -3557,8 +3570,12 @@ export default function GameHUD() {
               );
             })()}
           </div>
-          {/* Blind level timer (#4) */}
-          {gameState?.blindLevel && gameState?.nextBlindIn > 0 && (
+          {/* 2026-10-22 — the tournament's level clock (m:ss, ticking locally
+              from levelEndsAt) + standings line, when the server sends
+              tournamentClock; else the old blind level timer (#4), in m:ss. */}
+          {showTournamentClock ? (
+            <TournamentClockStrip rawClock={rawTournamentClock} />
+          ) : gameState?.blindLevel && gameState?.nextBlindIn > 0 && (
             <div className="blind-level-timer">
               <div className="blind-level-bar">
                 <div className="blind-level-bar-fill" style={{
@@ -3567,7 +3584,7 @@ export default function GameHUD() {
                   background: gameState.nextBlindIn < 30 ? '#f59e0b' : gameState.nextBlindIn < 60 ? '#ffd24a' : '#4ade80',
                 }} />
               </div>
-              <span className="blind-level-label">Level {gameState.blindLevel} · Next in {Math.ceil(gameState.nextBlindIn)}s</span>
+              <span className="blind-level-label">Level {gameState.blindLevel} · Next in {formatSecondsClock(gameState.nextBlindIn)}</span>
             </div>
           )}
           <div className="hud-phase" data-phase={phaseLabel}>
@@ -4465,6 +4482,11 @@ export default function GameHUD() {
                "Starting next hand…" indicator instead, but keep a small
                manual Deal escape hatch in case the server stalls. */
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', width: '100%' }}>
+              {/* 2026-10-22 — a HELD tournament table says why (cards at
+                  11:00 / break / director pause) and offers no Deal now. */}
+              {tournamentHeld ? (
+                <TournamentHeldBanner rawClock={rawTournamentClock} />
+              ) : (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8,
                 padding: '6px 14px', borderRadius: 999,
@@ -4475,6 +4497,8 @@ export default function GameHUD() {
                 <span className="hud-waiting-dot" aria-hidden="true" />
                 {phase === 'HandComplete' ? 'Starting next hand…' : 'Waiting for players…'}
               </span>
+              )}
+              {!tournamentHeld && (
               <button
                 className="action-btn deal"
                 onClick={startHand}
@@ -4487,6 +4511,7 @@ export default function GameHUD() {
               >
                 Deal now
               </button>
+              )}
             </div>
           ) : hasDrawPhase && isDrawPhase ? (
             /* Draw Phase — gameplay audit F134 / G169 (2026-10-21): the draw

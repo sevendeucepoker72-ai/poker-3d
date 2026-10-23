@@ -73,6 +73,11 @@ import { installTournamentRegistry, tournamentCancelledText } from './store/tour
 import CareerResultNotice from './components/career/CareerResultNotice';
 import { followJoinToTable } from './services/joinFollow';
 import { tournamentCompleteMessage } from './utils/qualifierList';
+// 2026-10-22 — the tournament clock's receipt stamp (the HUD's local tick) and
+// the blind-up / break / pause / resume toasts.
+import {
+  stampTournamentClockReceipt, blindLevelUpText, tournamentPausedToastText, TOURNAMENT_RESUMED_TOAST,
+} from './utils/tournamentClock';
 import { noteMaintenanceMode, noteServerConnected } from './services/serverFlags';
 import { shouldApplyRemoteSignOut, noteIgnoredRemoteSignOut } from './services/crossTabSignOut';
 import { maybeOfferGuestCarryOver, resetGuestCarryOver } from './services/guestCarryOver';
@@ -985,6 +990,10 @@ function App() {
         // Legacy full-state format (backwards compatibility)
         state = data;
       }
+      // 2026-10-22 — a tournamentClock this frame brought gets its local
+      // receipt time (skew = receipt - its serverNow; the HUD's level clock
+      // ticks from it). A delta without one keeps the earlier stamped object.
+      try { stampTournamentClockReceipt(state); } catch { /* best-effort */ }
 
       // 2026-07-07 gap-fill [5] — multi-table routing. A snapshot for a table
       // that is NOT the one currently on screen must ONLY refresh that table's
@@ -1894,10 +1903,37 @@ function App() {
     socket.on('blindLevelUp', (data) => {
       useProgressStore.getState().addNotification({
         type: 'mission',
-        message: `Blind Level Up: ${data.sb}/${data.bb}`,
+        // 2026-10-22 — "Blind Level Up — Level 4: 150/300 · ante 25" (an
+        // older server sends no level: "Blind Level Up: 150/300").
+        message: blindLevelUpText(data),
         reward: { chips: 0, xp: 0 },
       });
     });
+    // 2026-10-22 — a tournament break / director pause and the resume, as
+    // toasts (the table's own banner says it too). The server sends these to
+    // the tournament's table rooms; one toast per event (a socket in two of
+    // its rooms gets it twice). Specific handler refs: TournamentLobby's TD
+    // controls listen to the same events.
+    const pauseToastAt = new Map(); // `${event}:${tournamentId}:${reason}` -> at
+    const claimPauseToast = (event, data) => {
+      const key = `${event}:${data?.tournamentId ?? ''}:${data?.reason ?? ''}`;
+      const now = Date.now();
+      for (const [k, at] of pauseToastAt) { if (now - at > 3000) pauseToastAt.delete(k); }
+      if (pauseToastAt.has(key)) return false;
+      pauseToastAt.set(key, now);
+      return true;
+    };
+    const handleTournamentPausedToast = (data) => {
+      const message = tournamentPausedToastText(data);
+      if (!message || !claimPauseToast('paused', data)) return;
+      useProgressStore.getState().addNotification({ type: 'mission', message });
+    };
+    const handleTournamentResumedToast = (data) => {
+      if (!claimPauseToast('resumed', data)) return;
+      useProgressStore.getState().addNotification({ type: 'mission', message: TOURNAMENT_RESUMED_TOAST });
+    };
+    socket.on('tournamentPaused', handleTournamentPausedToast);
+    socket.on('tournamentResumed', handleTournamentResumedToast);
     socket.on('playerEliminated', (data) => {
       // S2 round 2 (P-e) — the PLAIN elimination notice the server sends this
       // account's sockets when its kept-absent seat busts while the socket is
@@ -2129,6 +2165,8 @@ function App() {
       socket.off(TOURNAMENT_SEAT_TAKEN_OVER_EVENT, handleTournamentSeatTakenOver);
       socket.off(RETURN_TO_TOURNAMENT_RESULT_EVENT, handleReturnToTournamentResultEvent);
       socket.off('blindLevelUp');
+      socket.off('tournamentPaused', handleTournamentPausedToast);
+      socket.off('tournamentResumed', handleTournamentResumedToast);
       socket.off('playerEliminated');
       socket.off('tournamentFinishedForEntrant', handleTournamentFinishedForEntrant);
       socket.off('tournamentFinished');
