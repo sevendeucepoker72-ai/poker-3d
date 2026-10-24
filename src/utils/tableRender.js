@@ -214,6 +214,37 @@ export function positionLabel(seatIndex, dealerButtonSeat, rotation, seatCount =
 // ── Winner banner / showdown overlay (F19 / F20 / F23) ──────────────────────
 
 /**
+ * Sit & Go fix-all F20 (owner 2026-10-23) — auto-muck. At a showdown that is
+ * not an all-in, poker-server mucks a losing hand that does not have to be
+ * shown (TDA show order): `handResult.muckedSeats` lists them, their cards are
+ * never sent and `showdownHands` keeps only the viewer's OWN mucked entry.
+ * An older server sends no list: nothing is mucked here.
+ */
+export const MUCKED_TEXT = 'Mucked';
+export const OWN_MUCKED_TEXT = 'Mucked - only you see your cards';
+
+function muckedSeatSet(handResult) {
+  const list = handResult && Array.isArray(handResult.muckedSeats) ? handResult.muckedSeats : [];
+  return new Set(list.filter((s) => Number.isInteger(s) && s >= 0));
+}
+
+/** Was the viewer's own hand mucked (he still sees it, nobody else does)? */
+export function ownHandMucked(handResult, yourSeat) {
+  return Number.isInteger(yourSeat) && yourSeat >= 0 && muckedSeatSet(handResult).has(yourSeat);
+}
+
+/** The OTHER players' mucked hands for the showdown panel: [{ seatIndex, playerName }]. */
+export function muckedShowdownRows(handResult, seats, yourSeat) {
+  const out = [];
+  for (const seat of muckedSeatSet(handResult)) {
+    if (seat === yourSeat) continue;
+    const s = Array.isArray(seats) ? seats[seat] : null;
+    out.push({ seatIndex: seat, playerName: safeName(s && s.playerName, '') || `Seat ${seat + 1}` });
+  }
+  return out.sort((a, b) => a.seatIndex - b.seatIndex);
+}
+
+/**
  * The server's per-pot list can name every pot's winners (F19 / F20): every
  * pot with chips in it lists at least one winner. A fold-won pot or an Omaha
  * Hi-Lo pot from an older server lists none — then the totals are used.

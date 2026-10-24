@@ -246,7 +246,11 @@ export default function HandReplayViewer({ history, onClose, hideStrength = fals
                   {p.revealed && p.holeCards && p.holeCards.map((c, i) => (
                     <ReplayCard key={i} card={c} />
                   ))}
-                  {!p.revealed && !p.folded && (
+                  {/* Sit & Go fix-all F20 — a mucked losing hand reads "Mucked", never cards. */}
+                  {!p.revealed && !p.folded && p.mucked && (
+                    <span className="replay-card replay-mucked" style={{ color: '#93c5fd' }}>Mucked</span>
+                  )}
+                  {!p.revealed && !p.folded && !p.mucked && (
                     <>
                       <span className="replay-card" style={{ color: '#555' }}>??</span>
                       <span className="replay-card" style={{ color: '#555' }}>??</span>

@@ -197,6 +197,8 @@ export function buildReplaySteps(history) {
     folded: notDealt.has(p.seatIndex),
     currentAction: null,
     revealed: false,
+    // Sit & Go fix-all F20 — a losing hand the server mucked (no cards in the record).
+    ...(p.mucked === true ? { mucked: true } : {}),
   }]));
   if (viewerSeat !== null && viewerCards && states.has(viewerSeat) && !states.get(viewerSeat).holeCards) {
     states.get(viewerSeat).holeCards = viewerCards;

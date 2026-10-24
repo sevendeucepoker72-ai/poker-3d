@@ -113,6 +113,8 @@ export function sanitizeReplayHistory(raw) {
     // Gameplay audit G165 (2026-10-21) — an insured seat's settlement (may be
     // negative: the house collected), so the replay's end stack is his real one.
     if (Number.isInteger(p.insuranceDelta) && Math.abs(p.insuranceDelta) <= 1e9) row.insuranceDelta = p.insuranceDelta;
+    // Sit & Go fix-all F20 — a mucked losing hand stays "Mucked" in a shared replay.
+    if (p.mucked === true) row.mucked = true;
     players.push(row);
   });
   if (players.length === 0) return null;

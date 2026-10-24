@@ -1313,3 +1313,8 @@ Payouts:
 min after the first entry if not full
 tournament-start-rule
 tournament-structure
+# 2026-10-24 Sit & Go fix-all K9 (F20) - auto-muck: the showdown panel names a mucked losing hand
+# "Mucked" (never its cards); his own mucked hand is marked "only you see your cards"; replays and
+# the export show "mucked".
+showdown-hand-mucked
+Mucked - only you see your cards

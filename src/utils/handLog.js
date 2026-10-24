@@ -633,6 +633,8 @@ export function recordToPokerStarsText(rec, myName) {
   lines.push('*** SUMMARY ***');
   lines.push(`Total pot ${potTotal(rec)}`);
   if (board.length) lines.push(`Board [${cardsText(board)}]`);
+  // Sit & Go fix-all F20 — a losing hand the server mucked (no cards).
+  for (const p of players) if (p.mucked === true) lines.push(`Seat ${p.seatIndex + 1}: ${p.name} mucked`);
   for (const w of Array.isArray(rec.winners) ? rec.winners : []) {
     if (!w || !isInt(w.seatIndex)) continue;
     const chips = Number(w.chipsWon) || 0;

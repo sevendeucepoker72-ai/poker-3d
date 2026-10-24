@@ -23,6 +23,8 @@ import {
 import {
   winnerBannerLines, perPotUsable, potWinnerRows, showdownRowHandName, equitySimFor,
   isNextHandAtSameTable, rabbitHuntOffered,
+  // Sit & Go fix-all F20 — auto-mucked losing hands at the showdown.
+  muckedShowdownRows, ownHandMucked, MUCKED_TEXT, OWN_MUCKED_TEXT,
 } from '../../utils/tableRender';
 // R1 (2026-10-11) — the table's defensive payload readers (names, shown cards,
 // the server's insurance quote, rebuy policy) and the sound settings keys.
@@ -5250,9 +5252,21 @@ export default function GameHUD() {
                     <div className="showdown-hand-eval">
                       {detailedName}
                     </div>
+                    {/* Sit & Go fix-all F20 — his own losing hand was mucked:
+                        only he sees it. */}
+                    {hand.seatIndex === yourSeat && ownHandMucked(handResult, yourSeat) && (
+                      <div className="showdown-own-mucked" style={{ fontSize: '0.72rem', color: '#93c5fd' }}>{OWN_MUCKED_TEXT}</div>
+                    )}
                   </div>
                 );
               })}
+              {/* F20 — the other mucked hands: the name and "Mucked", never cards. */}
+              {muckedShowdownRows(handResult, gameState?.seats, yourSeat).map((m) => (
+                <div key={`muck-${m.seatIndex}`} className="showdown-hand-row showdown-hand-loser showdown-hand-mucked">
+                  <div className="showdown-hand-player">{m.playerName}</div>
+                  <div className="showdown-hand-eval" style={{ color: '#93c5fd' }}>{MUCKED_TEXT}</div>
+                </div>
+              ))}
             </div>
 
             <div className="showdown-dismiss">Click anywhere to dismiss</div>
