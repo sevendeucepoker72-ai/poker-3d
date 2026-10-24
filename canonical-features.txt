@@ -1287,3 +1287,6 @@ action-hist-bet
 # the big blind folded facing two short all-ins); a free-street fold tap says "Checking is free".
 checking was free
 Fold (checks when checking is free)
+# 2026-10-24 Sit & Go fix-all K4 (C3) - the spectating status line follows the live tournament
+# clock (players left, level), not the snapshot from when he started watching.
+spectator-status-line

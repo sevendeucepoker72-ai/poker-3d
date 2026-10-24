@@ -63,7 +63,7 @@ import { TournamentLeaveDialog } from '../ui/TournamentSeatNotice';
 // 2026-10-22 — the tournament's running level clock, standings line and
 // held-table banner, from the OPTIONAL gameState.tournamentClock.
 import { TournamentClockStrip, TournamentHeldBanner } from './TournamentClockStrip';
-import { tableTournamentClock, formatSecondsClock } from '../../utils/tournamentClock';
+import { tableTournamentClock, formatSecondsClock, spectatorStatusText } from '../../utils/tournamentClock';
 import { useTournamentClockStore } from '../../store/tournamentClockStore';
 // 2026-10-23 (owner: "Turn all off") — no help tools at a QUALIFIER table.
 import { helpToolsOffAt, helpToolsOffAtAnyTable, QUALIFIER_HELP_TOOLS_OFF_TEXT } from '../../utils/qualifierHelpTools';
@@ -351,6 +351,9 @@ export default function GameHUD() {
       socket.off('eliminatedToSpectator', elimHandler);
     };
   }, []);
+
+  // Sit & Go fix-all C3 — the spectating line from the LIVE state (pure, probed).
+  const spectatorStatusLine = spectatorStatusText(gameState, tournamentSpectator);
 
   const handleNextTable = (dir) => {
     const socket = getSocket();
@@ -4556,9 +4559,11 @@ export default function GameHUD() {
 
               <div style={{ color: '#ffd24a', textAlign: 'center' }}>
                 <div style={{ fontWeight: 700 }}>Spectating</div>
-                {tournamentSpectator?.status && (
-                  <div style={{ fontSize: '0.75rem', color: '#888' }}>
-                    {tournamentSpectator.status.alivePlayers} players | {tournamentSpectator.status.tables} tables | Lvl {tournamentSpectator.status.blindLevel}
+                {/* Sit & Go fix-all C3 — the line follows the live clock (busts,
+                    level-ups), not the snapshot taken when he started watching. */}
+                {spectatorStatusLine && (
+                  <div className="spectator-status-line" style={{ fontSize: '0.75rem', color: '#888' }}>
+                    {spectatorStatusLine}
                   </div>
                 )}
               </div>

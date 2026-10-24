@@ -427,6 +427,28 @@ export function tableTournamentClock(gameState, resumedAt) {
   };
 }
 
+/**
+ * Sit & Go fix-all C3 (owner 2026-10-23) — the spectating status line, live:
+ * "5 players | 1 table | Lvl 9". The `spectatingTournament` frame's `status`
+ * is a snapshot from when he started watching; every spectator state frame
+ * carries the live `tournamentClock` (playersLeft / level), so that wins on a
+ * tournament table. Tables: the status's count, else the state's
+ * `tournamentTableIds`. Unknown parts are left out; '' when nothing is known.
+ */
+export function spectatorStatusText(gameState, spectator) {
+  const status = spectator && typeof spectator === 'object' && spectator.status && typeof spectator.status === 'object' ? spectator.status : null;
+  const live = gameState && gameState.isTournament === true ? normalizeTournamentClock(gameState.tournamentClock) : null;
+  const players = live && live.playersLeft != null ? live.playersLeft : nonNegInt(status && status.alivePlayers);
+  const tables = nonNegInt(status && status.tables)
+    ?? (gameState && Array.isArray(gameState.tournamentTableIds) && gameState.tournamentTableIds.length ? gameState.tournamentTableIds.length : null);
+  const level = (live && live.level) || posInt(gameState && gameState.isTournament === true ? gameState.blindLevel : null) || posInt(status && status.blindLevel);
+  const parts = [];
+  if (players != null) parts.push(`${chipsFmt(players)} ${players === 1 ? 'player' : 'players'}`);
+  if (tables) parts.push(`${tables} ${tables === 1 ? 'table' : 'tables'}`);
+  if (level) parts.push(`Lvl ${level}`);
+  return parts.join(' | ');
+}
+
 /** "Blind Level Up — Level 4: 150/300 · ante 25" (an older server: no level → "Blind Level Up: 150/300"). */
 export function blindLevelUpText(data) {
   const b = normalizeBlinds(data);
