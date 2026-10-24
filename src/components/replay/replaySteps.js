@@ -20,10 +20,18 @@
  * the final pots exactly. Records without an actionLog (older ones) fall back
  * to interleaving each player's actions round by round.
  *
+ * Sit & Go fix-all (owner 2026-10-23): a log that carries the F1 'posted ante
+ * N' lines gives ONE 'Antes posted' step from them (an all-in-for-less ante
+ * leaves that seat at 0) and no reconciliation runs; an older record keeps the
+ * reconciled step. An old record's opening 'raised to N' after the flop reads
+ * 'bet N' (F2, handLog displayActionText), and an action the turn clock took
+ * (F3 `auto`) is labelled '(timed out)' / '(away)': the step carries `auto`,
+ * the seat's currentAction keeps the action text.
+ *
  * Pure (no React, no DOM) so it can be exercised in Node.
  */
 
-import { rowNotDealtIn, rowIsMidHandJoiner } from '../../utils/handLog';
+import { rowNotDealtIn, rowIsMidHandJoiner, displayActionText, autoActionNote } from '../../utils/handLog.js';
 
 const BOARD_STREETS = { Flop: 3, Turn: 4, River: 5 };
 const STREET_LABEL = {
@@ -81,7 +89,7 @@ function orderedActions(history) {
       fromLog: true,
       list: log
         .filter((a) => a && typeof a === 'object' && Number.isInteger(a.seatIndex) && typeof a.action === 'string')
-        .map((a) => ({ seatIndex: a.seatIndex, text: a.action, street: typeof a.street === 'string' && a.street ? a.street : null })),
+        .map((a) => ({ seatIndex: a.seatIndex, text: a.action, street: typeof a.street === 'string' && a.street ? a.street : null, auto: typeof a.auto === 'string' && a.auto ? a.auto : null })),
     };
   }
   const players = history.players.filter((p) => Array.isArray(p.actions));
@@ -169,6 +177,11 @@ export function buildReplaySteps(history) {
     }
   }
   const anteTotal = [...antes.values()].reduce((s, v) => s + v, 0);
+  // F1 — the log's own ante lines (a newer server): one step from them.
+  const isLogAnte = (a) => fromLog && /^posted ante\b/i.test(String(a.text ?? '').trim());
+  const logAntes = new Map();
+  for (const a of list) if (isLogAnte(a)) logAntes.set(a.seatIndex, (logAntes.get(a.seatIndex) || 0) + Math.max(0, parseReplayAction(a.text).add || 0));
+  const logAnteTotal = [...logAntes.values()].reduce((s, v) => s + v, 0);
 
   // R3 (TABLEUI-6, contract H1) — a hand's NAME only with its cards: records
   // stored before the R1 fix carry the strength of hands that were never
@@ -203,6 +216,11 @@ export function buildReplaySteps(history) {
   } else if (missing > 0) {
     pot += missing; // unreconciled: at least the pot ends where the record says
   }
+  if (logAnteTotal > 0) {
+    for (const [seat, v] of logAntes) { const s = states.get(seat); if (s) s.chips = Math.max(0, s.chips - v); }
+    pot += logAnteTotal;
+    steps.push({ type: 'antes', phase: 'Antes', label: 'Antes posted', activeSeat: -1, pot, communityCards: [], playerStates: snapshot() });
+  }
 
   let street = null;
   const streetIn = new Map();
@@ -222,6 +240,7 @@ export function buildReplaySteps(history) {
   };
 
   for (const a of list) {
+    if (logAnteTotal > 0 && isLogAnte(a)) continue; // in the antes step
     const s = states.get(a.seatIndex);
     const blind = isBlindText(a.text);
     if (!blind) deal();
@@ -237,6 +256,7 @@ export function buildReplaySteps(history) {
     }
     const p = parseReplayAction(a.text);
     const cur = streetIn.get(a.seatIndex) || 0;
+    const streetBetBefore = Math.max(0, ...streetIn.values());
     let add = 0;
     if (p.kind === 'blind' || p.kind === 'raise') add = Math.max(0, p.to - cur);
     else if (p.kind === 'call') add = Math.max(0, p.add);
@@ -244,19 +264,22 @@ export function buildReplaySteps(history) {
     else if (p.kind === 'return') add = -Math.max(0, p.sub);
     if (p.kind !== 'dead' && p.kind !== 'return') streetIn.set(a.seatIndex, cur + add);
     pot = Math.max(0, pot + add);
+    // F2 — an old record's opening 'raised to' after the flop reads 'bet'.
+    const shown = blind ? a.text : displayActionText({ action: a.text }, streetBetBefore, st);
     if (s) {
       s.chips -= add;
       if (p.kind === 'fold') s.folded = true;
-      s.currentAction = a.text;
+      s.currentAction = shown;
     }
     steps.push({
       type: blind ? 'blinds' : 'action',
       phase: blind ? 'Blinds' : st,
-      label: `${s ? s.name : 'Player'}: ${a.text}`,
+      label: `${s ? s.name : 'Player'}: ${shown}${autoActionNote(a)}`,
       activeSeat: a.seatIndex,
       pot,
       communityCards: board.slice(0, shownBoard),
       playerStates: snapshot(),
+      ...(a.auto ? { auto: a.auto } : {}),
     });
   }
   deal();

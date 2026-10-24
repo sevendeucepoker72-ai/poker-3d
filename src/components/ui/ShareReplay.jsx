@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { buildReplaySteps } from '../../utils/handLog';
+import { buildReplaySteps, winnerHandText } from '../../utils/handLog';
 import './ShareReplay.css';
 
 const SUIT_SYM = ['♥','♦','♣','♠'];
@@ -145,7 +145,8 @@ export default function ShareReplay({ history, onClose }) {
             {history.winners.map((w, i) => (
               <div key={i} className="sr-winner-row">
                 🏆 {w.name || w.playerName} won {(w.chipsWon || w.amount || 0).toLocaleString()} chips
-                {w.handName && <span className="sr-winner-hand"> · {w.handName}</span>}
+                {/* C1 — an uncontested pot shows no 'Won by fold' hand name. */}
+                {winnerHandText(w.handName) && <span className="sr-winner-hand"> · {winnerHandText(w.handName)}</span>}
               </div>
             ))}
           </div>

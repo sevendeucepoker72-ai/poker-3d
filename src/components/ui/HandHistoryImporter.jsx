@@ -112,6 +112,9 @@ function parseBlock(block) {
         action: actMatch[2],
         amount: actMatch[3] ? parseFloat(actMatch[3]) : 0,
         to: actMatch[4] ? parseFloat(actMatch[4]) : null,
+        // Sit & Go fix-all (C1): an ante is dead money — never part of the
+        // street bet a later "raises X to Y" replaces.
+        ante: actMatch[2] === 'posts' && / posts the ante /.test(line),
       });
     }
     const uncalled = line.match(/^Uncalled bet \(\$?([\d.]+)\) returned to (.+)$/);
@@ -140,15 +143,17 @@ function parseBlock(block) {
   let heroNet = 0;
   const perStreet = {};
   let returned = 0;
+  let deadMoney = 0;
   for (const a of actions) {
     if (a.player !== hero) continue;
     const cur = perStreet[a.street] || 0;
-    if (a.action === 'posts' || a.action === 'calls') perStreet[a.street] = cur + a.amount;
+    if (a.ante) deadMoney += a.amount;
+    else if (a.action === 'posts' || a.action === 'calls') perStreet[a.street] = cur + a.amount;
     else if (a.action === 'bets') perStreet[a.street] = cur + a.amount;
     else if (a.action === 'raises') perStreet[a.street] = a.to != null ? Math.max(cur, a.to) : cur + a.amount;
     else if (a.action === 'returned') returned += a.amount;
   }
-  const contributed = Object.values(perStreet).reduce((x, y) => x + y, 0) - returned;
+  const contributed = Object.values(perStreet).reduce((x, y) => x + y, 0) + deadMoney - returned;
 
   if (winner === hero) {
     heroNet = pot - contributed;

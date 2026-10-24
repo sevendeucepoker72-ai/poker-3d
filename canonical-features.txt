@@ -1272,3 +1272,11 @@ help_tools_off_qualifier
 # 2026-10-24 review fix-up - poker-server keeps every hand of a qualifier (not only the last 50)
 # so every seed of the event can be checked after it ends; the rules page says so.
 The server keeps every hand of the qualifier for 7 days.
+# 2026-10-24 Sit & Go fix-all (owner 2026-10-23: "Fix all") K1 - hand history: antes in the replay
+# and export (the log's 'posted ante' lines, else reconciled), opening bets read 'bet', all-in calls
+# exported as calls, the level's stakes in the header, own folded cards, '(timed out)' marks,
+# uncontested pots 'collected (N)' (never 'Won by fold').
+and is all-in
+collected (
+has timed out
+(timed out)

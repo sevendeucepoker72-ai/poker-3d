@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SUIT_INDEX_TO_SYMBOL, SUIT_INDEX_TO_COLOR, serverRankDisplay } from '../../utils/cardUtils';
 import { evaluateHandStrength } from '../../utils/handStrength';
 import { buildReplaySteps } from './replaySteps';
+import { winnerHandText, autoActionNote } from '../../utils/handLog';
 import './HandReplayViewer.css';
 
 /*
@@ -57,11 +58,19 @@ function generateHandSummary(history) {
   }
 
   lines.push('Actions:');
-  for (const p of history.players) {
-    if (p.actions && p.actions.length > 0) {
-      for (const a of p.actions) {
-        if (typeof a === 'string') {
-          lines.push(`  ${p.name}: ${a}`);
+  // F3 — the chronological log (an action the turn clock took is marked);
+  // a record without one lists each player's actions as before.
+  const log = Array.isArray(history.actionLog) ? history.actionLog.filter((a) => a && typeof a.action === 'string') : [];
+  if (log.length > 0) {
+    const nameAt = (seat, fallback) => history.players.find((p) => p.seatIndex === seat)?.name || fallback || 'Player';
+    for (const a of log) lines.push(`  ${nameAt(a.seatIndex, a.playerName)}: ${a.action}${autoActionNote(a)}`);
+  } else {
+    for (const p of history.players) {
+      if (p.actions && p.actions.length > 0) {
+        for (const a of p.actions) {
+          if (typeof a === 'string') {
+            lines.push(`  ${p.name}: ${a}`);
+          }
         }
       }
     }
@@ -71,7 +80,7 @@ function generateHandSummary(history) {
   if (history.winners && history.winners.length > 0) {
     lines.push('Winners:');
     for (const w of history.winners) {
-      lines.push(`  \u2B50 ${w.name} wins ${(w.chipsWon || 0).toLocaleString()} chips${w.handName ? ` with ${w.handName}` : ''}`);
+      lines.push(`  \u2B50 ${w.name} wins ${(w.chipsWon || 0).toLocaleString()} chips${winnerHandText(w.handName) ? ` with ${winnerHandText(w.handName)}` : ''}`);
     }
   }
 
@@ -304,6 +313,8 @@ export default function HandReplayViewer({ history, onClose, hideStrength = fals
                 </span>
                 <span className="replay-action-text">
                   {step.playerStates.find((p) => p.seatIndex === step.activeSeat)?.currentAction || ''}
+                  {/* F3 — an action the turn clock took: '(timed out)' / '(away)'. */}
+                  {autoActionNote(step)}
                 </span>
               </>
             )}
@@ -312,7 +323,8 @@ export default function HandReplayViewer({ history, onClose, hideStrength = fals
                 <span className="replay-action-player">{w.name}</span>
                 <span className="replay-action-text"> wins </span>
                 <span className="replay-action-amount">+{(w.chipsWon || 0).toLocaleString()}</span>
-                {w.handName && <span className="replay-action-text"> with {w.handName}</span>}
+                {/* C1 — no 'with Won by fold' for an uncontested pot. */}
+                {winnerHandText(w.handName) && <span className="replay-action-text"> with {winnerHandText(w.handName)}</span>}
               </span>
             ))}
           </div>
