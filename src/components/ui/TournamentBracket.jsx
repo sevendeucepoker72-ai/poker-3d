@@ -3,6 +3,8 @@ import './TournamentBracket.css';
 // Sit & Go fix-all F7 — the payout table in the event detail (the lobby item's `payouts`).
 import { useTournamentRegistrationStore } from '../../store/tournamentRegistrationStore';
 import { payoutTableText, payoutsNote } from '../../utils/tournamentFinish';
+// Sit & Go fix-all F21 — the structure in the event detail too.
+import { structureText } from '../../utils/tournamentCard';
 
 function formatChips(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
@@ -161,6 +163,7 @@ function TournamentBracketView({ tournament, onClose }) {
     ? s.tournaments.find((t) => String(t.tournamentId) === String(tournament.tournamentId)) : null) || null);
   const payoutsText = payoutTableText(listItem) || payoutTableText(tournament);
   const payoutsNoteText = listItem ? payoutsNote(listItem) : payoutsNote(tournament);
+  const structureLine = structureText(listItem) || structureText(tournament);
   const isFinalTable = remainingPlayers > 0 && remainingPlayers <= 9;
 
   const statusLabel = {
@@ -200,6 +203,12 @@ function TournamentBracketView({ tournament, onClose }) {
         {payoutsText && (
           <div className="tournament-payouts tb-payouts" style={{ padding: '6px 16px', fontSize: '0.8rem', color: '#ffd24a' }}>
             Payouts: {payoutsText}{payoutsNoteText ? ` (${payoutsNoteText})` : ''}
+          </div>
+        )}
+
+        {structureLine && (
+          <div className="tournament-structure tb-structure" style={{ padding: '0 16px 6px', fontSize: '0.78rem', color: '#93c5fd' }}>
+            {structureLine}
           </div>
         )}
 
