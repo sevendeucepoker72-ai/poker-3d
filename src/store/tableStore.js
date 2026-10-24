@@ -346,6 +346,16 @@ export const useTableStore = create((set, get) => ({
     const leftTableId = !before.currentTableId && shown && shown.tableId != null ? String(shown.tableId) : null;
     const heldSeat = !!leftTableId && (Number(shown.yourSeat) >= 0 || before.mySeat >= 0);
     if (socket) socket.emit('leaveTable');
+    // 2026-10-24 (owner: won chips "dont go in peoples banks") — the lobby bank is
+    // only ever set by 'playerProgress'. The server now pushes the credited
+    // wallet itself once the cash-out commits; this asks again a moment later
+    // as a backstop (the credit is async), so the bank never stays at the
+    // pre-cash-out balance (the whole stack looked gone until a reload).
+    if (socket) {
+      setTimeout(() => {
+        try { const s = getSocket(); if (s && s.connected) s.emit('getProgress', { reason: 'bank_refresh_after_leave' }); } catch { /* ignore */ }
+      }, 1500);
+    }
     // R2 (TABLEUI-14) — 'leaveTable' ends the MAIN seat only; an EXTRA table
     // (joinAdditionalTable) left behind would keep its seat with no UI and be
     // auto-folded every hand. Back to Lobby leaves them too (cash tables only —

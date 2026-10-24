@@ -1034,7 +1034,11 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
       } else if (res?.error === 'not_broke') {
         // Balance already recovered (a hand paid out / grant landed) — silently clear.
         setRefillToast(null);
+        // 2026-10-24 — the server's real balance: the bank shown was stale (a
+        // cash-out it never heard about), so the 'Low on chips' banner clears now.
+        if (Number.isFinite(Number(res.chips))) useGameStore.getState().setChips(Number(res.chips));
       } else if (res?.error === 'chips_on_table') {
+        if (Number.isFinite(Number(res.chips))) useGameStore.getState().setChips(Number(res.chips));
         // R2 (addendum / ECON-19) — the server's own sentence: he still has
         // chips at a table, so the refill is not for him right now.
         setRefillToast({ ok: false, text: typeof res.message === 'string' && res.message ? res.message : 'You still have chips at a table — the refill is only for an empty bankroll.' });

@@ -1261,3 +1261,5 @@ The qualifier is free. Chips have no cash value. Prizes are seats to the live ch
 so the bubble is at {bubble} players
 They stay open until then, even if only a few players are left.
 own tools in the lobby or at another table
+# 2026-10-24 (owner: won chips "dont go in peoples banks") - bank refresh after leaving a table
+bank_refresh_after_leave
