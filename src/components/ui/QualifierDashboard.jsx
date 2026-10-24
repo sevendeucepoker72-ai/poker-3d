@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 import { notify } from '../../hooks/usePushNotifications';
-import { qualifierSignupState, qualifierResultText, seatsForTopText, ordinal, formatDenverWhen, qualifierBreaksText } from '../../utils/qualifierList';
+import { qualifierSignupState, qualifierResultText, seatsForTopText, ordinal, formatDenverWhen, qualifierBreaksText, qualifierLateRegClosedText } from '../../utils/qualifierList';
 // 2026-10-23 (owner) — a weekly qualifier's detail window has a Rules tab.
 import { QualifierRulesBody } from './QualifierRules';
 import { qualifierHasWeeklyRules } from '../../content/qualifierRules';
@@ -89,7 +89,11 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
   else windowLines.push('The start time has not been announced yet.');
   if (q.signupOpensAt != null && q.signupClosesAt != null) windowLines.push(`Signup is open from ${formatWhen(q.signupOpensAt)} to ${formatWhen(q.signupClosesAt)}.`);
   else if (q.signupOpensAt != null) windowLines.push(`Signup opens ${formatWhen(q.signupOpensAt)}.`);
-  if (q.lateRegUntil != null) windowLines.push(`Late registration closes ${formatWhen(q.lateRegUntil)}.`);
+  // 2026-10-24 review fix-up — closed at the seat bubble (a newer server): say so, as the
+  // card does, instead of the 2:00 PM time that no longer applies.
+  const lateClosedText = state === 'running' ? qualifierLateRegClosedText(q) : null;
+  if (lateClosedText) windowLines.push(lateClosedText);
+  else if (q.lateRegUntil != null) windowLines.push(`Late registration closes ${formatWhen(q.lateRegUntil)}.`);
   // 2026-10-23 (owner: "take breaks") — a newer server sends structure.breaks.
   const breaksText = qualifierBreaksText(q.structure);
   if (breaksText) windowLines.push(`${breaksText}.`);

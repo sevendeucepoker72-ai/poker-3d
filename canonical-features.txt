@@ -1269,3 +1269,6 @@ bank_refresh_after_leave
 qualifier-late-closed-bubble
 Seed shown after the qualifier ends
 help_tools_off_qualifier
+# 2026-10-24 review fix-up - poker-server keeps every hand of a qualifier (not only the last 50)
+# so every seed of the event can be checked after it ends; the rules page says so.
+The server keeps every hand of the qualifier for 7 days.

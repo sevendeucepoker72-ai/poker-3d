@@ -263,7 +263,7 @@ export const QUALIFIER_RULES = [
       },
       {
         needs: ['seedsHeldUntilEnd'],
-        text: "After the qualifier ends, each hand's shuffle code can be checked against the fingerprint shown before that hand. The server keeps the last 50 hands of each table for 7 days. Ask Support if you want a hand checked.",
+        text: "After the qualifier ends, each hand's shuffle code can be checked against the fingerprint shown before that hand. The server keeps every hand of the qualifier for 7 days. Ask Support if you want a hand checked.",
         otherwise: 'After each hand, its shuffle code (seed) can be checked against the fingerprint shown before that hand. The server keeps the last 50 hands of each table for 7 days. Ask Support if you want a hand checked.',
       },
     ],
