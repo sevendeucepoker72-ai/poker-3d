@@ -16,13 +16,24 @@ export default function BankrollGraph({ onClose }) {
   const [view, setView] = useState('last50');
   const [tooltip, setTooltip] = useState(null);
   const handLog = useProgressStore((s) => s.handLog);
+  const tournamentResults = useProgressStore((s) => s.tournamentResults);
+  const tournamentTableIds = useProgressStore((s) => s.tournamentTableIds);
   const heroName = useGameStore((s) => s.playerName);
 
-  // One point per hand of his: the running total of his chips won / lost.
-  const allData = useMemo(() => summarizeOwnHands(handLog, heroName).series.map((s) => ({
+  // One point per CASH hand of his (the running total of his chips won /
+  // lost) and one per tournament result (prize - entry fee). Sit & Go fix-all
+  // C2: tournament hands are left out - tournament chips are not his bankroll.
+  const summary = useMemo(
+    () => summarizeOwnHands(handLog, heroName, { tournamentResults, tournamentTableIds }),
+    [handLog, heroName, tournamentResults, tournamentTableIds],
+  );
+  const allData = useMemo(() => summary.series.map((s) => ({
     chips: s.cumulative,
-    label: `${s.label} (${s.net >= 0 ? '+' : ''}${s.net.toLocaleString()})`,
-  })), [handLog, heroName]);
+    label: /\)$/.test(s.label) ? s.label : `${s.label} (${s.net >= 0 ? '+' : ''}${s.net.toLocaleString()})`,
+  })), [summary]);
+  const tournamentNote = summary.tournamentHands > 0
+    ? `${summary.tournamentHands.toLocaleString()} tournament hand${summary.tournamentHands === 1 ? '' : 's'} left out - tournament chips are not your bankroll`
+    : null;
 
   // The shown window starts at zero (its own running total).
   const data = useMemo(() => {
@@ -42,6 +53,7 @@ export default function BankrollGraph({ onClose }) {
           </div>
           <div className="bankroll-empty">
             Play a few more hands to see your results — each hand you play adds a point (chips won or lost, added up).
+            {tournamentNote && <div className="bankroll-tournament-note">{tournamentNote}; each finished tournament adds its prize minus the entry.</div>}
           </div>
         </div>
       </div>,
@@ -210,6 +222,13 @@ export default function BankrollGraph({ onClose }) {
             <div className="bankroll-summary-label">Valley</div>
           </div>
         </div>
+        {/* Sit & Go fix-all C2 — tournament hands are not wallet results. */}
+        {tournamentNote && (
+          <div className="bankroll-tournament-note" style={{ fontSize: '0.75rem', color: '#93c5fd', marginTop: 8, textAlign: 'center' }}>
+            {tournamentNote}
+            {summary.tournaments.count > 0 && ` · tournaments: prizes +${summary.tournaments.prizes.toLocaleString()}, entries -${summary.tournaments.fees.toLocaleString()}`}
+          </div>
+        )}
       </div>
     </div>,
     document.body

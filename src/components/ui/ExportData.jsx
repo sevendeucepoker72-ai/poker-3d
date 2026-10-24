@@ -32,11 +32,15 @@ function downloadCSV(filename, csvContent) {
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 const cardsStr = (cards) => (Array.isArray(cards) ? cards.map(cardText).filter(Boolean).join(' ') : '');
 
-/** CSV text of his own hands (null when he has none). Exported for tests. */
-export function ownHandsCsv(handLog, myName) {
+/**
+ * CSV text of his own hands (null when he has none). Exported for tests.
+ * Sit & Go fix-all C2 — one appended last column 'Kind' (Cash / Tournament:
+ * a tournament hand's chips are table chips, not his bankroll).
+ */
+export function ownHandsCsv(handLog, myName, ctx = {}) {
   const rows = [];
   for (const h of Array.isArray(handLog) ? handLog : []) {
-    const r = ownHandResult(h, myName);
+    const r = ownHandResult(h, myName, ctx);
     if (!r) continue;
     const when = h.timestamp || h.receivedAt;
     rows.push([
@@ -51,10 +55,11 @@ export function ownHandsCsv(handLog, myName) {
       r.won ? 'Won' : (r.folded ? 'Folded' : 'Lost'),
       r.won ? r.chipsWon : 0,
       typeof r.net === 'number' ? r.net : '',
+      r.tournament ? 'Tournament' : 'Cash',
     ]);
   }
   if (rows.length === 0) return null;
-  const headers = ['Hand #', 'Played', 'Table', 'Your Seat', 'Your Cards', 'Board', 'Your Hand', 'Pot', 'Result', 'Chips Won', 'Net Chips'];
+  const headers = ['Hand #', 'Played', 'Table', 'Your Seat', 'Your Cards', 'Board', 'Your Hand', 'Pot', 'Result', 'Chips Won', 'Net Chips', 'Kind'];
   return [headers, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
 }
 
@@ -95,8 +100,8 @@ export function statsCsv(p) {
 export default function ExportData({ onClose }) {
   const [note, setNote] = useState(null);
   const exportHandHistory = () => {
-    const { handLog } = useProgressStore.getState();
-    const csv = ownHandsCsv(handLog, useGameStore.getState().playerName);
+    const { handLog, tournamentTableIds } = useProgressStore.getState();
+    const csv = ownHandsCsv(handLog, useGameStore.getState().playerName, { tournamentTableIds });
     if (!csv) { setNote('No hands of yours recorded yet — play some hands first.'); return; }
     downloadCSV(`poker_hand_history_${new Date().toISOString().slice(0, 10)}.csv`, csv);
     setNote(null);

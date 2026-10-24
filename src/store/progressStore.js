@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { useTableStore } from './tableStore';
 import { denverDateKey, dateKeyOf, toEpochMs, addDaysToDateKey } from '../utils/denverTime';
 import { normalizeItemType, vipXpTierFor } from '../utils/economyCatalog';
-import { ownHandResult } from '../utils/handLog';
+import { ownHandResult, mergeHandRecordStamps } from '../utils/handLog';
 
 // 2026-10-11 (R2, APPUI-48) — notification ids are unique ACROSS page loads:
 // NotificationCenter keeps the list (and its read ids) in sessionStorage, and a
@@ -610,7 +610,50 @@ export const useProgressStore = create((set, get) => ({
   noteAccount: (userId) => {
     const id = userId == null ? null : String(userId);
     if (get().accountId === id) return;
-    set({ accountId: id, handLog: [], session: freshSession() });
+    set({ accountId: id, handLog: [], session: freshSession(), tournamentResults: [], tournamentTableIds: [] });
+  },
+
+  // ─── Sit & Go fix-all C2 — his tournament results, IN MEMORY only ─────────
+  // Tournament chips are not his bankroll: the graph / analytics leave
+  // tournament hands out and plot each tournament's prize - entry fee instead.
+  // Fed from the server's frames (App: tournamentFinished myResult, the direct
+  // / sign-in elimination notice, tournamentFinishedForEntrant; GameHUD:
+  // eliminatedToSpectator) and durableState.tournamentResults when a server
+  // sends it. Never written to storage (no entitlement lives in the browser).
+  tournamentResults: [],
+  // Table ids known to be tournament tables (live states, results' tableIds):
+  // a stored hand row of one of them is a tournament hand.
+  tournamentTableIds: [],
+  noteTournamentResult: (r) => {
+    if (!r || typeof r !== 'object' || r.tournamentId == null || r.tournamentId === '') return;
+    const id = String(r.tournamentId);
+    const list = get().tournamentResults;
+    const i = list.findIndex((x) => String(x.tournamentId) === id);
+    const known = (a, b) => (b !== undefined && b !== null ? b : a);
+    const next = i < 0
+      ? [...list, { tournamentId: id, name: r.name ?? null, place: r.place ?? null, prize: r.prize ?? null, entryFee: r.entryFee ?? null, finishedAt: r.finishedAt ?? null, tableIds: Array.isArray(r.tableIds) ? r.tableIds.map(String) : [] }]
+      : list.map((x, j) => (j !== i ? x : {
+        ...x,
+        name: known(x.name, r.name),
+        place: known(x.place, r.place),
+        prize: known(x.prize, r.prize),
+        entryFee: known(x.entryFee, r.entryFee),
+        finishedAt: x.finishedAt ?? r.finishedAt ?? null,
+        tableIds: [...new Set([...(x.tableIds || []), ...(Array.isArray(r.tableIds) ? r.tableIds.map(String) : [])])],
+      }));
+    const ids = new Set(get().tournamentTableIds);
+    for (const t of Array.isArray(r.tableIds) ? r.tableIds : []) ids.add(String(t));
+    set({ tournamentResults: next.slice(-200), tournamentTableIds: [...ids].slice(-500) });
+  },
+  hydrateTournamentResults: (list) => {
+    if (!Array.isArray(list)) return;
+    for (const r of list) get().noteTournamentResult(r);
+  },
+  noteTournamentTable: (tableId) => {
+    if (tableId == null || tableId === '') return;
+    const id = String(tableId);
+    if (get().tournamentTableIds.includes(id)) return;
+    set({ tournamentTableIds: [...get().tournamentTableIds, id].slice(-500) });
   },
 
   // ─── R2 (APPUI-15) — the lobby's own hand log + "This Session" counters ───
@@ -629,12 +672,13 @@ export const useProgressStore = create((set, get) => ({
     const log = get().handLog;
     if (key && log.some((h) => handKey(h) === key)) return;
     const next = [...log, rec].slice(-HAND_LOG_MAX);
-    const own = ownHandResult(rec, myName);
+    const own = ownHandResult(rec, myName, { tournamentTableIds: get().tournamentTableIds });
     const s = get().session;
     set({
       handLog: next,
+      // C2 — "This Session" net is wallet chips: a tournament hand adds 0.
       session: own
-        ? { ...s, hands: s.hands + 1, wins: s.wins + (own.won ? 1 : 0), net: s.net + (typeof own.net === 'number' ? own.net : 0) }
+        ? { ...s, hands: s.hands + 1, wins: s.wins + (own.won ? 1 : 0), net: s.net + (typeof own.walletNet === 'number' ? own.walletNet : 0) }
         : s,
     });
   },
@@ -644,12 +688,14 @@ export const useProgressStore = create((set, get) => ({
     if (!Array.isArray(records)) return;
     const usable = records.filter((h) => h && Array.isArray(h.players) && h.players.length > 0);
     const oldestFirst = usable.slice().reverse();
-    const seen = new Set();
+    const seen = new Map(); // key -> index in merged
     const merged = [];
     for (const h of [...oldestFirst, ...get().handLog]) {
       const k = handKey(h);
-      if (k && seen.has(k)) continue;
-      if (k) seen.add(k);
+      // C2 — the stored copy is kept, plus the live copy's stamps it lacks
+      // (tableKind / tournamentId / yourSeat ...): a tournament hand stays one.
+      if (k && seen.has(k)) { const i = seen.get(k); merged[i] = mergeHandRecordStamps(merged[i], h); continue; }
+      if (k) seen.set(k, merged.length);
       merged.push(h);
     }
     set({ handLog: merged.slice(-HAND_LOG_MAX) });

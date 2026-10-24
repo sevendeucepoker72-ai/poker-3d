@@ -98,6 +98,31 @@ export function payoutTableText(item) {
   return payoutRows(item).map((r) => `${r.label} ${fmt(r.amount)}`).join(' · ');
 }
 
+/**
+ * Sit & Go fix-all C2 — his chip result of one tournament for the bankroll
+ * graph: { tournamentId, name, place, prize, entryFee, finishedAt } or null.
+ * From a finish / bust frame (`data`: tournamentId, place | position,
+ * prize?, tournamentName?, entryFee? / buyIn?) and the lobby item of that
+ * tournament (`item`: name, buyIn, payouts). An unpaid place is a known 0
+ * prize only when the server's payout table shows the place is not paid;
+ * otherwise an absent prize stays unknown (null) and the result is not
+ * plotted. A qualifier frame is never a chip result (null).
+ */
+export function tournamentResultFrom(data, item = null, now = Date.now()) {
+  if (!data || typeof data !== 'object' || data.tournamentId == null || data.tournamentId === '') return null;
+  if (qualifierFinishFrame(data, null)) return null;
+  const place = posInt(data.place) || posInt(data.position) || (data.myResult && posInt(data.myResult.place)) || null;
+  let prize = chips(data.prize ?? (data.myResult ? data.myResult.prize : undefined));
+  if (prize === null && place) {
+    const rows = payoutRows(item);
+    if (rows.length && place > rows[rows.length - 1].place) prize = 0;
+  }
+  const feeSent = chips(data.entryFee ?? data.buyIn);
+  const entryFee = feeSent !== null ? feeSent : (item ? chips(item.buyIn) : null);
+  const name = (typeof data.tournamentName === 'string' && data.tournamentName) || (item && typeof item.name === 'string' && item.name) || null;
+  return { tournamentId: String(data.tournamentId), name, place, prize, entryFee, finishedAt: now };
+}
+
 /** "If 9 play" while the server says the amounts are projected for that field, else ''. */
 export function payoutsNote(item) {
   if (!item || item.payoutsProjected !== true) return '';

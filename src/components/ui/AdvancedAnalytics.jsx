@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useDetailedStats } from '../../hooks/useDetailedStats';
-import { serverWinRate } from '../../store/progressStore';
+import { serverWinRate, useProgressStore } from '../../store/progressStore';
 import { summarizeOwnHands, recordToPokerStarsText } from '../../utils/handLog';
 import './AdvancedAnalytics.css';
 
@@ -234,6 +234,13 @@ function SessionsTab({ summary }) {
         <span>Lowest: <strong style={{ color: minY < 0 ? '#93C5FD' : '#4ADE80' }}>{fmtChips(minY)}</strong></span>
         <span>Total: <strong style={{ color: final >= 0 ? '#4ADE80' : '#93C5FD' }}>{fmtChips(final)}</strong></span>
       </div>
+      {(summary.tournaments.count > 0 || summary.tournamentHands > 0) && (
+        <p className="aa-section-sub aa-tournament-note">
+          {summary.tournaments.count > 0
+            ? `Tournaments: ${summary.tournaments.count} · prizes +${summary.tournaments.prizes.toLocaleString()} · entries -${summary.tournaments.fees.toLocaleString()}`
+            : `${summary.tournamentHands} tournament hands left out - tournament chips are not your bankroll`}
+        </p>
+      )}
     </div>
   );
 }
@@ -302,7 +309,14 @@ export default function AdvancedAnalytics({ progress, handLog = [], myName = '',
   const [activeTab, setActiveTab] = useState('Overview');
   // loading | ready | unavailable (a still-loading record is asked again, never graded as zeros)
   const { stats: detailed, status } = useDetailedStats();
-  const summary = useMemo(() => summarizeOwnHands(handLog, myName), [handLog, myName]);
+  // Sit & Go fix-all C2 — wallet results only: tournament hands are counted,
+  // never added to the chips won / lost; tournament prizes are shown instead.
+  const tournamentResults = useProgressStore((s) => s.tournamentResults);
+  const tournamentTableIds = useProgressStore((s) => s.tournamentTableIds);
+  const summary = useMemo(
+    () => summarizeOwnHands(handLog, myName, { tournamentResults, tournamentTableIds }),
+    [handLog, myName, tournamentResults, tournamentTableIds],
+  );
 
   useEffect(() => {
     const handleKey = e => { if (e.key === 'Escape') onClose?.(); };

@@ -106,9 +106,66 @@ export function potTotal(rec) {
   return 0;
 }
 
+// ── Tournament hands are not wallet results (Sit & Go fix-all C2) ─────────────
+// Tournament chips are table chips: a Sit & Go's 9,000 chips never reach a
+// wallet - only its prize does (and its entry fee left it). The bankroll graph
+// and analytics summed every hand's chip delta, so a Sit & Go read as -1,000 or
+// +8,000 "won". A record is a tournament hand when the server says so
+// (`tournamentId`, `tableKind` 'tournament' / 'spingo', `isTournament`), when
+// this client stamped it from the live table it came from (recordKindStamp), or
+// when its table is a known tournament table (ctx.tournamentTableIds).
+
+/** Is this record a tournament hand (not a wallet result)? */
+export function recordIsTournament(rec, ctx = {}) {
+  if (!rec || typeof rec !== 'object') return false;
+  if (typeof rec.tournamentId === 'string' && rec.tournamentId) return true;
+  if (rec.tableKind === 'tournament' || rec.tableKind === 'spingo') return true;
+  if (rec.isTournament === true) return true;
+  const ids = ctx && ctx.tournamentTableIds;
+  if (ids && rec.tableId != null && rec.tableId !== '') {
+    const tid = String(rec.tableId);
+    if (ids instanceof Set) return ids.has(tid);
+    if (Array.isArray(ids)) return ids.some((x) => String(x) === tid);
+  }
+  return false;
+}
+
+/**
+ * The kind of the table a live record came from, for the keys the record
+ * lacks: { tableKind?, tournamentId? } (never overrides a server field; only
+ * the state of that SAME table).
+ */
+export function recordKindStamp(history, src) {
+  const out = {};
+  if (!history || typeof history !== 'object' || !src || typeof src !== 'object') return out;
+  if (history.tableId != null && src.tableId != null && String(history.tableId) !== String(src.tableId)) return out;
+  if (!(typeof history.tableKind === 'string' && history.tableKind) && typeof src.tableKind === 'string' && src.tableKind) out.tableKind = src.tableKind;
+  if (!(typeof history.tournamentId === 'string' && history.tournamentId) && typeof src.tournamentId === 'string' && src.tournamentId) out.tournamentId = src.tournamentId;
+  return out;
+}
+
+const STAMP_KEYS = ['tableKind', 'tournamentId', 'isTournament', 'yourSeat', 'viewerSeat', 'viewerHoleCards'];
+/** Two copies of one hand: the kept one, plus the stamps only the other has. */
+export function mergeHandRecordStamps(kept, other) {
+  if (!kept || typeof kept !== 'object') return other;
+  if (!other || typeof other !== 'object') return kept;
+  let out = kept;
+  for (const k of STAMP_KEYS) {
+    if ((kept[k] === undefined || kept[k] === null) && other[k] !== undefined && other[k] !== null) {
+      if (out === kept) out = { ...kept };
+      out[k] = other[k];
+    }
+  }
+  return out;
+}
+
 /**
  * The player's result in one record, or null when the record has no own row:
- * { seat, won, chipsWon, net, insuranceDelta, folded, handName, pot, holeCards }.
+ * { seat, won, chipsWon, net, insuranceDelta, folded, handName, pot, holeCards,
+ *   tournament, walletNet }.
+ * C2 - `tournament` (recordIsTournament) and `walletNet` (net for a cash hand,
+ * null for a tournament hand: tournament chips are not his bankroll);
+ * `holeCards` include his own folded cards from the viewer copy.
  *
  * Gameplay audit G177 (2026-10-21) — the hand he sat down during is not his
  * (null: no hand, no +buy-in "win"); a folded seat that won nothing cannot end
@@ -118,7 +175,7 @@ export function potTotal(rec) {
  * settlement changed his stack by after the pot — + paid to him, - collected)
  * is part of the hand's result; `endChips` stays the post-pot stack.
  */
-export function ownHandResult(rec, myName) {
+export function ownHandResult(rec, myName, ctx = {}) {
   const seat = ownSeatOfRecord(rec, myName);
   if (seat < 0) return null;
   const row = rec.players.find((p) => p && p.seatIndex === seat);
@@ -139,7 +196,9 @@ export function ownHandResult(rec, myName) {
     folded: !!row.folded,
     handName: (wins.find((w) => w.handName)?.handName) || row.handName || null,
     pot: potTotal(rec),
-    holeCards: Array.isArray(row.holeCards) ? row.holeCards : null,
+    holeCards: ownHoleCardsOf(rec, seat),
+    tournament: recordIsTournament(rec, ctx),
+    walletNet: recordIsTournament(rec, ctx) ? null : net,
   };
 }
 
@@ -162,28 +221,94 @@ export function lastOwnHandOf(records) {
   return null;
 }
 
-/** Summary of the player's own hands (records with an own row only). */
-export function summarizeOwnHands(records, myName) {
-  const out = { hands: 0, wins: 0, net: 0, netKnown: 0, totalWon: 0, biggestWin: 0, bestHandName: null, series: [] };
+const ordinalOf = (n) => {
+  const v = n % 100;
+  return `${n}${(v >= 11 && v <= 13) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th')}`;
+};
+const signedChips = (n) => `${n >= 0 ? '+' : '-'}${Math.abs(n).toLocaleString()}`;
+const timeOf = (v) => {
+  const t = typeof v === 'number' ? v : (v ? Date.parse(v) : NaN);
+  return Number.isFinite(t) ? t : null;
+};
+
+/**
+ * Summary of the player's own hands (records with an own row only).
+ * C2 (Sit & Go fix-all) - `hands` / `wins` / `winRate` count every own hand;
+ * `net`, `netKnown`, `series`, `totalWon`, `biggestWin`, `bestHandName` and
+ * `avgPotWon` are CASH hands only (tournament chips are not his bankroll);
+ * `tournamentHands` counts the rest. `ctx.tournamentResults` ([{tournamentId,
+ * name, place, prize, entryFee, finishedAt}], from the server's frames) adds
+ * `tournaments` {count, prizes, fees, net} and one series point per result
+ * ("Sit & Go - 2nd (+170)"), merged by time; a result counts only when its
+ * prize and entry fee are both known and not both 0 (a seat-only qualifier is
+ * not a chip result).
+ */
+export function summarizeOwnHands(records, myName, ctx = {}) {
+  const out = {
+    hands: 0, wins: 0, net: 0, netKnown: 0, totalWon: 0, biggestWin: 0, bestHandName: null, series: [],
+    tournamentHands: 0, tournaments: { count: 0, prizes: 0, fees: 0, net: 0 },
+  };
+  const c = ctx && typeof ctx === 'object' ? ctx : {};
   let cumulative = 0;
+  let cashWins = 0;
+  const handPoints = [];
   for (const rec of Array.isArray(records) ? records : []) {
-    const r = ownHandResult(rec, myName);
+    const r = ownHandResult(rec, myName, c);
     if (!r) continue;
     out.hands += 1;
+    if (r.won) out.wins += 1;
+    if (r.tournament) { out.tournamentHands += 1; continue; }
     if (r.won) {
-      out.wins += 1;
+      cashWins += 1;
       out.totalWon += r.chipsWon;
       if (r.chipsWon > out.biggestWin) { out.biggestWin = r.chipsWon; out.bestHandName = r.handName; }
     }
-    if (typeof r.net === 'number') {
-      out.net += r.net;
+    if (typeof r.walletNet === 'number') {
+      out.net += r.walletNet;
       out.netKnown += 1;
-      cumulative += r.net;
-      out.series.push({ n: out.hands, net: r.net, cumulative, label: rec.handNumber != null ? `Hand #${rec.handNumber}` : `Hand ${out.hands}` });
+      cumulative += r.walletNet;
+      handPoints.push({
+        point: { n: out.hands, net: r.walletNet, cumulative, label: rec.handNumber != null ? `Hand #${rec.handNumber}` : `Hand ${out.hands}` },
+        at: timeOf(rec.timestamp || rec.receivedAt),
+      });
     }
   }
+  // Tournament results: prize - entry fee, one point each.
+  const resultPoints = [];
+  const seen = new Set();
+  for (const t of Array.isArray(c.tournamentResults) ? c.tournamentResults : []) {
+    if (!t || typeof t !== 'object') continue;
+    const prize = typeof t.prize === 'number' && Number.isFinite(t.prize) ? t.prize : null;
+    const fee = typeof t.entryFee === 'number' && Number.isFinite(t.entryFee) ? t.entryFee : null;
+    if (prize === null || fee === null || (prize === 0 && fee === 0)) continue;
+    const key = t.tournamentId != null ? String(t.tournamentId) : null;
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    const net = prize - fee;
+    out.tournaments.count += 1;
+    out.tournaments.prizes += prize;
+    out.tournaments.fees += fee;
+    out.tournaments.net += net;
+    const place = isInt(t.place) && t.place > 0 ? ` - ${ordinalOf(t.place)}` : '';
+    resultPoints.push({ point: { n: 0, net, cumulative: 0, label: `${t.name ? String(t.name) : 'Tournament'}${place} (${signedChips(net)})` }, at: timeOf(t.finishedAt) });
+  }
+  if (resultPoints.length === 0) {
+    out.series = handPoints.map((h) => h.point);
+  } else {
+    // Merge by time (stable); a result with no time goes at the end.
+    const pending = resultPoints.filter((p) => p.at !== null).sort((a, b) => a.at - b.at);
+    const untimed = resultPoints.filter((p) => p.at === null);
+    const merged = [];
+    for (const h of handPoints) {
+      while (h.at !== null && pending.length && pending[0].at <= h.at) merged.push(pending.shift().point);
+      merged.push(h.point);
+    }
+    for (const p of [...pending, ...untimed]) merged.push(p.point);
+    let cum = 0;
+    out.series = merged.map((p, i) => { cum += p.net; return { ...p, n: i + 1, cumulative: cum }; });
+  }
   out.winRate = out.hands > 0 ? Math.round((out.wins / out.hands) * 1000) / 10 : 0;
-  out.avgPotWon = out.wins > 0 ? Math.round(out.totalWon / out.wins) : 0;
+  out.avgPotWon = cashWins > 0 ? Math.round(out.totalWon / cashWins) : 0;
   return out;
 }
 

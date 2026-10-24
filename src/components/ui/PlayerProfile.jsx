@@ -271,7 +271,8 @@ export default function PlayerProfile({ target, socket, onClose, onViewReplay })
     const out = [];
     for (const rec of handLog || []) {
       const r = ownHandResult(rec, myName);
-      if (r && r.won) out.push({ rec, r });
+      // Sit & Go fix-all C2 — wallet wins only (tournament chips are table chips).
+      if (r && r.won && !r.tournament) out.push({ rec, r });
     }
     return out.sort((a, b) => b.r.chipsWon - a.r.chipsWon).slice(0, 3);
   }, [isOwnProfile, handLog, myName]);
@@ -282,7 +283,7 @@ export default function PlayerProfile({ target, socket, onClose, onViewReplay })
     const pts = [];
     for (const rec of handLog || []) {
       const r = ownHandResult(rec, myName);
-      if (r && typeof r.net === 'number') { cum += r.net; pts.push(cum); }
+      if (r && typeof r.walletNet === 'number') { cum += r.walletNet; pts.push(cum); }
     }
     return pts.slice(-30);
   }, [isOwnProfile, handLog, myName]);

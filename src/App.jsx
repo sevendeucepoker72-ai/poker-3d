@@ -69,11 +69,13 @@ import {
 // R2 (K3, 2026-10-11) — tournament registrations (C2), the career result on
 // the lobby (APPUI-24), a club challenge that opens its table (APPUI-53), the
 // qualifier result line (C3) and the admin maintenance flag (APPUI-34).
-import { installTournamentRegistry, tournamentCancelledText } from './store/tournamentRegistrationStore';
+import { installTournamentRegistry, tournamentCancelledText, useTournamentRegistrationStore } from './store/tournamentRegistrationStore';
 import CareerResultNotice from './components/career/CareerResultNotice';
 import { followJoinToTable } from './services/joinFollow';
 // Sit & Go fix-all F7 — the Game Over line + his own place and prize (pure, probed).
-import { finishOverlay, ownFinishResult, prizeSuffix } from './utils/tournamentFinish';
+import { finishOverlay, ownFinishResult, prizeSuffix, tournamentResultFrom } from './utils/tournamentFinish';
+// Sit & Go fix-all C2 — live hand records carry their table's kind (tournament hands are not wallet results).
+import { recordKindStamp } from './utils/handLog';
 // 2026-10-22 — the tournament clock's receipt stamp (the HUD's local tick) and
 // the blind-up / break / pause / resume toasts.
 import {
@@ -818,6 +820,18 @@ function App() {
     // tournament, whichever copy (room broadcast / direct notice) comes first.
     const ELIMINATION_TOAST_DEDUPE_MS = 10_000;
     const recentEliminationToasts = new Map(); // `${playerId}|${position}` -> at
+    // Sit & Go fix-all C2 — one tournament's chip result into the in-memory
+    // list (utils/tournamentFinish: the prize from the frame, the entry fee
+    // from the frame or that tournament's lobby item; unknown stays unknown).
+    const noteOwnTournamentResult = (frame) => {
+      try {
+        const id = frame && frame.tournamentId != null ? String(frame.tournamentId) : null;
+        if (!id) return;
+        const item = useTournamentRegistrationStore.getState().tournaments.find((t) => String(t.tournamentId) === id) || null;
+        const r = tournamentResultFrom(frame, item);
+        if (r) useProgressStore.getState().noteTournamentResult(r);
+      } catch { /* best-effort */ }
+    };
     const finishedToasts = new Map(); // tournamentId -> at
     const claimFinishedToast = (tid) => {
       if (!tid) return true;
@@ -1319,6 +1333,8 @@ function App() {
       }
       // R2 (APPUI-15) — the lobby's own hand log (kept after leaving a table).
       try { useProgressStore.getState().hydrateHandLog(usable); } catch { /* best-effort */ }
+      // Sit & Go fix-all C2 — his tournament results, when a server sends them (in memory only).
+      try { if (Array.isArray(payload?.tournamentResults)) useProgressStore.getState().hydrateTournamentResults(payload.tournamentResults); } catch { /* best-effort */ }
     });
 
     // Partial inventory update after buy/equip
@@ -1734,8 +1750,14 @@ function App() {
           // Gameplay audit G180 — an older server's record names no variant:
           // that same table's live one (the lobby replay rates Omaha right).
           const variantOfTable = recordVariantFromTable(history, ts.gameState, ts.activeTables);
+          // Sit & Go fix-all C2 — the kind of the table it came from (only the
+          // keys the record lacks): a tournament hand stays out of the bankroll.
+          if (src && src.isTournament === true && src.tableId != null) {
+            try { useProgressStore.getState().noteTournamentTable(src.tableId); } catch { /* best-effort */ }
+          }
           const stamped = {
             ...history,
+            ...recordKindStamp(history, src),
             ...(variantOfTable ? { variant: variantOfTable } : {}),
             yourSeat,
             viewerSeat: viewerHoleCards ? yourSeat : history.viewerSeat,
@@ -1976,6 +1998,12 @@ function App() {
       const ownLine = (name) => (Number.isFinite(pos) && pos > 0
         ? `${name || 'Your tournament'}: you finished in position ${pos}.${prizeSuffix(data?.prize)}`
         : `${name || 'Your tournament'}: your tournament has ended.`);
+      // Sit & Go fix-all C2 — his own bust (direct / sign-in notice): his chip result.
+      if (tid && (awayOf || !repeat) && data?.handForHand !== true) {
+        const me = String(useGameStore.getState().playerName || '').trim().toLowerCase();
+        const aboutMe = data?.atSignIn === true || !!awayOf || (!!me && String(data?.playerName || '').trim().toLowerCase() === me);
+        if (aboutMe) noteOwnTournamentResult({ tournamentId: tid, place: data?.position, prize: data?.prize });
+      }
       if (awayOf) {
         try { noteTournamentOver({ tournamentId: data.tournamentId, position: data.position }); } catch { /* best-effort */ }
         if (repeat || !claimOwnEndToast(tid)) return;
@@ -2031,6 +2059,8 @@ function App() {
       const pos = Number(data?.position);
       const place = Number.isInteger(pos) && pos > 0 ? pos : null;
       try { noteTournamentOver({ tournamentId: tid, finished: true, position: place }); } catch { /* best-effort */ }
+      // Sit & Go fix-all C2 — his chip result (prize - entry fee) for the bankroll graph.
+      if (tid) noteOwnTournamentResult({ tournamentId: tid, place, prize: data?.prize, tournamentName: data?.tournamentName });
       if (!claimFinishedToast(tid)) return;
       const prize = Number(data?.prize);
       const hasPrize = Number.isFinite(prize) && prize > 0;
@@ -2059,6 +2089,8 @@ function App() {
         const own = ownFinishResult(data, useGameStore.getState().userId);
         if (own) { myPlace = own.place; myPrize = own.prize; }
       } catch { /* best-effort */ }
+      // Sit & Go fix-all C2 — his chip result (never a qualifier's: tournamentResultFrom).
+      if (tid && myPlace) noteOwnTournamentResult({ ...data, place: myPlace, prize: myPrize });
       // (Z8: `room` — it may end the LIVE seat on screen; an away seat only by its tournament.)
       try { noteTournamentOver({ tournamentId: data?.tournamentId, finished: true, position: myPlace, room: true }); } catch { /* best-effort */ }
       // The overlay is for the table on screen. A table the server marks

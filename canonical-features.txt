@@ -1318,3 +1318,8 @@ tournament-structure
 # the export show "mucked".
 showdown-hand-mucked
 Mucked - only you see your cards
+# 2026-10-24 Sit & Go fix-all K8 (C2) - the bankroll graph / analytics / profile trend / session net
+# leave tournament hands out of wallet results (tournament chips are table chips) and plot each
+# tournament's prize minus its entry instead; the CSV export gains a 'Kind' column.
+bankroll-tournament-note
+tournament chips are not your bankroll

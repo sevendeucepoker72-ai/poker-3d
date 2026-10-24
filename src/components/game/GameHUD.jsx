@@ -52,7 +52,8 @@ import { recordHandStats, getOpponentStats } from '../../utils/opponentTracker';
 // Sit & Go fix-all C5 — his own last hand (the bust hand) after a bust.
 import { lastOwnHandOf } from '../../utils/handLog';
 // Sit & Go fix-all F7 — a paid bust's place + prize line.
-import { bustBannerPrizeLine } from '../../utils/tournamentFinish';
+import { bustBannerPrizeLine, tournamentResultFrom } from '../../utils/tournamentFinish';
+import { useTournamentRegistrationStore } from '../../store/tournamentRegistrationStore';
 import { useProgressStore } from '../../store/progressStore';
 import { useEquityWorker } from '../../hooks/useEquityWorker';
 import { getSocket, subscribeConnectionStatus } from '../../services/socketService';
@@ -344,6 +345,13 @@ export default function GameHUD() {
       if (eliminationShownElsewhere(useTableStore.getState().gameState, data)) return;
       // Sit & Go fix-all F7 — `prize` (present when the place is paid and final).
       setEliminatedPosition({ position: data.position, totalPlayers: data.totalPlayers, prize: data.prize });
+      // Sit & Go fix-all C2 — his chip result for the bankroll graph (in memory).
+      try {
+        const tid = data && data.tournamentId != null ? String(data.tournamentId) : null;
+        const item = tid ? useTournamentRegistrationStore.getState().tournaments.find((t) => String(t.tournamentId) === tid) || null : null;
+        const r = tournamentResultFrom({ tournamentId: tid, place: data.position, prize: data.prize }, item);
+        if (r) useProgressStore.getState().noteTournamentResult(r);
+      } catch { /* best-effort */ }
       setTournamentSpectator({
         tournamentId: data.tournamentId,
         tableId: data.tableId,
