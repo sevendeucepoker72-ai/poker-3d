@@ -1263,3 +1263,9 @@ They stay open until then, even if only a few players are left.
 own tools in the lobby or at another table
 # 2026-10-24 (owner: won chips "dont go in peoples banks") - bank refresh after leaving a table
 bank_refresh_after_leave
+# 2026-10-24 (owner 2026-10-23: "Fix both" / "Turn all off") - the qualifier card honours the
+# server's seat-bubble close (no late-entry button, a blue note), a held seed shows as "after the
+# qualifier ends" (never a failed check), help-tool refusals stay quiet.
+qualifier-late-closed-bubble
+Seed shown after the qualifier ends
+help_tools_off_qualifier

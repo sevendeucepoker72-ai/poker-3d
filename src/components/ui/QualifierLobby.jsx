@@ -16,7 +16,7 @@ import {
   qualifierCreditsHeld, qualifierIsQualified, qualifierReentriesAvailable, qualifierHomeYouText,
   QUALIFICATIONS_RECHECK_MS, qualificationsMountPlan, qualifierRegistrationsDropped,
   qualifierTablesHeld, qualifierBeOnlineText, qualifierTablesOpenText, qualifierTablesOpenStatusText,
-  qualifierBreaksText, qualifierUpdateExtras,
+  qualifierBreaksText, qualifierUpdateExtras, qualifierLateRegClosedText,
 } from '../../utils/qualifierList';
 import { useProgressStore } from '../../store/progressStore';
 import QualifierDashboard from './QualifierDashboard';
@@ -571,8 +571,12 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
           )}
         </div>
       );
-      if (!heldNotes) return row;
-      return <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{heldNotes}{row}</div>;
+      // 2026-10-24 (owner 2026-10-23: "Fix both") — late entry and re-entry closed at the
+      // seat bubble (a newer server): no late-entry button, a short reason (blue, never red).
+      const closedText = state === 'running' ? qualifierLateRegClosedText(q) : null;
+      const closedNote = closedText ? <div className="qualifier-late-closed-bubble" style={noteStyle('blue')}>{closedText}</div> : null;
+      if (!heldNotes && !closedNote) return row;
+      return <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{heldNotes}{closedNote}{row}</div>;
     }
     if (mine) {
       const canWithdraw = state === 'open' || state === 'scheduled';

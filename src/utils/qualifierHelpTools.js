@@ -46,6 +46,19 @@
 
 export const QUALIFIER_HELP_TOOLS_OFF_TEXT = 'Help tools are off in qualifier tournaments.';
 
+/**
+ * 2026-10-24 — the poker-server half: a help tool asked for at a qualifier table
+ * is refused with this code (trainingToggled refused, coachResult, sessionRecapResult,
+ * error {event:'coachWhisper'}). The client hides the tools, so a refusal only means
+ * an old tab or a race: it is handled quietly (no toast, no red).
+ */
+export const HELP_TOOLS_OFF_CODE = 'help_tools_off_qualifier';
+
+/** A server answer that is the help-tools-off refusal. */
+export function isHelpToolsOffRefusal(x) {
+  return !!x && typeof x === 'object' && x.code === HELP_TOOLS_OFF_CODE;
+}
+
 const QUALIFIER_NAME_RE = /\bqualifier\b/i;
 const MAX_KNOWN_IDS = 200;
 

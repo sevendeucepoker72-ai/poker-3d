@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import './ProvablyFair.css';
+// 2026-10-24 — a running qualifier's seed is held until it ends (never a failed check).
+import { SEED_HELD_TEXT, commitmentNote, seedIsHeld, revelationVerifiable, revelationHeld } from '../../utils/provablyFair.js';
 
 // SHA-256 in the browser using SubtleCrypto
 async function sha256(message) {
@@ -15,9 +17,9 @@ export default function ProvablyFair({ commitment, revelation, onClose }) {
   const [manualHash, setManualHash] = useState('');
   const [manualResult, setManualResult] = useState(null);
 
-  // Auto-verify when revelation arrives
+  // Auto-verify when revelation arrives (only one that carries a seed: a held one is never checked)
   useEffect(() => {
-    if (revelation?.seed && revelation?.hash) {
+    if (revelationVerifiable(revelation)) {
       setVerifying(true);
       sha256(revelation.seed).then(computed => {
         setVerifyResult(computed === revelation.hash ? 'valid' : 'invalid');
@@ -53,11 +55,19 @@ export default function ProvablyFair({ commitment, revelation, onClose }) {
           <div className="pf-section">
             <div className="pf-section-label">Current Hand #{commitment.handNumber} — Committed Hash</div>
             <div className="pf-hash">{commitment.hash}</div>
-            <div className="pf-note">Seed will be revealed when this hand ends</div>
+            <div className={seedIsHeld(commitment) ? 'pf-note pf-note--held' : 'pf-note'}>{commitmentNote(commitment)}</div>
           </div>
         )}
 
-        {revelation && (
+        {revelation && revelationHeld(revelation) && (
+          <div className="pf-section">
+            <div className="pf-section-label">Hand #{revelation.handNumber} — Committed Hash</div>
+            {revelation.hash && <div className="pf-hash">{revelation.hash}</div>}
+            <div className="pf-note pf-note--held">{SEED_HELD_TEXT}</div>
+          </div>
+        )}
+
+        {revelation && !revelationHeld(revelation) && (
           <div className="pf-section">
             <div className="pf-section-label">Hand #{revelation.handNumber} — Revealed Seed</div>
             <div className="pf-seed">{revelation.seed}</div>

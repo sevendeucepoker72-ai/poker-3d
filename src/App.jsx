@@ -80,7 +80,7 @@ import {
 } from './utils/tournamentClock';
 import { useTournamentClockStore } from './store/tournamentClockStore';
 // 2026-10-23 (owner: "Turn all off") — a qualifier's tournament id: no help tools at its tables.
-import { noteQualifierTournamentId } from './utils/qualifierHelpTools';
+import { noteQualifierTournamentId, isHelpToolsOffRefusal } from './utils/qualifierHelpTools';
 import { noteMaintenanceMode, noteServerConnected } from './services/serverFlags';
 import { shouldApplyRemoteSignOut, noteIgnoredRemoteSignOut } from './services/crossTabSignOut';
 import { maybeOfferGuestCarryOver, resetGuestCarryOver } from './services/guestCarryOver';
@@ -1128,6 +1128,9 @@ function App() {
       } catch { /* ignore */ }
     };
     socket.on('error', (err) => {
+      // 2026-10-24 — a help tool refused at a qualifier table (an old tab / a race; the
+      // tools are hidden there): quiet, never a toast or a console error.
+      if (isHelpToolsOffRefusal(err)) return;
       handleLeftTableRefusal(err);
       if (reportPlayRefusal(err)) return;
       console.error('Server error:', err);

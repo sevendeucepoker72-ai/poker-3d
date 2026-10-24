@@ -147,6 +147,11 @@ export function seatPackageSummary(pkg) {
   };
 }
 
+/** 2026-10-24 — why late entry closed: 'seat_bubble' | 'time', else null. */
+function lateRegReasonOf(v) {
+  return v === 'seat_bubble' || v === 'time' ? v : null;
+}
+
 /** One list item → the shape the lobby renders; null when it has no id. */
 export function normalizeQualifierItem(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -206,6 +211,13 @@ export function normalizeQualifierItem(raw) {
     // can be checked once that hand ends).
     lateRegClosesAtBubble: raw.lateRegClosesAtBubble === true,
     seedsHeldUntilEnd: raw.seedsHeldUntilEnd === true,
+    // 2026-10-24 (owner 2026-10-23: "Fix both") — the live late-entry state from a
+    // newer poker-server: lateRegOpen (true / false while running; null = the
+    // server does not say, e.g. today's server or not running), when and why it
+    // closed ('seat_bubble' | 'time'). Absent = the 2:00 PM lateRegUntil rule, as before.
+    lateRegOpen: typeof raw.lateRegOpen === 'boolean' ? raw.lateRegOpen : null,
+    lateRegClosedAt: ms(raw.lateRegClosedAt),
+    lateRegClosedReason: lateRegReasonOf(raw.lateRegClosedReason),
     result: normalizeResult(raw),
     // An older server's own window verdict (it had no status for "not open yet").
     legacySignupOpen: typeof raw.signupOpen === 'boolean' ? raw.signupOpen : null,
@@ -241,6 +253,9 @@ export function qualifierSignupState(q, now = Date.now()) {
   if (!q) return 'unknown';
   if (q.status === 'finished') return 'finished';
   if (q.status === 'running') {
+    // 2026-10-24 — a newer server closed late entry early (the seat bubble): no Late
+    // Register / Re-enter, whatever lateRegUntil says.
+    if (q.lateRegOpen === false) return 'running';
     if (q.lateRegUntil != null) return now < q.lateRegUntil ? 'late' : 'running';
     // An older server's window end IS its late-registration end.
     if (q.legacySignupOpen === true || (q.signupClosesAt != null && now < q.signupClosesAt && q.legacySignupOpen !== false)) return 'late';
@@ -389,6 +404,11 @@ export function qualifierUpdateExtras(data) {
   const out = {};
   if (!data || typeof data !== 'object') return out;
   if (typeof data.tablesOpen === 'boolean') out.tablesOpen = data.tablesOpen;
+  // 2026-10-24 — the seat-bubble close, pushed the moment it happens (the card stops
+  // offering late entry at once instead of after the next poll).
+  if (typeof data.lateRegOpen === 'boolean') out.lateRegOpen = data.lateRegOpen;
+  if (data.lateRegClosedAt !== undefined) out.lateRegClosedAt = ms(data.lateRegClosedAt);
+  if (data.lateRegClosedReason !== undefined) out.lateRegClosedReason = lateRegReasonOf(data.lateRegClosedReason);
   if (data.dealsAt === null) out.dealsAt = null;
   else if (data.dealsAt !== undefined) {
     const v = ms(data.dealsAt);
@@ -442,7 +462,7 @@ export function qualifierHomeStatus(q, now = Date.now()) {
     case 'late':
       return { state, text: q.lateRegUntil != null ? `Running · late entry until ${formatDenverTime(q.lateRegUntil)}` : 'Running · late entry open' };
     case 'running':
-      return { state, text: 'Running · late entry closed' };
+      return { state, text: q.lateRegClosedReason === 'seat_bubble' ? 'Running · late entry closed at the seat bubble' : 'Running · late entry closed' };
     case 'closed':
       return { state, text: 'Sign-up closed' };
     case 'finished':
@@ -450,6 +470,14 @@ export function qualifierHomeStatus(q, now = Date.now()) {
     default:
       return { state, text: q.scheduledAt != null ? `Starts ${formatDenverWhen(q.scheduledAt)}` : 'Start time to be announced' };
   }
+}
+
+/**
+ * 2026-10-24 (owner 2026-10-23: "Fix both") — the card's short reason once late
+ * entry closed at the seat bubble (null otherwise).
+ */
+export function qualifierLateRegClosedText(q) {
+  return q && q.lateRegClosedReason === 'seat_bubble' ? 'Late entry and re-entry closed: the seat bubble was reached.' : null;
 }
 
 /**

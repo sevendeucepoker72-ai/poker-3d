@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { getSocket } from '../../services/socketService';
+import { isHelpToolsOffRefusal } from '../../utils/qualifierHelpTools';
 import './PostHandCoach.css';
 
 const AUTO_DISMISS_SECS = 12;
@@ -35,6 +36,10 @@ export default function PostHandCoach({ handHistory, playerName, onClose }) {
 
   const countdownRef = useRef(null);
   const listenerCleanupRef = useRef(null);
+  // 2026-10-24 — the latest onClose, for the quiet close on a qualifier-table refusal
+  // (read from the result listener without re-running the request effect).
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   // Request coaching and listen for result
   useEffect(() => {
@@ -48,6 +53,14 @@ export default function PostHandCoach({ handHistory, playerName, onClose }) {
     socket.emit('coachHand', { handHistory, playerName });
 
     function handleResult(data) {
+      // 2026-10-24 — no AI coach at a qualifier table (the server refuses it): close
+      // quietly, no error text.
+      if (isHelpToolsOffRefusal(data)) {
+        setDismissed(true);
+        setLoading(false);
+        if (onCloseRef.current) onCloseRef.current();
+        return;
+      }
       if (data && data.success && data.analysis) {
         setAnalysis(data.analysis);
       } else {
