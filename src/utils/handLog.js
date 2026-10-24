@@ -143,6 +143,25 @@ export function ownHandResult(rec, myName) {
   };
 }
 
+/**
+ * Sit & Go fix-all C5 (owner 2026-10-23) — the newest record in which this
+ * player held a seat: the server's viewer copy names his seat (`viewerSeat`;
+ * this client's `yourSeat` stamp for an older server) and that seat has a row.
+ * After a bust the table's later hands arrive as spectator copies (no seat):
+ * his own last hand — the bust hand — is still this one. Null when none.
+ */
+export function lastOwnHandOf(records) {
+  const list = Array.isArray(records) ? records : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const rec = list[i];
+    if (!rec || typeof rec !== 'object') continue;
+    const seat = isInt(rec.viewerSeat) ? rec.viewerSeat : (isInt(rec.yourSeat) ? rec.yourSeat : -1);
+    if (seat < 0) continue;
+    if ((Array.isArray(rec.players) ? rec.players : []).some((p) => p && p.seatIndex === seat)) return rec;
+  }
+  return null;
+}
+
 /** Summary of the player's own hands (records with an own row only). */
 export function summarizeOwnHands(records, myName) {
   const out = { hands: 0, wins: 0, net: 0, netKnown: 0, totalWon: 0, biggestWin: 0, bestHandName: null, series: [] };

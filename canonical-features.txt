@@ -1290,3 +1290,7 @@ Fold (checks when checking is free)
 # 2026-10-24 Sit & Go fix-all K4 (C3) - the spectating status line follows the live tournament
 # clock (players left, level), not the snapshot from when he started watching.
 spectator-status-line
+# 2026-10-24 Sit & Go fix-all K5 (C5) - after a bust the spectator bar offers "Your last hand":
+# his own newest hand (the bust hand), even after the table plays on.
+spectator-last-hand-btn
+Your last hand

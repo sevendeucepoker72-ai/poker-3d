@@ -47,6 +47,8 @@ import SessionTracker from './SessionTracker';
 import HandRangeChart from './HandRangeChart';
 import PostHandAnalysis from './PostHandAnalysis';
 import { recordHandStats, getOpponentStats } from '../../utils/opponentTracker';
+// Sit & Go fix-all C5 — his own last hand (the bust hand) after a bust.
+import { lastOwnHandOf } from '../../utils/handLog';
 import { useProgressStore } from '../../store/progressStore';
 import { useEquityWorker } from '../../hooks/useEquityWorker';
 import { getSocket, subscribeConnectionStatus } from '../../services/socketService';
@@ -370,6 +372,9 @@ export default function GameHUD() {
 
   // Replay viewer state
   const [showReplay, setShowReplay] = useState(false);
+  // Sit & Go fix-all C5 — the record the replay opens (null = the latest);
+  // a busted player opens HIS last hand (the bust hand), not the table's latest.
+  const [replayRecord, setReplayRecord] = useState(null);
 
   // Auto-action state (pre-select before your turn)
   const [autoAction, setAutoAction] = useState(null); // 'fold' | 'check' | 'call' | 'callAny' | null
@@ -3464,6 +3469,8 @@ export default function GameHUD() {
   const tournamentHeld = tournamentView.held;
   const isShowdown = phase === 'Showdown';
   const lastHandHistory = handHistories.length > 0 ? handHistories[handHistories.length - 1] : null;
+  // Sit & Go fix-all C5 — his own newest hand (pure, probed: utils/handLog).
+  const ownLastHand = useMemo(() => lastOwnHandOf(handHistories), [handHistories]);
   const winnerSeatSet = handResult ? new Set((handResult.winners ?? []).map((w) => w.seatIndex)) : new Set();
 
   // Normalize the in-memory hand-history buffer into the shape SessionRecap's
@@ -3819,7 +3826,12 @@ export default function GameHUD() {
                 {/* R2 (APPUI-16) — the replay's way in on a phone (the Last Hand
                     rail button is hidden on touch screens). */}
                 {lastHandHistory && (
-                  <button className="options-action-btn options-last-hand" onClick={() => { setShowReplay(true); setShowOptions(false); }}>
+                  <button className="options-action-btn options-last-hand" onClick={() => {
+                    // C5 — while spectating, his own last hand (the bust hand).
+                    setReplayRecord(isSpectating ? ownLastHand : null);
+                    setShowReplay(true);
+                    setShowOptions(false);
+                  }}>
                     🃏 Last hand replay
                   </button>
                 )}
@@ -4559,6 +4571,20 @@ export default function GameHUD() {
 
               <div style={{ color: '#ffd24a', textAlign: 'center' }}>
                 <div style={{ fontWeight: 700 }}>Spectating</div>
+                {/* Sit & Go fix-all C5 — his own last hand (the bust hand) stays
+                    one tap away while he watches. */}
+                {ownLastHand && (
+                  <button
+                    className="spectator-last-hand-btn"
+                    onClick={() => { setReplayRecord(ownLastHand); setShowReplay(true); }}
+                    style={{
+                      marginTop: 4, padding: '4px 10px', borderRadius: 8, background: 'rgba(96,165,250,0.15)',
+                      border: '1px solid rgba(96,165,250,0.5)', color: '#ffd24a', cursor: 'pointer', fontWeight: 600, fontSize: '0.75rem',
+                    }}
+                  >
+                    🃏 Your last hand
+                  </button>
+                )}
                 {/* Sit & Go fix-all C3 — the line follows the live clock (busts,
                     level-ups), not the snapshot taken when he started watching. */}
                 {spectatorStatusLine && (
@@ -5600,12 +5626,12 @@ export default function GameHUD() {
 
       {/* Replay viewer overlay — wrapped so a chunk-load failure doesn't
           blank the whole HUD. OverlayBoundary falls back to a small toast. */}
-      <OverlayBoundary name="Hand Replay" onClose={() => setShowReplay(false)}>
+      <OverlayBoundary name="Hand Replay" onClose={() => { setShowReplay(false); setReplayRecord(null); }}>
         <Suspense fallback={null}>
           {/* 2026-10-23 review fix-up: while a qualifier table is open the
               replay shows a revealed hand's name only, no strength percent. */}
-          {showReplay && lastHandHistory && (
-            <HandReplayViewer history={lastHandHistory} onClose={() => setShowReplay(false)} hideStrength={helpToolsOff || qualifierTableOpen} />
+          {showReplay && (replayRecord || lastHandHistory) && (
+            <HandReplayViewer history={replayRecord || lastHandHistory} onClose={() => { setShowReplay(false); setReplayRecord(null); }} hideStrength={helpToolsOff || qualifierTableOpen} />
           )}
         </Suspense>
       </OverlayBoundary>
