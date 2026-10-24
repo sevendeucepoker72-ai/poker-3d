@@ -155,6 +155,41 @@ export function queuedCallAnyAction(callAmount, { isAof = false } = {}) {
 }
 
 /**
+ * One line of the live action strip (GameHUD, Upgrade 6) for a seat whose
+ * `lastAction` changed: the server enum ('Fold' / 'Check' / 'Call' / 'Raise' /
+ * 'All-In') plus its bet before (`prevBet`) and now (`curBet`). Sit & Go
+ * fix-all F2 (owner 2026-10-23): the first bet of a street (`streetOpen` - no
+ * seat had a bet in the previous snapshot of the SAME street) is 'Name bet 40';
+ * the enum stays 'Raise' on the server, so the client tells them apart. Every
+ * other line is the strip's text as before. '' for nothing to show.
+ */
+export function stripActionEntry({ name, action, prevBet = 0, curBet = 0, streetOpen = false } = {}) {
+  if (typeof action !== 'string' || !action) return '';
+  const who = name || 'Player';
+  const act = action.toLowerCase();
+  const prev = num(prevBet);
+  const cur = num(curBet);
+  const delta = cur - prev;
+  let entry;
+  if (act.includes('fold')) entry = `${who} folded`;
+  else if (act.includes('check')) entry = `${who} checked`;
+  else if (act.includes('call')) entry = `${who} called ${cur > 0 ? cur.toLocaleString() : ''}`;
+  else if (act.includes('raise') || act.includes('bet')) {
+    if (streetOpen && cur > 0) entry = `${who} bet ${cur.toLocaleString()}`;
+    else if (cur > 0 && delta > 0 && prev > 0) entry = `${who} raised to ${cur.toLocaleString()} (+${delta.toLocaleString()})`;
+    else if (cur > 0) entry = `${who} raised to ${cur.toLocaleString()}`;
+    else entry = `${who} raised`;
+  } else if (act.includes('all-in') || act.includes('allin')) entry = `${who} went all-in`;
+  else entry = `${who} ${action}`;
+  return entry.trim();
+}
+
+/** A strip line that is an opening bet ('Name bet 40') - styled `action-hist-bet`. */
+export function isStripBetEntry(text) {
+  return typeof text === 'string' && / bet [\d,]+$/.test(text);
+}
+
+/**
  * Pre-actions offered at this table (F107). At All-In-or-Fold: Fold, plus
  * Check/Fold and Check when its server takes a free check (aofAllowsCheck —
  * each checks only when nothing is owed, else folds / waits); never Call Any

@@ -12,6 +12,8 @@ import {
   preActionKeysFor, turnDecisionKey, drawTurnInfo, preflopTierOf, leaveConfirmText,
   handIsOver, revealDecision, pineappleAckRefused, SHOW_AT_HAND_END_TEXT,
   allInHiddenText,
+  // Sit & Go fix-all F2 — the live strip's lines ('Name bet 40' opens a street).
+  stripActionEntry, isStripBetEntry,
 } from '../../utils/actionBar';
 // Gameplay audit 2026-10-21 (C2) — winner banner / showdown rows / equity per
 // variant / hand boundary rules, kept pure + probed.
@@ -376,6 +378,7 @@ export default function GameHUD() {
   // Action history strip (Upgrade 6)
   const [actionHistory, setActionHistory] = useState([]);
   const prevSeatsRef = useRef(null);
+  const prevSeatsPhaseRef = useRef(null); // the street prevSeatsRef was taken on (F2)
   // Stable fingerprint for seat actions — only changes when actions change,
   // avoiding the JSON.stringify-in-deps anti-pattern that re-runs every render.
   const lastActionsFingerprint = useMemo(
@@ -1528,8 +1531,14 @@ export default function GameHUD() {
     if (!gameState?.seats) return;
     const currentSeats = gameState.seats;
     const prev = prevSeatsRef.current;
+    // Sit & Go fix-all F2 — the snapshot carries its street: a batched delta
+    // never compares a new street's bets against the last street's.
+    const samePhase = prevSeatsPhaseRef.current === phase;
     if (prev) {
       const newEntries = [];
+      // The street is still open (no seat had a bet in the snapshot of THIS
+      // street): a bet now is the street's first bet — 'Name bet 40'.
+      const streetOpen = !samePhase || prev.every((p) => !p || !(Number(p.currentBet) > 0));
       currentSeats.forEach((seat, i) => {
         if (!seat || seat.state !== 'occupied') return;
         const prevSeat = prev[i];
@@ -1538,36 +1547,23 @@ export default function GameHUD() {
         if (prevSeat && prevSeat.lastAction === action && prevSeat.currentBet === seat.currentBet) return;
         if (typeof action !== 'string') return;
         const name = safeName(seat.playerName, '') || `P${i + 1}`;
-        let entry = '';
-        const act = action.toLowerCase();
-        // Disambiguate raises: "raised to X" when we can surface the new total,
-        // and "raised from Y to X" when we have the previous bet snapshot. A
-        // plain "raised 250" used to be ambiguous between "raised to 250" and
-        // "raised by 250" — several users misread it as the raise delta.
-        const prevBet = prevSeat?.currentBet || 0;
-        const curBet = seat.currentBet || 0;
-        const raiseDelta = curBet - prevBet;
-        if (act.includes('fold')) entry = `${name} folded`;
-        else if (act.includes('check')) entry = `${name} checked`;
-        else if (act.includes('call')) entry = `${name} called ${curBet > 0 ? curBet.toLocaleString() : ''}`;
-        else if (act.includes('raise') || act.includes('bet')) {
-          if (curBet > 0 && raiseDelta > 0 && prevBet > 0) {
-            entry = `${name} raised to ${curBet.toLocaleString()} (+${raiseDelta.toLocaleString()})`;
-          } else if (curBet > 0) {
-            entry = `${name} raised to ${curBet.toLocaleString()}`;
-          } else {
-            entry = `${name} raised`;
-          }
-        }
-        else if (act.includes('all-in') || act.includes('allin')) entry = `${name} went all-in`;
-        else entry = `${name} ${action}`;
-        if (entry) newEntries.push(entry.trim());
+        // Raises read "raised to X (+Y)" (never the ambiguous "raised 250");
+        // the rules live in utils/actionBar.js (pure, probed).
+        const entry = stripActionEntry({
+          name,
+          action,
+          prevBet: samePhase ? (prevSeat?.currentBet || 0) : 0,
+          curBet: seat.currentBet || 0,
+          streetOpen,
+        });
+        if (entry) newEntries.push(entry);
       });
       if (newEntries.length > 0) {
         setActionHistory(prev2 => [...newEntries, ...prev2].slice(0, 3));
       }
     }
     prevSeatsRef.current = currentSeats.map(s => s ? { lastAction: s.lastAction, currentBet: s.currentBet, state: s.state } : null);
+    prevSeatsPhaseRef.current = phase;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastActionsFingerprint]);
 
@@ -1579,7 +1575,10 @@ export default function GameHUD() {
     if (prevPhaseForHistoryRef.current !== phase) {
       prevPhaseForHistoryRef.current = phase;
       setActionHistory([]);
-      prevSeatsRef.current = null;
+      // Sit & Go fix-all F2 — a snapshot already taken of THIS street (the
+      // seats reset for it: no bets, no actions) is kept, so the street's first
+      // action — its opening bet — reaches the strip; any other is dropped.
+      if (prevSeatsPhaseRef.current !== phase) prevSeatsRef.current = null;
     }
   }, [phase]);
 
@@ -5083,7 +5082,7 @@ export default function GameHUD() {
       {actionHistory.length > 0 && createPortal(
         <div className="action-history-floating">
           {actionHistory.slice(0, 3).map((a, i) => (
-            <span key={i} className={`action-hist-item ${i === 0 ? 'action-hist-latest' : ''}`}>{a}</span>
+            <span key={i} className={`action-hist-item ${i === 0 ? 'action-hist-latest' : ''}${isStripBetEntry(a) ? ' action-hist-bet' : ''}`}>{a}</span>
           ))}
         </div>,
         document.body

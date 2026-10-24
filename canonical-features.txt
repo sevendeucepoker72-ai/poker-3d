@@ -1280,3 +1280,6 @@ and is all-in
 collected (
 has timed out
 (timed out)
+# 2026-10-24 Sit & Go fix-all K1b - the live action strip shows a street's opening bet as
+# 'Name bet 40' (and now shows each street's first action at all).
+action-hist-bet

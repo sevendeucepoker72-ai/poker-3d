@@ -4815,6 +4815,10 @@
   color: rgba(255,255,255,0.75);
   opacity: 1;
 }
+/* Sit & Go fix-all F2 — a street's opening bet ('Name bet 40'). */
+.action-hist-bet {
+  font-weight: 600;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ACTION BAR LAYOUT UPGRADES (set 2)
