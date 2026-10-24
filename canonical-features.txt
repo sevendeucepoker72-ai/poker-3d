@@ -1297,3 +1297,6 @@ Your last hand
 # 2026-10-24 Sit & Go fix-all K10 (F17) - a held seed at a non-qualifier tournament reads "after the
 # tournament ends" (deckCommitment / fairness answer seedHeldFor 'tournament').
 Seed shown after the tournament ends
+# 2026-10-24 Sit & Go fix-all K2 (F18) - the HUD uses the level the HAND is played at (Blinds line,
+# big-blind stack counts, 3x BB / sizing); the coming level shows as 'Next'.
+hud-blinds-next

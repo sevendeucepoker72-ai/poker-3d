@@ -37,6 +37,7 @@ import {
 // Gameplay audit F78 (C3) — a queued move that did not happen ends its pill.
 import { pendingMoveExpired } from '../../utils/tableFlows';
 import { rowNotDealtIn } from '../../utils/handLog';
+import { handLevelOf } from '../../utils/tournamentClock';
 import './PokerTable2D.css';
 import './TableCosmetics.css';
 
@@ -773,7 +774,9 @@ export default function PokerTable2D() {
   const handResult     = gameState?.handResult ?? null;
   const variantName    = gameState?.variantName || gameState?.variant?.name || '';
   const pot            = gameState?.pot ?? 0;
-  const bigBlind       = gameState?.bigBlind ?? (gameState?.smallBlind ?? 0) * 2;
+  // Sit & Go fix-all F18 — stacks in big blinds use the HAND's level (a
+  // tournament level-up mid-hand applies from the next hand).
+  const bigBlind       = handLevelOf(gameState).bb || (gameState?.bigBlind ?? (gameState?.smallBlind ?? 0) * 2);
   const communityCards = gameState?.communityCards ?? [];
   // 2026-10-23 (owner: "Turn all off") — a qualifier table: no seat HUD stats.
   const helpToolsOff = helpToolsOffAt(gameState);

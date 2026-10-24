@@ -2873,6 +2873,11 @@
 }
 
 /* === Blinds Info in Phase Label (#15) === */
+/* Sit & Go fix-all F18 — the coming level ('Next: 100/200 · ante 25'). */
+.hud-blinds-next {
+  color: #ffd24a;
+  opacity: 0.85;
+}
 .hud-blinds-info {
   display: inline-block;
   margin-left: 8px;

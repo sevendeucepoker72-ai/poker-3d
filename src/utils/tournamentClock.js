@@ -428,6 +428,40 @@ export function tableTournamentClock(gameState, resumedAt) {
 }
 
 /**
+ * Sit & Go fix-all F18 (owner 2026-10-23) — the level the HAND is played at.
+ * A tournament level that changes mid-hand takes effect from the next hand
+ * (audit: level 6 ran entirely inside hand 7), but the state's smallBlind /
+ * bigBlind / ante are the table's CURRENT level, so the HUD showed the next
+ * level's blinds and counted stacks / sized bets in it. poker-server sends
+ * `handSmallBlind` / `handBigBlind` / `handAnte` (the hand's level); when they
+ * differ from the current level, that one is `next`.
+ * → { sb, bb, ante, next: {sb, bb, ante} | null, fromHand }.
+ * An older server (no hand keys, or null): the table level, no next.
+ */
+export function handLevelOf(gs) {
+  const g = gs && typeof gs === 'object' ? gs : {};
+  const cur = { sb: nonNegInt(g.smallBlind) ?? 0, bb: nonNegInt(g.bigBlind) ?? 0, ante: nonNegInt(g.ante) ?? 0 };
+  const hbb = posInt(g.handBigBlind);
+  if (!hbb) return { ...cur, next: null, fromHand: false };
+  const hand = { sb: nonNegInt(g.handSmallBlind) ?? 0, bb: hbb, ante: nonNegInt(g.handAnte) ?? 0 };
+  const differs = cur.bb > 0 && (cur.sb !== hand.sb || cur.bb !== hand.bb || cur.ante !== hand.ante);
+  return { ...hand, next: differs ? cur : null, fromHand: true };
+}
+
+/** The HUD's line: "Blinds: 75/150 Ante: 15" (the format the HUD always used). */
+export function blindsLineText(level) {
+  const l = level || {};
+  return `Blinds: ${chipsFmt(l.sb || 0)}/${chipsFmt(l.bb || 0)}${l.ante > 0 ? ` Ante: ${chipsFmt(l.ante)}` : ''}`;
+}
+
+/** "Next: 100/200 · ante 25" when the coming level differs, else ''. */
+export function nextLevelText(level) {
+  const n = level && level.next;
+  if (!n || !n.bb) return '';
+  return `Next: ${chipsFmt(n.sb)}/${chipsFmt(n.bb)}${n.ante ? ` · ante ${chipsFmt(n.ante)}` : ''}`;
+}
+
+/**
  * Sit & Go fix-all C3 (owner 2026-10-23) — the spectating status line, live:
  * "5 players | 1 table | Lvl 9". The `spectatingTournament` frame's `status`
  * is a snapshot from when he started watching; every spectator state frame

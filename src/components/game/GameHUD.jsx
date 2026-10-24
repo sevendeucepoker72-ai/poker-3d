@@ -65,7 +65,7 @@ import { TournamentLeaveDialog } from '../ui/TournamentSeatNotice';
 // 2026-10-22 — the tournament's running level clock, standings line and
 // held-table banner, from the OPTIONAL gameState.tournamentClock.
 import { TournamentClockStrip, TournamentHeldBanner } from './TournamentClockStrip';
-import { tableTournamentClock, formatSecondsClock, spectatorStatusText } from '../../utils/tournamentClock';
+import { tableTournamentClock, formatSecondsClock, spectatorStatusText, handLevelOf, blindsLineText, nextLevelText } from '../../utils/tournamentClock';
 import { useTournamentClockStore } from '../../store/tournamentClockStore';
 // 2026-10-23 (owner: "Turn all off") — no help tools at a QUALIFIER table.
 import { helpToolsOffAt, helpToolsOffAtAnyTable, QUALIFIER_HELP_TOOLS_OFF_TEXT } from '../../utils/qualifierHelpTools';
@@ -966,7 +966,12 @@ export default function GameHUD() {
   // Audit fix #18: use ?? so server-sent minRaise === 0 is respected as a legal
   // value (e.g. no previous bet this street) instead of silently falling back
   // to currentBetToMatch + BB, which would over-require a raise.
-  const minRaiseTotal = gameState?.minRaise ?? (currentBetToMatch + (gameState?.bigBlind || 20));
+  // Sit & Go fix-all F18 — the level the HAND is played at (a tournament
+  // level-up mid-hand applies from the next hand): the Blinds line, the
+  // big-blind stack counts and the 3x BB / sizing buttons use it; the table's
+  // current level shows as 'Next' (utils/tournamentClock, pure, probed).
+  const handLevel = handLevelOf(gameState);
+  const minRaiseTotal = gameState?.minRaise ?? (currentBetToMatch + (handLevel.bb || 20));
   // #11 (2026-07-01 audit): the raise arg is a "raise TO" total, and the server
   // only converts to all-in when (total − myCurrentBet) >= chipCount. myChips
   // (chipCount) already excludes chips committed this street, so a max of
@@ -1083,7 +1088,7 @@ export default function GameHUD() {
   const dealersChoiceNext = gameState?.dealersChoiceNext || null;
 
   // Ante info
-  const anteAmount = gameState?.ante || 0;
+  const anteAmount = handLevel.ante || 0;
 
   // Hand strength evaluation — memoized so it only reruns when cards change.
   // Variant-aware: Omaha games must use EXACTLY 2 hole cards + 3 community
@@ -1163,7 +1168,7 @@ export default function GameHUD() {
   // voluntary yet, a cash table, the stack covers it — always present, false
   // for spectators). The button was gated on that key while no server sent
   // it, so it never showed. An older server (no key) shows nothing.
-  const bigBlind = gameState?.bigBlind || 50;
+  const bigBlind = handLevel.bb || 50;
   const straddleAmount = 2 * bigBlind;
   // R2 review (K1-4) — straddle / bomb pot are sent WITHOUT a tableId (the
   // server applies them to the MAIN seat), so they are offered only while the
@@ -1250,10 +1255,10 @@ export default function GameHUD() {
     const usable = Math.max(1, maxRaise - minRaiseTotal);
     // Granularity target: ~20 positions across the usable range, but never
     // smaller than BB/2 so the slider doesn't feel twitchy on deep stacks.
-    const bbHalf = Math.max(1, Math.floor((gameState?.bigBlind || 20) / 2));
+    const bbHalf = Math.max(1, Math.floor((handLevel.bb || 20) / 2));
     const coarse = Math.max(bbHalf, Math.floor(minRaiseTotal / 10));
     return Math.max(1, Math.min(coarse, usable));
-  }, [minRaiseTotal, maxRaise, gameState?.bigBlind]);
+  }, [minRaiseTotal, maxRaise, handLevel.bb]);
 
   const snapRaiseToStep = React.useCallback((val) => {
     if (!Number.isFinite(val)) return minRaiseTotal;
@@ -3680,8 +3685,10 @@ export default function GameHUD() {
             )}
             {phaseLabel}
             <span className="hud-blinds-info">
-              Blinds: {(gameState?.smallBlind || 25).toLocaleString()}/{bigBlind.toLocaleString()}
-              {anteAmount > 0 && ` Ante: ${anteAmount.toLocaleString()}`}
+              {blindsLineText({ sb: handLevel.sb || 25, bb: bigBlind, ante: anteAmount })}
+              {handLevel.next && (
+                <span className="hud-blinds-next"> · {nextLevelText(handLevel)}</span>
+              )}
             </span>
             {dcTruthful && dealersChoiceNext && (
               <span className="dealers-choice-next">
