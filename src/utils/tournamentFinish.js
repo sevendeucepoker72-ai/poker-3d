@@ -45,6 +45,25 @@ export function ownFinishResult(data, myUserId) {
   return { place, prize: chips(mine.prize ?? mine.payout), tied: mine.tied === true };
 }
 
+/**
+ * His result for App's room 'tournamentFinished' handler (C2 result, the
+ * off-screen toast, the away seat's closing line). Review fix-up (2026-10-24):
+ * a QUALIFIER frame keeps cf892eb's rule exactly - his results row by account
+ * id, its `position`, no prize (qualifier entrants have no account row, so no
+ * place and no new toast at a qualifier finish); `myResult` is read only at a
+ * chip tournament (F7). Sunday: qualifier behaviour unchanged.
+ */
+export function finishFrameOwnResult(data, myUserId) {
+  if (!data || typeof data !== 'object') return null;
+  if (qualifierFinishFrame(data, myUserId)) {
+    const rows = Array.isArray(data.results) ? data.results : [];
+    const mine = myUserId != null ? rows.find((r) => r && r.userId != null && String(r.userId) === String(myUserId)) : null;
+    const pos = mine ? Number(mine.position) : NaN;
+    return Number.isInteger(pos) && pos > 0 ? { place: pos, prize: null, tied: false } : null;
+  }
+  return ownFinishResult(data, myUserId);
+}
+
 /** "You finished 2nd - +270 chips" / "You finished 6th" ('' without a place). */
 export function ownFinishLine(r) {
   const place = r && posInt(r.place);

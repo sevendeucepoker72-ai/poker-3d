@@ -73,7 +73,7 @@ import { installTournamentRegistry, tournamentCancelledText, useTournamentRegist
 import CareerResultNotice from './components/career/CareerResultNotice';
 import { followJoinToTable } from './services/joinFollow';
 // Sit & Go fix-all F7 — the Game Over line + his own place and prize (pure, probed).
-import { finishOverlay, ownFinishResult, prizeSuffix, tournamentResultFrom } from './utils/tournamentFinish';
+import { finishOverlay, finishFrameOwnResult, prizeSuffix, tournamentResultFrom } from './utils/tournamentFinish';
 // Sit & Go fix-all C2 — live hand records carry their table's kind (tournament hands are not wallet results).
 import { recordKindStamp } from './utils/handLog';
 // 2026-10-22 — the tournament clock's receipt stamp (the HUD's local tick) and
@@ -2083,10 +2083,12 @@ function App() {
       // His place: his row in results (TournamentManager sends userId).
       // Sit & Go fix-all F7 / F19 — the per-socket `myResult {place, prize}`
       // first (the frame keeps userId on his own row only), else that row.
+      // Review fix-up: a QUALIFIER frame keeps cf892eb's rule (his row by
+      // account id only - finishFrameOwnResult): no new qualifier toast.
       let myPlace = null;
       let myPrize = null;
       try {
-        const own = ownFinishResult(data, useGameStore.getState().userId);
+        const own = finishFrameOwnResult(data, useGameStore.getState().userId);
         if (own) { myPlace = own.place; myPrize = own.prize; }
       } catch { /* best-effort */ }
       // Sit & Go fix-all C2 — his chip result (never a qualifier's: tournamentResultFrom).
