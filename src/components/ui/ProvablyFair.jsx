@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import './ProvablyFair.css';
 // 2026-10-24 — a running qualifier's seed is held until it ends (never a failed check).
-import { SEED_HELD_TEXT, commitmentNote, seedIsHeld, revelationVerifiable, revelationHeld } from '../../utils/provablyFair.js';
+// Sit & Go fix-all F17 — any running tournament's seed may be held: the line names which kind.
+import { heldSeedText, commitmentNote, seedIsHeld, revelationVerifiable, revelationHeld } from '../../utils/provablyFair.js';
 
 // SHA-256 in the browser using SubtleCrypto
 async function sha256(message) {
@@ -63,7 +64,7 @@ export default function ProvablyFair({ commitment, revelation, onClose }) {
           <div className="pf-section">
             <div className="pf-section-label">Hand #{revelation.handNumber} — Committed Hash</div>
             {revelation.hash && <div className="pf-hash">{revelation.hash}</div>}
-            <div className="pf-note pf-note--held">{SEED_HELD_TEXT}</div>
+            <div className="pf-note pf-note--held">{heldSeedText(revelation)}</div>
           </div>
         )}
 

@@ -1294,3 +1294,6 @@ spectator-status-line
 # his own newest hand (the bust hand), even after the table plays on.
 spectator-last-hand-btn
 Your last hand
+# 2026-10-24 Sit & Go fix-all K10 (F17) - a held seed at a non-qualifier tournament reads "after the
+# tournament ends" (deckCommitment / fairness answer seedHeldFor 'tournament').
+Seed shown after the tournament ends

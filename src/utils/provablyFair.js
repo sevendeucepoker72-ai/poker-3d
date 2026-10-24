@@ -10,6 +10,11 @@
  * everything reads as before.
  */
 export const SEED_HELD_TEXT = 'Seed shown after the qualifier ends';
+// Sit & Go fix-all F17 (owner 2026-10-23): the server holds the seeds of EVERY
+// running tournament (Sit & Go, scheduled, club, Spin & Go) and says which kind
+// (`seedHeldFor: 'qualifier' | 'tournament'`); without the key (the Saturday
+// qualifier server) a held seed is a qualifier's, as before.
+export const SEED_HELD_TOURNAMENT_TEXT = 'Seed shown after the tournament ends';
 export const SEED_PENDING_TEXT = 'Seed will be revealed when this hand ends';
 
 const hasText = (v) => typeof v === 'string' && v.length > 0;
@@ -19,9 +24,14 @@ export function seedIsHeld(x) {
   return !!x && typeof x === 'object' && x.seedHeld === true;
 }
 
+/** The held-seed line for this commitment / revelation (F17: by `seedHeldFor`). */
+export function heldSeedText(x) {
+  return x && typeof x === 'object' && x.seedHeldFor === 'tournament' ? SEED_HELD_TOURNAMENT_TEXT : SEED_HELD_TEXT;
+}
+
 /** The line under a commitment's hash. */
 export function commitmentNote(commitment) {
-  return seedIsHeld(commitment) ? SEED_HELD_TEXT : SEED_PENDING_TEXT;
+  return seedIsHeld(commitment) ? heldSeedText(commitment) : SEED_PENDING_TEXT;
 }
 
 /** A revelation that can be checked: a seed and a hash, not held. */
