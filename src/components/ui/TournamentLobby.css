@@ -93,6 +93,23 @@
   color: #4ADE80;
 }
 
+/* Sit & Go fix-all F8 + F21 — start / cancel rule, deadline, structure. Blue + gold. */
+.tournament-start-rule {
+  font-size: 0.75rem;
+  color: #93c5fd;
+  margin-top: 4px;
+}
+.tournament-stall-deadline {
+  font-size: 0.72rem;
+  color: #ffd24a;
+  margin-top: 2px;
+}
+.tournament-structure {
+  font-size: 0.72rem;
+  color: #93c5fd;
+  margin-top: 2px;
+}
+
 /* Sit & Go fix-all F7 — the payout table on the card. */
 .tournament-payouts {
   font-size: 0.78rem;

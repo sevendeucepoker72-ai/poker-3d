@@ -6,6 +6,8 @@ import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '..
 import { marksDirectorPause } from '../../utils/tournamentClock';
 // Sit & Go fix-all F7 — the payout table before registering (server `payouts`).
 import { payoutTableText, payoutsNote } from '../../utils/tournamentFinish';
+// Sit & Go fix-all F8 + F21 — when it starts, when it cancels, its structure (server item, pure).
+import { startRuleText, stallDeadlineText, structureText } from '../../utils/tournamentCard';
 import './TournamentLobby.css';
 
 // How long a Register / Withdraw tap waits for its answer (or an `error`)
@@ -257,6 +259,13 @@ export default function TournamentLobby({ onOpenBracket = null }) {
                     </div>
                   )}
                 </div>
+
+                {/* F8 — 'Starts when 9/9 · cancels 30 min after the first entry if not full'
+                    (minPlayers / maxPlayers / stallCancelMs), and the server's deadline. */}
+                {startRuleText(t) && <div className="tournament-start-rule">{startRuleText(t)}</div>}
+                {stallDeadlineText(t) && <div className="tournament-stall-deadline">{stallDeadlineText(t)}</div>}
+                {/* F21 — 'Starting chips 1,500 · 5-min levels' (startingChips / levelSeconds). */}
+                {structureText(t) && <div className="tournament-structure">{structureText(t)}</div>}
 
                 {/* F7 — places paid + amounts (the server's table; projected while the field can change). */}
                 {payoutTableText(t) && (

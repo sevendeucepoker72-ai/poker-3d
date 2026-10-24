@@ -1307,3 +1307,9 @@ game-over-own-result
 tournament-bust-prize
 tournament-payouts
 Payouts:
+# 2026-10-24 Sit & Go fix-all K7 (F8 + F21) - the lobby card says when an on-demand event starts and
+# that it cancels N min after the first entry if not full (minPlayers / maxPlayers / stallCancelMs),
+# the server's deadline, and the structure (starting chips, level length).
+min after the first entry if not full
+tournament-start-rule
+tournament-structure
