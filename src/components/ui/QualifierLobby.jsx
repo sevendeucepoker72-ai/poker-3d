@@ -155,8 +155,10 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
   // to the shared PlayRefusalNotice instead.
   const [pendingReg, setPendingReg] = useState(null); // { id, kind }
   const [regMsg, setRegMsg] = useState(null);
-  // 2026-10-23 (owner) — the Weekly Qualifier Rules window (the card's "Rules" link).
-  const [rulesOpen, setRulesOpen] = useState(false);
+  // 2026-10-23 (owner) — the Weekly Qualifier Rules window (the card's "Rules"
+  // link): the id of the qualifier it was opened from, or null. Review fix-up:
+  // the window reads that qualifier's own seat package / bubble / server flags.
+  const [rulesFor, setRulesFor] = useState(null);
 
   // Another account on this tab: its own (empty) local registrations.
   useEffect(() => { setLocalRegs(readLocalRegs(owner)); }, [owner]);
@@ -649,7 +651,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
   const rulesLink = (q, label) => (qualifierHasWeeklyRules(q) ? (
     <button
       className="qualifier-rules-link"
-      onClick={(e) => { e.stopPropagation(); setRulesOpen(true); }}
+      onClick={(e) => { e.stopPropagation(); setRulesFor(q.qualifierId); }}
       aria-label="Weekly Qualifier Rules"
       style={{
         background: 'rgba(255,210,74,0.08)', border: '1px solid rgba(255,210,74,0.45)', color: '#ffd24a',
@@ -659,7 +661,9 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       📋 {label}
     </button>
   ) : null);
-  const rulesNode = rulesOpen ? <QualifierRules onClose={() => setRulesOpen(false)} /> : null;
+  const rulesNode = rulesFor
+    ? <QualifierRules qualifier={list.find((x) => x.qualifierId === rulesFor)} onClose={() => setRulesFor(null)} />
+    : null;
 
   // Dashboard modal
   const dashboardNode = (() => {

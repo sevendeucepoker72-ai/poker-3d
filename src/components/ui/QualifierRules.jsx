@@ -1,7 +1,7 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 import {
-  QUALIFIER_RULES, QUALIFIER_RULES_TITLE, QUALIFIER_RULES_UPDATED, formatRulesUpdated,
+  QUALIFIER_RULES_TITLE, QUALIFIER_RULES_SUBTITLE, qualifierRulesFor, rulesUpdatedLine, rulesJumpRowWraps,
 } from '../../content/qualifierRules';
 
 // 2026-10-23 (owner) — the Weekly Qualifier Rules. The text lives in ONE data
@@ -11,6 +11,10 @@ import {
 // of its own, Back closes it), and the qualifier's detail window
 // (QualifierDashboard) shows QualifierRulesBody in its "Rules" tab.
 // Blue + gold, never red; one column that fits a phone.
+// Review fix-up: both are given the qualifier they were opened from, and
+// qualifierRulesFor(qualifier) picks its lines (its seat package and bubble,
+// and a rule that needs a server change only once the server says it does
+// it). No rule words here: every one comes from the data module.
 
 const GOLD = '#ffd24a';
 const BLUE = '#6abaff';
@@ -21,19 +25,19 @@ function sectionDomId(prefix, i) {
   return `${prefix}-s${i}`;
 }
 
-/** The rules themselves: the "updated" line and every section. */
-export function QualifierRulesBody({ idPrefix }) {
+/** The rules themselves (for this qualifier): the "updated" line and every section. */
+export function QualifierRulesBody({ idPrefix, qualifier, sections: sectionsProp }) {
   const autoId = useId();
   const prefix = idPrefix || `qualifier-rules-${autoId.replace(/[^A-Za-z0-9_-]/g, '')}`;
-  const updated = formatRulesUpdated(QUALIFIER_RULES_UPDATED);
+  const own = useMemo(() => qualifierRulesFor(qualifier), [qualifier]);
+  const sections = sectionsProp || own;
+  const updated = rulesUpdatedLine();
   return (
     <div className="qualifier-rules-body" style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
       {updated && (
-        <div className="qualifier-rules-updated" style={{ color: MUTED, fontSize: '0.74rem' }}>
-          Updated {updated}. All times are Mountain Time (MT).
-        </div>
+        <div className="qualifier-rules-updated" style={{ color: MUTED, fontSize: '0.74rem' }}>{updated}</div>
       )}
-      {QUALIFIER_RULES.map((section, i) => (
+      {sections.map((section, i) => (
         <section
           key={i}
           id={sectionDomId(prefix, i)}
@@ -81,8 +85,24 @@ export function QualifierRulesBody({ idPrefix }) {
   );
 }
 
-/** The rules in a window of their own (the qualifier card's "Rules" link). */
-export default function QualifierRules({ onClose }) {
+function readViewport() {
+  return typeof window !== 'undefined' ? { w: window.innerWidth, h: window.innerHeight } : { w: 0, h: 0 };
+}
+
+/** The viewport size, kept current (a phone turned sideways re-lays the header). */
+function useViewport() {
+  const [vp, setVp] = useState(readViewport);
+  useEffect(() => {
+    const on = () => setVp(readViewport());
+    window.addEventListener('resize', on);
+    window.addEventListener('orientationchange', on);
+    return () => { window.removeEventListener('resize', on); window.removeEventListener('orientationchange', on); };
+  }, []);
+  return vp;
+}
+
+/** The rules in a window of their own (the qualifier card's "Rules" link), for the qualifier it was opened from. */
+export default function QualifierRules({ onClose, qualifier }) {
   const autoId = useId();
   const prefix = `qualifier-rules-${autoId.replace(/[^A-Za-z0-9_-]/g, '')}`;
   const titleId = `${prefix}-title`;
@@ -91,6 +111,8 @@ export default function QualifierRules({ onClose }) {
   const headerRef = useRef(null);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  const sections = useMemo(() => qualifierRulesFor(qualifier), [qualifier]);
+  const vp = useViewport();
 
   // Hardware / browser Back closes the rules (not the page).
   useBackButtonClose(true, onClose);
@@ -115,9 +137,12 @@ export default function QualifierRules({ onClose }) {
       box.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
     } catch { /* ignore */ }
   };
-  // Phones: one row that scrolls sideways (keeps the header short); wider
-  // screens: the headings wrap, all in view.
-  const wrapJumpRow = typeof window !== 'undefined' && window.innerWidth >= 700;
+  // Phones, and any short screen (a phone held sideways): one row that
+  // scrolls sideways, so the sticky header stays short; a screen both wide
+  // and tall: the headings wrap, all in view (rulesJumpRowWraps). A short
+  // screen also drops the subtitle line.
+  const wrapJumpRow = rulesJumpRowWraps(vp.w, vp.h);
+  const shortScreen = vp.h > 0 && vp.h < 500;
 
   return (
     <div
@@ -146,11 +171,11 @@ export default function QualifierRules({ onClose }) {
           position: 'sticky', top: 0, zIndex: 1, background: '#0d1929', borderRadius: '16px 16px 0 0',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '14px 12px 8px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: shortScreen ? '6px 12px 2px 16px' : '14px 12px 8px 16px' }}>
             <span aria-hidden="true" style={{ fontSize: '1.6rem', lineHeight: 1 }}>📋</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <h2 id={titleId} style={{ margin: 0, color: '#fff', fontSize: '1.12rem', fontWeight: 800 }}>{QUALIFIER_RULES_TITLE}</h2>
-              <div style={{ color: BLUE, fontSize: '0.74rem', marginTop: 3 }}>Every Sunday at 11:00 AM MT on americanpubpoker.online</div>
+              {!shortScreen && <div style={{ color: BLUE, fontSize: '0.74rem', marginTop: 3 }}>{QUALIFIER_RULES_SUBTITLE}</div>}
             </div>
             <button
               ref={closeRef}
@@ -163,7 +188,7 @@ export default function QualifierRules({ onClose }) {
             display: 'flex', gap: 6, padding: '0 16px 10px',
             ...(wrapJumpRow ? { flexWrap: 'wrap' } : { overflowX: 'auto', WebkitOverflowScrolling: 'touch' }),
           }}>
-            {QUALIFIER_RULES.map((section, i) => (
+            {sections.map((section, i) => (
               <button
                 key={i}
                 onClick={() => jumpTo(i)}
@@ -178,7 +203,7 @@ export default function QualifierRules({ onClose }) {
         </div>
 
         <div style={{ padding: '14px 16px 8px' }}>
-          <QualifierRulesBody idPrefix={prefix} />
+          <QualifierRulesBody idPrefix={prefix} sections={sections} />
         </div>
 
         <div style={{ padding: '12px 16px 18px', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 10 }}>

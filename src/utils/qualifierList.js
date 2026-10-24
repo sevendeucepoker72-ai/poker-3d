@@ -197,6 +197,15 @@ export function normalizeQualifierItem(raw) {
     // `tablesOpen` true while held. Absent (an older server) = false / null.
     tablesOpen: raw.tablesOpen === true,
     dealsAt: ms(raw.dealsAt),
+    // 2026-10-23 (Weekly Qualifier Rules review fix-up) — two flags a newer
+    // poker-server sets on the qualifier once it does these, read ONLY by the
+    // rules page (content/qualifierRules.js qualifierRulesContext): late entry
+    // and re-entry close at the seat bubble, and a running qualifier's deck
+    // seeds stay private until it ends. Absent (today's server) = false, and
+    // the rules say what today's server does (2:00 PM close; each hand's seed
+    // can be checked once that hand ends).
+    lateRegClosesAtBubble: raw.lateRegClosesAtBubble === true,
+    seedsHeldUntilEnd: raw.seedsHeldUntilEnd === true,
     result: normalizeResult(raw),
     // An older server's own window verdict (it had no status for "not open yet").
     legacySignupOpen: typeof raw.signupOpen === 'boolean' ? raw.signupOpen : null,

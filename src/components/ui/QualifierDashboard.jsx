@@ -221,7 +221,7 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
 
           {activeTab === 'rules' && hasRules && (
             <div className="qualifier-dashboard-rules">
-              <QualifierRulesBody />
+              <QualifierRulesBody qualifier={q} />
             </div>
           )}
         </div>

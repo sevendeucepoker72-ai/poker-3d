@@ -5,23 +5,37 @@
 //
 // OWNER: to change the rules, edit the text in this file only, then bump
 // QUALIFIER_RULES_UPDATED. Each section is { heading, rules: [one rule per
-// string] }. `compact: true` draws that section's lines as a tight grid (the
+// entry] }. `compact: true` draws that section's lines as a tight grid (the
 // blind levels). Keep it plain: short sentences, "you", Mountain Time, no
 // dashes as asides.
 //
-// Written 2026-10-23 from the fact-checked draft
-// (scratchpad research/rules.json), with every owner decision applied. Some
-// lines describe the game as it will be after the Saturday 2026-10-24 server
-// deploy: late entry / re-entry closing at the seat bubble, hand-for-hand,
-// deck seeds held until the qualifier ends, and help tools off at qualifier
-// tables. If one of those does not ship, change its line here.
-//
-// The Oct 25 lines (seat package, bubble at 11) are that week's: update them
-// each week.
+// A rule is a plain string, or an object { needs, text, otherwise }:
+//   - `text` shows only when every key in `needs` is known for the qualifier
+//     the player opened the rules from; otherwise `otherwise` shows (nothing
+//     when there is no `otherwise`).
+//   - `text` can use {top} (the last place that wins a seat), {bubble}
+//     ({top} + 1) and {seatPackage} (this qualifier's seat package in words).
+// The keys (qualifierRulesContext):
+//   top, bubble           the qualifier says how many places win seats
+//   seatPackage           it has a seat package
+//   noSeatPackage         it says how many places win seats and has no package
+//   lateRegClosesAtBubble poker-server says late entry / re-entry close at the
+//                         seat bubble (flag on the qualifier; absent = they
+//                         close at 2:00 PM MT only, which is today's server)
+//   seedsHeldUntilEnd     poker-server says it keeps a running qualifier's
+//                         seeds private until it ends (flag; absent = each
+//                         hand's seed can be read as soon as that hand ends,
+//                         which is today's server)
+// So the week's seat package and bubble come from the qualifier itself, and a
+// rule that needs a server change shows only once that server says it does it.
+// Never write a rule here that the code does not do.
 
 export const QUALIFIER_RULES_TITLE = 'Weekly Qualifier Rules';
 
-/** The day these rules were last changed (YYYY-MM-DD, shown as "Updated Oct 23, 2026"). */
+/** The line under the title of the rules window. */
+export const QUALIFIER_RULES_SUBTITLE = 'Every Sunday at 11:00 AM MT on americanpubpoker.online';
+
+/** The day these rules were last changed (YYYY-MM-DD, shown as "Updated Oct 23, 2026."). */
 export const QUALIFIER_RULES_UPDATED = '2026-10-23';
 
 export const QUALIFIER_RULES = [
@@ -43,7 +57,7 @@ export const QUALIFIER_RULES = [
       'Credits are good through the end of the 2026-27 season (March 2027).',
       'You get your credit back if you withdraw before the tables open, if you are released for not being online at the start, if no seat can be found for you, or if the qualifier is cancelled.',
       'One person, one account. You can be in the qualifier only once at a time, on your own account.',
-      'If you are suspended, you cannot enter. If you are suspended during the qualifier, you are removed at your next hand and get no place, seat or monthly credit.',
+      'If you are suspended, you cannot enter. If you are suspended during the qualifier, you are removed within a hand or two and get no place, seat or monthly credit.',
     ],
   },
   {
@@ -55,7 +69,15 @@ export const QUALIFIER_RULES = [
       'The tables open at 10:50 AM MT, or as soon after that as two registered players are online. If you are online, you are seated and taken to your table. If you come online later, you are seated when you arrive. No cards are dealt yet.',
       'Cards are dealt and level 1 starts at exactly 11:00 AM MT.',
       'After the start you can still join by late entry. A late entry gets 50,000 chips and a seat right away, and uses one credit.',
-      'Late entry and re-entry close at 2:00 PM MT, or as soon as the seat bubble is reached, whichever comes first. On Sunday, Oct 25, the seat bubble is reached when 11 players are left.',
+      {
+        needs: ['lateRegClosesAtBubble'],
+        text: 'Late entry and re-entry close at 2:00 PM MT, or as soon as the seat bubble is reached, whichever comes first.',
+        otherwise: 'Late entry and re-entry close at 2:00 PM MT. They stay open until then, even if only a few players are left.',
+      },
+      {
+        needs: ['lateRegClosesAtBubble', 'bubble'],
+        text: 'For this qualifier, the seat bubble is reached when {bubble} players are left.',
+      },
       'If the start has to wait for players, level 1 and every break start later. Late entry still closes by 2:00 PM MT.',
       'Leave any other americanpubpoker.online table first. You cannot late-register or re-enter while you are seated somewhere else.',
       'If you are seated somewhere else at 11:00, your qualifier seat is dealt in without you until you leave that table and tap Go to my table.',
@@ -142,8 +164,21 @@ export const QUALIFIER_RULES = [
   {
     heading: 'Bubble and ties',
     rules: [
-      'The seat bubble is the point where one more player is left than there are seat places. On Sunday, Oct 25, seats go to the top 10, so the bubble is at 11 players.',
-      'Once late entry has closed, when the seat bubble is reached and two or more tables are still playing, play goes hand-for-hand. Each table plays one hand, then waits until every other table has finished its hand. You see a message when it starts and when it ends.',
+      'The seat bubble is the point where one more player is left than there are seat places.',
+      {
+        needs: ['top'],
+        text: 'For this qualifier, seats go to the top {top}, so the bubble is at {bubble} players.',
+      },
+      {
+        needs: ['lateRegClosesAtBubble'],
+        text: 'Once late entry has closed, when the seat bubble is reached and two or more tables are still playing, play goes hand-for-hand. Each table plays one hand, then waits until every other table has finished its hand. You see a message when it starts and when it ends.',
+        otherwise: 'After late entry closes at 2:00 PM MT, when the field is at the seat bubble and two or more tables are still playing, play goes hand-for-hand. Each table plays one hand, then waits until every other table has finished its hand. You see a message when it starts and when it ends.',
+      },
+      {
+        needs: ['lateRegClosesAtBubble'],
+        otherwise: 'There is no hand-for-hand if fewer players than the bubble are left at 2:00 PM MT, or if two players bust in the same hand and the count skips past the bubble.',
+      },
+      'Hand-for-hand is used only when the bubble is 10 or more players. With 9 or fewer, everyone is moved to one table.',
       'Hand-for-hand ends when the bubble player busts or only one table is left. If a table stalls for too long, the game stops waiting and normal play resumes for the rest of the qualifier. The blind clock keeps running during hand-for-hand.',
       'If you bust during a hand-for-hand round, your place is shown after every table has finished that hand.',
       'If two or more players bust in the same hand at one table, the player who started that hand with more chips finishes higher.',
@@ -156,7 +191,14 @@ export const QUALIFIER_RULES = [
   {
     heading: 'Prizes',
     rules: [
-      "Sunday, Oct 25 seat package: 1st wins 3 seats to the Bar Poker Championship at Bally's Blackhawk. 2nd, 3rd and 4th win 2 seats each. 5th through 10th win 1 seat each. That is 15 seats.",
+      {
+        needs: ['seatPackage'],
+        text: "This qualifier's seat package: {seatPackage}",
+      },
+      {
+        needs: ['noSeatPackage'],
+        text: 'This qualifier has no seat package, so the top {top} win 1 seat each.',
+      },
       "Each week's seat package is set by Friday and shown on the qualifier card. When no package is set, the top 3 win 1 seat each.",
       "With a seat package, if nobody finishes in a seat place, or the player in it is removed, that place's seats are not given out and nobody moves up. When no package is set, the next finishers move up instead.",
       'You can hold at most 10 championship seats for the 2026 championship, counting every way you earned them. Seats you have already used still count.',
@@ -203,7 +245,9 @@ export const QUALIFIER_RULES = [
     rules: [
       "Never play someone else's account, and never let anyone else play yours.",
       'Do not team up with other players. No sharing your cards, no soft play, and no losing chips to a friend on purpose (chip dumping).',
-      'All help tools are off at qualifier tables. That means no GTO Solver, GTO Overlay, AI Coach, Pause & Coach, Equity Heatmap, Timing Tells, Range Chart, Equity Calc or Training. Hand strength, odds, outs and player stats are not shown there either.',
+      'All help tools are off at qualifier tables. That means no GTO Solver, GTO Overlay, AI Coach, Pause & Coach, Equity Heatmap, Timing Tells, Range Chart, Equity Calc or Training.',
+      "No hand strength bar, pot odds, outs or player stats are shown there. You still see the name of your hand, and each player's chance to win once hands are shown face up.",
+      "While you play the qualifier, do not use any help tool, including this site's own tools in the lobby or at another table.",
       'Outside help is banned too. That means no solvers, charts, AI tools, real-time assistance programs, or another person telling you what to do.',
       'If you cheat or break these rules, you are removed from the qualifier with no place or seat. The seats and credits you won in that qualifier are taken back, and you may be suspended from all American Pub Poker games.',
       'Results and seats can be reviewed for fair play for 7 days after the qualifier.',
@@ -212,14 +256,21 @@ export const QUALIFIER_RULES = [
   {
     heading: 'Fair shuffle',
     rules: [
-      "Every shuffle is locked in before the hand is dealt. Before each hand, your table gets a fingerprint of that shuffle. You can see it under Provably Fair in the table's Options menu.",
-      'The shuffle codes (seeds) of a running qualifier stay private until it ends, so nobody can work out folded cards during play.',
-      "After the qualifier ends, each hand's shuffle code can be checked against the fingerprint shown before that hand. The server keeps the last 50 hands of each table for 7 days. Ask Support if you want a hand checked.",
+      "Every shuffle is locked in before the hand is dealt. Before each hand, your table gets a fingerprint of that shuffle. You can see it in the table's Options menu, under Analysis Tools, then Provably Fair.",
+      {
+        needs: ['seedsHeldUntilEnd'],
+        text: 'The shuffle codes (seeds) of a running qualifier stay private until it ends, so nobody can work out folded cards during play.',
+      },
+      {
+        needs: ['seedsHeldUntilEnd'],
+        text: "After the qualifier ends, each hand's shuffle code can be checked against the fingerprint shown before that hand. The server keeps the last 50 hands of each table for 7 days. Ask Support if you want a hand checked.",
+        otherwise: 'After each hand, its shuffle code (seed) can be checked against the fingerprint shown before that hand. The server keeps the last 50 hands of each table for 7 days. Ask Support if you want a hand checked.',
+      },
     ],
   },
 ];
 
-// ---- Code below: not rule text. -------------------------------------------
+// ---- Code below: not rule text (except the seat package words). ----------
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -233,7 +284,136 @@ export function formatRulesUpdated(iso) {
   return `${MONTHS[month - 1]} ${day}, ${m[1]}`;
 }
 
+/** "Updated Oct 23, 2026." for the top of the rules; '' when the date is not a date. */
+export function rulesUpdatedLine(iso = QUALIFIER_RULES_UPDATED) {
+  const d = formatRulesUpdated(iso);
+  return d ? `Updated ${d}.` : '';
+}
+
 /** These rules are the WEEKLY qualifier's: the card / detail window of a weekly event links to them. */
 export function qualifierHasWeeklyRules(q) {
   return !!q && typeof q === 'object' && String(q.type ?? '').toLowerCase() === 'weekly';
+}
+
+function ordinalWord(n) {
+  const m = n % 100;
+  const s = ['th', 'st', 'nd', 'rd'];
+  return n + (s[(m - 20) % 10] || s[m] || s[0]);
+}
+
+function seatWord(n) {
+  return n === 1 ? '1 seat' : `${n} seats`;
+}
+
+/** A clean {place: seats} (whole places 1-100, 1-10 seats each), or null - the server's own limits. */
+function cleanSeatPackage(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  let total = 0;
+  for (const [k, v] of Object.entries(raw)) {
+    const place = Number(k);
+    const seats = Number(v);
+    if (!Number.isInteger(place) || place < 1 || place > 100 || !Number.isInteger(seats) || seats < 1 || seats > 10) return null;
+    out[place] = seats;
+    total += seats;
+  }
+  return total > 0 ? out : null;
+}
+
+/**
+ * A seat package in words: {1:3, 2:2, 3:2, 4:2, 5..10:1} ->
+ * "1st wins 3 seats. 2nd, 3rd and 4th win 2 seats each. 5th through 10th win
+ * 1 seat each. That is 15 seats." '' when it is not a package.
+ */
+export function seatPackageWords(raw) {
+  const pkg = cleanSeatPackage(raw);
+  if (!pkg) return '';
+  const places = Object.keys(pkg).map(Number).sort((a, b) => a - b);
+  const groups = [];
+  for (const pl of places) {
+    const g = groups[groups.length - 1];
+    if (g && g.to === pl - 1 && g.n === pkg[pl]) g.to = pl;
+    else groups.push({ from: pl, to: pl, n: pkg[pl] });
+  }
+  const parts = groups.map((g) => {
+    const count = g.to - g.from + 1;
+    if (count === 1) return `${ordinalWord(g.from)} wins ${seatWord(g.n)}.`;
+    let who;
+    if (count === 2) who = `${ordinalWord(g.from)} and ${ordinalWord(g.to)}`;
+    else if (count === 3) who = `${ordinalWord(g.from)}, ${ordinalWord(g.from + 1)} and ${ordinalWord(g.to)}`;
+    else who = `${ordinalWord(g.from)} through ${ordinalWord(g.to)}`;
+    return `${who} win ${seatWord(g.n)} each.`;
+  });
+  const total = places.reduce((s, pl) => s + pkg[pl], 0);
+  parts.push(`That is ${seatWord(total)}.`);
+  const words = parts.join(' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** What the rules can say about ONE qualifier (the lobby's normalized item, or the server's raw one). Never throws. */
+export function qualifierRulesContext(q) {
+  const ctx = {};
+  if (!q || typeof q !== 'object') return ctx;
+  const pkgWords = seatPackageWords(q.seatPackage);
+  const pkg = cleanSeatPackage(q.seatPackage);
+  const sent = Number(q.seatsForTop);
+  let top = Number.isInteger(sent) && sent > 0 && sent <= 100 ? sent : null;
+  if (pkg) top = Math.max(...Object.keys(pkg).map(Number));
+  if (top) {
+    ctx.top = String(top);
+    ctx.bubble = String(top + 1);
+  }
+  if (pkgWords) ctx.seatPackage = pkgWords;
+  else if (top) ctx.noSeatPackage = true;
+  if (q.lateRegClosesAtBubble === true) ctx.lateRegClosesAtBubble = true;
+  if (q.seedsHeldUntilEnd === true) ctx.seedsHeldUntilEnd = true;
+  return ctx;
+}
+
+function fill(text, ctx) {
+  let missing = false;
+  const out = String(text).replace(/\{(\w+)\}/g, (all, key) => {
+    const v = ctx[key];
+    if (typeof v !== 'string' || !v) { missing = true; return all; }
+    return v;
+  });
+  return missing ? null : out;
+}
+
+/** One rule entry -> its words for this context, or null (not shown). */
+export function resolveRule(rule, ctx = {}) {
+  if (typeof rule === 'string') return fill(rule, ctx);
+  if (!rule || typeof rule !== 'object') return null;
+  const needs = Array.isArray(rule.needs) ? rule.needs : [];
+  const met = needs.every((k) => !!ctx[k]);
+  const chosen = met ? rule.text : rule.otherwise;
+  return typeof chosen === 'string' && chosen ? fill(chosen, ctx) : null;
+}
+
+/**
+ * The rules as they read for ONE qualifier (or, without one, with nothing
+ * known about it): [{heading, rules:[string], compact?}], sections with no
+ * line left dropped.
+ */
+export function qualifierRulesFor(q, sections = QUALIFIER_RULES) {
+  const ctx = qualifierRulesContext(q);
+  const out = [];
+  for (const s of Array.isArray(sections) ? sections : []) {
+    const rules = (s?.rules || []).map((r) => resolveRule(r, ctx)).filter((r) => typeof r === 'string' && r);
+    if (!rules.length) continue;
+    out.push({ heading: s.heading, rules, ...(s.compact ? { compact: true } : {}) });
+  }
+  return out;
+}
+
+/**
+ * The rules window's jump row (the section headings under the title): wrap it
+ * onto several lines only on a screen both wide (>= 700 px) and tall
+ * (>= 600 px). A phone, or a phone held sideways, gets one row that scrolls
+ * sideways, so the sticky header never covers half the screen.
+ */
+export function rulesJumpRowWraps(width, height) {
+  const w = Number(width);
+  const h = Number(height);
+  return Number.isFinite(w) && Number.isFinite(h) && w >= 700 && h >= 600;
 }

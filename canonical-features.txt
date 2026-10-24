@@ -1252,3 +1252,12 @@ qualifier-rules-modal
 qualifier-dashboard-rules
 Weekly Qualifier Rules
 The qualifier is free. Chips have no cash value. Prizes are seats to the live championship only.
+
+# 2026-10-23 review fix-up - the rules read the qualifier they were opened
+# from: its own seat package and bubble (seatPackage / seatsForTop), and a rule
+# that needs a poker-server change shows only when the server flags it
+# (lateRegClosesAtBubble, seedsHeldUntilEnd). Fair play also bans this site's
+# own lobby tools and another table's tools during the qualifier.
+so the bubble is at {bubble} players
+They stay open until then, even if only a few players are left.
+own tools in the lobby or at another table
