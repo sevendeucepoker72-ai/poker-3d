@@ -93,6 +93,13 @@
   color: #4ADE80;
 }
 
+/* Sit & Go fix-all F7 — the payout table on the card. */
+.tournament-payouts {
+  font-size: 0.78rem;
+  color: #ffd24a;
+  margin-top: 4px;
+}
+
 .tournament-timer {
   font-size: 0.75rem;
   color: #ffd24a;

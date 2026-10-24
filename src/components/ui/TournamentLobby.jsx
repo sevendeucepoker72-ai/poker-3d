@@ -4,6 +4,8 @@ import { useTournamentRegistrationStore, tournamentCancelledText, pendingKind } 
 import { getSocket } from '../../services/socketService';
 import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
 import { marksDirectorPause } from '../../utils/tournamentClock';
+// Sit & Go fix-all F7 — the payout table before registering (server `payouts`).
+import { payoutTableText, payoutsNote } from '../../utils/tournamentFinish';
 import './TournamentLobby.css';
 
 // How long a Register / Withdraw tap waits for its answer (or an `error`)
@@ -255,6 +257,13 @@ export default function TournamentLobby({ onOpenBracket = null }) {
                     </div>
                   )}
                 </div>
+
+                {/* F7 — places paid + amounts (the server's table; projected while the field can change). */}
+                {payoutTableText(t) && (
+                  <div className="tournament-payouts">
+                    Payouts: {payoutTableText(t)}{payoutsNote(t) ? ` (${payoutsNote(t)})` : ''}
+                  </div>
+                )}
 
                 {startsIn && <div className="tournament-timer">Starts in: {startsIn}</div>}
 

@@ -1,5 +1,8 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import './TournamentBracket.css';
+// Sit & Go fix-all F7 — the payout table in the event detail (the lobby item's `payouts`).
+import { useTournamentRegistrationStore } from '../../store/tournamentRegistrationStore';
+import { payoutTableText, payoutsNote } from '../../utils/tournamentFinish';
 
 function formatChips(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
@@ -153,6 +156,11 @@ function TournamentBracketView({ tournament, onClose }) {
 
   const totalPlayers = players.length;
   const remainingPlayers = activePlayers.length;
+  // F7 — the payouts of this tournament: its lobby item (by id), else the bracket answer itself.
+  const listItem = useTournamentRegistrationStore((s) => (tournament && tournament.tournamentId != null
+    ? s.tournaments.find((t) => String(t.tournamentId) === String(tournament.tournamentId)) : null) || null);
+  const payoutsText = payoutTableText(listItem) || payoutTableText(tournament);
+  const payoutsNoteText = listItem ? payoutsNote(listItem) : payoutsNote(tournament);
   const isFinalTable = remainingPlayers > 0 && remainingPlayers <= 9;
 
   const statusLabel = {
@@ -188,6 +196,12 @@ function TournamentBracketView({ tournament, onClose }) {
           </div>
           <button className="tb-close-btn" onClick={onClose}>✕</button>
         </div>
+
+        {payoutsText && (
+          <div className="tournament-payouts tb-payouts" style={{ padding: '6px 16px', fontSize: '0.8rem', color: '#ffd24a' }}>
+            Payouts: {payoutsText}{payoutsNoteText ? ` (${payoutsNoteText})` : ''}
+          </div>
+        )}
 
         {/* Summary bar */}
         <div className="tb-summary">

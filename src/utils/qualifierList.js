@@ -607,6 +607,21 @@ export function qualificationsMountPlan({ cache, owner, now = Date.now(), rechec
 }
 
 /**
+ * Is this `tournamentFinished` frame a QUALIFIER's (seats, not chips)? The
+ * rule tournamentCompleteMessage always used: a qualifier flag / id, a
+ * top-level or own-row `wonSeat`, or any row carrying `wonSeat`. (Sit & Go
+ * fix-all F7: utils/tournamentFinish adds an own line only when this is false.)
+ */
+export function qualifierFinishFrame(data, myUserId) {
+  const rows = Array.isArray(data?.results) ? data.results.filter((r) => r && typeof r === 'object') : [];
+  const mine = myUserId != null ? rows.find((r) => r.userId != null && String(r.userId) === String(myUserId)) : null;
+  const wonSeat = typeof data?.wonSeat === 'boolean' ? data.wonSeat
+    : (typeof mine?.wonSeat === 'boolean' ? mine.wonSeat : null);
+  return data?.isQualifier === true || data?.qualifierId != null || wonSeat !== null
+    || rows.some((r) => typeof r.wonSeat === 'boolean');
+}
+
+/**
  * The Game Over line for a finished tournament (App's table overlay). A
  * qualifier pays SEATS, not chips: the player's own place and whether it won
  * a seat (C3 per-socket `place` / `wonSeat`, or his results row by account
@@ -619,8 +634,7 @@ export function tournamentCompleteMessage(data, myUserId) {
   const wonSeat = typeof data?.wonSeat === 'boolean' ? data.wonSeat
     : (typeof mine?.wonSeat === 'boolean' ? mine.wonSeat : null);
   const seats = posInt(data?.myResult?.seats) || posInt(data?.seats) || posInt(mine?.seats);
-  const isQualifier = data?.isQualifier === true || data?.qualifierId != null || wonSeat !== null
-    || rows.some((r) => typeof r.wonSeat === 'boolean');
+  const isQualifier = qualifierFinishFrame(data, myUserId);
   if (isQualifier) {
     const line = qualifierResultText({ place, wonSeat, seats });
     return line ? `Qualifier complete! ${line}` : 'Qualifier complete!';

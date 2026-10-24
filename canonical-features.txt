@@ -1300,3 +1300,10 @@ Seed shown after the tournament ends
 # 2026-10-24 Sit & Go fix-all K2 (F18) - the HUD uses the level the HAND is played at (Blinds line,
 # big-blind stack counts, 3x BB / sizing); the coming level shows as 'Next'.
 hud-blinds-next
+# 2026-10-24 Sit & Go fix-all K6 (F7 / F19 / F12) - every paid finisher sees his own place and prize
+# ("You finished 2nd - +270 chips": Game Over line, bust banner, away / sign-in toasts); the payout
+# table (places paid + amounts) on the lobby card and in the bracket.
+game-over-own-result
+tournament-bust-prize
+tournament-payouts
+Payouts:

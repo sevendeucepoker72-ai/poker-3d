@@ -49,6 +49,8 @@ import PostHandAnalysis from './PostHandAnalysis';
 import { recordHandStats, getOpponentStats } from '../../utils/opponentTracker';
 // Sit & Go fix-all C5 — his own last hand (the bust hand) after a bust.
 import { lastOwnHandOf } from '../../utils/handLog';
+// Sit & Go fix-all F7 — a paid bust's place + prize line.
+import { bustBannerPrizeLine } from '../../utils/tournamentFinish';
 import { useProgressStore } from '../../store/progressStore';
 import { useEquityWorker } from '../../hooks/useEquityWorker';
 import { getSocket, subscribeConnectionStatus } from '../../services/socketService';
@@ -338,7 +340,8 @@ export default function GameHUD() {
       // is watching / was seated at switches to the spectator view.
       // Round 3 (P-e'): a cash table he only WATCHES (P-d marks it) stays too.
       if (eliminationShownElsewhere(useTableStore.getState().gameState, data)) return;
-      setEliminatedPosition({ position: data.position, totalPlayers: data.totalPlayers });
+      // Sit & Go fix-all F7 — `prize` (present when the place is paid and final).
+      setEliminatedPosition({ position: data.position, totalPlayers: data.totalPlayers, prize: data.prize });
       setTournamentSpectator({
         tournamentId: data.tournamentId,
         tableId: data.tableId,
@@ -4561,9 +4564,16 @@ export default function GameHUD() {
                   background: 'rgba(0,0,0,0.85)', border: '1px solid #fcd34d',
                   borderRadius: 12, padding: '12px 24px', zIndex: 100, textAlign: 'center',
                 }}>
-                  <div style={{ color: '#fcd34d', fontWeight: 800, fontSize: '1.1rem' }}>
-                    You placed {eliminatedPosition.position}{eliminatedPosition.position === 1 ? 'st' : eliminatedPosition.position === 2 ? 'nd' : eliminatedPosition.position === 3 ? 'rd' : 'th'}
-                  </div>
+                  {/* Sit & Go fix-all F7 — a paid place says its prize. */}
+                  {bustBannerPrizeLine(eliminatedPosition) ? (
+                    <div className="tournament-bust-prize" style={{ color: '#fcd34d', fontWeight: 800, fontSize: '1.1rem' }}>
+                      {bustBannerPrizeLine(eliminatedPosition)}
+                    </div>
+                  ) : (
+                    <div style={{ color: '#fcd34d', fontWeight: 800, fontSize: '1.1rem' }}>
+                      You placed {eliminatedPosition.position}{eliminatedPosition.position === 1 ? 'st' : eliminatedPosition.position === 2 ? 'nd' : eliminatedPosition.position === 3 ? 'rd' : 'th'}
+                    </div>
+                  )}
                   <div style={{ color: '#888', fontSize: '0.8rem' }}>out of {eliminatedPosition.totalPlayers} players</div>
                 </div>
               )}

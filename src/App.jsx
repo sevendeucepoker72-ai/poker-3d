@@ -72,7 +72,8 @@ import {
 import { installTournamentRegistry, tournamentCancelledText } from './store/tournamentRegistrationStore';
 import CareerResultNotice from './components/career/CareerResultNotice';
 import { followJoinToTable } from './services/joinFollow';
-import { tournamentCompleteMessage } from './utils/qualifierList';
+// Sit & Go fix-all F7 — the Game Over line + his own place and prize (pure, probed).
+import { finishOverlay, ownFinishResult, prizeSuffix } from './utils/tournamentFinish';
 // 2026-10-22 — the tournament clock's receipt stamp (the HUD's local tick) and
 // the blind-up / break / pause / resume toasts.
 import {
@@ -1970,8 +1971,10 @@ function App() {
       const tid = data && data.tournamentId != null ? String(data.tournamentId) : null;
       const awayOf = tid ? awaySeatOfTournament(tid) : null;
       const pos = Number(data?.position);
+      // Sit & Go fix-all F7 / F12 — a paid place carries its prize (the direct
+      // notice and the sign-in notice, `atSignIn`); the room's copy has none.
       const ownLine = (name) => (Number.isFinite(pos) && pos > 0
-        ? `${name || 'Your tournament'}: you finished in position ${pos}.`
+        ? `${name || 'Your tournament'}: you finished in position ${pos}.${prizeSuffix(data?.prize)}`
         : `${name || 'Your tournament'}: your tournament has ended.`);
       if (awayOf) {
         try { noteTournamentOver({ tournamentId: data.tournamentId, position: data.position }); } catch { /* best-effort */ }
@@ -2037,7 +2040,7 @@ function App() {
       const name = awayOf ? awayOf.name : (typeof data?.tournamentName === 'string' ? data.tournamentName : null);
       useProgressStore.getState().addNotification({
         type: 'achievement',
-        message: tournamentFinishedText(name, place) + (Number.isFinite(prize) && prize > 0 ? ` Prize: ${prize.toLocaleString()} chips.` : ''),
+        message: tournamentFinishedText(name, place) + prizeSuffix(prize),
         reward: { chips: 0, xp: 0 },
       });
     };
@@ -2048,12 +2051,13 @@ function App() {
       const tid = data && data.tournamentId != null ? String(data.tournamentId) : null;
       const awayOf = tid ? awaySeatOfTournament(tid) : null;
       // His place: his row in results (TournamentManager sends userId).
+      // Sit & Go fix-all F7 / F19 — the per-socket `myResult {place, prize}`
+      // first (the frame keeps userId on his own row only), else that row.
       let myPlace = null;
+      let myPrize = null;
       try {
-        const uid = useGameStore.getState().userId;
-        const mine = uid != null && Array.isArray(data?.results)
-          ? data.results.find((r) => r && r.userId != null && String(r.userId) === String(uid)) : null;
-        if (mine && Number.isInteger(Number(mine.position)) && Number(mine.position) > 0) myPlace = Number(mine.position);
+        const own = ownFinishResult(data, useGameStore.getState().userId);
+        if (own) { myPlace = own.place; myPrize = own.prize; }
       } catch { /* best-effort */ }
       // (Z8: `room` — it may end the LIVE seat on screen; an away seat only by its tournament.)
       try { noteTournamentOver({ tournamentId: data?.tournamentId, finished: true, position: myPlace, room: true }); } catch { /* best-effort */ }
@@ -2069,7 +2073,7 @@ function App() {
         if ((awayOf || myPlace) && claimFinishedToast(tid) && claimOwnEndToast(tid)) {
           useProgressStore.getState().addNotification({
             type: 'achievement',
-            message: tournamentFinishedText(awayOf ? awayOf.name : (data?.tournamentName || null), myPlace),
+            message: tournamentFinishedText(awayOf ? awayOf.name : (data?.tournamentName || null), myPlace) + prizeSuffix(myPrize),
             reward: { chips: 0, xp: 0 },
           });
         }
@@ -2079,12 +2083,16 @@ function App() {
       // Show results via quick game result overlay
       if (data.results && data.results.length > 0) {
         const winner = data.results.find((r) => r.position === 1);
+        // R2 (C3 / TOURNEY-13) — a qualifier pays SEATS: the player's own
+        // place + "won a championship seat" (never "wins 0 chips").
+        // Sit & Go fix-all F7 — at a chip tournament every finisher also sees
+        // his own place and prize ("You finished 2nd - +270 chips").
+        const overlay = finishOverlay(data, useGameStore.getState().userId);
         setQuickGameResult({
           type: 'tournament',
           winner: winner?.playerName || 'Unknown',
-          // R2 (C3 / TOURNEY-13) — a qualifier pays SEATS: the player's own
-          // place + "won a championship seat" (never "wins 0 chips").
-          message: tournamentCompleteMessage(data, useGameStore.getState().userId),
+          message: overlay.message,
+          ownLine: overlay.ownLine,
         });
         const t = setTimeout(() => {
           tournamentTimeouts.delete(t);
@@ -3588,6 +3596,11 @@ function App() {
               <div style={{ fontSize: '1.1rem', marginBottom: '8px' }}>
                 {quickGameResult.message}
               </div>
+              {quickGameResult.ownLine && (
+                <div className="game-over-own-result" style={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffd24a', marginBottom: '8px' }}>
+                  {quickGameResult.ownLine}
+                </div>
+              )}
               {quickGameResult.multiplier && (
                 <div style={{ fontSize: '0.9rem', color: '#ffd24a' }}>
                   Multiplier: {quickGameResult.multiplier}x
