@@ -155,6 +155,31 @@ export function queuedCallAnyAction(callAmount, { isAof = false } = {}) {
 }
 
 /**
+ * Sit & Go fix-all C4 (owner 2026-10-23): folding when checking is free only
+ * gives chips away (hand 11 of the audit: the big blind folded facing two
+ * short all-ins and 105 of his chips went to another player). Checking is
+ * free when nothing is owed and the table takes a check — every table except
+ * an All-In-or-Fold table whose server refuses checks (F107).
+ */
+export function foldIsFree(callAmount, { isAof = false, aofFreeCheck = false } = {}) {
+  return num(callAmount) === 0 && !(isAof && !aofFreeCheck);
+}
+
+/**
+ * What a queued (pre-set) Fold sends when the turn opens: 'check' when
+ * checking is free (foldIsFree), else 'fold'. Same shape as
+ * queuedCallAnyAction. A queued Fold facing a bet still folds.
+ */
+export function queuedFoldAction(callAmount, opts = {}) {
+  return foldIsFree(callAmount, opts || {}) ? 'check' : 'fold';
+}
+
+export const QUEUED_FOLD_CHECKED_TEXT = 'Queued Fold: checked (checking was free)';
+export const QUEUED_FOLD_TITLE = 'Fold (checks when checking is free)';
+export const FOLD_FREE_HINT_TEXT = 'Checking is free';
+export const FOLD_FREE_ARIA_TEXT = 'Checking is free. Tap again to fold anyway.';
+
+/**
  * One line of the live action strip (GameHUD, Upgrade 6) for a seat whose
  * `lastAction` changed: the server enum ('Fold' / 'Check' / 'Call' / 'Raise' /
  * 'All-In') plus its bet before (`prevBet`) and now (`curBet`). Sit & Go

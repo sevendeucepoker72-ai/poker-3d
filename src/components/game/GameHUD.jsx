@@ -14,6 +14,9 @@ import {
   allInHiddenText,
   // Sit & Go fix-all F2 — the live strip's lines ('Name bet 40' opens a street).
   stripActionEntry, isStripBetEntry,
+  // Sit & Go fix-all C4 — a queued Fold checks when checking is free.
+  queuedFoldAction, foldIsFree, QUEUED_FOLD_CHECKED_TEXT, QUEUED_FOLD_TITLE,
+  FOLD_FREE_HINT_TEXT, FOLD_FREE_ARIA_TEXT,
 } from '../../utils/actionBar';
 // Gameplay audit 2026-10-21 (C2) — winner banner / showdown rows / equity per
 // variant / hand boundary rules, kept pure + probed.
@@ -438,6 +441,7 @@ export default function GameHUD() {
 
   // Upgrade: fold confirmation micro-animation
   const [foldPending, setFoldPending] = useState(false);
+  const [foldFreeArmed, setFoldFreeArmed] = useState(false); // C4: armed while checking is free
   // Ref mirrors foldPending state synchronously so the click handler sees
   // the updated value within the same event-loop tick. Without it, a fast
   // double-tap can produce two "click 1" runs (both seeing foldPending=
@@ -1375,10 +1379,16 @@ export default function GameHUD() {
         // turn opens and reads as "it folded me when I was going to bet".
         const preToast = (msg, type) => { try { addToast(msg, type, 2600); } catch { /* addToast defined later in render; safe when this effect actually runs */ } };
         if (action === 'fold') {
-          // Pure auto-fold: fold the moment it's our turn, whatever the action
-          // (even if a free check were available — the player armed "Fold").
-          playSound('fold'); sendAction('fold');
-          preToast('⚡ Queued action fired: Folded', 'warn');
+          // Sit & Go fix-all C4 (owner 2026-10-23) — a queued Fold acts as
+          // Check/Fold: when checking is free it CHECKS (folding a free hand
+          // only gives chips away — audit hand 11), facing a bet it folds.
+          if (queuedFoldAction(callAmount, { isAof, aofFreeCheck }) === 'check') {
+            playSound('check'); sendAction('check');
+            preToast(`⚡ ${QUEUED_FOLD_CHECKED_TEXT}`, 'info');
+          } else {
+            playSound('fold'); sendAction('fold');
+            preToast('⚡ Queued action fired: Folded', 'warn');
+          }
         } else if (action === 'checkFold') {
           if (callAmount === 0) {
             playSound('check'); sendAction('check');
@@ -1408,7 +1418,7 @@ export default function GameHUD() {
       }
     }
     prevIsMyTurnForPreActionRef.current = isMyTurn;
-  }, [isMyTurn, preAction, callAmount, sendAction, playSound, preActionTableId, preActionHand, isAof, preActionKeysSig]);
+  }, [isMyTurn, preAction, callAmount, sendAction, playSound, preActionTableId, preActionHand, isAof, aofFreeCheck, preActionKeysSig]);
 
   // Close raise slider and all-in confirm when turn ends
   useEffect(() => {
@@ -1991,8 +2001,14 @@ export default function GameHUD() {
       setAutoAction(null);
 
       if (action === 'fold') {
-        playSound('fold');
-        sendAction('fold');
+        // Sit & Go fix-all C4 — like the queued pre-action: checks when free.
+        if (queuedFoldAction(callAmount, { isAof, aofFreeCheck }) === 'check') {
+          playSound('check');
+          sendAction('check');
+        } else {
+          playSound('fold');
+          sendAction('fold');
+        }
       } else if (action === 'check' && callAmount === 0) {
         playSound('check');
         sendAction('check');
@@ -2015,7 +2031,7 @@ export default function GameHUD() {
         }
       }
     }
-  }, [isMyTurn, callAmount, myChips, sendAction, playSound]);
+  }, [isMyTurn, callAmount, myChips, sendAction, playSound, isAof, aofFreeCheck]);
 
   // Sync ref with state
   useEffect(() => {
@@ -2933,19 +2949,25 @@ export default function GameHUD() {
     if (!foldPendingRef.current) {
       foldPendingRef.current = true;
       setFoldPending(true);
+      // Sit & Go fix-all C4 — folding when checking is free: the armed button
+      // says "Checking is free" (a second tap within 3 s still folds), so no
+      // path folds a free hand in one tap.
+      setFoldFreeArmed(foldIsFree(callAmount, { isAof, aofFreeCheck }));
       clearTimeout(foldTimerRef.current);
       foldTimerRef.current = setTimeout(() => {
         foldPendingRef.current = false;
         setFoldPending(false);
+        setFoldFreeArmed(false);
       }, 3000);
       return 'armed';
     }
     clearTimeout(foldTimerRef.current);
     foldPendingRef.current = false;
     setFoldPending(false);
+    setFoldFreeArmed(false);
     handleAction('fold');
     return 'folded';
-  }, [handleAction]);
+  }, [handleAction, callAmount, isAof, aofFreeCheck]);
   gestureActRef.current = { handleAction, requestFold };
 
   // Time Bank handler (Upgrade 5)
@@ -3849,6 +3871,8 @@ export default function GameHUD() {
                           role="radio"
                           aria-checked={active}
                           className={`options-queue-chip ${active ? 'options-queue-chip--active' : ''}`}
+                          // C4 — a queued Fold checks when checking is free.
+                          title={key === 'fold' ? QUEUED_FOLD_TITLE : undefined}
                           onClick={() => setPreAction(active ? null : key)}
                         >
                           <span className="options-queue-icon">{icon}</span>
@@ -4645,7 +4669,8 @@ export default function GameHUD() {
                 <div className="pre-action-btns">
                   <button
                     className={`pre-action-btn${preAction === 'fold' ? ' active' : ''}`}
-                    aria-label={preAction === 'fold' ? 'Cancel pre-action: auto fold' : 'Queue pre-action: auto fold on my turn'}
+                    title={QUEUED_FOLD_TITLE}
+                    aria-label={preAction === 'fold' ? 'Cancel pre-action: auto fold' : `Queue pre-action: ${QUEUED_FOLD_TITLE}`}
                     aria-pressed={preAction === 'fold'}
                     onClick={() => setPreAction(preAction === 'fold' ? null : 'fold')}
                   >
@@ -4723,6 +4748,8 @@ export default function GameHUD() {
                   aria-label={
                     !isMyTurn
                       ? 'Fold button, not your turn'
+                      : foldPending && foldFreeArmed
+                        ? FOLD_FREE_ARIA_TEXT
                       : foldPending
                         ? `Confirm fold by tapping again. You would give up a call of ${callShown.effectiveCall.toLocaleString()} chips.`
                         : `Fold. Call amount ${callShown.effectiveCall.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`
@@ -4748,7 +4775,7 @@ export default function GameHUD() {
                       narrowed and moved right (2026-04-22 audit). Short
                       text avoids the ellipsis at every breakpoint. */}
                   <span className="fold-confirm-hint">
-                    {foldPending ? 'Tap again' : 'Tap 2x'}
+                    {foldPending ? (foldFreeArmed ? FOLD_FREE_HINT_TEXT : 'Tap again') : 'Tap 2x'}
                   </span>
                 </button>
                 )}

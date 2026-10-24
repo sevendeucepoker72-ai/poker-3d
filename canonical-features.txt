@@ -1283,3 +1283,7 @@ has timed out
 # 2026-10-24 Sit & Go fix-all K1b - the live action strip shows a street's opening bet as
 # 'Name bet 40' (and now shows each street's first action at all).
 action-hist-bet
+# 2026-10-24 Sit & Go fix-all K3 (C4) - a queued Fold checks when checking is free (audit hand 11:
+# the big blind folded facing two short all-ins); a free-street fold tap says "Checking is free".
+checking was free
+Fold (checks when checking is free)
