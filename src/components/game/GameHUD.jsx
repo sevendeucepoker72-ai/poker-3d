@@ -2163,11 +2163,14 @@ export default function GameHUD() {
       lastWarningTickRef.current = null;
       return;
     }
+    // 2026-10-26 — sitting out, his turns are played for him on the 3 s clock
+    // (the server now sends the real length): no warning beeps on every one.
+    if (sittingOutHere) return;
     if (timeLeft > 5 || timeLeft <= 0) return;
     if (lastWarningTickRef.current === timeLeft) return;
     lastWarningTickRef.current = timeLeft;
     playSound('timer');
-  }, [timeLeft, clockOn, playSound]);
+  }, [timeLeft, clockOn, playSound, sittingOutHere]);
 
   // Scroll chat to bottom when new messages arrive
   useEffect(() => {

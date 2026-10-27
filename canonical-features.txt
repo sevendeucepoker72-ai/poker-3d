@@ -1323,3 +1323,5 @@ Mucked - only you see your cards
 # tournament's prize minus its entry instead; the CSV export gains a 'Kind' column.
 bankroll-tournament-note
 tournament chips are not your bankroll
+# 2026-10-26 (owner: "After 1") - the server sat him out because his clock ran out: the notice says why.
+Your time ran out, so you're sitting out.

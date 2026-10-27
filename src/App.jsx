@@ -1187,6 +1187,17 @@ function App() {
     // button there reads its own table and did not change).
     socket.on('sitOutToggled', (data) => {
       if (!data || typeof data !== 'object') return;
+      // 2026-10-26 (owner: a timeout sits a tournament player out "until they
+      // tap I'm Back") — the server sat him out because his clock ran out: say
+      // why (the tournament "Sitting out ... I'm back" banner follows the seat).
+      if (data.reason === 'timeout' && data.sittingOut === true) {
+        try {
+          useProgressStore.getState().addNotification({
+            type: 'system', title: 'Sitting out',
+            message: "Your time ran out, so you're sitting out. Tap I'm back to play again.",
+          });
+        } catch { /* best-effort */ }
+      }
       const ts = useTableStore.getState();
       if (ts.currentTableId != null) {
         let mainId = null;
