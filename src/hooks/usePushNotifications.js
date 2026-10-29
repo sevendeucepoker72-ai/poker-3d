@@ -269,23 +269,54 @@ export async function checkSubscriptionHealth(userId) {
   }
 }
 
-/** Fire a local (non-server) notification immediately. */
+/**
+ * 2026-10-28 - true only when this browser can show a local notification now:
+ * a service worker, a Notification API, and permission granted. iOS Safari /
+ * Chrome iOS / Firefox iOS tabs (not an installed PWA) and some Android
+ * WebViews have a service worker but NO window.Notification, and the bare
+ * `Notification.permission` read threw a ReferenceError there. notify.yourTurn
+ * runs in a GameHUD effect while the page is hidden, so that throw replaced
+ * the table view with "Table display error - tap to reload table" on the
+ * player's own turn (auth_events: 21 "[render] Can't find variable:
+ * Notification" / "Notification is not defined", 18 of them during the 10-25
+ * qualifier). Never throws.
+ */
+export function localNotificationsAllowed() {
+  try {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return false;
+    if (typeof window === 'undefined' || !('Notification' in window)) return false;
+    if (typeof Notification === 'undefined') return false;
+    return Notification.permission === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fire a local (non-server) notification immediately.
+ * 2026-10-28 - best-effort: never throws (localNotificationsAllowed) and never
+ * leaves a rejected promise (showNotification rejects when permission was
+ * revoked after the check).
+ */
 export function showLocalNotification(title, body, url = '/') {
-  if (!('serviceWorker' in navigator) || Notification.permission !== 'granted') return;
-  navigator.serviceWorker.ready.then((reg) => {
-    reg.showNotification(title, {
+  try {
+    if (!localNotificationsAllowed()) return;
+    navigator.serviceWorker.ready.then((reg) => reg.showNotification(title, {
       body,
       icon: '/poker-icon-192.svg',
       badge: '/poker-icon-192.svg',
       tag: 'poker-' + Date.now(),
       data: { url },
       vibrate: [200, 100, 200],
+    })).catch((e) => {
+      try { console.warn('[push] local notification not shown:', e && e.message); } catch { /* ignore */ }
     });
-  });
+  } catch { /* a local notification is best-effort */ }
 }
 
 export function scheduleNotification(title, body, delayMs, url = '/') {
-  if (Notification.permission !== 'granted') return;
+  // 2026-10-28 - same guard (this read the bare global too).
+  if (!localNotificationsAllowed()) return;
   setTimeout(() => showLocalNotification(title, body, url), delayMs);
 }
 

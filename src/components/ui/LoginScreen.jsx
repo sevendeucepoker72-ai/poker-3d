@@ -3,6 +3,8 @@ import { useGameStore } from '../../store/gameStore';
 import { useTableStore } from '../../store/tableStore';
 import { startLogin, detectInAppBrowser } from '../../services/authService';
 import { isKeepSignedIn, setKeepSignedIn } from '../../services/tokenStorage';
+import { deepLinkNewLinkOffered, DEEP_LINK_NEW_LINK_LABEL } from '../../services/deepLinkBootGate';
+import { PLAYER_APP } from '../../config';
 import CreateAccountLink from './CreateAccountLink';
 import './LoginScreen.css';
 
@@ -108,6 +110,28 @@ export default function LoginScreen() {
               <div className="login-error" style={{ background: 'rgba(72,110,255,0.12)', borderColor: 'rgba(255,210,74,0.45)', color: '#ffd24a' }}>
                 {sessionExpiredNotice}
               </div>
+            )}
+            {/* 2026-10-28 - a used / expired Play Online link (or another
+                answered failure that sends him back to the app) is not a dead
+                end: one tap to the player app's hub, whose Play Online button
+                issues a new link. A plain link in this tab, never bridged: the
+                browser's stored sign-in here may be ANOTHER account's
+                (AGENT.md rule 14). Blue + gold. */}
+            {sessionExpiredNotice && !error && deepLinkNewLinkOffered(sessionExpiredNotice) && (
+              <a
+                className="login-new-link-btn"
+                href={`${PLAYER_APP}/player/hub?from=online`}
+                onClick={() => { try { console.warn('[deep-link] get a new Play Online link: to the player app'); } catch { /* ignore */ } }}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  minHeight: 44, boxSizing: 'border-box', width: '100%',
+                  margin: '0 0 12px', padding: '10px 16px', borderRadius: 12,
+                  background: 'rgba(72,110,255,0.22)', border: '1px solid rgba(255,210,74,0.6)',
+                  color: '#ffd24a', fontWeight: 700, fontSize: '0.95rem', textDecoration: 'none',
+                }}
+              >
+                {DEEP_LINK_NEW_LINK_LABEL}
+              </a>
             )}
             {error && <div className="login-error">{error}</div>}
 

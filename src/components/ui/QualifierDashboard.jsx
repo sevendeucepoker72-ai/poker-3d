@@ -64,7 +64,9 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
   useEffect(() => {
     if (isRunning && !prevRunningRef.current && isRegistered) {
       if (typeof document === 'undefined' || document.visibilityState === 'hidden') {
-        notify.tournamentStart(q.name);
+        // 2026-10-28 - a notification problem (iOS browsers have no
+        // window.Notification) must never crash the qualifier window.
+        try { notify.tournamentStart(q.name); } catch (e) { console.warn('[notify] tournamentStart failed:', e && e.message); }
       }
     }
     prevRunningRef.current = isRunning;

@@ -1678,8 +1678,12 @@ export default function GameHUD() {
       // doesn't time out. Foreground players already see the on-screen turn UI,
       // so only fire when hidden to avoid spam. notify.yourTurn self-guards on
       // Notification.permission==='granted'.
+      // 2026-10-28 - and never takes the table down: on iOS browsers (no
+      // window.Notification) it threw here, and TableErrorBoundary replaced
+      // the action bar on his turn. The guard lives in showLocalNotification;
+      // this catch keeps any future notification bug out of the table view.
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        notify.yourTurn();
+        try { notify.yourTurn(); } catch (e) { console.warn('[notify] yourTurn failed:', e && e.message); }
       }
     }
     // (holds the last alerted key now; null between turns)

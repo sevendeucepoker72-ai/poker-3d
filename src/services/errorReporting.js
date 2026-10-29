@@ -135,6 +135,35 @@ function pageUrl() {
   }
 }
 
+/** document.visibilityState ('visible' / 'hidden'), or '' when there is none. */
+function pageVisibility() {
+  try {
+    return (typeof document !== 'undefined' && typeof document.visibilityState === 'string')
+      ? document.visibilityState
+      : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * 2026-10-28 - where a window 'error' came from: the script URL (scrubbed like
+ * every other text: no query, no hash, sign-in parameters redacted), line and
+ * column. 144 .online "Script error." reports in 7 days carried no stack and
+ * no location, so they could not be attributed. A cross-origin or injected
+ * script (an in-app WebView's own code) reports an empty filename and line 0:
+ * that absence is itself the answer, so the numbers are kept even when 0.
+ */
+export function windowErrorLocation(e) {
+  const out = {};
+  try {
+    if (e && typeof e.filename === 'string' && e.filename) out.filename = scrubReportText(e.filename).slice(0, 300);
+    if (e && Number.isFinite(e.lineno)) out.lineno = e.lineno;
+    if (e && Number.isFinite(e.colno)) out.colno = e.colno;
+  } catch { /* report without it */ }
+  return out;
+}
+
 /** Shrink the long fields so JSON.stringify(detail) stays under the API cap. */
 function fitDetail(detail) {
   let d = detail;
@@ -164,11 +193,22 @@ function reportError(message, stack, extra) {
     // Dedup key: first 120 chars of message + first stack frame keeps
     // "same error every render" collapsed to one POST per minute.
     const firstFrame = stk.split('\n').slice(0, 2).join('|');
-    const key = `${msg.slice(0, 120)}::${firstFrame.slice(0, 200)}`;
+    // 2026-10-28 - a stackless window error keys on its script location
+    // instead (windowErrorLocation), so the same message from two scripts is
+    // not collapsed into one report. An opaque "Script error." has no
+    // filename, so those still collapse as before.
+    const where = !firstFrame && extra && typeof extra.filename === 'string' && extra.filename
+      ? `${extra.filename}:${extra.lineno}:${extra.colno}`
+      : '';
+    const key = `${msg.slice(0, 120)}::${(firstFrame || where).slice(0, 200)}`;
     if (shouldDrop(key)) return;
     // urlScope tells the reader of auth_events that `url` deliberately
     // omits the query and hash.
     const detail = { message: msg, stack: stk, url: pageUrl(), urlScope: 'origin+path', userAgent };
+    // 2026-10-28 - was the page on screen? (The iOS Notification crash only
+    // happened while it was hidden; an opaque error is easier to place too.)
+    const visibility = pageVisibility();
+    if (visibility) detail.visibility = visibility;
     if (extra && typeof extra === 'object') {
       for (const [k, v] of Object.entries(extra)) {
         if (v === undefined || v === null || v === '') continue;
@@ -257,7 +297,8 @@ export function installErrorReporting() {
         const err = e && e.error;
         const message = (err && err.message) || (e && e.message) || 'window.error';
         const stack = (err && err.stack) || '';
-        reportError(message, stack);
+        // 2026-10-28 - plus filename / lineno / colno (windowErrorLocation).
+        reportError(message, stack, windowErrorLocation(e));
       } catch (_) {}
     });
 

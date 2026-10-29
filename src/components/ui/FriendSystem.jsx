@@ -83,7 +83,10 @@ export default function FriendSystem({ onClose, onOpenProfile }) {
           const was = prev[f.userId];
           const isOnline = f.presence === 'online' || f.presence === 'in-game';
           const wasOffline = was === undefined || was === 'offline';
-          if (isOnline && wasOffline) notify.friendOnline(nameOf(f));
+          // 2026-10-28 - a notification problem must never stop the list update.
+          if (isOnline && wasOffline) {
+            try { notify.friendOnline(nameOf(f)); } catch (e) { console.warn('[notify] friendOnline failed:', e && e.message); }
+          }
         }
       }
       const next = {};

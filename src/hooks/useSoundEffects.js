@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect } from 'react';
+import { settleAudioCall, audioContextNeedsReplacing, onNextUserGesture } from '../utils/audioContextSafety.js';
 
 // R1 (TABLEUI-13 / APPUI-8, 2026-10-11) — the hook read a key nobody writes
 // ('sfxVolume'), so the Settings sliders, Mute All and the in-table Sound
@@ -58,15 +59,40 @@ export default function useSoundEffects() {
   const ambientGainRef = useRef(null);  // ambient bus (Music / Ambient slider)
   const ambientRef = useRef(null);
   const ambientStartedRef = useRef(false);
+  // 2026-10-28 - resume() refusals (utils/audioContextSafety.js): the context
+  // whose last resume() was refused, the pending next-gesture listener, and
+  // the recovery that listener runs (set below, once stopAmbient exists).
+  const resumeRefusedRef = useRef(false);
+  const gestureUnhookRef = useRef(null);
+  const recoverOnGestureRef = useRef(null);
+
+  /** resume() a suspended context; a refusal is caught and retried on the next tap. */
+  const resumeCtx = useCallback((ctx) => {
+    settleAudioCall(() => ctx.resume()).then((ok) => {
+      if (ctxRef.current !== ctx) return; // replaced or released meanwhile
+      if (ok) { resumeRefusedRef.current = false; return; }
+      // 2026-10-28 - several resume() calls can be in flight (one per sound);
+      // a refusal that settles after another one worked must not mark a
+      // running context dead (the next tap would replace a working context).
+      if (ctx.state === 'running') return;
+      resumeRefusedRef.current = true;
+      if (gestureUnhookRef.current || typeof window === 'undefined') return;
+      gestureUnhookRef.current = onNextUserGesture(window, () => {
+        gestureUnhookRef.current = null;
+        if (recoverOnGestureRef.current) recoverOnGestureRef.current();
+      });
+    });
+  }, []);
 
   const getCtx = useCallback(() => {
     if (!ctxRef.current || ctxRef.current.state === 'closed') {
       ctxRef.current = new (window.AudioContext || window.webkitAudioContext)();
       masterGainRef.current = null;
       ambientGainRef.current = null;
+      resumeRefusedRef.current = false;
     }
     if (ctxRef.current.state === 'suspended') {
-      ctxRef.current.resume();
+      resumeCtx(ctxRef.current);
     }
     if (!masterGainRef.current) {
       masterGainRef.current = ctxRef.current.createGain();
@@ -80,7 +106,7 @@ export default function useSoundEffects() {
     masterGainRef.current.gain.value = prefs.effects;
     ambientGainRef.current.gain.value = prefs.ambient;
     return ctxRef.current;
-  }, []);
+  }, [resumeCtx]);
 
   /** Stop the ambient hum (mute, hidden page, unmount). Restarts with the next sound. */
   const stopAmbient = useCallback(() => {
@@ -94,6 +120,39 @@ export default function useSoundEffects() {
     try { amb.lfo?.disconnect?.(); } catch { /* ignore */ }
     try { amb.humGain?.disconnect?.(); } catch { /* ignore */ }
   }, []);
+
+  // 2026-10-28 - the next tap after a refused resume(): a closed or refused
+  // context is replaced by one created INSIDE this gesture (where iOS allows
+  // audio to start); a context that is only suspended is resumed here. Muted:
+  // the dead context is just dropped (the next sound creates one).
+  const recoverOnGesture = useCallback(() => {
+    try {
+      const old = ctxRef.current;
+      if (!old) return;
+      // Playing again by now (a later resume() worked, or the browser restarted
+      // it): nothing to recover - never swap a working context for a new one.
+      if (old.state === 'running') { resumeRefusedRef.current = false; return; }
+      if (!audioContextNeedsReplacing(old, resumeRefusedRef.current)) {
+        if (old.state === 'suspended') resumeCtx(old);
+        return;
+      }
+      stopAmbient(); // its nodes belong to the old context
+      ctxRef.current = null;
+      masterGainRef.current = null;
+      ambientGainRef.current = null;
+      resumeRefusedRef.current = false;
+      if (old.state !== 'closed') settleAudioCall(() => old.close());
+      const prefs = readSoundPrefs();
+      if (prefs.effects <= 0 && prefs.ambient <= 0) return;
+      getCtx();
+      console.warn('[sound] audio context replaced after a refused resume');
+    } catch (e) {
+      console.warn('[sound] audio recovery failed:', e && e.message);
+    }
+  }, [getCtx, resumeCtx, stopAmbient]);
+  useEffect(() => {
+    recoverOnGestureRef.current = recoverOnGesture;
+  }, [recoverOnGesture]);
 
   /** Create a white noise buffer */
   const createNoiseBuffer = useCallback((ctx, duration) => {
@@ -551,7 +610,9 @@ export default function useSoundEffects() {
     const onVisibility = () => {
       if (pageHidden()) {
         stopAmbient();
-        try { if (ctxRef.current && ctxRef.current.state === 'running') ctxRef.current.suspend(); } catch { /* ignore */ }
+        // 2026-10-28 - suspend() returns a promise too: settled, never unhandled.
+        const ctx = ctxRef.current;
+        try { if (ctx && ctx.state === 'running') settleAudioCall(() => ctx.suspend()); } catch { /* ignore */ }
       }
       // Visible again: the context resumes and the hum restarts with the next sound.
     };
@@ -569,8 +630,13 @@ export default function useSoundEffects() {
   useEffect(() => {
     return () => {
       stopAmbient();
-      // The table screen's AudioContext is released with it.
-      try { if (ctxRef.current && ctxRef.current.state !== 'closed') ctxRef.current.close(); } catch { /* ignore */ }
+      // 2026-10-28 - no next-tap recovery after the table screen is gone.
+      if (gestureUnhookRef.current) { try { gestureUnhookRef.current(); } catch { /* ignore */ } gestureUnhookRef.current = null; }
+      // The table screen's AudioContext is released with it. 2026-10-28 -
+      // close() settled: a resume() still pending rejects ("closed before a
+      // pending resume() could complete") and resumeCtx settles that too.
+      const ctx = ctxRef.current;
+      try { if (ctx && ctx.state !== 'closed') settleAudioCall(() => ctx.close()); } catch { /* ignore */ }
       ctxRef.current = null;
       masterGainRef.current = null;
       ambientGainRef.current = null;

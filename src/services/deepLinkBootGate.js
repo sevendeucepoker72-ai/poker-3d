@@ -270,6 +270,31 @@ export function deepLinkFailureText(result) {
   return DEEP_LINK_GENERIC_FAILED_TEXT;
 }
 
+/**
+ * 2026-10-28 - the one-tap way back after an ANSWERED failure that tells the
+ * player to open Play Online again (a used / expired link above all: on
+ * 10-25, qualifier Sunday, three players hit ticket_replayed and two an
+ * expired link). The login screen used to show only that sentence; it now also
+ * offers DEEP_LINK_NEW_LINK_LABEL, a plain link to the player app's hub, whose
+ * Play Online button issues a NEW single-use link (.online cannot issue one:
+ * the master API issues it to the player app's own sign-in). True only for
+ * this module's own sentences that send the player back to the app.
+ */
+export const DEEP_LINK_NEW_LINK_LABEL = 'Get a new Play Online link';
+const NEW_LINK_NOTICES = new Set([
+  DEEP_LINK_LINK_USED_TEXT,
+  DEEP_LINK_LINK_INVALID_TEXT,
+  DEEP_LINK_CHECK_FAILED_TEXT,
+  DEEP_LINK_GENERIC_FAILED_TEXT,
+  DEEP_LINK_ACCOUNT_LOAD_FAILED_TEXT,
+  DEEP_LINK_MAINTENANCE_TEXT,
+  DEEP_LINK_SEAT_FAILED_TEXT,
+  DEEP_LINK_BUY_IN_CANCELLED_TEXT,
+]);
+export function deepLinkNewLinkOffered(notice) {
+  return typeof notice === 'string' && NEW_LINK_NOTICES.has(notice);
+}
+
 // ── Q4 lock (2026-10-10) ────────────────────────────────────────────────────
 // App.jsx renders the deep-link screen ("Signing you in…" / timed out /
 // refusal) ONLY while this returns DEEP_LINK_SCREEN_PENDING: once the link is
