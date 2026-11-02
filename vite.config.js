@@ -1,5 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
+
+const rootFile = (name) => fileURLToPath(new URL(name, import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -18,6 +21,16 @@ export default defineConfig({
     // edge88 matches Chromium baseline.
     target: ['es2019', 'safari14', 'chrome87', 'firefox78', 'edge88'],
     rollupOptions: {
+      // 2026-11-02 (lead spec C1) — a second HTML entry: broadcast.html, the
+      // tournament broadcast page OBS / the stream worker loads. It shares the
+      // vendor chunks below and a few pure utility chunks with the app; it
+      // never loads the app's sign-in, service worker or update toast
+      // (src/broadcast/main.jsx; tests/broadcast/buildEntry.test.mjs). The main entry keeps
+      // the key `index`, so its built names (assets/index-*.js) do not change.
+      input: {
+        index: rootFile('./index.html'),
+        broadcast: rootFile('./broadcast.html'),
+      },
       output: {
         // rolldown (Vite 8) requires manualChunks as a function
         manualChunks(id) {

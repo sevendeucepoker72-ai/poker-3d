@@ -14,6 +14,7 @@
  *     images) and non-GET requests → not intercepted at all (2026-10-11).
  *   - Offline fallback → dedicated /offline.html precached at install; navigation
  *     falls back to it when both network and cached '/' are unavailable.
+ *   - /broadcast* (the tournament broadcast page, 2026-11-02) → not intercepted.
  */
 
 // Cache name is suffixed with a build-time token — the `build` npm script runs
@@ -119,6 +120,19 @@ self.addEventListener('fetch', (e) => {
   try { requestUrl = new URL(request.url); } catch { return; }
   if (requestUrl.origin !== self.location.origin) return;
   if (request.method !== 'GET') return;
+
+  // 2026-11-02 (lead spec C1 — tournament broadcast page) — never handle
+  // /broadcast* (broadcast.html is the OBS / stream-worker page, a separate
+  // entry). The navigation branch below would cache.put('/', <broadcast.html>)
+  // and overwrite the app shell for every player on that browser profile, and
+  // a broadcast page must always come from the network. No respondWith.
+  if (requestUrl.pathname.startsWith('/broadcast')) {
+    if (isNavigationRequest(request)) {
+      // eslint-disable-next-line no-console
+      console.info('[sw] broadcast-page-not-cached', requestUrl.pathname);
+    }
+    return;
+  }
 
   // Navigation / HTML → Network First. A stale index.html is worse than a
   // network round-trip because its inline <script type="module" src="/assets/xxx-<hash>.js">

@@ -35,8 +35,9 @@ export const QUALIFIER_RULES_TITLE = 'Weekly Qualifier Rules';
 /** The line under the title of the rules window. */
 export const QUALIFIER_RULES_SUBTITLE = 'Every Sunday at 11:00 AM MT on americanpubpoker.online';
 
+// 2026-11-02 (owner, approved wording B1): "21+ to enter." and the Live streams section.
 /** The day these rules were last changed (YYYY-MM-DD, shown as "Updated Oct 23, 2026."). */
-export const QUALIFIER_RULES_UPDATED = '2026-10-23';
+export const QUALIFIER_RULES_UPDATED = '2026-11-02';
 
 export const QUALIFIER_RULES = [
   {
@@ -50,6 +51,7 @@ export const QUALIFIER_RULES = [
   {
     heading: 'Who can play',
     rules: [
+      '21+ to enter.',
       'You need an American Pub Poker account. Sign in with it on americanpubpoker.online to enter and play.',
       'You earn one weekly qualifier credit each time you finish in the top 5 of an American Pub Poker live game. If first place is chopped, everyone in the chop counts as 1st.',
       "The credit is added when staff finish entering that game's results. Console-league games give a different credit that does not work for this event.",
@@ -251,6 +253,19 @@ export const QUALIFIER_RULES = [
       'Outside help is banned too. That means no solvers, charts, AI tools, real-time assistance programs, or another person telling you what to do.',
       'If you cheat or break these rules, you are removed from the qualifier with no place or seat. The seats and credits you won in that qualifier are taken back, and you may be suspended from all American Pub Poker games.',
       'Results and seats can be reviewed for fair play for 7 days after the qualifier.',
+    ],
+  },
+  {
+    // 2026-11-02 (owner, approved wording B1) - the qualifier broadcast. Keep
+    // these two lines word for word; any number of minutes added here must be
+    // the delay the server uses (5 minutes, or the configured value). The
+    // first line is the ONLY rule about hole cards on streams (fix round
+    // 2026-11-02: an unapproved "delayed by at least 5 minutes" sentence was
+    // removed from Fair shuffle); add no other stream wording without the owner.
+    heading: 'Live streams',
+    rules: [
+      'Qualifier tables may be shown live and in replays on our social pages with your public name (first name and last initial), avatar and chip count. Hole cards are shown only on a delay or after the event.',
+      'Streamers and commentators may not play an event they broadcast. No watching the stream or your own event while you play.',
     ],
   },
   {

@@ -73,7 +73,7 @@ import { TournamentClockStrip, TournamentHeldBanner } from './TournamentClockStr
 import { tableTournamentClock, formatSecondsClock, spectatorStatusText, handLevelOf, blindsLineText, nextLevelText } from '../../utils/tournamentClock';
 import { useTournamentClockStore } from '../../store/tournamentClockStore';
 // 2026-10-23 (owner: "Turn all off") — no help tools at a QUALIFIER table.
-import { helpToolsOffAt, helpToolsOffAtAnyTable, QUALIFIER_HELP_TOOLS_OFF_TEXT } from '../../utils/qualifierHelpTools';
+import { helpToolsOffAt, helpToolsOffAtAnyTable, QUALIFIER_HELP_TOOLS_OFF_TEXT, VOICE_OFF_QUALIFIER_TEXT, VOICE_REFUSED_ELSEWHERE_MS, voiceOffState, voiceOffEventAction, ownQualifierStreamBlocked } from '../../utils/qualifierHelpTools';
 // Gameplay audit 2026-10-21 (C3) — multi-table scope of the seat controls,
 // per-table Sit Out, replies for another table, the Back button, the Dealer's
 // Choice label.
@@ -805,6 +805,65 @@ export default function GameHUD() {
     // eslint-disable-next-line no-console
     console.info('[GameHUD] help tools off at this qualifier table');
   }, [helpToolsOff]);
+
+  // 2026-11-02 (owner: stream the qualifiers) — voice chat is OFF at a
+  // qualifier table (utils/qualifierHelpTools.js voiceOffAt: the server's
+  // `voiceChatAllowed: false`, or the qualifier evidence above). The Live &
+  // Social group hides only Voice Chat there (Go Live stays) and VoiceChat is
+  // not mounted: unmounting leaves the voice room and stops the mic. A server
+  // refusal (`voiceRefused`, or `voiceForcedOff` when he is seated / moved onto
+  // a qualifier table with voice on) turns it off quietly (no toast, no red).
+  // Review 2026-11-02: EVERY such frame remounts VoiceChat (the unmount leaves
+  // the room and STOPS THE MIC). voiceForcedOff names the QUALIFIER table,
+  // which is often not the table on screen (an extra qualifier seat taken while
+  // a cash table stays up): the old code only remembered that table id, so the
+  // cash table's VoiceChat stayed mounted with the mic captured after the
+  // server had pulled the socket out of voice. A refusal at a table that is
+  // NOT a qualifier table (he plays a qualifier elsewhere) says so in its own
+  // words and lapses after VOICE_REFUSED_ELSEWHERE_MS instead of sticking for
+  // the life of the HUD. Every other table is unchanged.
+  const [voiceRefusedTableId, setVoiceRefusedTableId] = useState(null);
+  const [voiceChatEpoch, setVoiceChatEpoch] = useState(0);
+  const voiceState = voiceOffState(gameState, voiceRefusedTableId);
+  const voiceOff = voiceState.off;
+  const voiceOffNote = voiceState.note || VOICE_OFF_QUALIFIER_TEXT;
+  useEffect(() => {
+    if (!voiceOff) return;
+    setShowVoiceChat(false);
+    // eslint-disable-next-line no-console
+    console.info('[GameHUD] voice chat off at this qualifier table');
+  }, [voiceOff]);
+  useEffect(() => {
+    if (voiceRefusedTableId === null) return undefined;
+    const id = setTimeout(() => setVoiceRefusedTableId(null), VOICE_REFUSED_ELSEWHERE_MS);
+    return () => clearTimeout(id);
+  }, [voiceRefusedTableId]);
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return undefined;
+    const onVoiceOff = (data) => {
+      try {
+        const action = voiceOffEventAction(data);
+        if (!action) return;
+        if (action.refusedTableId !== null) setVoiceRefusedTableId(action.refusedTableId);
+        if (action.remount) setVoiceChatEpoch((n) => n + 1);
+        setShowVoiceChat(false);
+        // eslint-disable-next-line no-console
+        console.info('[GameHUD] voice chat refused at a qualifier table');
+      } catch { /* best-effort */ }
+    };
+    socket.on('voiceRefused', onVoiceOff);
+    socket.on('voiceForcedOff', onVoiceOff);
+    return () => {
+      socket.off('voiceRefused', onVoiceOff);
+      socket.off('voiceForcedOff', onVoiceOff);
+    };
+  }, []);
+  // A PLAYER seated at a qualifier table gets no Go Live URL for it. Since
+  // owner answer (b) (2026-11-02) StreamOverlay itself also hides the URL at a
+  // qualifier table for spectators (goLiveOverlayOffAt); every other table
+  // keeps it.
+  const ownQualifierSeatStream = ownQualifierStreamBlocked(gameState, seatedHere);
 
   // Persist sit-out preference across a refresh or reconnect. Without this,
   // an intentionally sat-out player gets re-seated on every reload because
@@ -4099,9 +4158,17 @@ export default function GameHUD() {
                     className={`options-adv-header ${toolbarGroups.live ? 'options-adv-header--open' : ''}`}
                     onClick={() => setToolbarGroups(g => ({ ...g, live: !g.live }))}
                   >📡 Live & Social {toolbarGroups.live ? '▾' : '▸'}</button>
+                  {/* 2026-11-02 — at a qualifier table only Voice Chat is not
+                      offered (a note says so in its place); Go Live stays. */}
                   {toolbarGroups.live && (
                     <div className="options-adv-grid">
+                      {voiceOff ? (
+                        <div className="options-help-off-note options-voice-off-note" role="note" style={{ gridColumn: '1 / -1' }}>
+                          {voiceOffNote}
+                        </div>
+                      ) : (
                       <button className={`options-adv-btn ${showVoiceChat ? 'active' : ''}`} onClick={() => setShowVoiceChat(v => !v)}>🎙 Voice Chat</button>
+                      )}
                       <button className={`options-adv-btn ${showStream ? 'active' : ''}`} onClick={() => setShowStream(v => !v)}>📺 Go Live</button>
                       <button className={`options-adv-btn ${showPredictionMarket ? 'active' : ''}`} onClick={() => setShowPredictionMarket(v => !v)}>🎲 Prediction Market</button>
                       <button className="options-adv-btn" onClick={() => setShowShareReplay(true)} disabled={!lastHandHistory}>🔗 Share Hand</button>
@@ -5889,11 +5956,15 @@ export default function GameHUD() {
               onPlayRefusal={reportPlayRefusal}
               notePlayAttempt={notePlayAttempt}
             />
+            {/* 2026-11-02 — not mounted at a qualifier table (voice off). */}
+            {!voiceOff && (
             <VoiceChat
+              key={`voice-${voiceChatEpoch}`}
               tableId={gameState?.tableId}
               username={gameState?.seats?.[yourSeat]?.playerName || 'Player'}
               visible={showVoiceChat}
             />
+            )}
             {/* GTO Overlay — always mounted, toggled via visibility.
                 2026-10-23: neither GTO panel is mounted at a qualifier table. */}
             {!helpToolsOff && (
@@ -5970,6 +6041,7 @@ export default function GameHUD() {
           yourCards={yourCards}
           visible={showStream}
           onClose={() => setShowStream(false)}
+          ownQualifierSeat={ownQualifierSeatStream}
         />
         {!helpToolsOff && (
         <CoachingRail

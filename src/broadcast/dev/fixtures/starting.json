@@ -1,0 +1,256 @@
+{
+  "name": "starting",
+  "note": "FIXTURE-ONLY-bc-7f3a: Starting soon: registering, tables not open, no table frame.",
+  "base": 1794160800000,
+  "snapshot": {
+    "v": 1,
+    "seq": 100,
+    "serverNow": 1794160320000,
+    "feed": {
+      "mode": "public",
+      "delayMs": 0,
+      "holeCards": false,
+      "policy": "off"
+    },
+    "program": {
+      "v": 1,
+      "channel": "weekly",
+      "eventKey": "next:weekly",
+      "onAir": true,
+      "rehearsal": false,
+      "programNow": 1794160320000,
+      "event": {
+        "kind": "weekly",
+        "qualifierId": "wq-fixture-1108",
+        "tournamentId": null,
+        "name": "Weekly Qualifier",
+        "title": null,
+        "status": "registering",
+        "scheduledAt": 1794160800000,
+        "dealsAt": 1794160920000,
+        "registered": 42,
+        "entries": 47,
+        "startingStack": 10000,
+        "levels": [
+          {
+            "sb": 50,
+            "bb": 100,
+            "ante": 0,
+            "minutes": 15
+          },
+          {
+            "sb": 100,
+            "bb": 200,
+            "ante": 25,
+            "minutes": 15
+          },
+          {
+            "sb": 150,
+            "bb": 300,
+            "ante": 25,
+            "minutes": 15
+          },
+          {
+            "sb": 200,
+            "bb": 400,
+            "ante": 50,
+            "minutes": 15
+          },
+          {
+            "sb": 300,
+            "bb": 600,
+            "ante": 75,
+            "minutes": 15
+          },
+          {
+            "sb": 400,
+            "bb": 800,
+            "ante": 100,
+            "minutes": 15
+          }
+        ],
+        "howToEnter": null,
+        "prizes": {
+          "kind": "seats",
+          "seatsForTop": 3,
+          "seatPackage": {
+            "1": 1,
+            "2": 1,
+            "3": 1
+          },
+          "paidPlaces": 3,
+          "rows": [
+            {
+              "place": 1,
+              "seats": 1
+            },
+            {
+              "place": 2,
+              "seats": 1
+            },
+            {
+              "place": 3,
+              "seats": 1
+            }
+          ],
+          "bubblePlace": 4,
+          "onBubble": false
+        },
+        "lateReg": {
+          "open": null,
+          "until": 1794171600000,
+          "closedReason": null
+        }
+      },
+      "scene": {
+        "id": "starting",
+        "auto": true,
+        "since": 1794160300000
+      },
+      "featured": {
+        "tableId": null,
+        "tableNo": null,
+        "tableName": null,
+        "mode": "auto",
+        "reason": null,
+        "since": 1794160320000
+      },
+      "clock": {
+        "level": 1,
+        "levels": 6,
+        "sb": 50,
+        "bb": 100,
+        "ante": 0,
+        "next": {
+          "sb": 100,
+          "bb": 200,
+          "ante": 25
+        },
+        "levelEndsAt": null,
+        "serverNow": 1794160320000,
+        "paused": true,
+        "pauseReason": "prestart",
+        "breakUntil": null,
+        "dealsAt": 1794160920000,
+        "playersLeft": 47,
+        "entries": 47,
+        "avgStack": 10000,
+        "paidPlaces": 3,
+        "levelDurationMs": 900000,
+        "levelRemainingMs": 540000,
+        "resumesAt": null
+      },
+      "standings": {
+        "playersLeft": 47,
+        "entries": 47,
+        "avgStack": 10000,
+        "avgStackBb": 25,
+        "paidPlaces": 3,
+        "tables": 6,
+        "leaders": [
+          {
+            "pid": "b-1a2b3c4d5e6f7000",
+            "name": "Mike R.",
+            "chips": 61200,
+            "bb": 153,
+            "tableNo": 1,
+            "rank": 1,
+            "prevRank": 1
+          },
+          {
+            "pid": "b-1a2b3c4d5e6f8100",
+            "name": "Sarah K.",
+            "chips": 48800,
+            "bb": 122,
+            "tableNo": 2,
+            "rank": 2,
+            "prevRank": 2
+          },
+          {
+            "pid": "b-1a2b3c4d5e6f9200",
+            "name": "Player",
+            "chips": 40150,
+            "bb": 100,
+            "tableNo": 3,
+            "rank": 3,
+            "prevRank": 4
+          },
+          {
+            "pid": "b-1a2b3c4d5e6fa300",
+            "name": "Dan T.",
+            "chips": 36300,
+            "bb": 91,
+            "tableNo": 1,
+            "rank": 4,
+            "prevRank": 3
+          },
+          {
+            "pid": "b-1a2b3c4d5e6fb400",
+            "name": "Lisa M.",
+            "chips": 31900,
+            "bb": 80,
+            "tableNo": 2,
+            "rank": 5,
+            "prevRank": 5
+          },
+          {
+            "pid": "b-1a2b3c4d5e6fc500",
+            "name": "Joe B.",
+            "chips": 27450,
+            "bb": 69,
+            "tableNo": 3,
+            "rank": 6,
+            "prevRank": 6
+          },
+          {
+            "pid": "b-1a2b3c4d5e6fd600",
+            "name": "Ana P.",
+            "chips": 22800,
+            "bb": 57,
+            "tableNo": 1,
+            "rank": 7,
+            "prevRank": 7
+          },
+          {
+            "pid": "b-1a2b3c4d5e6fe700",
+            "name": "Tom W.",
+            "chips": 19650,
+            "bb": 49,
+            "tableNo": 2,
+            "rank": 8,
+            "prevRank": 8
+          },
+          {
+            "pid": "b-1a2b3c4d5e6ff900",
+            "name": "Kim L.",
+            "chips": 15200,
+            "bb": 38,
+            "tableNo": 3,
+            "rank": 9,
+            "prevRank": 9
+          },
+          {
+            "pid": "b-1a2b3c4d5e700a00",
+            "name": "Mike R.",
+            "chips": 11400,
+            "bb": 29,
+            "tableNo": 1,
+            "rank": 10,
+            "prevRank": 10
+          }
+        ]
+      },
+      "ticker": [],
+      "handForHand": null,
+      "lowerThirds": [],
+      "legal": {
+        "line": "Free to play · Play money only · No purchase necessary · 21+ to enter.",
+        "platformLine": null
+      },
+      "results": null,
+      "finalTable": null
+    },
+    "table": null
+  },
+  "frames": []
+}

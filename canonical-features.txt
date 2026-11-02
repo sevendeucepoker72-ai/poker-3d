@@ -1335,3 +1335,123 @@ Your time ran out, so you're sitting out.
 # hub for a new link (blue + gold, plain same-tab link, never bridged).
 login-new-link-btn
 Get a new Play Online link
+# 2026-11-02 (owner: stream the qualifiers) P1-C8 - the existing OBS overlay (Go Live), locked for the
+# first time: its root / panel classes and the URL field. A player SEATED at a qualifier table gets the
+# note instead of the URL (owner N6); spectators and every other table keep it.
+sov-root
+sov-card-panel
+OBS Browser-Source URL
+# P1-C8 - voice chat off at qualifier tables only (Voice Chat hidden, the note in its place, VoiceChat
+# not mounted; quiet on the server's voiceRefused / voiceForcedOff). Go Live stays.
+Voice chat is off at qualifier tables
+voiceRefused
+voiceForcedOff
+# P1-C8 - qualifier card: the streaming notice + "Show me as Player on broadcasts" (setBroadcastOptOut /
+# getBroadcastOptOut -> broadcastOptOutResult), merged on mount, sign-in and resume (Pattern B).
+qualifier-broadcast-notice
+Show me as Player on broadcasts
+setBroadcastOptOut
+getBroadcastOptOut
+broadcastOptOutResult
+[broadcast-optout-auto-heal]
+# P1-C8 - Weekly Qualifier Rules: the owner's approved lines (B1), word for word.
+21+ to enter
+Streamers and commentators may not play an event they broadcast
+Hole cards are shown only on a delay or after the event
+# P1-C8 - Settings: Terms and Privacy on the marketing site.
+americanpubpoker.com/terms
+americanpubpoker.com/privacy
+# P1-C8 (optional hardening) - the ?overlay= graphic re-spectates on reconnect and says a closed table.
+This table has closed.
+# 2026-11-02 (owner: stream the qualifiers) P3-C1 (CLA) - the tournament broadcast page: a separate
+# Vite entry (broadcast.html -> src/broadcast/main.jsx; no sign-in, no service worker, no update toast).
+# Readiness root + the stream worker's health contract, its own /broadcast socket (subscribe on every
+# connect, heartbeat, resync on a seq gap), the stale-feed state, and the sw.js skip for /broadcast*.
+id="bc-root"
+data-bc-ready
+__apkBroadcast
+bc-stage
+bc-stale
+bc:subscribe
+bc:heartbeat
+[broadcast] resync
+broadcast-page-not-cached
+# P3-C2 (CLA) - the featured table's hole cam: every seat's cards go through holeCardGate (fail closed:
+# public = a contested showdown that has ended only; delayed = 5-min floor, and never while the hand is
+# still live). A live hole card that reaches the page is dropped and logged once per hand.
+bc-hole-cam
+[broadcast] dropped live hole cards
+# P3-C5 (CLA) - the 9:16 (1080x1920) layout of the same page.
+bc-layout-9x16
+# 2026-11-02 (owner: stream the qualifiers) P3-C3 (CLB) - the broadcast graphics package, all on the
+# PROGRAM clock (a delayed feed never spoils): tournament bar (level, blinds, clock, field, seats /
+# bubble), chip leaders (gold up / blue down, never red), the bust ticker, lower thirds, the legal line
+# (play money only, 21+) and the delay bug (reads the configured minutes; 5 by default).
+bc-tournament-bar
+bc-chip-leaders
+bc-bust-ticker
+bc-lower-third
+bc-legal-line
+bc-delay-bug
+Delayed broadcast
+# P3-C4 (CLB) - the scenes (pure scene machine: 16:9 and 9:16 agree; a stale feed is the slate; a
+# producer pin beats auto; results only once the program clock reaches the finish; the final-table
+# intro once per event). The recap scene keeps a permanent REPLAY bug and draws no cards (P6 not built).
+bc-scene-starting
+bc-scene-break
+bc-scene-hfh
+bc-scene-final-intro
+bc-scene-results
+bc-scene-slate
+bc-scene-recap
+bc-replay-bug
+# P3-C6 (CLB) - the producer panel (staff only; lazy; Lobby 'Producer' for admins or ?producer=1 once):
+# its producer token minted on the signed-in socket (broadcastIssueToken), memory only; the program
+# monitor (the same Stage OBS gets); the live multiview (public summaries, no cards); keys in the #k=
+# fragment only.
+bc-producer
+bc-producer-program
+bc-producer-live
+bc:producer:feature
+bc:producer:setScene
+bc:producer:holeCardsSwitch
+broadcastIssueToken
+broadcastTokenIssued
+lobby-producer-btn
+# 2026-11-02 (owner: 5-minute delayed hole cards, built dark) P5-C2b (CLA) - the delayed hole cam: faces
+# only when the frame MARKS the hand's cards as released (holeCardsReleasedAt, never before the hand ended
+# live + the delay; else card backs, reason not_released); the deterministic win % (model/equity.js:
+# seeded tableId:handNumber:street, exact on flop / turn / river) leads each face-up row; nine rows fit
+# the compact strip. The delay bug falls back to 5 minutes when a delayed feed's delay is missing.
+holeCardsReleasedAt
+not_released
+bc-hole-cam__equity
+bc-hole-cam--compact
+# 2026-11-02 review fixes (poker-3d fixer, uncommitted with the broadcast build): a "not now" key refusal
+# keeps the key and retries it (registry_loading / not_yet_valid; a handshake 'revoked' within the
+# restart grace) instead of dropping a delayed OBS source to the LIVE public feed; a voice refusal at a
+# non-qualifier table says why and lapses; a producer Player spotlight is PICKED from the server's
+# names (First L. / Player), never typed.
+registry_loading
+Voice chat is off while you are playing a qualifier
+bcp-spotlight-pick
+# 2026-11-02 fix round (poker-3d fixer, uncommitted with the broadcast build): the qualifier card's
+# streaming notice is the owner's approved rules line (1) word for word (was a paraphrase; its old token
+# "This event may be streamed" is removed with that text), locked by the notice class above and this
+# token; the unapproved C8b rules sentence ("hole cards appear only on a stream delayed by at least 5
+# minutes") is removed with its token; the starting-soon card and the producer's "How to enter" default
+# say the established qualifier wording (top 5 in any game) instead of "Play free at".
+Qualifier tables may be shown live
+Top 5 in any game gets you in
+# 2026-11-02 owner answer (b) (poker-3d fixer, uncommitted with the broadcast build): the June Go Live
+# overlay is hidden at a QUALIFIER table for EVERYONE, seated or watching (goLiveOverlayOffAt = the
+# helpToolsOffAt evidence): the panel shows this sentence instead of the OBS URL, and the ?overlay=
+# graphic (and the panel preview) is a neutral slate with the same sentence - no names, seats, stacks
+# or cards. Every other table unchanged. Removed with its text: "Streaming your own qualifier seat is
+# not allowed" (the seated-only note, owner N6, superseded by answer (b)).
+Qualifier tables are shown on the official American Pub Poker stream
+sov-qualifier-slate
+stream-qualifier-official-note
+# Fix round 2026-11-02 (checker) - the broadcast legal line (contract.js LEGAL_LINE; the producer's legal
+# lower third imports the same constant) ends in approved rules line (2) word for word, not a bare "21+".
+No purchase necessary · 21+ to enter.

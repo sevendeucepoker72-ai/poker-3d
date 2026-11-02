@@ -1,0 +1,214 @@
+{
+  "name": "results",
+  "note": "FIXTURE-ONLY-bc-7f3a: The event has finished; results are on the program timeline.",
+  "base": 1794160800000,
+  "snapshot": {
+    "v": 1,
+    "seq": 100,
+    "serverNow": 1794176400000,
+    "feed": {
+      "mode": "public",
+      "delayMs": 0,
+      "holeCards": false,
+      "policy": "off"
+    },
+    "program": {
+      "v": 1,
+      "channel": "weekly",
+      "eventKey": "next:weekly",
+      "onAir": true,
+      "rehearsal": false,
+      "programNow": 1794176400000,
+      "event": {
+        "kind": "weekly",
+        "qualifierId": "wq-fixture-1108",
+        "tournamentId": "tq-fixture-1108",
+        "name": "Weekly Qualifier",
+        "title": null,
+        "status": "finished",
+        "scheduledAt": 1794160800000,
+        "dealsAt": null,
+        "registered": 42,
+        "entries": 47,
+        "startingStack": 10000,
+        "levels": [
+          {
+            "sb": 50,
+            "bb": 100,
+            "ante": 0,
+            "minutes": 15
+          },
+          {
+            "sb": 100,
+            "bb": 200,
+            "ante": 25,
+            "minutes": 15
+          },
+          {
+            "sb": 150,
+            "bb": 300,
+            "ante": 25,
+            "minutes": 15
+          },
+          {
+            "sb": 200,
+            "bb": 400,
+            "ante": 50,
+            "minutes": 15
+          },
+          {
+            "sb": 300,
+            "bb": 600,
+            "ante": 75,
+            "minutes": 15
+          },
+          {
+            "sb": 400,
+            "bb": 800,
+            "ante": 100,
+            "minutes": 15
+          }
+        ],
+        "howToEnter": null,
+        "prizes": {
+          "kind": "seats",
+          "seatsForTop": 3,
+          "seatPackage": {
+            "1": 1,
+            "2": 1,
+            "3": 1
+          },
+          "paidPlaces": 3,
+          "rows": [
+            {
+              "place": 1,
+              "seats": 1
+            },
+            {
+              "place": 2,
+              "seats": 1
+            },
+            {
+              "place": 3,
+              "seats": 1
+            }
+          ],
+          "bubblePlace": 4,
+          "onBubble": false
+        },
+        "lateReg": {
+          "open": null,
+          "until": 1794171600000,
+          "closedReason": null
+        }
+      },
+      "scene": {
+        "id": "results",
+        "auto": true,
+        "since": 1794176380000
+      },
+      "featured": {
+        "tableId": "tbl-fixture-2",
+        "tableNo": 2,
+        "tableName": "Qualifier Table 2",
+        "mode": "auto",
+        "reason": "big_pot",
+        "since": 1794176310000
+      },
+      "clock": null,
+      "standings": {
+        "playersLeft": 1,
+        "entries": 47,
+        "avgStack": 470000,
+        "avgStackBb": 1175,
+        "paidPlaces": 3,
+        "tables": 1,
+        "leaders": [
+          {
+            "pid": "b-1a2b3c4d5e6f7000",
+            "name": "Mike R.",
+            "chips": 61200,
+            "bb": 153,
+            "tableNo": 1,
+            "rank": 1,
+            "prevRank": 1
+          }
+        ]
+      },
+      "ticker": [
+        {
+          "id": "ev-1",
+          "t": 1794165000000,
+          "kind": "levelUp",
+          "level": 4
+        },
+        {
+          "id": "ev-2",
+          "t": 1794165120000,
+          "kind": "bust",
+          "pid": "b-1a2b3c4d5e700a00",
+          "name": "Rob S.",
+          "place": 24,
+          "of": 47,
+          "byName": "Sarah K.",
+          "tableNo": 1,
+          "handNumber": 207
+        },
+        {
+          "id": "ev-3",
+          "t": 1794165240000,
+          "kind": "doubleUp",
+          "pid": "b-1a2b3c4d5e6f8100",
+          "name": "Sarah K.",
+          "tableNo": 2,
+          "handNumber": 210,
+          "amount": 18400
+        },
+        {
+          "id": "ev-8",
+          "t": 1794176399000,
+          "kind": "finished"
+        }
+      ],
+      "handForHand": null,
+      "lowerThirds": [],
+      "legal": {
+        "line": "Free to play · Play money only · No purchase necessary · 21+ to enter.",
+        "platformLine": null
+      },
+      "results": [
+        {
+          "place": 1,
+          "pid": "b-1a2b3c4d5e6f7000",
+          "name": "Mike R.",
+          "seatsWon": 1
+        },
+        {
+          "place": 2,
+          "pid": "b-1a2b3c4d5e6f8100",
+          "name": "Sarah K.",
+          "seatsWon": 1
+        },
+        {
+          "place": 3,
+          "pid": "b-1a2b3c4d5e6f9200",
+          "name": "Player",
+          "seatsWon": 1
+        },
+        {
+          "place": 4,
+          "pid": "b-1a2b3c4d5e6fa300",
+          "name": "Dan T."
+        },
+        {
+          "place": 5,
+          "pid": "b-1a2b3c4d5e6fb400",
+          "name": "Lisa M."
+        }
+      ],
+      "finalTable": null
+    },
+    "table": null
+  },
+  "frames": []
+}

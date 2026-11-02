@@ -211,6 +211,9 @@ import Tutorial from './components/ui/Tutorial';
 // import put it (and, through the overlay manual chunk, ~95KB gz of shared
 // modules) on the sign-in path as a serial chunk waterfall.
 const HandReplayViewer = lazy(() => import('./components/replay/HandReplayViewer'));
+// 2026-11-02 (lead spec C6) — the broadcast producer panel: staff only, LAZY
+// (its chunk carries the broadcast Stage + scenes for the program monitor).
+const ProducerPanel = lazy(() => import('./components/producer/ProducerPanel'));
 import { API_BASE } from './config';
 import { checkSubscriptionHealth, isPushSupported, notify } from './hooks/usePushNotifications';
 import './components/ui/Transitions.css';
@@ -273,6 +276,24 @@ function getPWAAction() {
     return null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * 2026-11-02 (lead spec C6) — ?producer=1 opens the broadcast producer panel
+ * over the lobby once signed in. Consumed EXACTLY ONCE: read at mount and
+ * removed from the address bar at once (a reload never reopens it). The panel
+ * shows "Staff only." to a non-admin and the server re-checks every call.
+ */
+function parseProducerParam() {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    if (!p.has('producer')) return false;
+    const on = p.get('producer') === '1';
+    removeUrlParams(['producer']);
+    return on;
+  } catch {
+    return false;
   }
 }
 
@@ -435,6 +456,10 @@ function App() {
   // Shared replay link — show viewer without requiring login
   const [sharedReplay] = useState(() => parseReplayParam());
   const [overlayConfig] = useState(() => parseOverlayParam());
+  // 2026-11-02 (lead spec C6) — the producer panel (Lobby admin bar, or ?producer=1 once).
+  const [producerOpen, setProducerOpen] = useState(() => parseProducerParam());
+  const openProducer = useCallback(() => setProducerOpen(true), []);
+  const closeProducer = useCallback(() => setProducerOpen(false), []);
   // PWA shortcut action — auto-trigger after login
   // 2026-10-11 (APPUI-12) — consumed EXACTLY ONCE per launch. It used to be a
   // mount-time constant passed to every Lobby mount, so each Back to Lobby
@@ -812,6 +837,13 @@ function App() {
 
   // Connect to server on mount and wire up event listeners
   useEffect(() => {
+    // 2026-11-02 (owner: stream the qualifiers) — the ?overlay= OBS browser
+    // source (StreamOverlayView) opens and watches its own socket: none of the
+    // player app's listeners (sounds, toasts, seat restore, re-auth on connect)
+    // run there, and its connectToServer no longer races this one (a second
+    // connectToServer on a socket still connecting replaced it, dropping the
+    // first one's listeners). `overlayConfig` never changes after mount.
+    if (overlayConfig) return undefined;
     const socket = connectToServer();
     const emoteTimeouts = new Set();
     const quickGameTimeouts = new Set();
@@ -2242,10 +2274,16 @@ function App() {
       quickGameTimeouts.forEach(clearTimeout); quickGameTimeouts.clear();
       tournamentTimeouts.forEach(clearTimeout); tournamentTimeouts.clear();
     };
-  }, []);
+  }, [overlayConfig]);
 
   // Auto-login: try OAuth refresh token first, then legacy token
   useEffect(() => {
+    // 2026-11-02 — never in ?overlay= mode: the OBS overlay is login-free. A
+    // browser holding the streamer's sign-in used to sign the overlay's socket
+    // in as him (a seat restore could move his seat session to it, and its
+    // 'spectate' then left that seat), and his own player view could reach
+    // the stream. The overlay only ever watches as an anonymous spectator.
+    if (overlayConfig) return;
     // Skip auto-login if we're handling an OAuth callback
     if (isOAuthCallback) return;
     // ...or if that callback already signed this tab in (it re-runs this
@@ -2866,7 +2904,7 @@ function App() {
       if (cancelRefreshLogin) cancelRefreshLogin();
       if (cancelLegacyLogin) cancelLegacyLogin();
     };
-  }, [isOAuthCallback]);
+  }, [isOAuthCallback, overlayConfig]);
 
   // Handle seat reconnection after token login.
   // Server now force-emits a full gameState on reconnect (see emitGameState
@@ -3722,8 +3760,15 @@ function App() {
         </>
       )}
       <Suspense fallback={<ChunkLoader />}>
-        <Lobby activeTab={activeNavTab} onTabChange={handleNavTabChange} pwaAction={pwaAction} onPwaActionConsumed={consumePwaAction} waitlistContext={waitlistContext} />
+        <Lobby activeTab={activeNavTab} onTabChange={handleNavTabChange} pwaAction={pwaAction} onPwaActionConsumed={consumePwaAction} waitlistContext={waitlistContext} onOpenProducer={openProducer} />
       </Suspense>
+      {/* 2026-11-02 (lead spec C6) — the broadcast producer panel, over the
+          lobby (staff only; the panel itself says "Staff only." otherwise). */}
+      {producerOpen && (
+        <Suspense fallback={<ChunkLoader />}>
+          <ProducerPanel onClose={closeProducer} />
+        </Suspense>
+      )}
       {/* R2 (APPUI-24) — a Career Mode stage result lands HERE (the career
           table is gone by now). */}
       {quickGameResult?.type === 'career' && (

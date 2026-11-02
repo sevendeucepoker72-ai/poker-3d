@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import StreamOverlayView from './StreamOverlayView';
+import { goLiveOverlayOffAt, QUALIFIER_OFFICIAL_STREAM_TEXT } from '../../utils/qualifierHelpTools';
 import './StreamOverlay.css';
 
 // 2026-06-18 — Phase 3g: real OBS browser-source overlay control panel.
@@ -8,6 +9,18 @@ import './StreamOverlay.css';
 // which renders a transparent live overlay of THIS table (StreamOverlayView,
 // driven by real spectator game state). No streaming infra — OBS does the
 // actual broadcasting; we just provide the graphic.
+//
+// 2026-11-02 (owner: stream the qualifiers) — copy fixes: the delay holds back
+// ONLY this graphic (never the streamer's own capture or stream), and OBS's
+// "Shutdown source when not visible" must stay UNTICKED (a hidden source would
+// drop its connection and its delay buffer).
+//
+// Owner answer (b), 2026-11-02: at a QUALIFIER table (goLiveOverlayOffAt, the
+// helpToolsOffAt evidence) EVERYONE, seated or watching, sees
+// QUALIFIER_OFFICIAL_STREAM_TEXT in place of the URL, and the preview below
+// is StreamOverlayView's neutral slate (no names, seats, stacks or cards).
+// GameHUD's `ownQualifierSeat` (seated there) still hides it too. Every other
+// table keeps the URL exactly as before. The panel itself is never removed.
 
 const DELAY_OPTIONS = [0, 10, 20, 30, 60]; // seconds — match your stream delay
 const THEME_OPTIONS = [
@@ -16,7 +29,7 @@ const THEME_OPTIONS = [
   { id: 'noir', label: 'Noir' },
 ];
 
-export default function StreamOverlay({ gameState, visible, onClose }) {
+export default function StreamOverlay({ gameState, visible, onClose, ownQualifierSeat = false }) {
   const [delay, setDelay] = useState(30);
   const [theme, setTheme] = useState('sapphire');
   const [copied, setCopied] = useState(false);
@@ -24,7 +37,9 @@ export default function StreamOverlay({ gameState, visible, onClose }) {
   if (!visible) return null;
 
   const tableId = gameState?.tableId;
-  const overlayUrl = tableId
+  // Owner answer (b): no overlay URL at a qualifier table, for anyone.
+  const qualifierOverlayOff = ownQualifierSeat === true || goLiveOverlayOffAt(gameState);
+  const overlayUrl = tableId && !qualifierOverlayOff
     ? `${window.location.origin}?overlay=${encodeURIComponent(tableId)}&delay=${delay}&theme=${theme}`
     : '';
 
@@ -53,6 +68,12 @@ export default function StreamOverlay({ gameState, visible, onClose }) {
                 Join a table first — the overlay broadcasts the table you're at.
               </div>
             </div>
+          ) : qualifierOverlayOff ? (
+            <div className="stream-field">
+              <div className="stream-delay-note stream-qualifier-official-note" role="note" style={{ color: '#ffd24a', fontWeight: 700 }}>
+                {QUALIFIER_OFFICIAL_STREAM_TEXT}
+              </div>
+            </div>
           ) : (
             <>
               <div className="stream-field">
@@ -65,7 +86,8 @@ export default function StreamOverlay({ gameState, visible, onClose }) {
                 </div>
                 <div className="stream-obs-note">
                   In OBS: <strong>Sources → + → Browser</strong>, paste this URL, set
-                  Width 1280 / Height 720, and tick “Shutdown source when not visible”.
+                  Width 1280 / Height 720, and leave “Shutdown source when not visible”
+                  unticked, so the overlay keeps its connection and its delay when you switch scenes.
                   The background is transparent — it composites over your table capture.
                 </div>
               </div>
@@ -84,7 +106,9 @@ export default function StreamOverlay({ gameState, visible, onClose }) {
                   ))}
                 </div>
                 <div className="stream-delay-note">
-                  Holds the overlay back {delay}s so it can't be used to snipe your table in real time.
+                  Holds only this overlay graphic back {delay}s so it lines up with your stream.
+                  It does not delay your own table capture or your stream: set the same delay
+                  in your streaming software.
                 </div>
               </div>
 

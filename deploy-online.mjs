@@ -15,12 +15,18 @@
 //          runs every pre-flight guard below and exits WITHOUT uploading (no
 //          FTP credentials needed); --dist= checks another build directory and
 //          is refused without --check-only.
+//        --allow-during-broadcast (with env BROADCAST_OVERRIDE_REASON="<why>")
+//          deploys although a broadcast is on air / its status is unreadable.
+//        --check-only only: --skip-on-air (no status calls, offline) and
+//          --on-air-server=<origin> / --on-air-master=<url> (another host).
 import { Client } from 'basic-ftp';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 // 2026-10-11 (OPS-8) — the SAME constant src/config.js falls back to.
 import { PRODUCTION_SERVER_URL } from './src/productionHosts.js';
+// 2026-11-02 (lead spec C9) — the on-air deploy freeze (plain Node module).
+import { checkOnAir, decideDeploy, preflightOutcome } from './src/broadcast/net/onAirPreflight.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CHECK_ONLY = process.argv.includes('--check-only');
@@ -157,6 +163,49 @@ if (!socketHostChunk) {
   process.exit(1);
 }
 console.log(`[deploy-online] socket host ${SOCKET_HOST} verified in ${path.basename(socketHostChunk)}.`);
+
+// 2026-11-02 (lead spec C9 / R5) — deploy freeze while a broadcast is on air.
+// The upload is not atomic: an OBS source reloading mid-upload can fetch new
+// HTML that names chunks not uploaded yet. ON AIR if EITHER poker-server
+// (/api/broadcast/on-air: producer toggle or a connected output) or the master
+// API (/broadcast/status: worker / Facebook session) says so; unreachable fails
+// closed. A 404 = that route is not deployed yet = nothing on air from it.
+// Override (both required): --allow-during-broadcast + BROADCAST_OVERRIDE_REASON.
+// --check-only (review 2026-11-02) prints the status; a blocked verdict is a
+// WARNING there, never a FAIL (it uploads nothing). Only with --check-only:
+// --skip-on-air skips the two status calls (offline), and --on-air-server= /
+// --on-air-master= point them at another host. A real deploy always asks the
+// production hosts and keeps the fail-closed exit.
+{
+  const ALLOW_DURING_BROADCAST = process.argv.includes('--allow-during-broadcast');
+  const overrideReason = process.env.BROADCAST_OVERRIDE_REASON || '';
+  const argValue = (name) => {
+    const a = process.argv.find((x) => x.startsWith(`${name}=`));
+    return a ? a.slice(name.length + 1) : null;
+  };
+  const SKIP_ON_AIR = process.argv.includes('--skip-on-air');
+  const onAirServer = argValue('--on-air-server');
+  const onAirMaster = argValue('--on-air-master');
+  if (!CHECK_ONLY && (SKIP_ON_AIR || onAirServer !== null || onAirMaster !== null)) {
+    console.error('[deploy-online] --skip-on-air / --on-air-server= / --on-air-master= are only allowed with --check-only (a deploy always asks the production hosts).');
+    process.exit(1);
+  }
+  if (SKIP_ON_AIR) {
+    console.warn('[deploy-online] WARN (--check-only --skip-on-air): the broadcast on-air status was NOT checked.');
+  } else {
+    const results = await checkOnAir({
+      serverUrl: onAirServer || PRODUCTION_SERVER_URL,
+      ...(onAirMaster ? { masterUrl: onAirMaster } : {}),
+    });
+    const verdict = decideDeploy(results, { allowFlag: ALLOW_DURING_BROADCAST, overrideReason });
+    console.log('[deploy-online] broadcast on-air check:');
+    for (const line of verdict.lines) console.log(line);
+    const outcome = preflightOutcome(verdict, { checkOnly: CHECK_ONLY });
+    const print = outcome.level === 'fail' ? console.error : (outcome.level === 'warn' ? console.warn : console.log);
+    for (const m of outcome.messages) print(m);
+    if (outcome.exitCode !== null) process.exit(outcome.exitCode);
+  }
+}
 
 if (CHECK_ONLY) {
   console.log(`[deploy-online] --check-only: every pre-flight guard passed for ${DIST_DIR}; nothing was uploaded.`);

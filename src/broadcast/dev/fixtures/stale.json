@@ -1,0 +1,659 @@
+{
+  "name": "stale",
+  "note": "FIXTURE-ONLY-bc-7f3a: Mid-game, then the heartbeats stop: amber after 6 s, the slate after 15 s.",
+  "base": 1794160800000,
+  "snapshot": {
+    "v": 1,
+    "seq": 100,
+    "serverNow": 1794165300000,
+    "feed": {
+      "mode": "public",
+      "delayMs": 0,
+      "holeCards": false,
+      "policy": "off"
+    },
+    "program": {
+      "v": 1,
+      "channel": "weekly",
+      "eventKey": "next:weekly",
+      "onAir": true,
+      "rehearsal": false,
+      "programNow": 1794165300000,
+      "event": {
+        "kind": "weekly",
+        "qualifierId": "wq-fixture-1108",
+        "tournamentId": "tq-fixture-1108",
+        "name": "Weekly Qualifier",
+        "title": null,
+        "status": "running",
+        "scheduledAt": 1794160800000,
+        "dealsAt": null,
+        "registered": 42,
+        "entries": 47,
+        "startingStack": 10000,
+        "levels": [
+          {
+            "sb": 50,
+            "bb": 100,
+            "ante": 0,
+            "minutes": 15
+          },
+          {
+            "sb": 100,
+            "bb": 200,
+            "ante": 25,
+            "minutes": 15
+          },
+          {
+            "sb": 150,
+            "bb": 300,
+            "ante": 25,
+            "minutes": 15
+          },
+          {
+            "sb": 200,
+            "bb": 400,
+            "ante": 50,
+            "minutes": 15
+          },
+          {
+            "sb": 300,
+            "bb": 600,
+            "ante": 75,
+            "minutes": 15
+          },
+          {
+            "sb": 400,
+            "bb": 800,
+            "ante": 100,
+            "minutes": 15
+          }
+        ],
+        "howToEnter": null,
+        "prizes": {
+          "kind": "seats",
+          "seatsForTop": 3,
+          "seatPackage": {
+            "1": 1,
+            "2": 1,
+            "3": 1
+          },
+          "paidPlaces": 3,
+          "rows": [
+            {
+              "place": 1,
+              "seats": 1
+            },
+            {
+              "place": 2,
+              "seats": 1
+            },
+            {
+              "place": 3,
+              "seats": 1
+            }
+          ],
+          "bubblePlace": 4,
+          "onBubble": false
+        },
+        "lateReg": {
+          "open": false,
+          "until": 1794171600000,
+          "closedReason": "time"
+        }
+      },
+      "scene": {
+        "id": "table",
+        "auto": true,
+        "since": 1794165280000
+      },
+      "featured": {
+        "tableId": "tbl-fixture-2",
+        "tableNo": 2,
+        "tableName": "Qualifier Table 2",
+        "mode": "auto",
+        "reason": "big_pot",
+        "since": 1794165210000
+      },
+      "clock": {
+        "level": 4,
+        "levels": 6,
+        "sb": 200,
+        "bb": 400,
+        "ante": 50,
+        "next": {
+          "sb": 300,
+          "bb": 600,
+          "ante": 75
+        },
+        "levelEndsAt": 1794165840000,
+        "serverNow": 1794165300000,
+        "paused": false,
+        "pauseReason": null,
+        "breakUntil": null,
+        "dealsAt": null,
+        "playersLeft": 23,
+        "entries": 47,
+        "avgStack": 20435,
+        "paidPlaces": 3,
+        "levelDurationMs": 900000,
+        "levelRemainingMs": null,
+        "resumesAt": null
+      },
+      "standings": {
+        "playersLeft": 23,
+        "entries": 47,
+        "avgStack": 20435,
+        "avgStackBb": 51,
+        "paidPlaces": 3,
+        "tables": 3,
+        "leaders": [
+          {
+            "pid": "b-1a2b3c4d5e6f7000",
+            "name": "Mike R.",
+            "chips": 61200,
+            "bb": 153,
+            "tableNo": 1,
+            "rank": 1,
+            "prevRank": 1
+          },
+          {
+            "pid": "b-1a2b3c4d5e6f8100",
+            "name": "Sarah K.",
+            "chips": 48800,
+            "bb": 122,
+            "tableNo": 2,
+            "rank": 2,
+            "prevRank": 2
+          },
+          {
+            "pid": "b-1a2b3c4d5e6f9200",
+            "name": "Player",
+            "chips": 40150,
+            "bb": 100,
+            "tableNo": 3,
+            "rank": 3,
+            "prevRank": 4
+          },
+          {
+            "pid": "b-1a2b3c4d5e6fa300",
+            "name": "Dan T.",
+            "chips": 36300,
+            "bb": 91,
+            "tableNo": 1,
+            "rank": 4,
+            "prevRank": 3
+          },
+          {
+            "pid": "b-1a2b3c4d5e6fb400",
+            "name": "Lisa M.",
+            "chips": 31900,
+            "bb": 80,
+            "tableNo": 2,
+            "rank": 5,
+            "prevRank": 5
+          },
+          {
+            "pid": "b-1a2b3c4d5e6fc500",
+            "name": "Joe B.",
+            "chips": 27450,
+            "bb": 69,
+            "tableNo": 3,
+            "rank": 6,
+            "prevRank": 6
+          },
+          {
+            "pid": "b-1a2b3c4d5e6fd600",
+            "name": "Ana P.",
+            "chips": 22800,
+            "bb": 57,
+            "tableNo": 1,
+            "rank": 7,
+            "prevRank": 7
+          },
+          {
+            "pid": "b-1a2b3c4d5e6fe700",
+            "name": "Tom W.",
+            "chips": 19650,
+            "bb": 49,
+            "tableNo": 2,
+            "rank": 8,
+            "prevRank": 8
+          },
+          {
+            "pid": "b-1a2b3c4d5e6ff900",
+            "name": "Kim L.",
+            "chips": 15200,
+            "bb": 38,
+            "tableNo": 3,
+            "rank": 9,
+            "prevRank": 9
+          },
+          {
+            "pid": "b-1a2b3c4d5e700a00",
+            "name": "Mike R.",
+            "chips": 11400,
+            "bb": 29,
+            "tableNo": 1,
+            "rank": 10,
+            "prevRank": 10
+          }
+        ]
+      },
+      "ticker": [
+        {
+          "id": "ev-1",
+          "t": 1794165000000,
+          "kind": "levelUp",
+          "level": 4
+        },
+        {
+          "id": "ev-2",
+          "t": 1794165120000,
+          "kind": "bust",
+          "pid": "b-1a2b3c4d5e700a00",
+          "name": "Rob S.",
+          "place": 24,
+          "of": 47,
+          "byName": "Sarah K.",
+          "tableNo": 1,
+          "handNumber": 207
+        },
+        {
+          "id": "ev-3",
+          "t": 1794165240000,
+          "kind": "doubleUp",
+          "pid": "b-1a2b3c4d5e6f8100",
+          "name": "Sarah K.",
+          "tableNo": 2,
+          "handNumber": 210,
+          "amount": 18400
+        }
+      ],
+      "handForHand": null,
+      "lowerThirds": [],
+      "legal": {
+        "line": "Free to play · Play money only · No purchase necessary · 21+ to enter.",
+        "platformLine": null
+      },
+      "results": null,
+      "finalTable": null
+    },
+    "table": {
+      "t": 1794165300000,
+      "tableId": "tbl-fixture-2",
+      "tableNo": 2,
+      "tableName": "Qualifier Table 2",
+      "maxSeats": 9,
+      "featured": true,
+      "handNumber": 212,
+      "phase": "Flop",
+      "handLevel": {
+        "sb": 200,
+        "bb": 400,
+        "ante": 50
+      },
+      "dealerSeat": 2,
+      "smallBlindSeat": 3,
+      "bigBlindSeat": 4,
+      "activeSeat": 5,
+      "turnStartedAt": 1794165294000,
+      "turnTimeout": 20000,
+      "pot": 3650,
+      "board": [
+        {
+          "rank": 14,
+          "suit": 3
+        },
+        {
+          "rank": 9,
+          "suit": 0
+        },
+        {
+          "rank": 4,
+          "suit": 2
+        }
+      ],
+      "lastAction": {
+        "seatIndex": 5,
+        "text": "bets",
+        "amount": 800
+      },
+      "seats": [
+        {
+          "seatIndex": 0,
+          "pid": "b-1a2b3c4d5e6f7000",
+          "name": "Mike R.",
+          "chips": 18450,
+          "bet": 0,
+          "folded": true,
+          "allIn": false,
+          "sittingOut": false,
+          "eliminated": false,
+          "hasCards": false,
+          "holeCards": null
+        },
+        {
+          "seatIndex": 1,
+          "pid": "b-1a2b3c4d5e6f8100",
+          "name": "Sarah K.",
+          "chips": 9200,
+          "bet": 0,
+          "folded": true,
+          "allIn": false,
+          "sittingOut": false,
+          "eliminated": false,
+          "hasCards": false,
+          "holeCards": null
+        },
+        {
+          "seatIndex": 2,
+          "pid": "b-1a2b3c4d5e6f9200",
+          "name": "Player",
+          "chips": 31100,
+          "bet": 0,
+          "folded": false,
+          "allIn": false,
+          "sittingOut": false,
+          "eliminated": false,
+          "hasCards": true,
+          "holeCards": null
+        },
+        {
+          "seatIndex": 3,
+          "pid": "b-1a2b3c4d5e6fa300",
+          "name": "Dan T.",
+          "chips": 12000,
+          "bet": 0,
+          "folded": false,
+          "allIn": false,
+          "sittingOut": false,
+          "eliminated": false,
+          "hasCards": true,
+          "holeCards": null
+        },
+        {
+          "seatIndex": 4,
+          "pid": "b-1a2b3c4d5e6fb400",
+          "name": "Lisa M.",
+          "chips": 7350,
+          "bet": 0,
+          "folded": false,
+          "allIn": false,
+          "sittingOut": false,
+          "eliminated": false,
+          "hasCards": true,
+          "holeCards": null
+        },
+        {
+          "seatIndex": 5,
+          "pid": "b-1a2b3c4d5e6fc500",
+          "name": "Joe B.",
+          "chips": 22600,
+          "bet": 800,
+          "folded": false,
+          "allIn": false,
+          "sittingOut": false,
+          "eliminated": false,
+          "hasCards": true,
+          "holeCards": null
+        },
+        {
+          "seatIndex": 6,
+          "pid": "b-1a2b3c4d5e6fd600",
+          "name": "Ana P.",
+          "chips": 15900,
+          "bet": 0,
+          "folded": false,
+          "allIn": false,
+          "sittingOut": false,
+          "eliminated": false,
+          "hasCards": true,
+          "holeCards": null
+        },
+        {
+          "seatIndex": 7,
+          "pid": "b-1a2b3c4d5e6fe700",
+          "name": "Tom W.",
+          "chips": 4100,
+          "bet": 0,
+          "folded": true,
+          "allIn": false,
+          "sittingOut": false,
+          "eliminated": false,
+          "hasCards": false,
+          "holeCards": null
+        },
+        {
+          "seatIndex": 8,
+          "pid": "b-1a2b3c4d5e6ff900",
+          "name": "Kim L.",
+          "chips": 26700,
+          "bet": 0,
+          "folded": false,
+          "allIn": false,
+          "sittingOut": false,
+          "eliminated": false,
+          "hasCards": true,
+          "holeCards": null
+        }
+      ],
+      "handResult": null,
+      "liveHandEndedAt": null
+    },
+    "tables": [
+      {
+        "tableId": "tbl-fixture-1",
+        "tableNo": 1,
+        "tableName": "Qualifier Table 1",
+        "players": 8,
+        "handNumber": 205,
+        "pot": 1200,
+        "allIn": false,
+        "biggestStack": 61200,
+        "chipLeaderHere": true
+      },
+      {
+        "tableId": "tbl-fixture-2",
+        "tableNo": 2,
+        "tableName": "Qualifier Table 2",
+        "players": 9,
+        "handNumber": 212,
+        "pot": 3650,
+        "allIn": false,
+        "biggestStack": 31100,
+        "chipLeaderHere": false
+      },
+      {
+        "tableId": "tbl-fixture-3",
+        "tableNo": 3,
+        "tableName": "Qualifier Table 3",
+        "players": 6,
+        "handNumber": 198,
+        "pot": 9800,
+        "allIn": true,
+        "biggestStack": 40150,
+        "chipLeaderHere": false
+      }
+    ]
+  },
+  "frames": [
+    {
+      "afterMs": 2500,
+      "msg": {
+        "kind": "table",
+        "table": {
+          "t": 1794165302500,
+          "tableId": "tbl-fixture-2",
+          "tableNo": 2,
+          "tableName": "Qualifier Table 2",
+          "maxSeats": 9,
+          "featured": true,
+          "handNumber": 212,
+          "phase": "Flop",
+          "handLevel": {
+            "sb": 200,
+            "bb": 400,
+            "ante": 50
+          },
+          "dealerSeat": 2,
+          "smallBlindSeat": 3,
+          "bigBlindSeat": 4,
+          "activeSeat": 6,
+          "turnStartedAt": 1794165296500,
+          "turnTimeout": 20000,
+          "pot": 3650,
+          "board": [
+            {
+              "rank": 14,
+              "suit": 3
+            },
+            {
+              "rank": 9,
+              "suit": 0
+            },
+            {
+              "rank": 4,
+              "suit": 2
+            }
+          ],
+          "lastAction": {
+            "seatIndex": 5,
+            "text": "bets 800"
+          },
+          "seats": [
+            {
+              "seatIndex": 0,
+              "pid": "b-1a2b3c4d5e6f7000",
+              "name": "Mike R.",
+              "chips": 18450,
+              "bet": 0,
+              "folded": true,
+              "allIn": false,
+              "sittingOut": false,
+              "eliminated": false,
+              "hasCards": false,
+              "holeCards": null
+            },
+            {
+              "seatIndex": 1,
+              "pid": "b-1a2b3c4d5e6f8100",
+              "name": "Sarah K.",
+              "chips": 9200,
+              "bet": 0,
+              "folded": true,
+              "allIn": false,
+              "sittingOut": false,
+              "eliminated": false,
+              "hasCards": false,
+              "holeCards": null
+            },
+            {
+              "seatIndex": 2,
+              "pid": "b-1a2b3c4d5e6f9200",
+              "name": "Player",
+              "chips": 31100,
+              "bet": 0,
+              "folded": false,
+              "allIn": false,
+              "sittingOut": false,
+              "eliminated": false,
+              "hasCards": true,
+              "holeCards": null
+            },
+            {
+              "seatIndex": 3,
+              "pid": "b-1a2b3c4d5e6fa300",
+              "name": "Dan T.",
+              "chips": 12000,
+              "bet": 0,
+              "folded": false,
+              "allIn": false,
+              "sittingOut": false,
+              "eliminated": false,
+              "hasCards": true,
+              "holeCards": null
+            },
+            {
+              "seatIndex": 4,
+              "pid": "b-1a2b3c4d5e6fb400",
+              "name": "Lisa M.",
+              "chips": 7350,
+              "bet": 0,
+              "folded": false,
+              "allIn": false,
+              "sittingOut": false,
+              "eliminated": false,
+              "hasCards": true,
+              "holeCards": null
+            },
+            {
+              "seatIndex": 5,
+              "pid": "b-1a2b3c4d5e6fc500",
+              "name": "Joe B.",
+              "chips": 22600,
+              "bet": 800,
+              "folded": false,
+              "allIn": false,
+              "sittingOut": false,
+              "eliminated": false,
+              "hasCards": true,
+              "holeCards": [
+                {
+                  "rank": 13,
+                  "suit": 0
+                },
+                {
+                  "rank": 13,
+                  "suit": 1
+                }
+              ]
+            },
+            {
+              "seatIndex": 6,
+              "pid": "b-1a2b3c4d5e6fd600",
+              "name": "Ana P.",
+              "chips": 15900,
+              "bet": 0,
+              "folded": false,
+              "allIn": false,
+              "sittingOut": false,
+              "eliminated": false,
+              "hasCards": true,
+              "holeCards": null
+            },
+            {
+              "seatIndex": 7,
+              "pid": "b-1a2b3c4d5e6fe700",
+              "name": "Tom W.",
+              "chips": 4100,
+              "bet": 0,
+              "folded": true,
+              "allIn": false,
+              "sittingOut": false,
+              "eliminated": false,
+              "hasCards": false,
+              "holeCards": null
+            },
+            {
+              "seatIndex": 8,
+              "pid": "b-1a2b3c4d5e6ff900",
+              "name": "Kim L.",
+              "chips": 26700,
+              "bet": 0,
+              "folded": false,
+              "allIn": false,
+              "sittingOut": false,
+              "eliminated": false,
+              "hasCards": true,
+              "holeCards": null
+            }
+          ],
+          "handResult": null,
+          "liveHandEndedAt": null
+        }
+      }
+    }
+  ],
+  "stallAfterMs": 3000
+}

@@ -5,7 +5,12 @@ import { getSocket } from '../../services/socketService';
 import { awaySeatOfTournament, noteTournamentSeat } from '../../store/tournamentSeatStore';
 import { clearTableLeft } from '../../services/leftTables';
 // 2026-10-23 (owner: "Turn all off") — a qualifier's tournament id: no help tools at its tables.
-import { noteQualifierTournamentId, noteQualifierTournamentIds } from '../../utils/qualifierHelpTools';
+// 2026-11-02 (owner: stream the qualifiers) — the streaming notice + the broadcast opt-out.
+import {
+  noteQualifierTournamentId, noteQualifierTournamentIds,
+  QUALIFIER_BROADCAST_NOTICE_TEXT, BROADCAST_OPT_OUT_LABEL, BROADCAST_OPTED_OUT_TEXT,
+  broadcastOptOutOf, broadcastOptOutReply, mergeBroadcastOptOut, broadcastOptOutFor, broadcastOptOutErrorText,
+} from '../../utils/qualifierHelpTools';
 import { qualifierRunningActions } from '../../utils/tableFlows';
 import { returnToTournament } from '../../services/tournamentReturn';
 import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
@@ -111,6 +116,22 @@ function reusableQualifications(owner) {
     ? qualCache.data : null;
 }
 
+// 2026-11-02 (owner: stream the qualifiers) — "Show me as Player on
+// broadcasts": the server's answer for this account ({owner, optOut}), shared
+// by every mount (a remount shows it at once, then asks again). It is the
+// SERVER's value (poker-server users.stats.broadcastOptOut): asked on mount,
+// after every sign-in and on tab resume, and merged from any signed-in frame
+// that carries `broadcastOptOut` (CLAUDE.md Pattern B self-heal; a change made
+// on another device reaches this tab). Never set from a guess.
+let broadcastOptOutCache = null;
+const BROADCAST_OPT_OUT_WATCHDOG_MS = 10000;
+
+function askBroadcastOptOut() {
+  const socket = getSocket();
+  if (!socket || !socket.connected) return;
+  try { socket.emit('getBroadcastOptOut', {}); } catch { /* the next sign-in / resume asks */ }
+}
+
 const TYPE_ICONS = { weekly: '🗓️', monthly: '🏆' };
 const TYPE_COLORS = { weekly: '#ffd24a', monthly: '#9db8ff' };
 
@@ -159,6 +180,93 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
   // link): the id of the qualifier it was opened from, or null. Review fix-up:
   // the window reads that qualifier's own seat package / bubble / server flags.
   const [rulesFor, setRulesFor] = useState(null);
+  // 2026-11-02 — the broadcast opt-out ({owner, optOut}; see broadcastOptOutCache),
+  // the toggle in flight, and its last refusal (blue note).
+  const [optOutState, setOptOutState] = useState(() => broadcastOptOutCache);
+  const [optOutPending, setOptOutPending] = useState(null); // the value asked for, or null
+  const [optOutMsg, setOptOutMsg] = useState(null);
+  const optOutPendingRef = useRef(null);
+  useEffect(() => { optOutPendingRef.current = optOutPending; }, [optOutPending]);
+  const optOut = broadcastOptOutFor(optOutState, owner);
+
+  // Self-heal (Pattern B): the server's opt-out on mount, after every sign-in,
+  // on tab resume, and from any signed-in frame that carries it. A value that
+  // did not change is a no-op (mergeBroadcastOptOut returns the same object).
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket || owner == null) return undefined;
+    // (Another account's answer is never shown: broadcastOptOutFor checks the owner.)
+    const merge = (value, why) => {
+      const prev = broadcastOptOutCache;
+      const next = mergeBroadcastOptOut(prev, value, owner);
+      if (next === prev) return;
+      broadcastOptOutCache = next;
+      if (prev && prev.owner === next.owner) {
+        // eslint-disable-next-line no-console
+        try { console.debug(`[broadcast-optout-auto-heal] merged from ${why}`); } catch { /* ignore */ }
+      }
+      setOptOutState(next);
+    };
+    const onResult = (res) => {
+      const r = broadcastOptOutReply(res);
+      if (!r) return;
+      if (r.ok) {
+        // The answer to his own toggle ends it; an earlier read does not.
+        if (optOutPendingRef.current === null || optOutPendingRef.current === r.optOut) {
+          setOptOutPending(null);
+          setOptOutMsg(null);
+        }
+        merge(r.optOut, 'broadcastOptOutResult');
+        return;
+      }
+      if (optOutPendingRef.current === null) return; // a refused read: nothing to say
+      setOptOutPending(null);
+      setOptOutMsg(broadcastOptOutErrorText(r.code));
+    };
+    const onSignedInFrame = (frame) => {
+      try {
+        const v = broadcastOptOutOf(frame);
+        if (v !== null) merge(v, 'profile');
+      } catch { /* best-effort */ }
+    };
+    const onSignIn = (res) => {
+      if (!res || res.success !== true) return;
+      onSignedInFrame(res);
+      askBroadcastOptOut();
+    };
+    const onResume = () => askBroadcastOptOut();
+    socket.on('broadcastOptOutResult', onResult);
+    socket.on('loginResult', onSignIn);
+    socket.on('durableState', onSignedInFrame);
+    socket.on('playerProgress', onSignedInFrame);
+    try { window.addEventListener('poker3d:tab-resumed', onResume); } catch { /* ignore */ }
+    askBroadcastOptOut();
+    return () => {
+      socket.off('broadcastOptOutResult', onResult);
+      socket.off('loginResult', onSignIn);
+      socket.off('durableState', onSignedInFrame);
+      socket.off('playerProgress', onSignedInFrame);
+      try { window.removeEventListener('poker3d:tab-resumed', onResume); } catch { /* ignore */ }
+    };
+  }, [owner]);
+
+  // A toggle with no answer (an older server has no such event) says so.
+  useEffect(() => {
+    if (optOutPending === null) return undefined;
+    const t = setTimeout(() => {
+      setOptOutPending(null);
+      setOptOutMsg(broadcastOptOutErrorText('no_answer'));
+    }, BROADCAST_OPT_OUT_WATCHDOG_MS);
+    return () => clearTimeout(t);
+  }, [optOutPending]);
+
+  const toggleBroadcastOptOut = useCallback((want) => {
+    const socket = getSocket();
+    if (!socket || !socket.connected) { setOptOutMsg(GAME_SERVER_UNREACHABLE_TEXT); return; }
+    setOptOutMsg(null);
+    setOptOutPending(want);
+    try { socket.emit('setBroadcastOptOut', { optOut: want }); } catch { setOptOutPending(null); }
+  }, []);
 
   // Another account on this tab: its own (empty) local registrations.
   useEffect(() => { setLocalRegs(readLocalRegs(owner)); }, [owner]);
@@ -669,6 +777,43 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
     ? <QualifierRules qualifier={list.find((x) => x.qualifierId === rulesFor)} onClose={() => setRulesFor(null)} />
     : null;
 
+  // 2026-11-02 (owner: stream the qualifiers) — next to Register: the event
+  // may be streamed (the owner's approved rules line (1), word for word, the
+  // same line as content/qualifierRules.js) and his "Show me as Player on broadcasts"
+  // toggle (signed in only; the server's value, never a guess: the toggle shows
+  // once the server has answered, so an older server without the opt-out
+  // shows the notice alone). Blue + gold, never red. Not on a finished /
+  // cancelled event. Taps never open the detail window under it.
+  const broadcastNotice = (q) => {
+    if (qualifierSignupState(q, now) === 'finished') return null;
+    const shown = optOutPending !== null ? optOutPending : optOut === true;
+    return (
+      <div
+        className="qualifier-broadcast-notice"
+        onClick={(e) => e.stopPropagation()}
+        style={{ ...noteStyle('blue'), textAlign: 'left', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}
+      >
+        <div>📺 {QUALIFIER_BROADCAST_NOTICE_TEXT}</div>
+        {owner != null && (optOut !== null || optOutPending !== null) && (
+          <label className="qualifier-broadcast-optout" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: optOutPending !== null ? 'default' : 'pointer', color: '#ffd24a', fontWeight: 700, minHeight: 32 }}>
+            <input
+              type="checkbox"
+              checked={shown}
+              disabled={optOutPending !== null}
+              onChange={(e) => toggleBroadcastOptOut(e.target.checked)}
+              style={{ width: 18, height: 18, accentColor: '#ffd24a', flexShrink: 0 }}
+            />
+            <span>{BROADCAST_OPT_OUT_LABEL}{optOutPending !== null ? ' …' : ''}</span>
+          </label>
+        )}
+        {owner != null && optOut === true && optOutPending === null && (
+          <div className="qualifier-broadcast-optout-on" style={{ color: '#cfe0ff' }}>{BROADCAST_OPTED_OUT_TEXT}</div>
+        )}
+        {optOutMsg && <div className="qualifier-broadcast-optout-msg" role="status" style={{ color: '#ffd24a' }}>{optOutMsg}</div>}
+      </div>
+    );
+  };
+
   // Dashboard modal
   const dashboardNode = (() => {
     if (!openDashboard) return null;
@@ -745,6 +890,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
             {youText && <span className="home-qualifier-you" style={{ color: '#cfe0ff', fontWeight: 600 }}>{youText}</span>}
           </div>
           <div style={{ marginTop: 10 }}>{renderAction(q, true)}</div>
+          {broadcastNotice(q)}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
             <span style={{ color: '#8298c4', fontSize: '0.7rem' }}>Tap for details</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -870,6 +1016,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
             </div>
 
             {renderAction(q)}
+            {broadcastNotice(q)}
           </div>
         );
       })}

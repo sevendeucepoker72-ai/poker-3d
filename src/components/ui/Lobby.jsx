@@ -812,7 +812,7 @@ function TableListSection({ tables, connected, nameInput, variantFilter, setVari
 // ═══════════════════════════════════════════
 // MAIN LOBBY COMPONENT
 // ═══════════════════════════════════════════
-export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = null, onPwaActionConsumed = null, waitlistContext = null }) {
+export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = null, onPwaActionConsumed = null, waitlistContext = null, onOpenProducer = null }) {
   const setScreen = useGameStore((s) => s.setScreen);
   const playerName = useGameStore((s) => s.playerName);
   const setPlayerName = useGameStore((s) => s.setPlayerName);
@@ -2460,6 +2460,19 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
               style={{ fontSize: '0.7rem', color: '#F97316' }}
             >
               Admin
+            </button>
+          )}
+          {/* 2026-11-02 (lead spec C6) — the broadcast producer panel (App
+              mounts it over the lobby). Admins only here; the panel says
+              "Staff only." to anyone else and the server re-checks. Gold. */}
+          {isAdminUser && typeof onOpenProducer === 'function' && (
+            <button
+              className="lobby-top-bar-settings lobby-producer-btn"
+              onClick={onOpenProducer}
+              title="Broadcast producer"
+              style={{ fontSize: '0.7rem', color: '#ffd24a' }}
+            >
+              Producer
             </button>
           )}
           {isLoggedIn && (

@@ -36,6 +36,12 @@ jobs:
       - name: Build (desktop)
         run: npm run build
 
+      # 2026-11-02 (lead spec C10) — the tournament broadcast page's tests:
+      # built-in node:test, no extra dependency. After the build, so the
+      # dist checks (broadcast.html built, no fixture in the bundle) run too.
+      - name: Unit tests (node:test)
+        run: npm test
+
       # Mobile build intentionally NOT gated in CI — vite.config.mobile.js
       # and index-mobile.html are local-only development artifacts that
       # haven't been committed to the repo. If/when the mobile build is

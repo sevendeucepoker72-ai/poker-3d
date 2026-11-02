@@ -26,6 +26,15 @@ import {
 // - auto-muck and turn-timer were never read by anything (the server decides
 //   both) and are gone.
 
+// 2026-11-02 (owner: "update them" — streaming, 21+) — the Terms of Service and
+// Privacy Policy live on the marketing site (routes /terms and /privacy in
+// poker-mono-repo apps/marketing/src/App.jsx). Plain links in a new tab, never
+// bridged (no sign-in rides along).
+const TERMS_URL = 'https://americanpubpoker.com/terms';
+const PRIVACY_URL = 'https://americanpubpoker.com/privacy';
+// Blue reads on both the dark and the light panel (gold is unreadable on light).
+const LEGAL_LINK_STYLE = { color: '#3b82f6', fontWeight: 700, fontSize: '0.9rem', minHeight: 40, display: 'inline-flex', alignItems: 'center' };
+
 // Debounced server sync for preferences — persists across devices.
 let _prefsSyncTimer = null;
 function schedulePrefsSync(settings) {
@@ -362,6 +371,34 @@ export default function SettingsPanel({ onClose }) {
             </button>
             <span style={{ color: '#94a3b8', fontSize: '0.78rem', lineHeight: 1.3, width: '100%' }}>
               Clears the cached app bundle and fetches the latest version.
+            </span>
+          </div>
+        </div>
+
+        {/* ===== LEGAL (2026-11-02) ===== "21+ to enter." is the owner's approved line, word for word: never paraphrase it. */}
+        <div className="settings-section settings-legal">
+          <div className="settings-section-title">Legal</div>
+          <div className="settings-row" style={{ flexWrap: 'wrap', gap: '8px 16px' }}>
+            <a
+              className="settings-legal-link"
+              href={TERMS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={LEGAL_LINK_STYLE}
+            >
+              Terms of Service
+            </a>
+            <a
+              className="settings-legal-link"
+              href={PRIVACY_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={LEGAL_LINK_STYLE}
+            >
+              Privacy Policy
+            </a>
+            <span style={{ color: '#94a3b8', fontSize: '0.78rem', lineHeight: 1.3, width: '100%' }}>
+              Play money only. 21+ to enter.
             </span>
           </div>
         </div>

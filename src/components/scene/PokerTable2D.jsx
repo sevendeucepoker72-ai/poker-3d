@@ -10,12 +10,9 @@ import { useTableStore } from '../../store/tableStore';
 import { useGameStore, SEAT_COUNT } from '../../store/gameStore';
 import { useTimerStore, serverNow } from '../../store/timerStore';
 import { getSocket } from '../../services/socketService';
-import {
-  SUIT_SYMBOLS,
-  SUIT_INDEX_TO_SYMBOL,
-  getCardColor,
-  serverRankDisplay,
-} from '../../utils/cardUtils';
+// 2026-11-02 (lead spec C2) — Card2D moved as-is to its own file so the
+// tournament broadcast page draws the same card; no behaviour change here.
+import Card2D from './Card2D';
 import { getPlayerTag, COLOR_TAGS } from '../ui/PlayerNotes';
 import { getRankInfo } from '../ui/RankBadge';
 import { getOpponentStats } from '../../utils/opponentTracker';
@@ -148,44 +145,8 @@ const SEAT_ANGLES = Array.from({ length: SEAT_COUNT }, (_, i) =>
 const RAIL_CLEARANCE = 32;
 
 /* ============================================================
-   Card2D — playing card with deal animation
+   Card2D — playing card with deal animation: ./Card2D.jsx (2026-11-02)
    ============================================================ */
-function Card2D({ card, faceUp = true, small = false, dealDelay = 0, backClass = '' }) {
-  if (!faceUp || !card) {
-    return (
-      <div
-        className={`card2d card2d--back card2d--deal${small ? ' card2d--small' : ''}${backClass ? ` ${backClass}` : ''}`}
-        style={{ animationDelay: `${dealDelay}s` }}
-      >
-        <div className="card2d__back-pattern" />
-      </div>
-    );
-  }
-
-  const { rank, suit } = card;
-  const suitSymbol =
-    typeof suit === 'number' ? SUIT_INDEX_TO_SYMBOL[suit] : (SUIT_SYMBOLS[suit] ?? suit);
-  const color = getCardColor(suit, false);
-  const rankDisplay =
-    typeof rank === 'number' ? serverRankDisplay(rank) : (rank ?? '?');
-
-  return (
-    <div
-      className={`card2d card2d--deal${small ? ' card2d--small' : ''}`}
-      style={{ '--card-color': color, animationDelay: `${dealDelay}s` }}
-    >
-      <div className="card2d__corner card2d__corner--tl">
-        <span className="card2d__rank">{rankDisplay}</span>
-        <span className="card2d__suit">{suitSymbol}</span>
-      </div>
-      <div className="card2d__center-suit">{suitSymbol}</div>
-      <div className="card2d__corner card2d__corner--br">
-        <span className="card2d__rank">{rankDisplay}</span>
-        <span className="card2d__suit">{suitSymbol}</span>
-      </div>
-    </div>
-  );
-}
 
 /* ============================================================
    CommunityCardsOnFelt — board cards rendered on the felt

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- 2026-11-02 (lead spec C1) — the tournament broadcast page: the picture
+         OBS / the stream worker sends to the Facebook Page. A separate Vite
+         entry (src/broadcast/main.jsx): no sign-in, no service worker, no
+         manifest, no update toast. Same CSP as index.html (kept in sync with
+         public/.htaccess, which also sends .html files no-cache). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https://auth.americanpubpoker.online https://poker-server-production-60c0.up.railway.app wss://poker-server-production-60c0.up.railway.app https://poker-prod-api-azeg4kcklq-uc.a.run.app; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; base-uri 'self'; object-src 'none'; form-action 'self'" />
+    <!-- The key arrives in the #k= fragment (never sent to a server); no Referer either. -->
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700;800;900&display=swap" />
+    <title>American Pub Poker — Broadcast</title>
+  </head>
+  <body>
+    <div id="bc-root" data-bc-ready="0"></div>
+    <script type="module" src="/src/broadcast/main.jsx"></script>
+  </body>
+</html>
