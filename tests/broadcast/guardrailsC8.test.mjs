@@ -276,8 +276,9 @@ test('qualifierRulesFor includes the three approved lines verbatim (no qualifier
 });
 
 test('rules: date bumped, every section kept, text plain ASCII, no 15-minute delay anywhere', () => {
-  assert.equal(R.QUALIFIER_RULES_UPDATED, '2026-11-02');
-  assert.equal(R.rulesUpdatedLine(), 'Updated Nov 2, 2026.');
+  // 2026-11-21 (owner: "Do not show the monthly qualifiers") - bumped again: the monthly lines are hidden.
+  assert.equal(R.QUALIFIER_RULES_UPDATED, '2026-11-21');
+  assert.equal(R.rulesUpdatedLine(), 'Updated Nov 21, 2026.');
   const headings = R.QUALIFIER_RULES.map((s) => s.heading);
   for (const h of ['About the qualifier', 'Who can play', 'Schedule', 'Re-entries', 'Absent at the start', 'Structure',
     'Blinds and antes', 'Seating', 'Bubble and ties', 'Prizes', 'Disconnects and time to act', 'If something goes wrong',

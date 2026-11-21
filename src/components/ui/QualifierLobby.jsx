@@ -28,6 +28,10 @@ import QualifierDashboard from './QualifierDashboard';
 // 2026-10-23 (owner) — the Weekly Qualifier Rules (text: content/qualifierRules.js).
 import QualifierRules from './QualifierRules';
 import { qualifierHasWeeklyRules } from '../../content/qualifierRules';
+// 2026-11-21 (owner: "I said turn them off. Don't show them at all." / "Do not
+// show the monthly qualifiers.") - ONE flag hides every monthly qualifier here:
+// no row, no home card, no cancelled card, no "Monthly Major" line.
+import { MONTHLY_QUALIFIERS_SHOWN, withoutHiddenMonthlyQualifiers, monthlyQualifierHidden } from '../../utils/monthlyQualifiers';
 
 // A first entry waits on the master API's credit consume (awaited server-side),
 // so allow longer than a table join before calling the server unreachable.
@@ -295,7 +299,10 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       // in the box (the gate runs before the code is claimed).
       if (reportPlayRefusal(res)) { setRedeemMsg(null); return; }
       if (res?.success) {
-        setRedeemMsg({ ok: true, text: `Code redeemed — ${res.tier || 'weekly'} qualifier credit added!` });
+        // 2026-11-21 - a monthly code's credit is not called "monthly" while they are hidden.
+        const tier = res.tier || 'weekly';
+        const tierWord = monthlyQualifierHidden({ type: String(tier) }) ? '' : `${tier} `;
+        setRedeemMsg({ ok: true, text: `Code redeemed — ${tierWord}qualifier credit added!` });
         setRedeemCode('');
         askQualificationsNow({ listAfter: true }); // refresh qualification status
       } else {
@@ -433,13 +440,19 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
     const listHandler = (raw) => {
       currentDelay = BASE_MS;
       lastListAt = Date.now();
-      const next = normalizeQualifierList(raw);
-      try { noteQualifierTournamentIds(next); } catch { /* best-effort */ }
-      const { registeredIds, dropped } = qualifierRegistrationsDropped(prevRegistered, next);
+      const all = normalizeQualifierList(raw);
+      // Help tools stay off at EVERY qualifier's tables, a hidden monthly one included.
+      try { noteQualifierTournamentIds(all); } catch { /* best-effort */ }
+      const { registeredIds, dropped } = qualifierRegistrationsDropped(prevRegistered, all);
       prevRegistered = registeredIds;
       if (dropped) scheduleQualificationsRecheck();
       knownStatus.clear();
-      for (const q of next) knownStatus.set(q.qualifierId, q.status);
+      for (const q of all) knownStatus.set(q.qualifierId, q.status);
+      // 2026-11-21 (owner: "Do not show the monthly qualifiers") - the list the
+      // lobby shows (rows, home card, counts, detail, rules) has no monthly event
+      // while MONTHLY_QUALIFIERS_SHOWN is false; the server's registry can still
+      // hold one (e.g. a cancelled one for ~24 h). Updates only patch listed rows.
+      const next = withoutHiddenMonthlyQualifiers(all);
       // 2026-10-23 — the windows / countdowns move with every list (the local
       // tick is 30 s; the state used to lag the server's flip by up to ~40 s).
       setNow(Date.now());
@@ -719,7 +732,8 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       return (
         <div style={box({ background: 'rgba(12,28,72,0.6)', border: '1px solid rgba(255,210,74,0.25)', color: '#cfe0ff' })}>
           {/* Review fix-up 2026-10-22 — "(see above)" only where HOW TO QUALIFY is above (the Play tab). */}
-          {q.type === 'monthly'
+          {/* 2026-11-21 — the monthly line only while MONTHLY_QUALIFIERS_SHOWN (no monthly event is listed otherwise). */}
+          {MONTHLY_QUALIFIERS_SHOWN && q.type === 'monthly'
             ? `Not yet qualified — qualify via a Weekly, league standings, or attendance${home ? '' : ' (see above)'}`
             : 'Not yet qualified — finish top 5 in any live game to earn entry'}
         </div>
@@ -1007,10 +1021,16 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
             {/* How to qualify — the official guidelines. */}
             <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(90,140,230,0.06)', border: '1px solid rgba(90,140,230,0.18)', fontSize: '0.76rem', color: '#9fb4d8', lineHeight: 1.5 }}>
               <div style={{ color: '#cfe0ff', fontWeight: 700, marginBottom: 4, fontSize: '0.7rem', letterSpacing: '0.05em' }}>📋 HOW TO QUALIFY</div>
-              {q.type === 'monthly' ? (
+              {/* 2026-11-21 (owner: "Do not show the monthly qualifiers") — while
+                  MONTHLY_QUALIFIERS_SHOWN is false the weekly line ends at the seats
+                  ("... at Bally's Blackhawk.") with no "advance to the Monthly Major";
+                  set the flag true and both original lines come back. */}
+              {MONTHLY_QUALIFIERS_SHOWN && q.type === 'monthly' ? (
                 <>Three ways in: <strong style={{ color: '#fff' }}>top 10%</strong> of any Weekly online qualifier · <strong style={{ color: '#fff' }}>top 20%</strong> of each league's leaderboard (auto-added on the 1st) · <strong style={{ color: '#fff' }}>top 20%</strong> of your venue's average attendance.{seatsLine ? ` ${seatsLine} at Bally's Blackhawk.` : ''}</>
-              ) : (
+              ) : MONTHLY_QUALIFIERS_SHOWN ? (
                 <>Finish <strong style={{ color: '#fff' }}>top 5 in any live game</strong> at any venue to earn a credit and an entry here.{seatsLine ? ` ${seatsLine} at Bally's Blackhawk;` : ''} the top 10% advance to the Monthly Major.</>
+              ) : (
+                <>Finish <strong style={{ color: '#fff' }}>top 5 in any live game</strong> at any venue to earn a credit and an entry here.{seatsLine ? ` ${seatsLine} at Bally's Blackhawk.` : ''}</>
               )}
               {qualifierHasWeeklyRules(q) && <div style={{ marginTop: 8 }}>{rulesLink(q, 'Weekly Qualifier Rules')}</div>}
             </div>

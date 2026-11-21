@@ -29,6 +29,14 @@
 // So the week's seat package and bubble come from the qualifier itself, and a
 // rule that needs a server change shows only once that server says it does it.
 // Never write a rule here that the code does not do.
+//
+// 2026-11-21 (owner: "Do not show the monthly qualifiers") - the lines about
+// the monthly qualifier and monthly credits are shown only while
+// MONTHLY_QUALIFIERS_SHOWN (utils/monthlyQualifiers.js) is true; with it false
+// the mixed lines read without their monthly part. Set it true and every
+// original line comes back.
+
+import { MONTHLY_QUALIFIERS_SHOWN } from '../utils/monthlyQualifiers.js';
 
 export const QUALIFIER_RULES_TITLE = 'Weekly Qualifier Rules';
 
@@ -36,8 +44,9 @@ export const QUALIFIER_RULES_TITLE = 'Weekly Qualifier Rules';
 export const QUALIFIER_RULES_SUBTITLE = 'Every Sunday at 11:00 AM MT on americanpubpoker.online';
 
 // 2026-11-02 (owner, approved wording B1): "21+ to enter." and the Live streams section.
+// 2026-11-21 (owner: "Do not show the monthly qualifiers"): the monthly lines hidden.
 /** The day these rules were last changed (YYYY-MM-DD, shown as "Updated Oct 23, 2026."). */
-export const QUALIFIER_RULES_UPDATED = '2026-11-02';
+export const QUALIFIER_RULES_UPDATED = '2026-11-21';
 
 export const QUALIFIER_RULES = [
   {
@@ -59,7 +68,9 @@ export const QUALIFIER_RULES = [
       'Credits are good through the end of the 2026-27 season (March 2027).',
       'You get your credit back if you withdraw before the tables open, if you are released for not being online at the start, if no seat can be found for you, or if the qualifier is cancelled.',
       'One person, one account. You can be in the qualifier only once at a time, on your own account.',
-      'If you are suspended, you cannot enter. If you are suspended during the qualifier, you are removed within a hand or two and get no place, seat or monthly credit.',
+      MONTHLY_QUALIFIERS_SHOWN
+        ? 'If you are suspended, you cannot enter. If you are suspended during the qualifier, you are removed within a hand or two and get no place, seat or monthly credit.'
+        : 'If you are suspended, you cannot enter. If you are suspended during the qualifier, you are removed within a hand or two and get no place or seat.',
     ],
   },
   {
@@ -207,9 +218,12 @@ export const QUALIFIER_RULES = [
       'Each seat is checked on its own. If a seat would put a finisher over 10, that seat passes to the next finisher below who has room. A player who won seats of their own takes a passed seat only if there is room for their own seats too. If nobody below has room, that seat is not given out.',
       'Players who already have 10 seats can still enter and play. Any seat they finish in passes down.',
       'If you win again in another week, you earn more seats, up to the 10-seat limit.',
-      'The top 10% of finishers, rounded up (at least 1), each earn a monthly qualifier credit. This counts players, not entries.',
-      "You can get only one monthly credit for each calendar month, counting league standings too. If you already have that month's credit, you do not get another.",
-      'The monthly qualifier is the 3rd Saturday of each month at 11:00 AM MT. It needs a monthly credit.',
+      // 2026-11-21 - hidden with the monthly qualifiers (MONTHLY_QUALIFIERS_SHOWN).
+      ...(MONTHLY_QUALIFIERS_SHOWN ? [
+        'The top 10% of finishers, rounded up (at least 1), each earn a monthly qualifier credit. This counts players, not entries.',
+        "You can get only one monthly credit for each calendar month, counting league standings too. If you already have that month's credit, you do not get another.",
+        'The monthly qualifier is the 3rd Saturday of each month at 11:00 AM MT. It needs a monthly credit.',
+      ] : []),
       'When the qualifier ends, the results are sent to American Pub Poker and your seats are added on their own.',
       'You get a "You won 1 championship seat!" (or "You won 3 championship seats!") notice in the American Pub Poker app at americanpub.poker. Your Player Hub there lists your seats and is the official record.',
       'The results screen on americanpubpoker.online shows seats by place. It does not show seats that were passed down, so check your Player Hub.',
@@ -233,7 +247,9 @@ export const QUALIFIER_RULES = [
     heading: 'If something goes wrong',
     rules: [
       'We do not update the game server on Sundays from 7:45 AM MT until the results post.',
-      'If the game server restarts after sign-up opens and before the qualifier ends, the qualifier is cancelled. Every credit it used, entries and re-entries, is returned. No seats or monthly credits come from it.',
+      MONTHLY_QUALIFIERS_SHOWN
+        ? 'If the game server restarts after sign-up opens and before the qualifier ends, the qualifier is cancelled. Every credit it used, entries and re-entries, is returned. No seats or monthly credits come from it.'
+        : 'If the game server restarts after sign-up opens and before the qualifier ends, the qualifier is cancelled. Every credit it used, entries and re-entries, is returned. No seats come from it.',
       'If that happens before 2:00 PM MT, the qualifier opens for sign-up again, and you must register again with your returned credit. If the restart was before 11:00 AM, it starts on time as usual. If it was during play, it starts over from level 1 as soon as two registered players are online.',
       'If the qualifier opens again, we announce it right away by app notification and on Facebook.',
       'If a credit does not come back on its own, for example after a sudden server crash, staff return it by hand within 48 hours.',
@@ -251,7 +267,11 @@ export const QUALIFIER_RULES = [
       "No hand strength bar, pot odds, outs or player stats are shown there. You still see the name of your hand, and each player's chance to win once hands are shown face up.",
       "While you play the qualifier, do not use any help tool, including this site's own tools in the lobby or at another table.",
       'Outside help is banned too. That means no solvers, charts, AI tools, real-time assistance programs, or another person telling you what to do.',
-      'If you cheat or break these rules, you are removed from the qualifier with no place or seat. The seats and credits you won in that qualifier are taken back, and you may be suspended from all American Pub Poker games.',
+      // 2026-11-21 - the only credits a weekly can award are monthly qualifier
+      // credits, so "and credits" is hidden with them (MONTHLY_QUALIFIERS_SHOWN).
+      MONTHLY_QUALIFIERS_SHOWN
+        ? 'If you cheat or break these rules, you are removed from the qualifier with no place or seat. The seats and credits you won in that qualifier are taken back, and you may be suspended from all American Pub Poker games.'
+        : 'If you cheat or break these rules, you are removed from the qualifier with no place or seat. The seats you won in that qualifier are taken back, and you may be suspended from all American Pub Poker games.',
       'Results and seats can be reviewed for fair play for 7 days after the qualifier.',
     ],
   },

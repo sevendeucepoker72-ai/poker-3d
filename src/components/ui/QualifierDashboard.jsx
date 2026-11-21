@@ -5,6 +5,8 @@ import { qualifierSignupState, qualifierResultText, seatsForTopText, ordinal, fo
 // 2026-10-23 (owner) — a weekly qualifier's detail window has a Rules tab.
 import { QualifierRulesBody } from './QualifierRules';
 import { qualifierHasWeeklyRules } from '../../content/qualifierRules';
+// 2026-11-21 (owner: "Do not show the monthly qualifiers") - one flag hides them.
+import { MONTHLY_QUALIFIERS_SHOWN } from '../../utils/monthlyQualifiers';
 
 function formatCountdown(target, now) {
   if (target == null) return '';
@@ -161,10 +163,16 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
                 </div>
               )}
               <div style={{ color: '#cfe0ff', fontSize: '0.88rem', lineHeight: 1.6 }}>
-                {q.type === 'monthly' ? (
+                {/* 2026-11-21 (owner: "Do not show the monthly qualifiers") — while
+                    MONTHLY_QUALIFIERS_SHOWN is false the weekly line ends at the seats
+                    with no "advance to the monthly online qualifier" (and no monthly
+                    event reaches this window); the flag brings both lines back. */}
+                {MONTHLY_QUALIFIERS_SHOWN && q.type === 'monthly' ? (
                   <p style={{ margin: 0 }}>Monthly Major Qualifier — three ways in: (1) finish top 10% in any weekly online qualifier, (2) finish in the top 20% of each league's leaderboard (auto-added on the 1st), or (3) finish in the top 20% of your venue's average attendance.{seatsLine ? ` ${seatsLine} at the Championship.` : ''}</p>
-                ) : (
+                ) : MONTHLY_QUALIFIERS_SHOWN ? (
                   <p style={{ margin: 0 }}>Top 5 finishers at any live American Pub Poker game earn a qualification credit for this weekly online qualifier.{seatsLine ? ` ${seatsLine} at the Championship at Bally's Blackhawk;` : ''} the top 10% advance to the monthly online qualifier.</p>
+                ) : (
+                  <p style={{ margin: 0 }}>Top 5 finishers at any live American Pub Poker game earn a qualification credit for this weekly online qualifier.{seatsLine ? ` ${seatsLine} at the Championship at Bally's Blackhawk.` : ''}</p>
                 )}
               </div>
               <div className="qualifier-window" style={{ color: '#9fb4d8', fontSize: '0.8rem', lineHeight: 1.6 }}>

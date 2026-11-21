@@ -23,6 +23,8 @@
  */
 
 import { ECONOMY_TIME_ZONE, denverDateKey } from './denverTime.js';
+// 2026-11-21 (owner: "Do not show the monthly qualifiers") - one flag hides them.
+import { MONTHLY_QUALIFIERS_SHOWN, withoutHiddenMonthlyQualifiers } from './monthlyQualifiers.js';
 
 const STATUSES = new Set(['scheduled', 'registering', 'running', 'finished']);
 
@@ -58,7 +60,9 @@ export function qualifierTypeLabel(type) {
 
 function defaultName(type) {
   const t = String(type || '').toLowerCase();
-  if (t === 'monthly') return 'Monthly Major Qualifier';
+  // 2026-11-21 - hidden with the monthly qualifiers (utils/monthlyQualifiers.js;
+  // a monthly item never reaches a player list while the flag is off).
+  if (MONTHLY_QUALIFIERS_SHOWN && t === 'monthly') return 'Monthly Major Qualifier';
   if (t === 'weekly') return 'Weekly Qualifier';
   return 'Qualifier Tournament';
 }
@@ -421,9 +425,11 @@ export function qualifierUpdateExtras(data) {
  * The one qualifier the home page shows: a live one first, else the soonest
  * one not finished (open / upcoming / waiting to start), else the latest
  * finished one the server still lists (its result); null when none.
+ * 2026-11-21 (owner: "Do not show the monthly qualifiers") - never a monthly
+ * one while MONTHLY_QUALIFIERS_SHOWN is false (not even its cancelled card).
  */
 export function featuredQualifier(list, now = Date.now()) {
-  const items = (Array.isArray(list) ? list : []).filter((q) => q && q.qualifierId);
+  const items = withoutHiddenMonthlyQualifiers((Array.isArray(list) ? list : []).filter((q) => q && q.qualifierId));
   if (items.length === 0) return null;
   const byStart = [...items].sort((a, b) => (a.scheduledAt ?? Infinity) - (b.scheduledAt ?? Infinity));
   const states = new Map(byStart.map((q) => [q, qualifierSignupState(q, now)]));
@@ -535,7 +541,8 @@ export function qualifierReentryCapReached(q, credits) {
  */
 export function qualifierHomeYouText(q, { state, registered, credits, reentries, qualified } = {}) {
   if (!q || state === 'finished') return null;
-  const unit = q.type === 'monthly' ? 'monthly' : (q.type === 'weekly' ? 'weekly' : 'qualifier');
+  // 2026-11-21 - no "monthly credits" line while the monthly qualifiers are hidden.
+  const unit = MONTHLY_QUALIFIERS_SHOWN && q.type === 'monthly' ? 'monthly' : (q.type === 'weekly' ? 'weekly' : 'qualifier');
   const creditsText = (n) => `${n} ${unit} credit${n === 1 ? '' : 's'}`;
   if (registered && q.eliminated === true) {
     if (state === 'late') {

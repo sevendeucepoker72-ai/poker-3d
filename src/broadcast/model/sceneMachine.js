@@ -7,6 +7,10 @@
  * Order of precedence:
  *   1. The feed is stale (no heartbeat for 15 s) or there is no program: the
  *      slate. Nothing overrides this.
+ *   1b. 2026-11-21 (owner: "Do not show the monthly qualifiers") - a MONTHLY
+ *      qualifier's program (channel 'monthly', next:monthly, or its event) is
+ *      the slate, pinned or not, while MONTHLY_QUALIFIERS_SHOWN
+ *      (utils/monthlyQualifiers.js, a constant) is false: no title, no table.
  *   2. scene.auto is OFF: the producer's pinned scene — except that results
  *      are NEVER shown before the program reaches the finish (rule 4); a
  *      pinned Results waits on the auto scene until then.
@@ -32,6 +36,7 @@
  * final table never replays it (the ticker item keeps the first time).
  */
 import { isObj, SCENE_IDS } from './contract.js';
+import { broadcastMonthlyHidden } from '../../utils/monthlyQualifiers.js';
 
 export const FINAL_INTRO_PER_SEAT_MS = 4000;
 export const FINAL_INTRO_LEAD_MS = 3000;
@@ -153,6 +158,7 @@ export function autoScene(program, programNow) {
 export function chooseScene({ program, programNow, stale = false } = {}) {
   if (stale) return { id: 'slate', reason: 'stale', pinned: false };
   if (!isObj(program)) return { id: 'slate', reason: 'no_program', pinned: false };
+  if (broadcastMonthlyHidden(program)) return { id: 'slate', reason: 'monthly_hidden', pinned: false };
   const scene = isObj(program.scene) ? program.scene : null;
   const auto = !scene || scene.auto !== false;
   if (!auto) {

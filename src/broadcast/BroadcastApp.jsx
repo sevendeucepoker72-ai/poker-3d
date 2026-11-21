@@ -33,6 +33,9 @@ import { estimateServerNow, estimateProgramNow } from './model/programStore.js';
 import { shellSceneOf } from './net/broadcastRuntime.js';
 import { LEGAL_LINE } from './model/contract.js';
 import { formatChips } from './model/tableFormat.js';
+// 2026-11-21 (owner: "Do not show the monthly qualifiers") - the shell's own
+// scenes hide a monthly event too (CLB's SceneSwitcher: model/sceneMachine.js).
+import { broadcastMonthlyHidden } from '../utils/monthlyQualifiers.js';
 
 // CLB's scene switcher, when it is in the tree (eager: no extra request).
 const SCENE_MODULES = import.meta.glob('./ui/scenes/SceneSwitcher.jsx', { eager: true });
@@ -75,6 +78,7 @@ const STATUS_TEXT = {
 function ShellScene({ program, table, feed, layout, stale, serverNow, programNow }) {
   const legal = (program && program.legal && program.legal.line) || LEGAL_LINE;
   if (stale) return <ShellSlate reason="stale" legal={legal} />;
+  if (broadcastMonthlyHidden(program)) return <ShellSlate reason="producer" legal={legal} />;
   const ev = program && program.event ? program.event : {};
   const title = ev.title || ev.name || 'American Pub Poker';
   const sceneId = program && program.scene ? program.scene.id : 'slate';

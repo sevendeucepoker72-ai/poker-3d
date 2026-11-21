@@ -84,6 +84,8 @@ import {
 import { useTournamentClockStore } from './store/tournamentClockStore';
 // 2026-10-23 (owner: "Turn all off") — a qualifier's tournament id: no help tools at its tables.
 import { noteQualifierTournamentId, isHelpToolsOffRefusal } from './utils/qualifierHelpTools';
+// 2026-11-21 (owner: "Do not show the monthly qualifiers") - a notice never names one.
+import { monthlyQualifierHidden } from './utils/monthlyQualifiers';
 import { noteMaintenanceMode, noteServerConnected } from './services/serverFlags';
 import { shouldApplyRemoteSignOut, noteIgnoredRemoteSignOut } from './services/crossTabSignOut';
 import { maybeOfferGuestCarryOver, resetGuestCarryOver } from './services/guestCarryOver';
@@ -1136,9 +1138,14 @@ function App() {
       // 2026-10-20 (owner: no-shows removed + refunded at the start) — told at
       // the next sign-in: the event went ahead without this player.
       if (d?.reason === 'absent_at_start') {
-        const name = d?.qualifierName || 'The qualifier';
+        // 2026-11-21 (owner: "Do not show the monthly qualifiers") - a MONTHLY
+        // event (by its name: this notice carries no type) is not named, and its
+        // late entry is not offered: it is not listed in Qualifiers while hidden.
+        // The released entry and the refund are still said.
+        const hiddenMonthly = monthlyQualifierHidden(d);
+        const name = hiddenMonthly ? 'A qualifier you registered for' : (d?.qualifierName || 'The qualifier');
         const until = d?.lateRegUntil ? new Date(d.lateRegUntil) : null;
-        const late = d?.lateRegOpen && until && !Number.isNaN(until.getTime())
+        const late = !hiddenMonthly && d?.lateRegOpen && until && !Number.isNaN(until.getTime())
           ? ` Late registration is open until ${until.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} — enter again from Qualifiers if a seat is free.`
           : '';
         useProgressStore.getState().addNotification({ type: 'mission', title: 'Qualifier started without you', message: `${name} started while you were offline, so your entry was released.${credit}${late}` });
