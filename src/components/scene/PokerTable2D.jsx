@@ -5,7 +5,7 @@
  *   thinking dots, action pill, rank badge, streak, away state, fold-dim,
  *   all-in pulse ring, win streak.
  */
-import { memo, useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { memo, useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
 import { useTableStore } from '../../store/tableStore';
 import { useGameStore, SEAT_COUNT } from '../../store/gameStore';
 import { useTimerStore, serverNow } from '../../store/timerStore';
@@ -41,6 +41,11 @@ import { cinematicEnabled, cinematicAsset } from './cinematicSkin';
 import './CinematicSkin.css';
 // APP Precision: the room / rail / watermark rules (scoped to .cinematic-table).
 import './AppPrecision.css';
+// APP Precision package 2: the seats, open seats, pot, board and texture badge.
+import './AppPrecisionSeats.css';
+import AppSeatAvatar from './AppSeatAvatar';
+import { APP_PORTRAIT_MQ, appSeatGeometry, appSeatSpot } from './appSeatLayout';
+import { measureAppSeats, sameAppMeas, placeAppFloaters, setAppLayoutPing, invalidateAppPlacement } from './appPlacement';
 
 /* ── Player-notes callback (App.jsx sets this) ─────────────── */
 let _onOpenPlayerNotes = null;
@@ -148,16 +153,22 @@ const SEAT_ANGLES = Array.from({ length: SEAT_COUNT }, (_, i) =>
 // Rail box-shadow extends 22px beyond felt edge; add ~10px clearance = 32px
 const RAIL_CLEARANCE = 32;
 
-// Reference layout in normalized scene coordinates. Nine real seats must remain
-// selectable; use an additional upper-left station rather than dropping a seat.
-const PRECISION_PORTRAIT_SEATS = [
-  [50, 73.4], [13, 55.8], [10.5, 43.1], [17, 33.0], [34, 26.5],
-  [56.5, 27.9], [85.3, 33.6], [89, 44.1], [87.3, 56.4],
-];
-function precisionSeatAnchor(seatIndex, heroSeat, scene) {
-  if (!scene?.referencePortrait || heroSeat < 0 || SEAT_COUNT !== 9) return null;
-  const relative = (seatIndex - heroSeat + SEAT_COUNT) % SEAT_COUNT;
-  return PRECISION_PORTRAIT_SEATS[relative];
+// APP Precision package 2: on a portrait phone with the skin on, a seat's spot
+// comes from appSeatLayout (slots around the rail, measured felt), for the seat
+// map and the chip flyers alike. null = the measured ellipse below.
+function appSpotFor(seatIndex, heroSeat, cap, geo) {
+  if (!geo || !(seatIndex < cap)) return null;
+  const heroSeated = heroSeat >= 0 && heroSeat < cap;
+  const rel = heroSeated ? (seatIndex - heroSeat + cap) % cap : seatIndex;
+  return appSeatSpot(geo, rel, cap, heroSeated);
+}
+
+// APP Precision: a stack over 7 digits reads in millions on a seat plate (the
+// full number stays in the plate's title).
+function appStackText(chips) {
+  if (chips >= 1e8) return `${(Math.floor(chips / 1e5) / 10).toFixed(1)}M`;
+  if (chips >= 1e7) return `${(Math.floor(chips / 1e4) / 100).toFixed(2)}M`;
+  return chips.toLocaleString();
 }
 
 
@@ -307,8 +318,10 @@ const SeatPod = memo(function SeatPod({
   bigBlind, heroEmoji, onSitHere, winStreak,
   isTournament, heroAlreadySeated, isPendingMoveTarget,
   onBetSlide, spectatorSits, betSide, backCount, beyondCap, handNumber,
-  hideStats,
+  hideStats, appSlot = null,
 }) {
+  // APP Precision package 2: the portrait slot classes (skin on, phone upright)
+  const appCls = cinematicEnabled && appSlot ? ` seat-pod--app seat-pod--app-${appSlot.slot} seat-pod--app-${appSlot.side}` : '';
   const turnStartedAt = useTimerStore(s => s.turnStartedAt);
   const turnTimeout   = useTimerStore(s => s.turnTimeout);
   const TIMER_TOTAL_S = turnTimeout / 1000;
@@ -413,9 +426,11 @@ const SeatPod = memo(function SeatPod({
     // A spectator sees "Sit Here" at once (a phone has no hover); a seated
     // player still taps once to reveal "Move here" (no accidental moves).
     const showSitBtn = canInteract && (hovered || (!heroAlreadySeated && spectatorSits));
+    // APP Precision: the "+" badge shows only where this viewer can sit / move
+    const appSitCls = cinematicEnabled && canInteract ? ' seat-pod--app-can-sit' : '';
     return (
       <div
-        className={`seat-pod seat-pod--empty ${isPendingMoveTarget ? 'seat-pod--pending-move' : ''}`}
+        className={`seat-pod seat-pod--empty ${isPendingMoveTarget ? 'seat-pod--pending-move' : ''}${appCls}${appSitCls}`}
         data-seat-index={seatIndex}
         style={{
           ...style,
@@ -540,7 +555,7 @@ const SeatPod = memo(function SeatPod({
     isWinner     ? 'seat-pod--winner'   : '',
     hovered      ? 'seat-pod--hovered'  : '',
     isSittingOut ? 'seat-pod--sitout'   : '',
-  ].filter(Boolean).join(' ');
+  ].filter(Boolean).join(' ') + appCls;
 
   return (
     <div
@@ -625,6 +640,16 @@ const SeatPod = memo(function SeatPod({
             />
           </svg>
         )}
+        {cinematicEnabled ? (
+          /* APP Precision: photo / emoji / monogram in a blue ring + letter badge */
+          <AppSeatAvatar
+            name={name}
+            photo={avatarPhoto}
+            letter={!isMyPlayer}
+            className={`seat-pod__avatar${isWinner ? ' seat-pod__avatar--win' : ''}${isFolded ? ' seat-pod__avatar--fold' : ''}`}
+            style={avatarPhoto ? { background: avatarColor } : undefined}
+          />
+        ) : (
         <div
           className={`seat-pod__avatar${isWinner ? ' seat-pod__avatar--win' : ''}${isFolded ? ' seat-pod__avatar--fold' : ''}`}
           style={avatarPhoto ? { background: avatarColor } : { background: 'transparent' }}
@@ -634,6 +659,7 @@ const SeatPod = memo(function SeatPod({
             : <PlayerAvatar playerId={name} name={name} size={42} style={{ border: '2px solid rgba(255,255,255,0.15)' }} />
           }
         </div>
+        )}
         {isSittingOut && <div className="seat-pod__away-badge">AWAY</div>}
       </div>
 
@@ -682,7 +708,17 @@ const SeatPod = memo(function SeatPod({
 
           {/* Row 2: chips + BB badge + position */}
           <div className="seat-pod__chips">
+            {cinematicEnabled ? (
+              /* APP Precision: the depth tier as a class (gold / white / amber / blue) */
+              <span
+                className={`app-stack app-stack--${stackBBs < 10 ? 'short' : stackBBs < 25 ? 'mid' : stackBBs > 50 ? 'deep' : 'even'}`}
+                title={chips.toLocaleString()}
+              >
+                {appStackText(chips)}
+              </span>
+            ) : (
             <span style={{ color: stackColor }}>{chips.toLocaleString()}</span>
+            )}
             {bigBlind > 0 && stackBBs < 999 && (
               <span className="seat-pod__bb-badge" style={{ color: stackColor }}>
                 {Math.round(stackBBs)}BB
@@ -873,14 +909,22 @@ export default function PokerTable2D() {
       const fr = felt.getBoundingClientRect();
       if (sr.width === 0 || sr.height === 0) return;
       // Ellipse radii: half-felt plus rail clearance, expressed as fraction of scene
-      const referencePortrait = cinematicEnabled && sr.width <= 600 && sr.height / sr.width >= 5 / 3 && sr.height / sr.width <= 3;
-      const clearance = referencePortrait ? Math.min(RAIL_CLEARANCE, sr.width * .035) : RAIL_CLEARANCE;
-      const xR = (fr.width  / 2 + clearance) / sr.width;
-      const yR = (fr.height / 2 + clearance) / sr.height;
+      const xR = (fr.width  / 2 + RAIL_CLEARANCE) / sr.width;
+      const yR = (fr.height / 2 + RAIL_CLEARANCE) / sr.height;
       // Felt center relative to scene
       const cx = (fr.left - sr.left + fr.width  / 2) / sr.width;
       const cy = (fr.top  - sr.top  + fr.height / 2) / sr.height;
-      setSeatEllipse({ xR, yR, cx, cy, referencePortrait });
+      // APP Precision package 2: the skin's portrait slots (phone held upright)
+      // are laid out from these boxes (appGeo below)
+      let appBox = null;
+      if (cinematicEnabled) {
+        let portrait = false;
+        try { portrait = !!window.matchMedia?.(APP_PORTRAIT_MQ).matches; } catch { /* no matchMedia */ }
+        if (portrait) {
+          appBox = { W: sr.width, H: sr.height, felt: { x: fr.left - sr.left, y: fr.top - sr.top, w: fr.width, h: fr.height } };
+        }
+      }
+      setSeatEllipse({ xR, yR, cx, cy, appBox });
       // R2 (TABLEUI-8/9) — GameHUD's useTableGeometry re-reads the felt rect
       // (the board, hero cards and pot label are placed from it).
       try { window.dispatchEvent(new Event(TABLE_GEOMETRY_EVENT)); } catch { /* ignore */ }
@@ -903,23 +947,117 @@ export default function PokerTable2D() {
      affects feltRef's rect or the seat layout. */
   const [chipFlyers, setChipFlyers] = useState([]);
   const flyerIdRef = useRef(0);
-  const flyPosRef = useRef({ seatEllipse: null, yourSeat: -1, seatCap: SEAT_COUNT });
-  flyPosRef.current = { seatEllipse, yourSeat, seatCap };
+  // APP Precision package 2: the portrait slots (a spectator has no hero corner),
+  // stacked from the measured pods and hero row (appPlacement.measureAppSeats)
+  const appSpectator = !(yourSeat >= 0 && yourSeat < seatCap);
+  const appBox = seatEllipse?.appBox || null;
+  const [appMeas, setAppMeas] = useState(null);
+  const appGeo = useMemo(
+    () => (appBox ? appSeatGeometry(appBox.W, appBox.H, appBox.felt, { spectator: appSpectator, m: seatCap - 1, meas: appMeas }) : null),
+    [appBox, appSpectator, seatCap, appMeas],
+  );
+  // after each render: measure what was drawn (a change lays the seats out
+  // again), then place the loose labels; GameHUD pings the same after its own
+  // renders (the hero's row, the outs counter, the Split Pot banner)
+  const appMeasRef = useRef(null);
+  const appLoopRef = useRef({ n: 0, t: 0 });
+  const appLateRef = useRef(0);
+  const appRunRef = useRef(null);
+  const appGeoOn = !!appGeo;
+  const appRun = useCallback(() => {
+    if (!cinematicEnabled) return;
+    if (!appGeoOn) { placeAppFloaters(); return; }
+    const meas = measureAppSeats(sceneRef.current);
+    if (meas && !sameAppMeas(meas, appMeasRef.current)) {
+      const now = Date.now();
+      const loop = appLoopRef.current;
+      if (now - loop.t > 1000) { loop.n = 0; loop.t = now; }
+      loop.n += 1;
+      // (a layout that keeps changing what it measures stops after a few tries)
+      if (loop.n <= 6) {
+        appMeasRef.current = meas;
+        setAppMeas(meas);
+        // once more when fonts / fades have settled
+        clearTimeout(appLateRef.current);
+        appLateRef.current = setTimeout(() => appRunRef.current?.(), 450);
+        return;
+      }
+    }
+    placeAppFloaters();
+  }, [appGeoOn]);
+  useLayoutEffect(() => { appRunRef.current = appRun; appRun(); });
+  useEffect(() => {
+    if (!cinematicEnabled) return undefined;
+    setAppLayoutPing(appRun);
+    return () => setAppLayoutPing(null);
+  }, [appRun]);
+  useEffect(() => () => clearTimeout(appLateRef.current), []);
+  // (APP Precision repair 2) a web font that arrives late changes the labels'
+  // widths after they were placed: measure and place again when fonts load
+  useEffect(() => {
+    if (!cinematicEnabled || typeof document === 'undefined' || !document.fonts) return undefined;
+    const onFonts = () => { invalidateAppPlacement(); appRunRef.current?.(); };
+    let live = true;
+    try { document.fonts.addEventListener('loadingdone', onFonts); } catch { /* old browser */ }
+    document.fonts.ready.then(() => { if (live) onFonts(); }).catch(() => {});
+    return () => {
+      live = false;
+      try { document.fonts.removeEventListener('loadingdone', onFonts); } catch { /* old browser */ }
+    };
+  }, []);
+  // (APP Precision repair 2) the HUD's measured sizes (--felt-h, --hud-top-h
+  // ...) land on the page root after this table rendered, without a render:
+  // they move the pot and the board, so place again (once per frame; a run
+  // with nothing changed stops early)
+  useEffect(() => {
+    if (!cinematicEnabled || typeof MutationObserver === 'undefined' || typeof document === 'undefined') return undefined;
+    let raf = 0;
+    const mo = new MutationObserver(() => {
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; appRunRef.current?.(); });
+    });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    return () => { mo.disconnect(); if (raf) cancelAnimationFrame(raf); };
+  }, []);
+  // the hero's nameplate may use the width between the lower side seats
+  const appHeroMax = appGeo?.heroMax ?? null;
+  useEffect(() => {
+    if (!cinematicEnabled) return undefined;
+    const root = document.documentElement;
+    if (appHeroMax != null) {
+      root.style.setProperty('--app-hero-max', `${appHeroMax}px`);
+      root.classList.add('app-hero-fit');
+    } else {
+      root.style.removeProperty('--app-hero-max');
+      root.classList.remove('app-hero-fit');
+    }
+    return undefined;
+  }, [appHeroMax]);
+  useEffect(() => () => {
+    if (!cinematicEnabled) return;
+    const root = document.documentElement;
+    root.style.removeProperty('--app-hero-max');
+    root.classList.remove('app-hero-fit', 'app-fl');
+  }, []);
+  const flyPosRef = useRef({ seatEllipse: null, yourSeat: -1, seatCap: SEAT_COUNT, appGeo: null });
+  flyPosRef.current = { seatEllipse, yourSeat, seatCap, appGeo };
   const handleBetSlide = useCallback((seatIndex) => {
     const scene = sceneRef.current;
-    const { seatEllipse: se, yourSeat: ys, seatCap: cap } = flyPosRef.current;
+    const { seatEllipse: se, yourSeat: ys, seatCap: cap, appGeo: geo } = flyPosRef.current;
     if (!scene || !se) return;
     const sr = scene.getBoundingClientRect();
     if (!sr.width || !sr.height) return;
     // Identical rotation + ellipse math as the seat map (kept in lock-step).
     const heroAngle = ys >= 0 ? SEAT_ANGLES[ys] : Math.PI / 2;
     const angle = SEAT_ANGLES[seatIndex] + (Math.PI / 2 - heroAngle);
-    const precision = cap === SEAT_COUNT ? precisionSeatAnchor(seatIndex, ys, se) : null;
-    const seatLeft = precision?.[0] ?? (se.cx + Math.cos(angle) * se.xR) * 100;
-    const seatTop  = precision?.[1] ?? (se.cy + Math.sin(angle) * se.yR) * 100;
+    // APP Precision: the same slot the seat map drew (portrait phones)
+    const spot = appSpotFor(seatIndex, ys, cap, geo);
+    const seatLeft = spot ? spot.left : (se.cx + Math.cos(angle) * se.xR) * 100;
+    const seatTop  = spot ? spot.top : (se.cy + Math.sin(angle) * se.yR) * 100;
     // Target = felt centre (se.cx/se.cy) — the same measured point seats orbit.
+    // APP Precision: there the pot pile sits above the board (appGeo.potY).
+    const targetTop = spot ? (geo.potY / geo.H) * 100 : se.cy * 100;
     const dx = (se.cx * 100 - seatLeft) / 100 * sr.width;
-    const dy = (se.cy * 100 - seatTop)  / 100 * sr.height;
+    const dy = (targetTop - seatTop)  / 100 * sr.height;
     const id = flyerIdRef.current++;
     setChipFlyers(f => [...f, { id, left: seatLeft, top: seatTop, dx, dy }]);
     setTimeout(() => setChipFlyers(f => f.filter(x => x.id !== id)), 650);
@@ -1082,7 +1220,18 @@ export default function PokerTable2D() {
   }, [pendingMove, gameState?.tableId]);
 
   return (
-    <div className={`table2d-scene${cinematicEnabled ? ' cinematic-table' : ''}`} ref={sceneRef}>
+    <div
+      className={`table2d-scene${cinematicEnabled ? ' cinematic-table' : ''}${appGeo ? ` app-seat-layout${appGeo.short ? ' app-seat-short' : ''}` : ''}`}
+      ref={sceneRef}
+      style={appGeo ? {
+        '--app-av': `${appGeo.av}px`,
+        '--app-pw': `${appGeo.pw}px`,
+        '--app-pmax': `${appGeo.pmax}px`,
+        // the hero's corner the seats keep clear of (package 3 sizes him to it)
+        '--app-hz-w': `${Math.round(appGeo.hz.w)}px`,
+        '--app-hz-h': `${Math.round(appGeo.hz.h)}px`,
+      } : undefined}
+    >
       {/* Dark background */}
       <div className="table2d-bg" />
       {/* Atmosphere: overhead light shaft + drifting motes (decorative) */}
@@ -1248,17 +1397,19 @@ export default function PokerTable2D() {
         const seat = seats[i];
         const seatName = seat?.playerName || seat?.name || '';
         // Use measured ellipse if available, otherwise fall back to % heuristic
-        const precision = seatCap === SEAT_COUNT ? precisionSeatAnchor(i, yourSeat, seatEllipse) : null;
-        const leftPct = precision?.[0] ?? (seatEllipse
+        // (APP Precision, portrait phone: the skin's slot for this seat)
+        const spot = appSpotFor(i, yourSeat, seatCap, appGeo);
+        const leftPct = spot ? spot.left : (seatEllipse
           ? (seatEllipse.cx + x * seatEllipse.xR) * 100
           : 50 + x * 44);
-        const topPct = precision?.[1] ?? (seatEllipse
+        const topPct = spot ? spot.top : (seatEllipse
           ? (seatEllipse.cy + y * seatEllipse.yR) * 100
           : 50 + y * 28);
         // R2 (TABLEUI-9) — a SIDE seat's bet chips go toward the felt (left of a
         // right-hand seat, right of a left-hand one); stacked above it they
-        // covered the nameplate of the seat above.
-        const betSide = Math.abs(y) <= 0.6 ? (x > 0 ? 'left' : 'right') : null;
+        // covered the nameplate of the seat above. (APP Precision slots place
+        // the bet under the plate themselves: --app-bet-x.)
+        const betSide = spot ? null : (Math.abs(y) <= 0.6 ? (x > 0 ? 'left' : 'right') : null);
         const isTournamentTbl =
           gameState?.isTournament === true ||
           gameState?.tournamentId != null ||
@@ -1273,10 +1424,18 @@ export default function PokerTable2D() {
                server's draw clock every seat draws at once: no "to act" ring
                (it was the closer's stale betting clock running out). */
             isActive={activeSeat === i && !(gameState?.isDrawPhase && gameState?.drawStartedAt > 0)}
-            style={{
+            style={spot ? {
+              left: `${leftPct}%`,
+              top:  `${topPct}%`,
+              '--app-bet-x': `${spot.betX}px`,
+              '--app-cards-x': spot.cardsX,
+              '--app-d-x': spot.dX,
+              '--app-d-y': spot.dY,
+            } : {
               left: `${leftPct}%`,
               top:  `${topPct}%`,
             }}
+            appSlot={spot}
             dealerButtonSeat={dealerSeat}
             occupiedSeats={occupiedSeats}
             sbSeat={blindSeats ? blindSeats.sb : null}

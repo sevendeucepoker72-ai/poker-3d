@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, Suspense, lazy } from 'react';
 import { createPortal } from 'react-dom';
 import { useGameStore } from '../../store/gameStore';
 import { useTableStore, SIT_OUT_PREF_KEY } from '../../store/tableStore';
@@ -97,6 +97,10 @@ import '../scene/CinematicSkin.css';
 // its layout layer; both act only under the cinematic classes.
 import { AppStatStrip, AppTopExtras, AppTicker } from './AppPrecisionTop';
 import '../scene/AppPrecision.css';
+// APP Precision package 2 repair: the table re-measures its seats and places
+// its loose labels after the HUD changes (the hero's row, the outs counter).
+import { appLayoutPing } from '../scene/appPlacement';
+import { TABLE_GEOMETRY_EVENT } from './useTableGeometry';
 
 import OverlayBoundary from '../ui/OverlayBoundary';
 
@@ -250,6 +254,18 @@ export default function GameHUD() {
   // R2 (TABLEUI-14) — the tab bar shows only with 2+ live seats; with one the
   // HUD no longer reserves its 36px band.
   const liveTableCount = useTableStore((s) => liveTableIds(s.activeTables).length);
+  // APP Precision repair: the tab bar moves the top bar down without resizing
+  // it (no ResizeObserver fires), so the skin asks for a fresh measurement of
+  // its bottom edge (the seats would sit under it); and after each render the
+  // table re-measures the hero's row and re-places the loose labels.
+  const hasTabBar = liveTableCount >= 2;
+  useEffect(() => {
+    if (!cinematicEnabled) return;
+    try { window.dispatchEvent(new Event(TABLE_GEOMETRY_EVENT)); } catch { /* ignore */ }
+  }, [hasTabBar]);
+  useLayoutEffect(() => {
+    if (cinematicEnabled) appLayoutPing();
+  });
 
   const { setScreen, playerName } = useGameStore(
     useShallow((s) => ({ setScreen: s.setScreen, playerName: s.playerName }))

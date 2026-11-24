@@ -1486,3 +1486,26 @@ room-window.webp
 room-sky.webp
 app-chop-in-panel
 app-info__item--avg
+# Package 2, the seats and the table centre: the portrait seat slots (appSeatLayout.js on the scene
+# as app-seat-layout), the round seat avatar (photo / picked emoji / monogram, a letter badge next to
+# a photo), glass nameplates with the stack tiers, open seats (person icon, a "+" only where this
+# viewer can sit or move, OPEN pill), bet pills under the plates, the chip pile over the gold POT
+# plate, the big board cards and the hexagon texture badge.
+app-seat-layout
+app-seat-mono
+app-seat-letter
+seat-pod--app-can-sit
+app-stack--deep
+# Package 2 repair: the side columns stacked from the measured pods and the hero's row (appPlacement.js),
+# the loose labels (seat bets, WINNER tags, the hero's bet and dealer button, the outs counter, the
+# Split Pot banner) each placed on a free spot (data-app-fl), the hero's nameplate kept between the
+# lower side seats (app-hero-fit).
+data-app-fl
+app-hero-fit
+# Package 2 repair 2: a WINNER tag narrowed or made compact (WINNER and the amount) where a small
+# phone has no room for the full tag (data-app-fw, data-app-compact), and the pot's chip pile and
+# gold frame as right-sized webp.
+data-app-fw
+data-app-compact
+chip-stack.webp
+pot-frame.webp
