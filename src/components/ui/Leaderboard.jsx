@@ -6,6 +6,7 @@ import { SEASON_REWARDS, SEASON_BADGES } from '../../utils/economyCatalog';
 import { nextDenverMonthStartMs, formatCountdown, denverParts, toEpochMs } from '../../utils/denverTime';
 import { profileTargetOf } from '../../utils/profileTarget';
 import './Leaderboard.css';
+import { cinematicEnabled } from '../scene/cinematicSkin';
 
 // 2026-10-11 (.online R2 — C9 / APPUI-17 / APPUI-50 / addendum).
 // - Every period tab says what it ranks. The server ranks daily / weekly /
@@ -120,7 +121,7 @@ export default function Leaderboard({ onClose, onOpenProfile }) {
   }, [meta.seasonEndsAt, meta.seasonName, now]);
 
   return createPortal(
-    <div className="leaderboard-overlay" onClick={onClose}>
+    <div className={`leaderboard-overlay${cinematicEnabled ? ' reference-leaderboard' : ''}`} onClick={onClose}>
       <div className="leaderboard-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Leaderboard">
         <div className="leaderboard-header">
           <div className="leaderboard-title">Leaderboard</div>

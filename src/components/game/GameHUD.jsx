@@ -91,6 +91,8 @@ import './GameHUD.css';
 // R2 (TABLEUI-8/9) — the phone layout layer; imported LAST so it is the final
 // layer of the table cascade (it reads useTableGeometry's measured CSS vars).
 import './TableLayout.css';
+import { cinematicEnabled, cinematicAsset } from '../scene/cinematicSkin';
+import '../scene/CinematicSkin.css';
 
 import OverlayBoundary from '../ui/OverlayBoundary';
 
@@ -3618,7 +3620,7 @@ export default function GameHUD() {
   };
 
   return (
-    <div className={`hud ${liveTableCount >= 2 ? 'hud--tabs' : 'hud--no-tabs'}`}>
+    <div className={`hud ${liveTableCount >= 2 ? 'hud--tabs' : 'hud--no-tabs'}${cinematicEnabled ? ' cinematic-hud' : ''}`}>
       {/* 2026-10-10 (S2) — leaving a LIVE tournament seat keeps it in play. */}
       {tournamentLeaveVia && (
         <TournamentLeaveDialog
@@ -3681,6 +3683,7 @@ export default function GameHUD() {
 
       {/* Top bar */}
       <div className="hud-top">
+        {cinematicEnabled && <img className="cinematic-brand" src={cinematicAsset('exact/reference-brand.webp')} alt="American Pub Poker" draggable={false} />}
         <button className="hud-back" onClick={handleBackToLobby}>
           Back to Lobby
         </button>
@@ -3706,7 +3709,15 @@ export default function GameHUD() {
             {trainingEquityPct !== null && <span className="hud-training-badge__eq">{trainingEquityPct}%</span>}
           </button>
         )}
-        <div className="hud-center-info">
+        <div className={`hud-center-info${(cinematicEnabled && !dcTruthful && variantName === "Texas Hold'em" && !anteAmount && !handLevel.next && !showTournamentClock && !(gameState?.blindLevel && gameState?.nextBlindIn > 0) && (gameState?.pots?.length ?? 0) < 2) ? ' precision-stat-ready' : ''}`}>
+          {(cinematicEnabled && !dcTruthful && variantName === "Texas Hold'em" && !anteAmount && !handLevel.next && !showTournamentClock && !(gameState?.blindLevel && gameState?.nextBlindIn > 0) && (gameState?.pots?.length ?? 0) < 2) && (
+            <div className={`precision-stat-strip${!helpToolsOff && pot > 0 && myChips > 0 && phase !== 'WaitingForPlayers' ? '' : ' precision-stat-strip--no-spr'}`}>
+              <div className="precision-stat precision-stat--pot"><small>Total pot</small><strong>{pot.toLocaleString()}</strong></div>
+              <div className="precision-stat"><small>Blinds</small><strong>{(handLevel.sb || 25).toLocaleString()} / {bigBlind.toLocaleString()}</strong></div>
+              {!helpToolsOff && pot > 0 && myChips > 0 && phase !== 'WaitingForPlayers' && <div className="precision-stat precision-stat--spr"><small>SPR</small><strong>{(myChips / pot).toFixed(1)}</strong></div>}
+              <div className="precision-stat precision-stat--street"><small>Street</small><strong>{phaseLabel}</strong></div>
+            </div>
+          )}
           <div className="hud-pot">
             <span className="hud-pot-dot">●</span> Pot: <span className={potFlashing ? 'hud-pot-amount--flash' : ''}>{pot.toLocaleString()}</span>
             {anteAmount > 0 && (

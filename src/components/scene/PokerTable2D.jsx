@@ -37,6 +37,8 @@ import { rowNotDealtIn } from '../../utils/handLog';
 import { handLevelOf } from '../../utils/tournamentClock';
 import './PokerTable2D.css';
 import './TableCosmetics.css';
+import { cinematicEnabled, cinematicAsset } from './cinematicSkin';
+import './CinematicSkin.css';
 
 /* ── Player-notes callback (App.jsx sets this) ─────────────── */
 let _onOpenPlayerNotes = null;
@@ -143,6 +145,19 @@ const SEAT_ANGLES = Array.from({ length: SEAT_COUNT }, (_, i) =>
 );
 // Rail box-shadow extends 22px beyond felt edge; add ~10px clearance = 32px
 const RAIL_CLEARANCE = 32;
+
+// Reference layout in normalized scene coordinates. Nine real seats must remain
+// selectable; use an additional upper-left station rather than dropping a seat.
+const PRECISION_PORTRAIT_SEATS = [
+  [50, 73.4], [13, 55.8], [10.5, 43.1], [17, 33.0], [34, 26.5],
+  [56.5, 27.9], [85.3, 33.6], [89, 44.1], [87.3, 56.4],
+];
+function precisionSeatAnchor(seatIndex, heroSeat, scene) {
+  if (!scene?.referencePortrait || heroSeat < 0 || SEAT_COUNT !== 9) return null;
+  const relative = (seatIndex - heroSeat + SEAT_COUNT) % SEAT_COUNT;
+  return PRECISION_PORTRAIT_SEATS[relative];
+}
+
 
 /* ============================================================
    Card2D — playing card with deal animation: ./Card2D.jsx (2026-11-02)
@@ -856,12 +871,14 @@ export default function PokerTable2D() {
       const fr = felt.getBoundingClientRect();
       if (sr.width === 0 || sr.height === 0) return;
       // Ellipse radii: half-felt plus rail clearance, expressed as fraction of scene
-      const xR = (fr.width  / 2 + RAIL_CLEARANCE) / sr.width;
-      const yR = (fr.height / 2 + RAIL_CLEARANCE) / sr.height;
+      const referencePortrait = cinematicEnabled && sr.width <= 600 && sr.height / sr.width >= 5 / 3 && sr.height / sr.width <= 3;
+      const clearance = referencePortrait ? Math.min(RAIL_CLEARANCE, sr.width * .035) : RAIL_CLEARANCE;
+      const xR = (fr.width  / 2 + clearance) / sr.width;
+      const yR = (fr.height / 2 + clearance) / sr.height;
       // Felt center relative to scene
       const cx = (fr.left - sr.left + fr.width  / 2) / sr.width;
       const cy = (fr.top  - sr.top  + fr.height / 2) / sr.height;
-      setSeatEllipse({ xR, yR, cx, cy });
+      setSeatEllipse({ xR, yR, cx, cy, referencePortrait });
       // R2 (TABLEUI-8/9) — GameHUD's useTableGeometry re-reads the felt rect
       // (the board, hero cards and pot label are placed from it).
       try { window.dispatchEvent(new Event(TABLE_GEOMETRY_EVENT)); } catch { /* ignore */ }
@@ -884,19 +901,20 @@ export default function PokerTable2D() {
      affects feltRef's rect or the seat layout. */
   const [chipFlyers, setChipFlyers] = useState([]);
   const flyerIdRef = useRef(0);
-  const flyPosRef = useRef({ seatEllipse: null, yourSeat: -1 });
-  flyPosRef.current = { seatEllipse, yourSeat };
+  const flyPosRef = useRef({ seatEllipse: null, yourSeat: -1, seatCap: SEAT_COUNT });
+  flyPosRef.current = { seatEllipse, yourSeat, seatCap };
   const handleBetSlide = useCallback((seatIndex) => {
     const scene = sceneRef.current;
-    const { seatEllipse: se, yourSeat: ys } = flyPosRef.current;
+    const { seatEllipse: se, yourSeat: ys, seatCap: cap } = flyPosRef.current;
     if (!scene || !se) return;
     const sr = scene.getBoundingClientRect();
     if (!sr.width || !sr.height) return;
     // Identical rotation + ellipse math as the seat map (kept in lock-step).
     const heroAngle = ys >= 0 ? SEAT_ANGLES[ys] : Math.PI / 2;
     const angle = SEAT_ANGLES[seatIndex] + (Math.PI / 2 - heroAngle);
-    const seatLeft = (se.cx + Math.cos(angle) * se.xR) * 100;
-    const seatTop  = (se.cy + Math.sin(angle) * se.yR) * 100;
+    const precision = cap === SEAT_COUNT ? precisionSeatAnchor(seatIndex, ys, se) : null;
+    const seatLeft = precision?.[0] ?? (se.cx + Math.cos(angle) * se.xR) * 100;
+    const seatTop  = precision?.[1] ?? (se.cy + Math.sin(angle) * se.yR) * 100;
     // Target = felt centre (se.cx/se.cy) — the same measured point seats orbit.
     const dx = (se.cx * 100 - seatLeft) / 100 * sr.width;
     const dy = (se.cy * 100 - seatTop)  / 100 * sr.height;
@@ -1062,7 +1080,7 @@ export default function PokerTable2D() {
   }, [pendingMove, gameState?.tableId]);
 
   return (
-    <div className="table2d-scene" ref={sceneRef}>
+    <div className={`table2d-scene${cinematicEnabled ? ' cinematic-table' : ''}`} ref={sceneRef}>
       {/* Dark background */}
       <div className="table2d-bg" />
       {/* Atmosphere: overhead light shaft + drifting motes (decorative) */}
@@ -1083,6 +1101,7 @@ export default function PokerTable2D() {
       <div
         className="table2d-felt"
         ref={feltRef}
+        data-cinematic-felt={shopFelt && feltPickedFor !== myTheme ? 'custom' : themeKey}
         style={{ '--felt-bg': feltBg }}
       >
        <div className="table2d-felt__surface">
@@ -1098,7 +1117,7 @@ export default function PokerTable2D() {
         {/* Logo watermark — embossed gold medallion */}
         <div className="table2d-felt__logo">
           <img
-            src={`${import.meta.env.BASE_URL}logo.png`}
+            src={cinematicEnabled ? cinematicAsset('app-logo.webp') : `${import.meta.env.BASE_URL}logo.png`}
             alt="American Pub Poker"
             className="table2d-logo-img"
             onError={(e) => {
@@ -1227,12 +1246,13 @@ export default function PokerTable2D() {
         const seat = seats[i];
         const seatName = seat?.playerName || seat?.name || '';
         // Use measured ellipse if available, otherwise fall back to % heuristic
-        const leftPct = seatEllipse
+        const precision = seatCap === SEAT_COUNT ? precisionSeatAnchor(i, yourSeat, seatEllipse) : null;
+        const leftPct = precision?.[0] ?? (seatEllipse
           ? (seatEllipse.cx + x * seatEllipse.xR) * 100
-          : 50 + x * 44;
-        const topPct = seatEllipse
+          : 50 + x * 44);
+        const topPct = precision?.[1] ?? (seatEllipse
           ? (seatEllipse.cy + y * seatEllipse.yR) * 100
-          : 50 + y * 28;
+          : 50 + y * 28);
         // R2 (TABLEUI-9) — a SIDE seat's bet chips go toward the felt (left of a
         // right-hand seat, right of a left-hand one); stacked above it they
         // covered the nameplate of the seat above.
