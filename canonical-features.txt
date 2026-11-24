@@ -1509,3 +1509,23 @@ data-app-fw
 data-app-compact
 chip-stack.webp
 pot-frame.webp
+# Package 3, the hero and the action bar: the big round avatar (photo / emoji / monogram, the equipped
+# frame colours its ring) hanging off the glass plate, the gold title tab, the split stack row (gold
+# chips | N BB), the two-row bar (amount pill, cyan slider, four presets incl. 3x BB) over FOLD, CALL,
+# RAISE (up arrow + amount), ALL-IN; the queue buttons, waiting line, Deal now, straddle, show / muck,
+# rabbit and the hand review header in the same glass.
+app-hero__av-wrap
+app-hero__chips
+app-raise-amt
+app-wait-pill
+--app-raise-f
+# Package 3 repair 1: the waiting row (its line gives way on a 260 px screen so Deal now stays in
+# sight), the draw row and the spectator row in the bar's glass; the plate and bar keep the old
+# table's sizes on landscape phones and wide screens.
+app-wait-row
+app-draw-row
+app-spec-row
+# Package 3 repair 2: the mockup's mountain range under the buttons (a see-through sprite cut from
+# its foot art); the amount pill stays on every phone width (compact at 360 px, over the slider at
+# 320 px, on its own line at 300 px and narrower).
+mountain-glow.webp

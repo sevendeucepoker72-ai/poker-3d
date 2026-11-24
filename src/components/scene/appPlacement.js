@@ -31,7 +31,9 @@ const rnd = (v) => Math.round(v);
 // ── 1. measuring ─────────────────────────────────────────────────────────
 const POD_PARTS = ':scope > .seat-pod__avatar-wrap, :scope > .seat-pod__nameplate, :scope > .seat-pod__label, '
   + ':scope > .seat-pod__sit-btn, :scope > .seat-pod__cards, :scope > .seat-pod__owed-badge';
+// (APP Precision package 3: the hero's big avatar hangs left of his plate)
 const HERO_ROW = '.hud.cinematic-hud .hud-cards.hud-cards-floating, .hud.cinematic-hud .hud-nameplate-me, '
+  + '.hud.cinematic-hud .hud-nameplate-me .app-hero__av-wrap, '
   + '.hud.cinematic-hud .sit-out-quick-btn--active, .hud.cinematic-hud .app-spectator-banner';
 const NOTICES = '.afk-warning-banner, .afk-away-banner, .bomb-pot-banner, .missed-blinds-panel, .mucked-hands-container';
 
@@ -332,7 +334,7 @@ export function placeAppFloaters() {
     // cards, where it could not be seen)
     hud.querySelectorAll('.hud-community .community-card').forEach(add(4));
     hud.querySelectorAll('.hud-cards.hud-cards-floating').forEach(add(4));
-    hud.querySelectorAll('.hud-nameplate-me, .hud-nameplate-me > .np-title, .hud-nameplate-me > .np-vip, .sit-out-quick-btn--active, .app-spectator-banner').forEach(add(4));
+    hud.querySelectorAll('.hud-nameplate-me, .hud-nameplate-me > .np-title, .hud-nameplate-me > .np-vip, .hud-nameplate-me > .app-hero__av-wrap, .hud-actions-inner .action-btn.straddle, .sit-out-quick-btn--active, .app-spectator-banner').forEach(add(4));
   }
   const fcx = F.x + F.w / 2;
   const boardEls = hud ? Array.from(hud.querySelectorAll('.hud-community .community-card')).filter(shown) : [];
@@ -359,6 +361,9 @@ export function placeAppFloaters() {
     if (!shown(pill)) {
       const got = pick(br.w, br.h, [
         nat,
+        // (APP Precision package 3 repair 1) a little higher: still under
+        // the board, clear of the hero's taller cards on a small phone
+        C && board && C.y - 3 - br.h < nat.y ? { x: nat.x, y: Math.max(board.y + board.h + 2, C.y - 3 - br.h) } : null,
         C ? { x: C.x - 3 - br.w, y: C.y + 2 } : null,
         C ? { x: C.x + C.w + 3, y: C.y + 2 } : null,
         C ? { x: C.x - 3 - br.w, y: C.y + C.h - br.h } : null,

@@ -1,0 +1,1489 @@
+/* ════════════════════════════════════════════════════════════════════════
+   APP Precision table skin (2026-11-24), package 3: the hero and the action
+   bar. Acts ONLY under the skin's class (.cinematic-hud on the HUD), which
+   exists only in a VITE_APP_CINEMATIC=1 build. Rules start with `html` and
+   two or more classes so they win over the older table layers.
+   - the hero: two big tilted hole cards, the big avatar in a gold ring (the
+     equipped frame colours it), the gold title tab, the glass plate with a
+     blue LED edge (italic serif name, gold stack | N BB);
+   - the bar: one glass panel; a bet row (gold amount pill, cyan slider with
+     a chrome thumb, glass presets incl. 3x BB) over four glass buttons in the
+     mockup's order FOLD, CALL, RAISE, ALL-IN; the queue buttons, the waiting
+     line, Deal now, straddle, show / muck and rabbit hunt in the same glass;
+     a glowing mountain ridge under the panel.
+   Looks apply at every size; the places (two-row bar, hero cluster) apply to
+   a phone held upright. Phones: no backdrop-filter, no filter, no animated
+   shadows.
+   ════════════════════════════════════════════════════════════════════════ */
+
+html .hud.cinematic-hud {
+  --app-font: 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+  --app-gold-text: linear-gradient(180deg, #fff4c2 0%, #f2cf6b 55%, #d2a649 100%);
+  --app-chamfer: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+  --app-chamfer-in: polygon(7px 0, calc(100% - 7px) 0, 100% 7px, 100% calc(100% - 7px), calc(100% - 7px) 100%, 7px 100%, 0 calc(100% - 7px), 0 7px);
+  /* sizes outside a phone held upright (package 5 refines wide screens):
+     the plate keeps the old table's box there (repair 1: the two-line plate
+     and bigger avatar pushed the cards onto the board on landscape phones) */
+  --app-hav: 28px;
+  --app-av-ring: 2px;
+  --app-tab-shift: 0px;
+  --app-av-in: 10px;
+  --app-verb: 17px;
+}
+/* a landscape phone: the one-line plate of the old table (24.7 px high) */
+@media (orientation: landscape) and (max-height: 500px) {
+  html .hud.cinematic-hud { --app-hav: 18px; --app-av-ring: 1.5px; }
+}
+
+/* ── 1. Hero hole cards: big white faces (the board's look) ──────────────── */
+html .hud.cinematic-hud .hud-cards .card-peek-front {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f6fa 38%, #e6e8ee 70%, #c8c9d5 100%) !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 0 0 1px rgba(255, 214, 150, 0.55), 0 0 10px rgba(255, 255, 255, 0.2), 0 4px 10px rgba(0, 0, 0, 0.6) !important;
+  font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+}
+html .hud.cinematic-hud .hud-cards.hud-cards-active .card-peek-front {
+  box-shadow: 0 0 0 1px rgba(255, 224, 160, 0.8), 0 0 14px rgba(255, 214, 120, 0.35), 0 4px 10px rgba(0, 0, 0, 0.6) !important;
+}
+/* a card of the winning hand keeps its gold edge */
+html .hud.cinematic-hud .hud-cards .card-peek.card-winner-glow .card-peek-front {
+  box-shadow: 0 0 0 2px #ffd24a, 0 0 14px rgba(255, 210, 74, 0.55), 0 4px 10px rgba(0, 0, 0, 0.6) !important;
+}
+html .hud.cinematic-hud .hud-cards .card-peek-front .card-rank {
+  font-family: 'Playfair Display', Georgia, 'Times New Roman', serif !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.04em;
+}
+html .hud.cinematic-hud .hud-cards .card-peek-back { border-radius: 6px !important; }
+
+/* ── 2. Hero plate: glass, blue LED edge, the big avatar on its left end ── */
+html .hud.cinematic-hud .hud-nameplate-me {
+  box-sizing: border-box;
+  display: flex !important;
+  align-items: center !important;
+  /* (gap and padding: the old table's outside a phone held upright; section 8) */
+  border: 1px solid transparent !important;
+  border-radius: 10px 16px 16px 10px !important;
+  background:
+    linear-gradient(180deg, rgba(184, 241, 253, 0.10) 0%, transparent 38%) padding-box,
+    linear-gradient(180deg, #02214f 0%, #011535 55%, #000f29 100%) padding-box,
+    linear-gradient(180deg, #00cafb 0%, #0078c6 100%) border-box !important;
+  box-shadow: 0 0 12px rgba(0, 150, 255, 0.6), 0 6px 14px rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  overflow: visible !important;
+  white-space: nowrap;
+  filter: none !important;
+}
+/* my turn: the LED edge brightens (static, no pulse) */
+html .hud.cinematic-hud .hud-nameplate-me.hud-nameplate-me--active {
+  background:
+    linear-gradient(180deg, rgba(184, 241, 253, 0.14) 0%, transparent 38%) padding-box,
+    linear-gradient(180deg, #032657 0%, #011838 55%, #00112d 100%) padding-box,
+    linear-gradient(180deg, #8ff0ff 0%, #00a8f0 100%) border-box !important;
+  box-shadow: 0 0 16px rgba(0, 190, 255, 0.85), 0 6px 14px rgba(0, 0, 0, 0.6) !important;
+}
+/* the avatar: inside the plate's left end on wide screens; on a phone held
+   upright it hangs over the plate's left end (section 8) */
+html .hud.cinematic-hud .hud-nameplate-me > .app-hero__av-wrap {
+  position: relative;
+  flex: none;
+  width: var(--app-hav);
+  height: var(--app-hav);
+  z-index: 3;
+  pointer-events: none;
+}
+html .hud.cinematic-hud .hud-nameplate-me .app-hero__av-wrap > .hud-np-avatar {
+  position: relative;
+  box-sizing: border-box;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50% !important;
+  border: var(--app-av-ring) solid transparent !important;
+  background:
+    radial-gradient(circle at 50% 30%, #1f5596 0%, #0b285a 58%, #04112b 100%) padding-box,
+    linear-gradient(180deg, #fff4c2 0%, #f2cf6b 45%, #b8862b 100%) border-box !important;
+  box-shadow: 0 0 0 1px rgba(60, 36, 4, 0.7), 0 0 14px rgba(0, 140, 255, 0.55), 0 4px 10px rgba(0, 0, 0, 0.6) !important;
+  font-size: max(11px, calc(var(--app-hav) * 0.46)) !important;
+  color: #f2f6ff;
+}
+/* an equipped frame colours the ring (mythic: violet + gold, VIP gold ...) */
+html .hud.cinematic-hud .hud-nameplate-me.np-frame .app-hero__av-wrap > .hud-np-avatar {
+  background:
+    radial-gradient(circle at 50% 30%, #1f5596 0%, #0b285a 58%, #04112b 100%) padding-box,
+    linear-gradient(180deg, #ffffff -40%, var(--np-c, #f2cf6b) 40%, var(--np-c, #f2cf6b) 100%) border-box !important;
+  box-shadow: 0 0 0 1px rgba(10, 16, 30, 0.8), 0 0 12px var(--np-glow, rgba(0, 140, 255, 0.55)), 0 4px 10px rgba(0, 0, 0, 0.6) !important;
+}
+html .hud.cinematic-hud .hud-nameplate-me.np-frame--mythic .app-hero__av-wrap > .hud-np-avatar {
+  background:
+    radial-gradient(circle at 50% 30%, #1f5596 0%, #0b285a 58%, #04112b 100%) padding-box,
+    conic-gradient(from 210deg, #f2cf6b, #a78bfa 25%, #f2cf6b 50%, #a78bfa 75%, #f2cf6b) border-box !important;
+}
+html .hud.cinematic-hud .hud-nameplate-me .app-hero__av .seat-pod__avatar-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+html .hud.cinematic-hud .hud-nameplate-me .app-hero__av .app-seat-mono {
+  font: 800 max(11px, calc(var(--app-hav) * 0.48)) / 1 'Playfair Display', Georgia, 'Times New Roman', serif;
+  color: #f2f6ff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+html .hud.cinematic-hud .hud-nameplate-me .app-hero__av .app-seat-emoji { font-size: max(11px, calc(var(--app-hav) * 0.56)); line-height: 1; }
+/* the letter badge next to a photo (the mockup's J): only beside the big
+   avatar of a phone held upright (section 8); a small avatar has no room */
+html .hud.cinematic-hud .hud-nameplate-me .app-hero__av-wrap > .app-seat-letter {
+  display: none;
+  position: absolute;
+  left: -3px;
+  bottom: 2px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #08223d;
+  border: 1.5px solid #cfe3f5;
+  box-shadow: 0 0 6px rgba(0, 140, 255, 0.6);
+  font: 800 12px/19px var(--app-font);
+  text-align: center;
+  color: #fff;
+}
+/* the title (God Mode): a gold tab on the plate's top edge, over the cards */
+html .hud.cinematic-hud .hud-nameplate-me > .np-title {
+  position: absolute !important;
+  /* (the old table's plate is low: the tab stays clear of the name) */
+  top: -16px !important;
+  left: calc(50% - var(--app-tab-shift)) !important;
+  right: auto !important;
+  transform: translateX(-50%);
+  z-index: 4;
+  box-sizing: border-box;
+  max-width: calc(100% - 8px) !important;
+  height: 18px;
+  padding: 0 13px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: linear-gradient(180deg, #feeca6 0%, #e2b664 55%, #d2a649 100%) !important;
+  clip-path: polygon(7px 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 7px 100%, 0 50%);
+  font: italic 900 11px/18px var(--app-font) !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase;
+  color: #2a1c04 !important;
+  text-shadow: 0 1px 0 rgba(255, 246, 210, 0.5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* a non-gold title: a sapphire tab */
+html .hud.cinematic-hud .hud-nameplate-me > .np-title:not(.np-title--gold) {
+  background: linear-gradient(180deg, #2c58b0 0%, #1e3f8a 55%, #142c66 100%) !important;
+  color: #cfe3ff !important;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+html .hud.cinematic-hud .hud-nameplate-me > .np-vip {
+  top: -8px !important;
+  right: 10px !important;
+  z-index: 4;
+  padding: 0 5px !important;
+  font-size: 11px !important;
+  line-height: 14px !important;
+}
+/* the turn clock ring stays on the plate's edge, under the avatar */
+html .hud.cinematic-hud .hud-nameplate-me > .hud-nameplate-me__timer-ring { z-index: 2; }
+/* the name and the stack row: the old table's sizes and order (one line on
+   a landscape phone, name over stack on wide screens); a phone held upright
+   puts the name over a hairline (section 8) */
+html .hud.cinematic-hud .hud-nameplate-me .hud-np-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+  z-index: 3;
+}
+html .hud.cinematic-hud .hud-nameplate-me .hud-np-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 2px 0 0;
+  font-family: 'Playfair Display', Georgia, 'Times New Roman', serif !important;
+  font-style: italic !important;
+  font-weight: 800 !important;
+  line-height: 1.15 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #eef1f6 55%, #c9ced8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none !important;
+}
+html .hud.cinematic-hud .hud-nameplate-me .hud-np-name .np-badge {
+  -webkit-text-fill-color: initial;
+  color: #fff;
+  font-size: 0.8em;
+}
+html .hud.cinematic-hud .hud-nameplate-me .hud-np-chips.app-hero__chips {
+  display: flex !important;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-family: var(--app-font) !important;
+  font-style: italic !important;
+  font-weight: 800 !important;
+  line-height: 1.15 !important;
+  font-variant-numeric: tabular-nums;
+  color: #f2cf6b !important;
+  white-space: nowrap !important;
+}
+html .hud.cinematic-hud .app-hero__chip {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #f7d774 0 33%, #a8731f 34% 41%, transparent 42%),
+    repeating-conic-gradient(#fff1bf 0deg 16deg, #c38d2c 16deg 45deg);
+  box-shadow: inset 0 0 0 1px rgba(90, 56, 8, 0.8), 0 2px 0 #8a5a12, 0 3px 0 #f2cf6b, 0 3px 3px rgba(0, 0, 0, 0.6);
+}
+html .hud.cinematic-hud .app-hero__stack {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--app-gold-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+html .hud.cinematic-hud .app-hero__sep {
+  flex: none;
+  width: 1px;
+  height: 0.95em;
+  margin: 0 2px;
+  background: rgba(170, 196, 230, 0.55);
+}
+html .hud.cinematic-hud .app-hero__bb {
+  flex: none;
+  font-weight: 700;
+  font-size: max(11px, 0.87em);
+  color: #e4e9f3;
+}
+/* the position (SB, BTN ...) at the right end of the stack row */
+html .hud.cinematic-hud .hud-nameplate-me > .hud-np-pos {
+  flex: none;
+  margin: 0 0 0 6px !important;
+  padding: 1px 5px !important;
+  border-radius: 4px !important;
+  font: 800 11px/14px var(--app-font) !important;
+  color: #f5d76a !important;
+  background: #3a2a08 !important;
+  border: 1px solid rgba(245, 215, 106, 0.45);
+  position: relative;
+  z-index: 3;
+}
+/* a landscape phone: the one-line stack row a little tighter (the plate
+   stays as wide as the old table's, between the lower seats) */
+@media (orientation: landscape) and (max-height: 500px) {
+  html .hud.cinematic-hud .hud-nameplate-me .hud-np-chips.app-hero__chips { gap: 3px; }
+  html .hud.cinematic-hud .app-hero__chip { width: 0.9em; height: 0.9em; }
+  html .hud.cinematic-hud .app-hero__sep { margin: 0 1px; }
+}
+
+/* ── 3. The bar: one glass panel, its LED top line, the mountain glow ──── */
+html .hud.cinematic-hud .hud-bottom {
+  background: none !important;
+  /* (transparent, not removed: the bar keeps the old table's height outside
+     a phone held upright; section 8 drops it) */
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+html .hud.cinematic-hud .hud-bottom::before {
+  content: '';
+  position: absolute;
+  left: calc(8px + env(safe-area-inset-left, 0px));
+  right: calc(8px + env(safe-area-inset-right, 0px));
+  top: 0;
+  bottom: var(--app-bar-foot, calc(6px + env(safe-area-inset-bottom, 0px)));
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 16px;
+  border: 1px solid rgba(70, 140, 220, 0.75);
+  background:
+    linear-gradient(90deg, transparent 4%, #0798f6 30%, #b8f1fd 50%, #0798f6 70%, transparent 96%) top / 100% 1px no-repeat,
+    radial-gradient(ellipse 60% 40% at 50% 0%, rgba(7, 152, 246, 0.18), transparent 70%),
+    linear-gradient(180deg, rgba(4, 31, 66, 0.96) 0%, rgba(1, 19, 44, 0.97) 40%, rgba(0, 12, 30, 0.98) 100%);
+  box-shadow: inset 0 1px 0 rgba(184, 241, 253, 0.25), 0 -1px 0 rgba(7, 152, 246, 0.8), 0 -2px 14px rgba(0, 140, 255, 0.4), 0 6px 18px rgba(0, 0, 0, 0.6);
+}
+/* the glowing mountain range under the buttons (repair 2: the mockup's own
+   range, cut from its foot art into a see-through 436x40 sprite, shown at
+   up to 218x20 - it was a faint drawn ridge); a soft navy base under it
+   hides the panel's foot line, so the peaks stand in front of it */
+html .hud.cinematic-hud .hud-bottom::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: env(safe-area-inset-bottom, 0px);
+  width: clamp(150px, 50vw, 218px);
+  height: clamp(14px, 4.59vw, 20px);
+  transform: translateX(-50%);
+  z-index: -1;
+  pointer-events: none;
+  background:
+    url('/cinematic/exact/mountain-glow.webp') center bottom / 100% 100% no-repeat,
+    radial-gradient(ellipse 46% 80% at 50% 100%, rgba(0, 10, 26, 0.95) 55%, rgba(0, 10, 26, 0) 100%) center bottom / 100% 100% no-repeat;
+}
+/* my turn: the glass panel's LED edge brightens (static). The old turn
+   pulse drew a pulsing rectangle inside the glass (repair 2: it showed as a
+   line under the buttons, across the mountains); the panel carries it now */
+html .hud.cinematic-hud .hud-bottom .hud-bottom-panel {
+  box-shadow: none !important;
+  animation: none !important;
+}
+html .hud.cinematic-hud .hud-bottom.hud-bottom--my-turn::before {
+  border-color: rgba(120, 200, 255, 0.95);
+  box-shadow: inset 0 1px 0 rgba(184, 241, 253, 0.35), 0 -1px 0 rgba(7, 152, 246, 0.95), 0 -2px 18px rgba(0, 160, 255, 0.6), 0 6px 18px rgba(0, 0, 0, 0.6);
+}
+/* the old dock fill / top border on the actions box */
+html .hud.cinematic-hud .hud-bottom .hud-actions {
+  background: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+html .hud.cinematic-hud .hud-bottom .action-timer-strip { display: none !important; }
+
+/* ── 4. The bet row: amount pill, cyan slider, glass presets ─────────── */
+/* (the pill's box is the old table's outside a phone held upright: a taller
+   pill there lifted the slider under the hero's cards; section 8 sizes it) */
+html .hud.cinematic-hud .hud-bottom .raise-inline-val {
+  flex: none;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #0a1628 0%, #040b16 100%);
+  border: 0;
+  box-shadow: inset 0 0 0 1px #1a263c, inset 0 1px 0 rgba(184, 241, 253, 0.18), 0 0 8px rgba(0, 110, 255, 0.25);
+  font-family: var(--app-font) !important;
+  font-style: italic !important;
+  font-weight: 800 !important;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  background-clip: padding-box;
+  color: #f2cf6b !important;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+}
+html .hud.cinematic-hud .hud-bottom .raise-inline-slider,
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-slider {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  background:
+    linear-gradient(90deg, #01b8fc, #03e7fb) 0 50% / calc(13px + (100% - 26px) * var(--app-raise-f, 0)) 8px no-repeat,
+    linear-gradient(180deg, #4f6d97, #2f4769) 0 50% / 100% 8px no-repeat !important;
+  accent-color: #12ccff;
+  touch-action: none;
+}
+html .hud.cinematic-hud .hud-bottom .raise-inline-slider::-webkit-slider-thumb {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 50% !important;
+  border: 2px solid #d4a84f !important;
+  background:
+    radial-gradient(circle, #fafbfc 0 24%, #b7bbc4 26% 31%, transparent 33%),
+    conic-gradient(from 20deg, #f6f7f9, #8e929c 25%, #eef0f3 50%, #80848e 75%, #f6f7f9) !important;
+  box-shadow: 0 0 0 1px rgba(60, 36, 4, 0.8), 0 0 9px rgba(242, 207, 107, 0.65), 0 2px 5px rgba(0, 0, 0, 0.6) !important;
+}
+html .hud.cinematic-hud .hud-bottom .raise-inline-slider::-moz-range-thumb {
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 50% !important;
+  border: 2px solid #c9a45c !important;
+  background: radial-gradient(circle at 38% 30%, #ffffff 0%, #f2f2f4 22%, #a9acb6 55%, #747379 80%, #d9dbe2 100%) !important;
+  box-shadow: 0 0 10px rgba(242, 207, 107, 0.6), 0 2px 5px rgba(0, 0, 0, 0.6) !important;
+}
+html .hud.cinematic-hud .hud-bottom .raise-inline-slider::-moz-range-track { background: transparent; }
+html .hud.cinematic-hud .hud-bottom .raise-inline-slider:disabled { opacity: 0.4 !important; }
+html .hud.cinematic-hud .hud-bottom .ab-presets { gap: 4px !important; }
+html .hud.cinematic-hud .hud-bottom .ab-preset {
+  box-sizing: border-box;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  border-radius: 9px !important;
+  border: 1px solid #1c4065 !important;
+  background:
+    linear-gradient(90deg, transparent 12%, rgba(143, 179, 217, 0.75) 50%, transparent 88%) top / 100% 1px no-repeat,
+    linear-gradient(180deg, #0b3260 0%, #012548 45%, #011a36 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(184, 241, 253, 0.12), 0 0 8px rgba(0, 110, 255, 0.25), 0 3px 6px rgba(0, 0, 0, 0.5) !important;
+  color: #ffffff !important;
+  font: 700 15px/1 var(--app-font) !important;
+  text-transform: uppercase;
+  filter: none !important;
+  animation: none !important;
+}
+html .hud.cinematic-hud .hud-bottom .ab-preset.ab-preset--active {
+  border-color: #3fb8ff !important;
+  box-shadow: inset 0 1px 0 rgba(184, 241, 253, 0.25), 0 0 10px rgba(0, 150, 255, 0.6), 0 3px 6px rgba(0, 0, 0, 0.5) !important;
+}
+html .hud.cinematic-hud .hud-bottom .ab-preset:active { transform: translateY(1px) !important; }
+
+/* ── 5. The four buttons: chamfered glass, a rim and a gloss ──────────── */
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn {
+  --app-btn-rim: linear-gradient(180deg, #e8eef8 0%, #9fb0cc 30%, #5b6e92 70%, #a9b7cc 100%);
+  --app-btn-fill: linear-gradient(180deg, #627aa3 0%, #3c5480 42%, #273c63 75%, #1f3052 100%);
+  --app-btn-glow: rgba(140, 170, 220, 0.35);
+  position: relative !important;
+  isolation: isolate;
+  overflow: visible !important;
+  /* (box size, padding, min-width: the old table's outside a phone held
+     upright - FOLD keeps its 72 px there, clear of the rail; section 8) */
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  border: 0 !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  box-shadow: 0 0 10px var(--app-btn-glow), 0 4px 10px rgba(0, 0, 0, 0.55) !important;
+  color: #ffffff !important;
+  font: italic 900 var(--app-verb) / 1 var(--app-font) !important;
+  letter-spacing: 0.01em !important;
+  text-transform: uppercase !important;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+  white-space: nowrap;
+  filter: none !important;
+  animation: none !important;
+}
+html .hud.cinematic-hud .hud-bottom .hud-actions-inner .action-bar-flat .action-btn:is(.fold, .check, .call, .raise, .allin)::before,
+html .hud.cinematic-hud .hud-bottom .hud-actions-inner .action-bar-flat .action-btn:is(.fold, .check, .call, .raise, .allin)::after {
+  content: '' !important;
+  display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  transform: none !important;
+  animation: none !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+  font-size: 0 !important;
+  border-radius: 0 !important;
+}
+html .hud.cinematic-hud .hud-bottom .hud-actions-inner .action-bar-flat .action-btn:is(.fold, .check, .call, .raise, .allin)::before {
+  z-index: -2 !important;
+  clip-path: var(--app-clip, var(--app-chamfer));
+  background: var(--app-btn-rim) !important;
+}
+html .hud.cinematic-hud .hud-bottom .hud-actions-inner .action-bar-flat .action-btn:is(.fold, .check, .call, .raise, .allin)::after {
+  inset: 1.5px !important;
+  z-index: -1 !important;
+  clip-path: var(--app-clip-in, var(--app-chamfer-in));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0.12) 46%, rgba(255, 255, 255, 0) 50%),
+    linear-gradient(112deg, transparent 32%, rgba(255, 255, 255, 0.09) 46%, transparent 60%),
+    radial-gradient(ellipse 70% 40% at 50% 100%, rgba(255, 255, 255, 0.14), transparent 70%),
+    var(--app-btn-fill) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -3px 6px rgba(0, 0, 0, 0.28) !important;
+}
+/* each button leans a little, like the mockup's row seen from the seat:
+   the left two to the right, the right two to the left */
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.fold {
+  --app-clip: polygon(14px 0, calc(100% - 8px) 0, 100% 8px, calc(100% - 6px) calc(100% - 8px), calc(100% - 14px) 100%, 8px 100%, 0 calc(100% - 8px), 6px 8px);
+  --app-clip-in: polygon(13px 0, calc(100% - 7px) 0, 100% 7px, calc(100% - 6px) calc(100% - 7px), calc(100% - 13px) 100%, 7px 100%, 0 calc(100% - 7px), 6px 7px);
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.check,
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.call {
+  --app-btn-rim: linear-gradient(180deg, #b6ffe0 0%, #3fe79f 35%, #05a35e 75%, #41e89c 100%);
+  --app-btn-fill: linear-gradient(180deg, #3fe0a0 0%, #17b06e 40%, #078a4f 72%, #046b3c 100%);
+  --app-btn-glow: rgba(5, 214, 124, 0.5);
+  --app-clip: polygon(11px 0, calc(100% - 8px) 0, 100% 8px, calc(100% - 3px) calc(100% - 8px), calc(100% - 11px) 100%, 8px 100%, 0 calc(100% - 8px), 3px 8px);
+  --app-clip-in: polygon(10px 0, calc(100% - 7px) 0, 100% 7px, calc(100% - 3px) calc(100% - 7px), calc(100% - 10px) 100%, 7px 100%, 0 calc(100% - 7px), 3px 7px);
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.raise {
+  --app-btn-rim: linear-gradient(180deg, #c8f2ff 0%, #4fcaff 35%, #0b6fe0 75%, #3fb8ff 100%);
+  --app-btn-fill: linear-gradient(180deg, #36b8ff 0%, #0f78ec 40%, #0453d0 72%, #033fae 100%);
+  --app-btn-glow: rgba(18, 189, 254, 0.55);
+  --app-clip: polygon(8px 0, calc(100% - 10px) 0, calc(100% - 2px) 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 10px 100%, 2px calc(100% - 8px), 0 8px);
+  --app-clip-in: polygon(7px 0, calc(100% - 9px) 0, calc(100% - 2px) 7px, 100% calc(100% - 7px), calc(100% - 7px) 100%, 9px 100%, 2px calc(100% - 7px), 0 7px);
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.allin {
+  --app-btn-rim: linear-gradient(180deg, #fff6cf 0%, #ffe07a 35%, #d39a25 75%, #ffd76a 100%);
+  --app-btn-fill: linear-gradient(180deg, #ffe07a 0%, #f2bd3f 38%, #d3931f 70%, #a86a12 100%);
+  --app-btn-glow: rgba(255, 215, 106, 0.5);
+  --app-clip: polygon(8px 0, calc(100% - 14px) 0, calc(100% - 6px) 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 14px 100%, 6px calc(100% - 8px), 0 8px);
+  --app-clip-in: polygon(7px 0, calc(100% - 13px) 0, calc(100% - 6px) 7px, 100% calc(100% - 7px), calc(100% - 7px) 100%, 13px 100%, 6px calc(100% - 7px), 0 7px);
+  color: #fff6d0 !important;
+  text-shadow: 0 1px 0 #2b1302, 0 -1px 0 #2b1302, 1px 0 0 #2b1302, -1px 0 0 #2b1302, 0 2px 3px rgba(0, 0, 0, 0.5) !important;
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn:not(:disabled):hover {
+  transform: none !important;
+  box-shadow: 0 0 14px var(--app-btn-glow), 0 4px 10px rgba(0, 0, 0, 0.55) !important;
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn:not(:disabled):active {
+  transform: translateY(1px) scale(0.97) !important;
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn:disabled {
+  opacity: 0.45 !important;
+  box-shadow: none !important;
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn:focus-visible {
+  outline: 2px solid #ffffff !important;
+  outline-offset: 2px;
+}
+/* the lines: VERB / amount (CALL, RAISE with an up arrow, ALL-IN) */
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .action-verb {
+  display: block;
+  font: inherit !important;
+  letter-spacing: inherit !important;
+  line-height: 1 !important;
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .action-amount-sub {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0 !important;
+  font: italic 800 13px/15px var(--app-font) !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em !important;
+  color: inherit !important;
+  opacity: 1 !important;
+  text-transform: none !important;
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.call .action-amount-sub { color: #eafff4 !important; }
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .action-call-allin-tag { font-size: 11px; }
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .app-raise-amt::before { content: '\2191\00a0'; font-style: normal; font-weight: 700; }
+/* FOLD: the X under the verb; the two-tap hint stays ("Tap 2x" / "Tap again") */
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.fold .fold-confirm-hint {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 700 11px/13px var(--app-font) !important;
+  letter-spacing: 0.02em !important;
+  text-transform: none !important;
+  color: #dfe8f6 !important;
+  opacity: 1 !important;
+  animation: none !important;
+  filter: none !important;
+}
+/* (the mockup's X before it: only where FOLD is wide enough, a phone held
+   upright or a big screen - a landscape phone's 58 px FOLD cut "Tap 2x") */
+@media (orientation: portrait), (min-height: 501px) {
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.fold .fold-confirm-hint::before { content: '\2715\00a0'; font-weight: 800; }
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.fold.fold-pending {
+  --app-btn-rim: linear-gradient(180deg, #ffe9a8, #f2cf6b 50%, #8a6420);
+  --app-btn-glow: rgba(242, 207, 107, 0.5);
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.fold.fold-pending .fold-confirm-hint {
+  color: #ffe9a8 !important;
+  white-space: normal;
+}
+/* CALL: the pot-odds / equity line (cash tables only: GameHUD draws it only
+   where help tools are on) as small lines under the amount */
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .action-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 4px;
+  row-gap: 0;
+  max-width: 100%;
+  margin: 1px 0 0 !important;
+  font: 600 11px/12px var(--app-font) !important;
+  font-style: normal !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.6) !important;
+  opacity: 1 !important;
+  position: static !important;
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .action-meta-row > span {
+  font: inherit !important;
+  white-space: nowrap;
+  opacity: 1 !important;
+  position: static !important;
+  margin: 0 !important;
+}
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .action-odds-sub { color: #d9ffef !important; }
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .action-equity-sub { color: #bfefff !important; }
+/* All-In or Fold tables: the note in the CALL slot, gold on glass */
+html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-aof-note {
+  font: italic 800 12px/1.2 var(--app-font) !important;
+  color: #f2cf6b !important;
+}
+/* a tablet / desktop: the lines a little tighter, so a button is no taller
+   than the old table's (repair 1: the taller bar pushed into the session
+   bar on a tablet held upright; package 5 lays these screens out) */
+@media (min-width: 601px) and (min-height: 501px) {
+  html .hud.cinematic-hud { --app-verb: 16px; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn { gap: 1px !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .action-amount-sub { line-height: 13px !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .action-meta-row { line-height: 11px !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.raise { padding-top: 12px !important; padding-bottom: 12px !important; }
+}
+
+/* ── 6. The queue buttons (not my turn) in the button row's place ────── */
+html .hud.cinematic-hud .hud-bottom .pre-action-btn {
+  box-sizing: border-box;
+  border-radius: 10px !important;
+  border: 1px solid rgba(120, 160, 220, 0.45) !important;
+  background:
+    linear-gradient(90deg, transparent 12%, rgba(169, 183, 204, 0.6) 50%, transparent 88%) top / 100% 1px no-repeat,
+    linear-gradient(180deg, #2a3c5e 0%, #18294a 55%, #111d36 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 3px 8px rgba(0, 0, 0, 0.5) !important;
+  color: #e4ecf8 !important;
+  font-family: var(--app-font) !important;
+  animation: none !important;
+  filter: none !important;
+  position: relative;
+}
+html .hud.cinematic-hud .hud-bottom .pre-action-btn .pre-action-label {
+  font: 700 12px/14px var(--app-font) !important;
+  color: inherit !important;
+  white-space: nowrap;
+}
+html .hud.cinematic-hud .hud-bottom .pre-action-btn .pre-action-icon {
+  font-size: 15px !important;
+  line-height: 1 !important;
+  opacity: 0.9;
+}
+/* the queued Fold's icon: a plain X (the no-entry emoji is red) */
+html .hud.cinematic-hud .hud-bottom .pre-action-btn:first-child .pre-action-icon {
+  font-size: 0 !important;
+}
+html .hud.cinematic-hud .hud-bottom .pre-action-btn:first-child .pre-action-icon::before {
+  content: '\2715';
+  font: 800 15px/1 var(--app-font);
+  color: #cfe3ff;
+}
+/* queued: the blue LED edge, gold words and a gold check */
+html .hud.cinematic-hud .hud-bottom .pre-action-btn.active {
+  border-color: #3fb8ff !important;
+  background:
+    linear-gradient(90deg, transparent 12%, rgba(184, 241, 253, 0.85) 50%, transparent 88%) top / 100% 1px no-repeat,
+    linear-gradient(180deg, #0f4787 0%, #062a58 55%, #041d40 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(184, 241, 253, 0.2), 0 0 12px rgba(0, 160, 255, 0.6) !important;
+  color: #ffd24a !important;
+}
+html .hud.cinematic-hud .hud-bottom .pre-action-btn.active::after {
+  content: '\2713';
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  font: 900 12px/1 var(--app-font);
+  color: #ffd24a;
+}
+
+/* ── 7. Other bar states in the same glass ────────────────────────────── */
+/* the old leading glyphs / sheens on the other bar buttons (Deal now, Stand
+   Pat / Draw, Straddle) would sit over their words */
+html .hud.cinematic-hud .hud-bottom .action-btn::before,
+html .hud.cinematic-hud .hud-bottom .action-btn::after { display: none !important; }
+/* "Starting next hand..." / "Waiting for players..." and Deal now */
+html .hud.cinematic-hud .hud-bottom .app-wait-pill {
+  padding: 0 16px !important;
+  min-height: 36px;
+  border-radius: 999px !important;
+  background: linear-gradient(180deg, rgba(30, 63, 100, 0.65), rgba(2, 24, 52, 0.92)) !important;
+  border: 1px solid rgba(120, 190, 255, 0.5) !important;
+  box-shadow: inset 0 1px 0 rgba(234, 253, 254, 0.25), 0 0 8px rgba(0, 110, 255, 0.3) !important;
+  color: #f2cf6b !important;
+  font: italic 700 13px/1 var(--app-font) !important;
+  white-space: nowrap;
+}
+html .hud.cinematic-hud .hud-bottom .action-btn.deal {
+  flex: none !important;
+  min-height: 44px !important;
+  height: 44px !important;
+  padding: 0 16px !important;
+  opacity: 1 !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(169, 183, 204, 0.55) !important;
+  background: linear-gradient(180deg, #34486c 0%, #1d2d4c 55%, #141f37 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 3px 8px rgba(0, 0, 0, 0.5) !important;
+  color: #dfe8f6 !important;
+  font: 700 12px/1 var(--app-font) !important;
+  text-transform: none !important;
+  letter-spacing: 0.02em !important;
+  filter: none !important;
+  animation: none !important;
+}
+/* draw games: the discard line, the draw clock and Stand Pat / Draw (blue glass) */
+html .hud.cinematic-hud .hud-bottom .app-draw-row { width: 100%; justify-content: center; flex-wrap: wrap; }
+html .hud.cinematic-hud .hud-bottom .app-draw-row > span { font: 600 12px/14px var(--app-font) !important; }
+html .hud.cinematic-hud .hud-bottom .app-draw-row > .action-btn.raise {
+  flex: none !important;
+  min-height: 44px !important;
+  padding: 0 16px !important;
+  border-radius: 10px !important;
+  border: 1px solid #12bdfe !important;
+  background: linear-gradient(180deg, #0aa0ea 0%, #003ac0 55%, #00309b 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 0 10px rgba(18, 189, 254, 0.5) !important;
+  color: #fff !important;
+  font: italic 900 14px/1 var(--app-font) !important;
+  text-transform: uppercase;
+}
+/* (a landscape phone: the 44 px button reaches 2 px into the bar's padding,
+   so the bar keeps the old table's height and the table does not shrink) */
+@media (orientation: landscape) and (max-height: 500px) {
+  html .hud.cinematic-hud .hud-bottom .app-draw-row > .action-btn.raise { margin-block: -2px !important; }
+}
+html .hud.cinematic-hud .hud-bottom .hud-draw-waiting > span {
+  border-radius: 999px !important;
+  background: linear-gradient(180deg, rgba(30, 63, 100, 0.65), rgba(2, 24, 52, 0.92)) !important;
+  border: 1px solid rgba(120, 190, 255, 0.5) !important;
+  color: #f2cf6b !important;
+  font: italic 700 13px/16px var(--app-font) !important;
+}
+/* spectating: Prev / Next table and "Your last hand" as slate glass */
+html .hud.cinematic-hud .hud-bottom .app-spec-row > button,
+html .hud.cinematic-hud .hud-bottom .app-spec-row .spectator-last-hand-btn {
+  min-height: 44px !important;
+  padding: 0 14px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(169, 183, 204, 0.55) !important;
+  background: linear-gradient(180deg, #34486c 0%, #1d2d4c 55%, #141f37 100%) !important;
+  color: #dfe8f6 !important;
+  font: 700 12px/1 var(--app-font) !important;
+}
+html .hud.cinematic-hud .hud-bottom .app-spec-row .spectator-last-hand-btn { color: #ffd24a !important; }
+html .hud.cinematic-hud .hud-bottom .app-spec-row .spectator-status-line { font-size: 11px !important; color: #b9c6db !important; }
+/* the straddle offer: a gold-edged glass pill */
+html .hud.cinematic-hud .hud-bottom .action-btn.straddle {
+  border-radius: 12px !important;
+  border: 1.5px solid #f2cf6b !important;
+  background: linear-gradient(180deg, rgba(36, 60, 104, 0.97), rgba(8, 22, 52, 0.97)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 246, 200, 0.3), 0 0 10px rgba(242, 207, 107, 0.45), 0 3px 8px rgba(0, 0, 0, 0.6) !important;
+  color: #ffe9a8 !important;
+  filter: none !important;
+  animation: none !important;
+}
+html .hud.cinematic-hud .hud-bottom .action-btn.straddle::before,
+html .hud.cinematic-hud .hud-bottom .action-btn.straddle::after { display: none !important; }
+html .hud.cinematic-hud .hud-bottom .action-btn.straddle .action-verb {
+  font: italic 900 11px/13px var(--app-font) !important;
+  letter-spacing: 0.06em !important;
+  color: #ffe9a8 !important;
+}
+html .hud.cinematic-hud .hud-bottom .action-btn.straddle .action-amount-sub {
+  font: italic 800 15px/17px var(--app-font) !important;
+  color: #f2cf6b !important;
+}
+/* the last raiser: a small glass tab on the panel's top-left edge */
+html .hud.cinematic-hud .hud-bottom .last-aggressor-badge {
+  position: absolute !important;
+  left: calc(20px + env(safe-area-inset-left, 0px));
+  top: -9px;
+  z-index: 2;
+  display: block;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0 !important;
+  padding: 0 9px;
+  height: 17px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(14, 40, 80, 0.98), rgba(3, 16, 38, 0.98));
+  border: 1px solid rgba(120, 190, 255, 0.55);
+  font: italic 600 11px/15px var(--app-font) !important;
+  color: #d7dae2 !important;
+}
+/* Show Hand / Muck and the rabbit: glass buttons (blue = show, slate = muck);
+   their sizes are the old table's outside a phone held upright (repair 1:
+   bigger buttons covered more of the hero's seat on a tablet; section 8) */
+html .hud.cinematic-hud .show-muck-prompt {
+  background: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+html .hud.cinematic-hud .show-muck-prompt .show-muck-btn {
+  white-space: nowrap;
+  border-radius: 10px !important;
+}
+html .hud.cinematic-hud .show-muck-prompt .show-muck-btn--show {
+  border: 1px solid #12bdfe !important;
+  background: linear-gradient(180deg, #0aa0ea 0%, #003ac0 55%, #00309b 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 0 10px rgba(18, 189, 254, 0.5) !important;
+  color: #ffffff !important;
+}
+html .hud.cinematic-hud .show-muck-prompt .show-muck-btn--muck {
+  border: 1px solid rgba(169, 183, 204, 0.6) !important;
+  background: linear-gradient(180deg, #485d86 0%, #22375e 55%, #1c2b4b 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 3px 8px rgba(0, 0, 0, 0.5) !important;
+  color: #e4ecf8 !important;
+}
+html .hud.cinematic-hud .rabbit-hunt-btn {
+  border-radius: 10px !important;
+  border-color: rgba(242, 207, 107, 0.7) !important;
+  background: linear-gradient(180deg, rgba(36, 60, 104, 0.97), rgba(8, 22, 52, 0.97)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 246, 200, 0.25), 0 0 8px rgba(242, 207, 107, 0.35) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  color: #ffe9a8 !important;
+  font-family: var(--app-font) !important;
+  font-style: italic !important;
+  font-weight: 700 !important;
+  animation: none !important;
+}
+
+/* ══ 8. A phone held upright: the hero cluster and the two-row bar ══════ */
+@media (max-width: 600px) and (orientation: portrait) {
+  html .hud.cinematic-hud {
+    /* hero: avatar, plate height, overlap, hole cards, name / stack type */
+    --app-hav: clamp(56px, calc(20vw - 8px), 80px);
+    --app-av-ring: 3px;
+    --app-hph: clamp(48px, calc(16vw - 6px), 64px);
+    --app-av-in: 12px;
+    /* the title tab centres over the cards (the plate box starts right of
+       the avatar, so its middle is right of the screen middle) */
+    --app-tab-shift: calc((var(--app-hav) - var(--app-av-in)) / 2);
+    --app-hcw: clamp(40px, 11vw, 48px);
+    --app-hch: calc(var(--app-hcw) * 1.38);
+    --app-hname: clamp(15px, 4.3vw, 19px);
+    --app-hstack: clamp(13px, 3.8vw, 17px);
+    --app-hero-gap: clamp(5px, calc(4.2vh - 16px), 16px);
+    /* the plate's foot above the screen's foot */
+    --app-hero-b: calc(var(--hud-bar-h, 134px) + var(--app-hero-gap));
+    /* bar: panel padding, bet row, gap, buttons, the panel's foot margin */
+    --app-bar-pad: 8px;
+    --app-bet-h: 44px;
+    --app-row-gap: 6px;
+    --app-btn-h: clamp(56px, calc(4vh + 27px), 60px);
+    --app-bar-foot: calc(6px + env(safe-area-inset-bottom, 0px));
+    --app-verb: clamp(13px, 4.6vw, 19px);
+  }
+
+  /* hole cards: 46x64 at the mockup's size, tilted apart, their feet just
+     behind the plate's top edge (the title tab covers them) */
+  html.table-geometry .hud.cinematic-hud .hud-cards.hud-cards-floating {
+    top: auto !important;
+    bottom: calc(var(--app-hero-b) + var(--app-hph)) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    transform-origin: bottom center !important;
+    gap: 0 !important;
+    margin: 0 !important;
+    filter: none !important;
+  }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating .card-peek,
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating .card-slot {
+    width: var(--app-hcw) !important;
+    height: var(--app-hch) !important;
+    border-radius: 6px !important;
+    transform-origin: 50% 100%;
+  }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) { gap: 1px !important; }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) .card-peek:nth-child(1),
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) .card-slot:nth-child(1) { rotate: -7deg; }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) .card-peek:nth-child(2),
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) .card-slot:nth-child(2) { rotate: 7deg; }
+  /* three cards (Pineapple, tapped to discard): 44px each, -7, 0, +7 degrees */
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many):has(> .card-peek:nth-child(3)) { gap: 2px !important; }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many):has(> .card-peek:nth-child(3)) > .card-peek {
+    width: max(var(--app-hcw), 44px) !important;
+    height: max(var(--app-hch), 60px) !important;
+  }
+  /* a spectator (no plate): the empty hand's "?" places sit just above the
+     "Spectating / Leave" line */
+  html.table-geometry .hud.cinematic-hud .hud-bottom-panel:not(:has(> .hud-nameplate-me)) > .hud-cards.hud-cards-floating {
+    bottom: calc(var(--hud-bar-h, 134px) + 51px) !important;
+  }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many):has(> .card-peek:nth-child(3)) > .card-peek:nth-child(1) { rotate: -7deg; }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many):has(> .card-peek:nth-child(3)) > .card-peek:nth-child(2) { rotate: 0deg; }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) > .card-peek:nth-child(3) { rotate: 7deg; }
+  /* Omaha and draw hands (4-6 cards): a row of 44px cards (a draw game taps
+     them to discard: a full touch target each) */
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating.hud-cards-many { gap: 2px !important; }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating.hud-cards-many .card-peek {
+    width: 44px !important;
+    height: 60px !important;
+  }
+  /* the "?" places before the deal (and a spectator's empty hand): small */
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating .card-slot,
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating.hud-cards-many .card-slot {
+    width: 28px !important;
+    height: 39px !important;
+    transform: none !important;
+    font-size: 14px !important;
+    line-height: 39px !important;
+    border-radius: 5px !important;
+  }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating .card-peek-front { font-size: calc(var(--app-hcw) * 0.5) !important; gap: 0; padding-bottom: 4%; }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating .card-peek-front .card-rank {
+    font-size: calc(var(--app-hcw) * 0.62) !important;
+    line-height: 0.9 !important;
+  }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating .card-peek-front .card-suit {
+    font-size: calc(var(--app-hcw) * 0.64) !important;
+    line-height: 0.9 !important;
+  }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating.hud-cards-many .card-peek-front .card-rank { font-size: 24px !important; }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating.hud-cards-many .card-peek-front .card-suit { font-size: 24px !important; }
+  html .hud.cinematic-hud .hud-cards.hud-cards-floating .card-peek-back::after { font-size: calc(var(--app-hcw) * 0.4) !important; }
+
+  /* the plate: its box IS the glass plate, the avatar hangs off its left
+     end; the cluster (avatar + plate) is centred under the cards */
+  html.table-geometry .hud.cinematic-hud .hud-bottom .hud-nameplate-me,
+  html.app-hero-fit.table-geometry .hud.cinematic-hud .hud-bottom .hud-nameplate-me {
+    top: auto !important;
+    bottom: var(--app-hero-b) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    margin-left: calc((var(--app-hav) - var(--app-av-in)) / 2) !important;
+    height: var(--app-hph) !important;
+    min-height: 0 !important;
+    /* as wide as its name and stack need (the lower side seats step up
+       when it is wider than the room between them: appPlacement measures it) */
+    width: max-content !important;
+    min-width: clamp(132px, 38vw, 170px) !important;
+    max-width: calc(100vw - 16px - var(--app-hav) + var(--app-av-in)) !important;
+    padding: 0 14px 0 calc(var(--app-av-in) + 9px) !important;
+    gap: 0 !important;
+    border-width: 1.5px !important;
+    border-radius: 10px 16px 16px 10px !important;
+    z-index: 201 !important;
+  }
+  html.app-hero-fit .hud.cinematic-hud .hud-nameplate-me .hud-np-chips.app-hero__chips { white-space: nowrap !important; }
+  html .hud.cinematic-hud .hud-nameplate-me > .app-hero__av-wrap {
+    position: absolute;
+    left: calc(-1.5px - var(--app-hav) + var(--app-av-in));
+    bottom: -1.5px;
+  }
+  html .hud.cinematic-hud .hud-nameplate-me .app-hero__av-wrap > .app-seat-letter { display: block; }
+  html .hud.cinematic-hud .hud-nameplate-me > .np-title { top: -13px !important; }
+  /* name over a hairline, then the stack row; the name sits under the
+     title tab, never under it */
+  html .hud.cinematic-hud .hud-nameplate-me .hud-np-info {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center;
+    align-items: stretch !important;
+    gap: 2px !important;
+    padding-top: 5px !important;
+  }
+  html .hud.cinematic-hud .hud-nameplate-me .hud-np-name {
+    font-size: var(--app-hname) !important;
+    padding-bottom: 2px;
+  }
+  html .hud.cinematic-hud .hud-nameplate-me .hud-np-chips.app-hero__chips {
+    gap: 6px;
+    padding-top: 3px;
+    border-top: 1px solid rgba(46, 92, 158, 0.85);
+    font-size: var(--app-hstack) !important;
+  }
+  html .hud.cinematic-hud .app-hero__chip { width: calc(var(--app-hstack) + 2px); height: calc(var(--app-hstack) + 2px); }
+  html .hud.cinematic-hud .app-hero__sep { margin: 0 3px; }
+  html .hud.cinematic-hud .app-hero__bb { font-size: 13px; line-height: 15px; }
+  html .hud.cinematic-hud .hud-nameplate-me > .hud-np-pos {
+    align-self: flex-end;
+    margin: 0 0 calc(var(--app-hph) * 0.17) 8px !important;
+  }
+
+  /* the bar: a fixed-height panel (every state keeps the table where it is),
+     the buttons always on its foot */
+  html .hud.cinematic-hud .hud-bottom {
+    box-sizing: border-box !important;
+    min-height: calc(var(--app-bar-pad) * 2 + var(--app-bet-h) + var(--app-row-gap) + var(--app-btn-h) + var(--app-bar-foot)) !important;
+    padding: var(--app-bar-pad) calc(8px + var(--app-bar-pad) + env(safe-area-inset-right, 0px)) calc(var(--app-bar-foot) + var(--app-bar-pad)) calc(8px + var(--app-bar-pad) + env(safe-area-inset-left, 0px)) !important;
+    border: 0 !important;
+    align-items: stretch !important;
+    gap: 0 !important;
+  }
+  /* (repair 2) the panel reaches the screen's foot, so the mountain range
+     stands inside it under the buttons, as in the mockup */
+  html .hud.cinematic-hud .hud-bottom::before { bottom: env(safe-area-inset-bottom, 0px); }
+  html .hud.cinematic-hud .hud-bottom .hud-bottom-panel {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-end !important;
+    align-items: stretch !important;
+    gap: 0 !important;
+    overflow: visible !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .hud-actions {
+    flex: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-end !important;
+    gap: var(--app-row-gap) !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .hud-actions-inner {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: stretch !important;
+    align-content: flex-end !important;
+    column-gap: 4px !important;
+    /* (repair 1: no row gap - the zero-high line break is a flex line of its
+       own and took a second gap, so the bar grew 6 px on his turn; the bet
+       row carries the gap as its bottom margin instead) */
+    row-gap: 0 !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  /* row 1: [amount pill + slider] [presets]; then the line break */
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-group { display: contents !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-slider-wrap {
+    order: 0 !important;
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    height: var(--app-bet-h) !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 0 !important;
+    margin: 0 0 var(--app-row-gap) !important;
+  }
+  /* the gold amount pill */
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-val {
+    min-width: 56px !important;
+    max-width: none !important;
+    height: 32px;
+    padding: 0 10px !important;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px !important;
+    line-height: 1 !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-slider {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 40px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-presets {
+    order: 1 !important;
+    flex: none !important;
+    display: flex !important;
+    gap: 4px !important;
+    padding: 0 !important;
+    margin: 0 0 var(--app-row-gap) !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-presets .ab-preset {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    flex: none !important;
+    width: 44px !important;
+    max-width: 44px !important;
+    height: var(--app-bet-h) !important;
+    padding: 0 !important;
+  }
+  /* (3x BB stays: it was hidden on phones; the bet row has room for four) */
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-presets .ab-preset:nth-child(4) { display: inline-flex !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-preset .ab-preset-full { display: none !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-preset .ab-preset-short { display: inline !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat::before {
+    content: '' !important;
+    order: 2 !important;
+    flex: 0 0 100% !important;
+    height: 0 !important;
+    display: block !important;
+  }
+  /* row 2: FOLD, CALL / CHECK, RAISE / BET, ALL-IN (the mockup's order) */
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.fold { order: 3 !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-call-group,
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-aof-note,
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat > .action-btn.check { order: 4 !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-group .action-btn.raise,
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat > .action-btn.raise { order: 5 !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.allin { order: 6 !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-call-group {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  /* CALL with its odds line (cash tables) is a little wider and its verb a
+     size smaller. Repair 1: the line is ONE line, always inside the button:
+     the pot odds first; the equity / tier beside them only where the line
+     has room (it wrapped to 4 lines over the rims at 320-390 px) */
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-call-group:has(.action-meta-row) { flex-grow: 1.22 !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.call:has(.action-meta-row) {
+    gap: 1px !important;
+    padding: 1px 3px !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.call:has(.action-meta-row) .action-verb {
+    font-size: clamp(13px, calc(var(--app-verb) - 2px), 18px) !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.call .action-meta-row {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center;
+    align-content: flex-start;
+    box-sizing: border-box;
+    height: 14px;
+    padding: 0 2px;
+    line-height: 14px !important;
+    row-gap: 0;
+    overflow: hidden;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.call .action-meta-row > .action-odds-sub {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-aof-note {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    white-space: normal !important;
+    text-align: center;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn,
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.fold,
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-call-group .action-btn,
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-group .action-btn.raise {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+    height: var(--app-btn-h) !important;
+    min-height: var(--app-btn-h) !important;
+    max-height: var(--app-btn-h) !important;
+    margin: 0 !important;
+    padding: 3px 2px !important;
+    /* the amount line sizes to its button (an 8-digit stack still fits at
+       320 px: 11 px at the least, never cut) */
+    container-type: inline-size;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .action-amount-sub {
+    font-size: clamp(11px, calc((100cqi - 4px) / 6), 13px) !important;
+  }
+  @container (max-width: 76px) {
+    html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .app-raise-amt::before { content: '\2191'; margin-right: 1px; }
+  }
+
+  /* not my turn: no bet row while the hand ends (Show / Muck, the rabbit
+     and the hand review use the band); with the queue buttons up, they take
+     the button row's place */
+  html .hud.cinematic-hud .hud-bottom .hud-actions--inactive .raise-inline-slider-wrap,
+  html .hud.cinematic-hud .hud-bottom .hud-actions--inactive .ab-presets { display: none !important; }
+  /* (repair 2) waiting with the queue buttons up: the band keeps the dimmed
+     amount pill and slider over them, as the live table shows it (the band
+     read as a missing row); the disabled action buttons stay hidden */
+  html .hud.cinematic-hud .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive { order: -1; }
+  html .hud.cinematic-hud .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive .action-bar-flat > :is(.action-btn, .ab-call-group, .ab-aof-note),
+  html .hud.cinematic-hud .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive .raise-inline-group > .action-btn { display: none !important; }
+  html .hud.cinematic-hud:not(:has(.show-muck-prompt, .rabbit-hunt-btn, .post-hand-analysis)) .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive .raise-inline-slider-wrap {
+    display: flex !important;
+    flex: 1 1 100% !important;
+    margin-bottom: 0 !important;
+  }
+  /* sitting out: the gold "Sitting Out" pill keeps the band's left end */
+  html .hud.cinematic-hud:has(.sit-out-quick-btn--active) .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive .raise-inline-slider-wrap {
+    margin-left: 112px !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .pre-action-btns {
+    position: static !important;
+    left: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: none !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: auto !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .pre-action-btn {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    height: var(--app-btn-h) !important;
+    min-height: var(--app-btn-h) !important;
+    padding: 2px 3px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    container-type: inline-size;
+  }
+  /* (repair 1) a narrow queue button: a size smaller, and "Check/Fold"
+     breaks after its slash instead of running past the button's edges */
+  html .hud.cinematic-hud .hud-bottom .pre-action-btn .pre-action-label {
+    white-space: normal !important;
+    text-align: center;
+  }
+  @container (max-width: 72px) {
+    html .hud.cinematic-hud .hud-bottom .pre-action-btn .pre-action-label { font-size: 11px !important; line-height: 13px !important; }
+  }
+
+  /* waiting for the next hand: the line and Deal now on the panel's foot row */
+  html .hud.cinematic-hud .hud-bottom .app-wait-row {
+    min-height: var(--app-btn-h);
+    gap: 8px !important;
+  }
+  /* (repair 1: on a 260 px screen the line gives way - its words wrap inside
+     the pill - so Deal now stays on the screen) */
+  html .hud.cinematic-hud .hud-bottom .app-wait-row > .app-wait-pill {
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+    line-height: 15px !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .app-spec-row { min-height: var(--app-btn-h); flex-wrap: wrap; row-gap: 4px; gap: 8px !important; }
+
+  /* the straddle offer (only pre-flop, before any board card): on the felt
+     where the board will be - the seat columns and the hero's row are full
+     on a small phone, the board's place is free until the flop */
+  html.table-geometry .hud.cinematic-hud .hud-bottom .hud-actions-inner .action-btn.straddle {
+    top: calc(var(--board-cy, 380px) - 22px) !important;
+    bottom: auto !important;
+    left: calc(var(--felt-l, 75px) + var(--felt-w, 220px) / 2) !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: calc(var(--felt-w, 220px) - 12px) !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    padding: 0 16px !important;
+    flex-direction: row !important;
+    gap: 8px !important;
+    white-space: nowrap;
+  }
+  html.table-geometry .hud.cinematic-hud .hud-bottom .action-btn.straddle .action-verb { font-size: 13px !important; line-height: 15px !important; }
+  html.table-geometry .hud.cinematic-hud .hud-bottom .action-btn.straddle .action-amount-sub { font-size: 16px !important; line-height: 18px !important; }
+
+  /* sitting out: the gold pill sits in the bar's top row, left (it was above
+     the bar's left end, where the hero's avatar is now); on his own turn,
+     when the bet row is up, it steps up over the avatar instead */
+  html.table-geometry .hud.cinematic-hud .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
+    bottom: calc(var(--hud-bar-h, 134px) - var(--app-bar-pad) - var(--app-bet-h) + 1px) !important;
+    left: calc(16px + env(safe-area-inset-left, 0px)) !important;
+    z-index: 171 !important;
+  }
+  html.table-geometry .hud.cinematic-hud:has(.hud-bottom--my-turn) .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
+    bottom: calc(var(--app-hero-b) + var(--app-hav) + 6px) !important;
+    left: calc(8px + env(safe-area-inset-left, 0px)) !important;
+  }
+  /* (a show / muck prompt or the hand review then keeps clear of it) */
+  html.table-geometry .hud.cinematic-hud:has(.sit-out-quick-btn--active):not(:has(.hud-bottom--my-turn)) .show-muck-prompt {
+    left: auto !important;
+    right: calc(16px + env(safe-area-inset-right, 0px)) !important;
+    transform: none !important;
+  }
+  html.table-geometry .hud.cinematic-hud:has(.sit-out-quick-btn--active):not(:has(.hud-bottom--my-turn)) .post-hand-analysis {
+    left: calc(150px + env(safe-area-inset-left, 0px)) !important;
+  }
+  /* Pineapple's "pick one card to discard" line: over his cards (it hung
+     under his plate) */
+  html.table-geometry .hud.cinematic-hud .hud-bottom-panel > div[style*="top: -28px"] {
+    top: auto !important;
+    bottom: calc(var(--app-hero-b) + var(--app-hph) + var(--app-hch) + 10px) !important;
+    font-size: 12px !important;
+    line-height: 14px !important;
+    z-index: 205 !important;
+  }
+
+  /* Show Hand / Muck: inside the bar's top row (no bet row while it is not
+     his turn), never over the seats or his cards; the rabbit beside it */
+  html.table-geometry .hud.cinematic-hud .show-muck-prompt {
+    top: auto !important;
+    bottom: calc(var(--hud-bar-h, 134px) - var(--app-bar-pad) - var(--app-bet-h) + 1px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: auto !important;
+    max-width: calc(100vw - 32px) !important;
+    flex-wrap: nowrap;
+    gap: 6px !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+  html .hud.cinematic-hud .show-muck-prompt .show-muck-btn {
+    min-height: 44px;
+    min-width: 76px;
+    padding: 0 12px !important;
+    font-family: var(--app-font) !important;
+    font-style: italic !important;
+    font-weight: 800 !important;
+    font-size: 13px !important;
+    line-height: 1 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  html .hud.cinematic-hud .rabbit-hunt-btn {
+    min-height: 44px;
+    padding: 0 16px !important;
+    font-size: 13px !important;
+    line-height: 1 !important;
+  }
+  html.table-geometry .hud.cinematic-hud .rabbit-hunt-btn {
+    top: auto !important;
+    bottom: calc(var(--hud-bar-h, 134px) - var(--app-bar-pad) - var(--app-bet-h) + 1px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    height: 44px;
+  }
+  html.table-geometry .hud.cinematic-hud:has(.show-muck-prompt) .rabbit-hunt-btn,
+  html.table-geometry .hud.cinematic-hud:has(.post-hand-analysis) .rabbit-hunt-btn {
+    left: auto !important;
+    right: calc(16px + env(safe-area-inset-right, 0px)) !important;
+    max-width: 128px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transform: none !important;
+  }
+  html.table-geometry .hud.cinematic-hud:has(.rabbit-hunt-btn) .show-muck-prompt {
+    left: calc(16px + env(safe-area-inset-left, 0px)) !important;
+    transform: none !important;
+  }
+
+  /* the hand review (Hand Analysis, a help tool) after a hand: its header
+     in the bar's top row, so "Starting next hand" and Deal now stay in
+     sight on the foot row (it covered both); it still opens upward */
+  html.table-geometry .hud.cinematic-hud .post-hand-analysis {
+    top: auto !important;
+    bottom: calc(var(--hud-bar-h, 134px) - var(--app-bar-pad) - var(--app-bet-h) + 1px) !important;
+    left: calc(16px + env(safe-area-inset-left, 0px)) !important;
+    right: calc(16px + env(safe-area-inset-right, 0px)) !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: calc(100dvh - var(--hud-top-h, 140px) - var(--hud-bar-h, 134px) + var(--app-bar-pad) + var(--app-bet-h) - 8px) !important;
+    padding-bottom: 0 !important;
+    border-radius: 10px !important;
+    border: 1px solid rgba(120, 190, 255, 0.5) !important;
+    background: linear-gradient(180deg, rgba(14, 34, 66, 0.98), rgba(3, 13, 31, 0.98)) !important;
+    box-shadow: inset 0 1px 0 rgba(234, 253, 254, 0.25), 0 0 10px rgba(0, 110, 255, 0.3), 0 6px 16px rgba(0, 0, 0, 0.6) !important;
+  }
+  html.table-geometry .hud.cinematic-hud .post-hand-analysis .pha-header { min-height: 44px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
+  html.table-geometry .hud.cinematic-hud .post-hand-analysis .pha-header span[style*="0.68rem"] { font-size: 12px !important; }
+  /* with the rabbit offered too, the rabbit keeps the row's right end */
+  html.table-geometry .hud.cinematic-hud:has(.rabbit-hunt-btn) .post-hand-analysis { right: calc(150px + env(safe-area-inset-right, 0px)) !important; }
+
+  /* the last raiser's tab stays clear of the amount pill */
+  html .hud.cinematic-hud .hud-bottom .last-aggressor-badge { top: -9px; }
+}
+/* a narrow phone (the 360 px Androids): a compact amount pill beside the
+   slider, tighter gaps; the four presets keep 44 px (repair 2: the pill was
+   hidden below 375 px) */
+@media (max-width: 374px) and (orientation: portrait) {
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-presets { gap: 3px !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat { column-gap: 3px !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-slider-wrap { gap: 4px !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-val {
+    min-width: 48px !important;
+    height: 30px;
+    padding: 0 6px !important;
+    border-radius: 8px;
+    font-size: 13px !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .raise-inline-slider::-webkit-slider-thumb { width: 24px !important; height: 24px !important; }
+}
+/* a 320 px phone: the pill rides on top of the band, the slider's track
+   under it, so the slider keeps its whole width (about 100 px) beside the
+   four presets and the bar stays its height (the pill takes no taps: a tap
+   there moves the slider) */
+@media (max-width: 339px) and (min-width: 301px) and (orientation: portrait) {
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-slider-wrap { position: relative !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-val {
+    position: absolute;
+    left: 0;
+    top: 2px;
+    z-index: 1;
+    min-width: 0 !important;
+    height: 17px;
+    padding: 0 7px !important;
+    border-radius: 6px;
+    font-size: 12px !important;
+    pointer-events: none;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-slider {
+    box-sizing: border-box !important;
+    padding: 18px 0 0 !important;
+    background-position: 0 27px, 0 27px !important;
+  }
+}
+/* 300 px and narrower: the pill and the slider get their own line over
+   the four presets (the band grows by one row; the bar keeps one height in
+   every state) */
+@media (max-width: 300px) and (orientation: portrait) {
+  /* (the rest of the bar a little tighter, so the table loses less height:
+     the extra row costs 34 px, not 50) */
+  html .hud.cinematic-hud {
+    --app-bar-pad: 6px;
+    --app-row-gap: 4px;
+    --app-bet-h: calc(88px + var(--app-row-gap));
+    --app-btn-h: 50px;
+    --app-bar-foot: calc(4px + env(safe-area-inset-bottom, 0px));
+  }
+  /* (the equity / tier part of CALL's odds line has no room here: it wrapped
+     out of the one-line row, unseen, and its hidden line hung below the
+     screen; the pot odds stay) */
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.call .action-meta-row > .action-equity-sub { display: none !important; }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-slider-wrap {
+    flex: 1 1 100% !important;
+    height: 44px !important;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-presets {
+    flex: 1 1 100% !important;
+    justify-content: space-between;
+  }
+  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-presets .ab-preset {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    height: 44px !important;
+  }
+}
+/* a tall phone (700 px and more): room under the buttons for the mountain
+   range (repair 2: it hid behind them) */
+@media (max-width: 600px) and (min-height: 700px) and (orientation: portrait) {
+  html .hud.cinematic-hud { --app-bar-foot: calc(12px + env(safe-area-inset-bottom, 0px)); }
+}
+/* a short phone: tighter rows */
+@media (max-height: 640px) and (orientation: portrait) {
+  html .hud.cinematic-hud { --app-bar-pad: 6px; --app-row-gap: 5px; --app-bar-foot: calc(4px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html .hud.cinematic-hud .hud-bottom .action-btn,
+  html .hud.cinematic-hud .hud-cards .card-peek { transition: none !important; }
+}

@@ -97,6 +97,10 @@ import '../scene/CinematicSkin.css';
 // its layout layer; both act only under the cinematic classes.
 import { AppStatStrip, AppTopExtras, AppTicker } from './AppPrecisionTop';
 import '../scene/AppPrecision.css';
+// APP Precision package 3 - the hero (big avatar, gold title tab, glass
+// plate) and the action bar; acts only under the cinematic classes.
+import AppSeatAvatar from '../scene/AppSeatAvatar';
+import '../scene/AppPrecisionHero.css';
 // APP Precision package 2 repair: the table re-measures its seats and places
 // its loose labels after the HUD changes (the hero's row, the outs counter).
 import { appLayoutPing } from '../scene/appPlacement';
@@ -4730,12 +4734,35 @@ export default function GameHUD() {
                 </svg>
               );
             })()}
+            {cinematicEnabled ? (
+              /* APP Precision: the big round avatar (the seat's photo, else his
+                 uploaded avatar / emoji, else the monogram) in a gold ring,
+                 with the letter badge next to a photo */
+              <div className="app-hero__av-wrap">
+                <AppSeatAvatar
+                  name={safeName(myPlayer.playerName || playerName, '')}
+                  photo={myPlayer.avatar?.photo || null}
+                  className="hud-np-avatar app-hero__av"
+                />
+              </div>
+            ) : (
             <div className="hud-np-avatar" style={{ background: 'linear-gradient(135deg,#1e3a8a,#0d2c53)' }}>
               {nameInitial(playerName, 'P')}
             </div>
+            )}
             <div className="hud-np-info">
               <span className="hud-np-name">{safeName(playerName, '')}{heroLook.badge && <span className="np-badge" title={heroLook.badge.name}>{heroLook.badge.icon}</span>}</span>
+              {cinematicEnabled ? (
+                /* APP Precision: gold chip + gold stack | light "N BB" */
+                <span className="hud-np-chips app-hero__chips">
+                  <span className="app-hero__chip" aria-hidden="true" />
+                  <span className="app-hero__stack">{(myPlayer.chipCount ?? myPlayer.chips ?? 0).toLocaleString()}</span>
+                  <span className="app-hero__sep" aria-hidden="true" />
+                  <span className="app-hero__bb">{bigBlind > 0 ? Math.round((myPlayer.chipCount ?? myPlayer.chips ?? 0) / bigBlind) : 0} BB</span>
+                </span>
+              ) : (
               <span className="hud-np-chips">● {(myPlayer.chipCount ?? myPlayer.chips ?? 0).toLocaleString()} · {bigBlind > 0 ? Math.round((myPlayer.chipCount ?? myPlayer.chips ?? 0) / bigBlind) : 0}bb</span>
+              )}
             </div>
             {gameState?.seatPositions?.[yourSeat] && (
               <span className="hud-np-pos">{gameState.seatPositions[yourSeat]}</span>
@@ -4770,7 +4797,7 @@ export default function GameHUD() {
         <div className="hud-actions">
           {/* ── Always-visible action bar ── */}
           {isSpectating ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', justifyContent: 'center' }}>
+            <div className={cinematicEnabled ? 'app-spec-row' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', justifyContent: 'center' }}>
               {/* Eliminated banner */}
               {eliminatedPosition && (
                 <div style={{
@@ -4840,13 +4867,13 @@ export default function GameHUD() {
                need to click a button to continue play. We show a passive
                "Starting next hand…" indicator instead, but keep a small
                manual Deal escape hatch in case the server stalls. */
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', width: '100%' }}>
+            <div className={cinematicEnabled ? 'app-wait-row' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', width: '100%' }}>
               {/* 2026-10-22 — a HELD tournament table says why (cards at
                   11:00 / break / director pause) and offers no Deal now. */}
               {tournamentHeld ? (
                 <TournamentHeldBanner clock={tournamentClock} />
               ) : (
-              <span style={{
+              <span className={cinematicEnabled ? 'app-wait-pill' : undefined} style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8,
                 padding: '6px 14px', borderRadius: 999,
                 background: 'rgba(120, 160, 255,0.08)', color: '#ffd24a',
@@ -4879,7 +4906,7 @@ export default function GameHUD() {
                clock when it sends one; otherwise a passive line (never the
                betting bar: its pre-actions would queue bets mid-draw). */
             canDrawNow ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className={cinematicEnabled ? 'app-draw-row' : undefined} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ color: '#ffd24a', fontSize: '0.85rem' }}>
                 Select cards to discard ({selectedDiscards.length} selected)
               </span>
@@ -4953,7 +4980,8 @@ export default function GameHUD() {
                     onClick={() => setPreAction(preAction === 'checkFold' ? null : 'checkFold')}
                   >
                     <span className="pre-action-icon">🔄</span>
-                    <span className="pre-action-label">Check/Fold</span>
+                    {/* APP Precision: may break after the slash on a narrow phone */}
+                    <span className="pre-action-label">{cinematicEnabled ? <>Check/<wbr />Fold</> : 'Check/Fold'}</span>
                   </button>
                   )}
                   {preActionKeys.includes('callAny') && (
@@ -5165,6 +5193,8 @@ export default function GameHUD() {
                           if (e.key === 'Escape' && e.currentTarget) e.currentTarget.blur();
                         }}
                         className="raise-inline-slider"
+                        // APP Precision: how much of the cyan track is filled (0..1)
+                        style={cinematicEnabled ? { '--app-raise-f': maxRaise > minRaiseTotal ? Math.round(((Math.max(minRaiseTotal, Math.min(raiseAmount || minRaiseTotal, maxRaise)) - minRaiseTotal) / (maxRaise - minRaiseTotal)) * 1000) / 1000 : 1 } : undefined}
                         disabled={!isMyTurn}
                         aria-label={`Raise amount slider. Minimum ${minRaiseTotal.toLocaleString()}, maximum ${maxRaise.toLocaleString()}, current ${(raiseAmount || minRaiseTotal).toLocaleString()}.`}
                         aria-valuemin={minRaiseTotal}
@@ -5189,7 +5219,15 @@ export default function GameHUD() {
                           aria-label={!isMyTurn ? `${raiseVerb} button, not your turn. Amount ${displayAmount.toLocaleString()}.` : `${verbAria} ${displayAmount.toLocaleString()} chips. ${isMyTurn && timeLeft > 0 ? `Timer ${Math.round(timeLeft)} seconds remaining.` : ''}`}
                           onClick={() => handleAction('raise', displayAmount)}
                         >
-                          {raiseVerb}<br />{displayAmount.toLocaleString()}
+                          {cinematicEnabled ? (
+                            /* APP Precision: verb over "up arrow + amount" */
+                            <>
+                              <span className="action-verb">{raiseVerb}</span>
+                              <span className="action-amount-sub app-raise-amt">{displayAmount.toLocaleString()}</span>
+                            </>
+                          ) : (
+                            <>{raiseVerb}<br />{displayAmount.toLocaleString()}</>
+                          )}
                         </button>
                       );
                     })()}
