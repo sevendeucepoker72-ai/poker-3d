@@ -39,6 +39,8 @@ import './PokerTable2D.css';
 import './TableCosmetics.css';
 import { cinematicEnabled, cinematicAsset } from './cinematicSkin';
 import './CinematicSkin.css';
+// APP Precision: the room / rail / watermark rules (scoped to .cinematic-table).
+import './AppPrecision.css';
 
 /* ── Player-notes callback (App.jsx sets this) ─────────────── */
 let _onOpenPlayerNotes = null;

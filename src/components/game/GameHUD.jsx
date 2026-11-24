@@ -93,6 +93,10 @@ import './GameHUD.css';
 import './TableLayout.css';
 import { cinematicEnabled, cinematicAsset } from '../scene/cinematicSkin';
 import '../scene/CinematicSkin.css';
+// APP Precision (2026-11-24) - the skin's top area (strip, extras, ticker) and
+// its layout layer; both act only under the cinematic classes.
+import { AppStatStrip, AppTopExtras, AppTicker } from './AppPrecisionTop';
+import '../scene/AppPrecision.css';
 
 import OverlayBoundary from '../ui/OverlayBoundary';
 
@@ -250,6 +254,11 @@ export default function GameHUD() {
   const { setScreen, playerName } = useGameStore(
     useShallow((s) => ({ setScreen: s.setScreen, playerName: s.playerName }))
   );
+  // APP Precision — the wallet (the lobby's server balance) for the menu
+  // header (a constant null with the skin off), and the menu slot the session
+  // result portals into.
+  const walletChips = useGameStore((s) => (cinematicEnabled ? s.chips : null));
+  const [sessionMenuSlot, setSessionMenuSlot] = useState(null);
 
   // Game state slice — re-renders only when one of these values changes
   const gameState = useTableStore((s) => s.gameState);
@@ -3619,6 +3628,45 @@ export default function GameHUD() {
     return bestFive.some((c) => c.rank === card.rank && c.suit === card.suit);
   };
 
+  // The connection dot's words (top bar dot; APP Precision ticker dot + menu header).
+  const connTitle = connStatus === 'connected' ? 'Connected'
+    : connStatus === 'reconnecting' ? 'Reconnecting…'
+    : connStatus === 'error' ? 'Connection problem — retrying…'
+    : connStatus === 'failed' ? 'Connection lost — tap to reconnect'
+    : 'Disconnected';
+  // The Sit Out button's words (top bar button; APP Precision menu row).
+  const sitOutTitle = onTournamentSeat
+    ? (sittingOutHere
+      ? `Sitting Out — you are still dealt in: your blinds are posted and ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT}. Click to return`
+      : `Sit Out (you stay dealt in: your blinds are posted and ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT})`)
+    : (sittingOutHere ? 'Sitting Out — click to return' : 'Sit Out (auto-fold each hand)');
+  // APP Precision: the extras line under the stat strip (side pots, next
+  // level, the tournament clock's words and standings, dealer's choice next).
+  const appTopExtras = cinematicEnabled ? {
+    pots: gameState?.pots,
+    nextLevel: handLevel.next && !showTournamentClock ? nextLevelText(handLevel) : '',
+    clock: showTournamentClock ? tournamentClock : null,
+    dcNext: dcTruthful && dealersChoiceNext
+      ? dealersChoiceNext.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+      : '',
+  } : null;
+  // The Split Pot banner (#19). APP Precision draws it inside the showdown
+  // panel while that panel is open; with the skin off it is unchanged.
+  const chopBannerShown = !!(gameState?.isChoppedPot && gameState?.chopDetails && (phase === 'Showdown' || phase === 'HandComplete'));
+  const showdownOverlayOpen = !!(showShowdown && handResult && handResult.showdownHands && handResult.showdownHands.length > 0);
+  const renderChopBanner = (extraClass) => (
+    <div className={`chop-pot-banner${extraClass ? ` ${extraClass}` : ''}`}>
+      <div className="chop-pot-title">Split Pot!</div>
+      <div className="chop-pot-shares">
+        {(gameState.chopDetails || []).map((d, i) => (
+          <span key={i} className="chop-pot-share">
+            {safeName(d.playerName, 'Player')}: {(Number(d.share) || 0).toLocaleString()}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div className={`hud ${liveTableCount >= 2 ? 'hud--tabs' : 'hud--no-tabs'}${cinematicEnabled ? ' cinematic-hud' : ''}`}>
       {/* 2026-10-10 (S2) — leaving a LIVE tournament seat keeps it in play. */}
@@ -3682,8 +3730,9 @@ export default function GameHUD() {
       )}
 
       {/* Top bar */}
-      <div className="hud-top">
-        {cinematicEnabled && <img className="cinematic-brand" src={cinematicAsset('exact/reference-brand.webp')} alt="American Pub Poker" draggable={false} />}
+      <div className={`hud-top${cinematicEnabled ? ' app-top' : ''}`}>
+        {/* APP Precision: the TM logo in the middle of the logo row (no registered mark). */}
+        {cinematicEnabled && <img className="app-top__logo" src={cinematicAsset('app-logo.webp')} alt="American Pub Poker" draggable={false} />}
         <button className="hud-back" onClick={handleBackToLobby}>
           Back to Lobby
         </button>
@@ -3709,15 +3758,43 @@ export default function GameHUD() {
             {trainingEquityPct !== null && <span className="hud-training-badge__eq">{trainingEquityPct}%</span>}
           </button>
         )}
-        <div className={`hud-center-info${(cinematicEnabled && !dcTruthful && variantName === "Texas Hold'em" && !anteAmount && !handLevel.next && !showTournamentClock && !(gameState?.blindLevel && gameState?.nextBlindIn > 0) && (gameState?.pots?.length ?? 0) < 2) ? ' precision-stat-ready' : ''}`}>
-          {(cinematicEnabled && !dcTruthful && variantName === "Texas Hold'em" && !anteAmount && !handLevel.next && !showTournamentClock && !(gameState?.blindLevel && gameState?.nextBlindIn > 0) && (gameState?.pots?.length ?? 0) < 2) && (
-            <div className={`precision-stat-strip${!helpToolsOff && pot > 0 && myChips > 0 && phase !== 'WaitingForPlayers' ? '' : ' precision-stat-strip--no-spr'}`}>
-              <div className="precision-stat precision-stat--pot"><small>Total pot</small><strong>{pot.toLocaleString()}</strong></div>
-              <div className="precision-stat"><small>Blinds</small><strong>{(handLevel.sb || 25).toLocaleString()} / {bigBlind.toLocaleString()}</strong></div>
-              {!helpToolsOff && pot > 0 && myChips > 0 && phase !== 'WaitingForPlayers' && <div className="precision-stat precision-stat--spr"><small>SPR</small><strong>{(myChips / pot).toFixed(1)}</strong></div>}
-              <div className="precision-stat precision-stat--street"><small>Street</small><strong>{phaseLabel}</strong></div>
-            </div>
-          )}
+        {/* APP Precision: the stat strip, the extras line and the action
+            ticker replace the old pot / phase block (.hud-center-info stays
+            in the DOM, hidden by the skin): every value it showed has a slot. */}
+        {cinematicEnabled && (
+          <AppStatStrip
+            pot={pot}
+            potFlashing={potFlashing}
+            sb={handLevel.sb || 25}
+            bb={bigBlind}
+            ante={anteAmount}
+            extras={appTopExtras}
+            spr={!helpToolsOff && pot > 0 && myChips > 0 && phase !== 'WaitingForPlayers' ? myChips / pot : null}
+            clock={showTournamentClock ? tournamentClock : null}
+            blindTimer={!showTournamentClock && gameState?.blindLevel && gameState?.nextBlindIn > 0
+              ? { level: gameState.blindLevel, nextIn: gameState.nextBlindIn, duration: gameState.blindLevelDuration }
+              : null}
+            phase={phase}
+            phaseLabel={phaseLabel}
+            variantLabel={dcTruthful
+              ? dealersChoiceVariant.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+              : (variantName !== "Texas Hold'em" ? variantName : '')}
+            isStudGame={isStudGame}
+            hasDrawPhase={hasDrawPhase}
+            variant={gameState?.variant}
+          />
+        )}
+        {cinematicEnabled && <AppTopExtras ante={anteAmount} {...appTopExtras} />}
+        {cinematicEnabled && (
+          <AppTicker
+            entries={actionHistory.slice(0, 3)}
+            isBetEntry={isStripBetEntry}
+            connStatus={connStatus}
+            connTitle={connTitle}
+            watching={!seatedHere}
+          />
+        )}
+        <div className="hud-center-info">
           <div className="hud-pot">
             <span className="hud-pot-dot">●</span> Pot: <span className={potFlashing ? 'hud-pot-amount--flash' : ''}>{pot.toLocaleString()}</span>
             {anteAmount > 0 && (
@@ -3788,15 +3865,13 @@ export default function GameHUD() {
           </div>
         </div>
         <div className="hud-player">
-          {/* Connection status dot */}
+          {/* Connection status dot (APP Precision: it leads the ticker instead) */}
+          {!cinematicEnabled && (
           <span
             className={`conn-dot conn-dot--${connStatus}`}
-            title={connStatus === 'connected' ? 'Connected'
-              : connStatus === 'reconnecting' ? 'Reconnecting…'
-              : connStatus === 'error' ? 'Connection problem — retrying…'
-              : connStatus === 'failed' ? 'Connection lost — tap to reconnect'
-              : 'Disconnected'}
+            title={connTitle}
           />
+          )}
           {/* Sit Out quick-access button — R2 (P3): a seat's control, never
               shown to a spectator (who also has no name / 0-chip stack here). */}
           {seatedHere && (
@@ -3806,11 +3881,7 @@ export default function GameHUD() {
             /* Round 6 (P-j) — at a TOURNAMENT table sitting out = absent: the
                seat stays dealt in, posts its blinds and is auto-acted (P-i).
                Round 7 (Z11): said in visible text too (tournament-sitout-note). */
-            title={onTournamentSeat
-              ? (sittingOutHere
-                ? `Sitting Out — you are still dealt in: your blinds are posted and ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT}. Click to return`
-                : `Sit Out (you stay dealt in: your blinds are posted and ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT})`)
-              : (sittingOutHere ? 'Sitting Out — click to return' : 'Sit Out (auto-fold each hand)')}
+            title={sitOutTitle}
           >
             {sittingOutHere ? '🪑 Sitting Out' : '🪑 Sit Out'}
           </button>
@@ -3827,7 +3898,50 @@ export default function GameHUD() {
               <span className="icon-btn-label">Options</span>
             </button>
             {showOptions && (
-              <div className="hud-options-dropdown">
+              <div className={`hud-options-dropdown${cinematicEnabled ? ' app-menu' : ''}`}>
+                {/* APP Precision: the hamburger menu is also the home of the old
+                    top row - who / table stack / wallet / connection, the
+                    session result (SessionTracker portals into the slot), Back
+                    to Lobby and Sit Out / I'm back. Every row below is kept. */}
+                {cinematicEnabled && (
+                  <div className="app-menu__head">
+                    <div className="app-menu__who">
+                      <span className={`conn-dot conn-dot--${connStatus}`} aria-hidden="true" />
+                      <span className="app-menu__name">{seatedHere ? safeName(playerName, '') : 'Watching'}</span>
+                      <span className="app-menu__conn">{connTitle}</span>
+                    </div>
+                    {seatedHere && (
+                      <div className="app-menu__money">
+                        <span className="app-menu__money-item">
+                          <span className="app-menu__money-label">Table</span>
+                          <span className="app-menu__money-val">{myChips.toLocaleString()}</span>
+                        </span>
+                        {typeof walletChips === 'number' && Number.isFinite(walletChips) && (
+                          <span className="app-menu__money-item">
+                            <span className="app-menu__money-label">Wallet</span>
+                            <span className="app-menu__money-val">{Number(walletChips).toLocaleString()}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="app-menu__session" ref={setSessionMenuSlot} />
+                  </div>
+                )}
+                {cinematicEnabled && (
+                  <button className="options-action-btn app-menu__lobby" onClick={() => { setShowOptions(false); handleBackToLobby(); }}>
+                    ← Back to Lobby
+                  </button>
+                )}
+                {cinematicEnabled && seatedHere && (
+                  <button
+                    className={`options-action-btn app-menu__sitout${sittingOutHere ? ' app-menu__sitout--active' : ''}`}
+                    onClick={() => { toggleSitOut(); setShowOptions(false); }}
+                    title={sitOutTitle}
+                  >
+                    {sittingOutHere ? '🪑 Sitting Out · I\'m back' : '🪑 Sit Out'}
+                  </button>
+                )}
+                {cinematicEnabled && <div className="options-divider" />}
                 {/* Duplicate-audit #3: Sit Out row removed — the quick-access
                     "🪑 Sit Out" button directly above the Options gear
                     already toggles the same `sittingOut` state. Leaving
@@ -4292,19 +4406,10 @@ export default function GameHUD() {
           pills next to the phase label already surface Main Pot / Side
           Pot N totals, and this floating panel was pure duplication. */}
 
-      {/* Chopped Pot Display (#19) */}
-      {gameState?.isChoppedPot && gameState?.chopDetails && (phase === 'Showdown' || phase === 'HandComplete') && (
-        <div className="chop-pot-banner">
-          <div className="chop-pot-title">Split Pot!</div>
-          <div className="chop-pot-shares">
-            {(gameState.chopDetails || []).map((d, i) => (
-              <span key={i} className="chop-pot-share">
-                {safeName(d.playerName, 'Player')}: {(Number(d.share) || 0).toLocaleString()}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Chopped Pot Display (#19). APP Precision: while the showdown panel
+          is open the banner is drawn inside it (under its title) instead, so
+          it never sits over a winner's row. */}
+      {chopBannerShown && !(cinematicEnabled && showdownOverlayOpen) && renderChopBanner('')}
 
       {/* All-in Equity Display (#17). Worker results are sanitized before
           render — NaN/fractional/negative/oversized values all coerce to a
@@ -5248,8 +5353,9 @@ export default function GameHUD() {
         document.body
       )}
 
-      {/* Action history — top-left below hand strength label */}
-      {actionHistory.length > 0 && createPortal(
+      {/* Action history — top-left below hand strength label
+          (APP Precision: drawn as the ticker row inside the top bar instead) */}
+      {actionHistory.length > 0 && !cinematicEnabled && createPortal(
         <div className="action-history-floating">
           {actionHistory.slice(0, 3).map((a, i) => (
             <span key={i} className={`action-hist-item ${i === 0 ? 'action-hist-latest' : ''}${isStripBetEntry(a) ? ' action-hist-bet' : ''}`}>{a}</span>
@@ -5263,6 +5369,8 @@ export default function GameHUD() {
         <div className="showdown-overlay" onClick={() => setShowShowdown(false)}>
           <div className="showdown-panel" onClick={(e) => e.stopPropagation()}>
             <div className="showdown-title">Showdown</div>
+            {/* APP Precision: the Split Pot banner's place while this panel is open. */}
+            {cinematicEnabled && chopBannerShown && renderChopBanner('app-chop-in-panel')}
 
             {/* Winners — per-pot if available, otherwise totals */}
             {/* F19 / F20 — per pot only when every pot with chips names its winners. */}
@@ -5535,7 +5643,7 @@ export default function GameHUD() {
 
       {/* Spectator banner */}
       {isSpectating && (
-        <div style={{
+        <div className={cinematicEnabled ? 'app-spectator-banner' : undefined} style={{
           // 2026-07-05 mobile audit fix: was top:44px (hardcoded), which slid under
           // the notch / the top HUD bar on notched iPhones in PWA standalone. Offset
           // by the safe-area top inset so it clears both.
@@ -5835,8 +5943,8 @@ export default function GameHUD() {
       {/* Big Win Confetti */}
       {showConfetti && <WinConfetti chipsWon={confettiChips} />}
 
-      {/* Session Tracker (bottom-left) */}
-      <SessionTracker />
+      {/* Session Tracker (bottom-left; APP Precision: also a line in the menu) */}
+      <SessionTracker menuSlot={cinematicEnabled ? sessionMenuSlot : null} />
 
       {/* Keyboard Shortcuts Overlay (#9) */}
       {showShortcuts && (

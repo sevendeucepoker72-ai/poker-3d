@@ -1,0 +1,881 @@
+/* ════════════════════════════════════════════════════════════════════════
+   APP Precision table skin (2026-11-24), package 1: the scene and the top area.
+   Acts ONLY under the skin's classes (.cinematic-table on the scene,
+   .cinematic-hud / .app-top / .app-menu on the HUD), which exist only in a
+   VITE_APP_CINEMATIC=1 build. Every rule is prefixed with `html` (and two
+   classes) so it wins over the older table layers whatever order the lazy
+   chunks load their CSS in.
+   - the Denver lounge room: one fixed layer behind everything (static images,
+     anchored to the measured felt / bar so nothing looks cut off);
+   - the table as one unit: the REAL measured felt (.table2d-felt drives the
+     seat ellipse) wears the leather rail, the chrome band with LED studs and
+     the blue glow as pseudo-elements around its own box, plus the TM watermark;
+   - the top bar: logo row (hamburger = Options menu, TM logo, chat bubble =
+     Emote), the stat strip, the extras line and the action ticker, all inside
+     .hud-top so useTableGeometry keeps measuring its real bottom edge.
+   Phones: no backdrop-filter, no filter, no animated shadows.
+   ════════════════════════════════════════════════════════════════════════ */
+
+html .hud.cinematic-hud,
+html .cinematic-table {
+  --app-font: 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+  --app-gold-text: linear-gradient(180deg, #fff4c2 0%, #f2cf6b 55%, #d2a649 100%);
+}
+html .hud.cinematic-hud {
+  /* mirrors TableLayout.css's .hud padding-top (no tabs / tabs) */
+  --app-pad-top: max(6px, calc(env(safe-area-inset-top, 0px) + 6px));
+  --app-logo-row: clamp(44px, calc(18vh - 60px), 76px);
+  --app-strip-h: 42px;
+  --app-ticker-h: 22px;
+}
+html .hud.cinematic-hud.hud--tabs {
+  --app-pad-top: calc(env(safe-area-inset-top, 0px) + 48px);
+  --app-logo-row: 44px;
+}
+@media (max-height: 640px) {
+  html .hud.cinematic-hud { --app-strip-h: 38px; --app-ticker-h: 20px; }
+}
+
+/* ── 1. The room ─────────────────────────────────────────────────────────
+   Ceiling lights at the top, the Denver window band sitting on the rail's
+   top edge, the whiskey glass and chip stacks beside the hero on the bar.
+   APP Precision repair: the sky continues above the band (room-sky.webp,
+   stretched from just under the top bar down to the band's soft top edge),
+   so on tall phones and while watching there is no flat gap or hard edge. */
+html .cinematic-table .table2d-bg {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  background:
+    url('/cinematic/room-glass.webp') left 0 bottom calc(var(--hud-bar-h, 150px) + 2px) / clamp(46px, 15vw, 66px) auto no-repeat,
+    url('/cinematic/room-chips.webp') right 0 bottom calc(var(--hud-bar-h, 150px) + 10px) / clamp(42px, 13.8vw, 60px) auto no-repeat,
+    url('/cinematic/room-header.webp') center top / 100% auto no-repeat,
+    url('/cinematic/room-window.webp') 0% var(--app-win-y) / auto var(--app-win-h) no-repeat,
+    url('/cinematic/room-sky.webp') 0% var(--app-sky-y) / var(--app-win-w) var(--app-sky-h) no-repeat,
+    radial-gradient(ellipse 75% 42% at 50% 58%, rgba(8, 72, 180, 0.30), transparent 72%),
+    linear-gradient(180deg, #02060f 0%, #050c1c 18%, #0a1730 42%, #07101f 72%, #02050c 100%) !important;
+}
+html .cinematic-table .table2d-bg::after {
+  background: linear-gradient(180deg, rgba(2, 6, 15, 0.55) 0%, transparent 14%, transparent 80%, rgba(2, 5, 12, 0.6) 100%) !important;
+}
+/* the old light shaft / motes belong to the plain navy room */
+html .cinematic-table .table2d-rays,
+html .cinematic-table .table2d-motes { display: none !important; }
+/* the HUD's screen vignette only softens the corners here (it sits over the top bar) */
+html .hud.cinematic-hud .table-vignette {
+  background: radial-gradient(ellipse 90% 80% at 50% 52%, transparent 58%, rgba(0, 0, 0, 0.26) 100%) !important;
+}
+
+/* ── 2. The table: rail + felt on the measured felt box ──────────────────
+   Thickness follows the measured felt width (TableLayout sizes the felt;
+   --felt-w is useTableGeometry's measurement), so every oval gets the same
+   rail. Outside in: blue LED glow, chrome lip, black leather, chrome band
+   with LED studs, chrome ring, cyan LED line, cloth. */
+html .cinematic-table {
+  --app-rail-side: clamp(18px, calc(var(--felt-w, 260px) * 0.23), 64px);
+  --app-rail-top: clamp(14px, calc(var(--felt-w, 260px) * 0.12), 40px);
+  --app-rail-bot: clamp(16px, calc(var(--felt-w, 260px) * 0.16), 48px);
+  /* the window band fills the room from the top bar down to the rail (its
+     natural height at the least; wider than the screen when taller) */
+  --app-win-h: clamp(17.36vw, calc(var(--felt-t, 260px) - var(--app-rail-top) - var(--hud-top-h, 150px) + 40px), 28vw);
+  --app-win-y: calc(var(--felt-t, 260px) - var(--app-rail-top) + 18px - var(--app-win-h));
+  /* the band's drawn width (the art is 864x150) and the sky above it: from
+     30px above the top bar's bottom edge (under the ticker) to the band's top */
+  --app-win-w: calc(var(--app-win-h) * 5.76);
+  --app-sky-y: calc(var(--hud-top-h, 150px) - 30px);
+  --app-sky-h: max(0px, calc(var(--app-win-y) - var(--app-sky-y) + 2px));
+  /* the cloth's shape: a rounded oval like the mockup's (the box is unchanged) */
+  --app-felt-radius: 43% / 50%;
+}
+html .cinematic-table .table2d-felt {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: var(--app-felt-radius) !important;
+}
+/* black leather tube: dark inner edge, a lit crown, a dark fold, a rim light */
+html .cinematic-table .table2d-felt::before {
+  content: '' !important;
+  position: absolute !important;
+  top: calc(-1 * var(--app-rail-top)) !important;
+  bottom: calc(-1 * var(--app-rail-bot)) !important;
+  left: calc(-1 * var(--app-rail-side)) !important;
+  right: calc(-1 * var(--app-rail-side)) !important;
+  border-radius: 45% / 50% !important;
+  z-index: -1 !important;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 16% 8% at 24% 10%, rgba(255, 255, 255, 0.30), transparent 72%),
+    radial-gradient(ellipse 16% 8% at 76% 10%, rgba(255, 255, 255, 0.30), transparent 72%),
+    radial-gradient(ellipse 7% 20% at 4% 42%, rgba(226, 236, 255, 0.26), transparent 72%),
+    radial-gradient(ellipse 7% 20% at 96% 42%, rgba(226, 236, 255, 0.26), transparent 72%),
+    radial-gradient(ellipse 30% 7% at 50% 97%, rgba(200, 214, 240, 0.20), transparent 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 40%, rgba(0, 0, 0, 0.28) 100%),
+    radial-gradient(ellipse closest-side at 50% 48%, #050608 66%, #16191f 71%, #3e4450 79%, #20242c 85%, #0a0b0f 92%, #2a2f38 98%, #07080b 100%) !important;
+  background-size: 160px 160px, auto, auto, auto, auto, auto, auto, auto !important;
+  background-blend-mode: soft-light, normal, normal, normal, normal, normal, normal, normal !important;
+  box-shadow:
+    inset 0 0 0 1.5px rgba(214, 222, 236, 0.85),
+    inset 0 0 0 3px rgba(12, 14, 18, 0.95),
+    0 0 0 1.5px rgba(63, 184, 255, 0.95),
+    0 0 18px 5px rgba(0, 140, 255, 0.55),
+    0 14px 30px rgba(0, 0, 0, 0.7) !important;
+}
+/* chrome band with blue LED segments just outside the cloth (the cloth covers its middle) */
+html .cinematic-table .table2d-felt::after {
+  content: '' !important;
+  position: absolute !important;
+  inset: -13px !important;
+  border-radius: 44% / 50% !important;
+  z-index: -1 !important;
+  opacity: 1 !important;
+  animation: none !important;
+  pointer-events: none;
+  background:
+    repeating-conic-gradient(from 3deg, #e9fbff 0deg 2deg, rgba(96, 205, 255, 0.85) 2deg 3.4deg, transparent 3.4deg 13deg),
+    conic-gradient(from 200deg, #e9ecf1, #6d7380, #22252c, #9aa1ad, #e9ecf1, #6d7380, #22252c, #9aa1ad, #e9ecf1) !important;
+  box-shadow: 0 0 0 1.5px rgba(222, 230, 242, 0.9), 0 0 10px 2px rgba(0, 170, 255, 0.6) !important;
+}
+html .cinematic-table .table2d-felt__surface {
+  border-radius: var(--app-felt-radius) !important;
+  box-shadow:
+    0 0 0 1px #9ff0ff,
+    0 0 0 3px #eef1f6,
+    0 0 0 5px #8b919e,
+    0 0 0 6px rgba(14, 16, 20, 0.95),
+    inset 0 0 14px rgba(0, 170, 255, 0.55),
+    inset 0 0 64px 18px rgba(1, 10, 32, 0.6),
+    inset 0 10px 40px rgba(140, 195, 255, 0.10) !important;
+}
+html .cinematic-table .table2d-felt__surface::before,
+html .cinematic-table .table2d-felt__surface::after,
+html .cinematic-table .table2d-felt__win-glow { border-radius: var(--app-felt-radius) !important; }
+/* the default (Speed / blue) felt: deep blue cloth; other themes keep --felt-bg */
+html .cinematic-table .table2d-felt[data-cinematic-felt="blue"] .table2d-felt__surface {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 58% 52% at 50% 40%, rgba(120, 180, 255, 0.18), transparent 62%),
+    radial-gradient(ellipse at 50% 45%, #0d4fa8 0%, #013077 30%, #012158 62%, #011339 100%) !important;
+  background-size: 200px 200px, cover, cover !important;
+  background-blend-mode: soft-light, screen, normal !important;
+}
+html .cinematic-table .table2d-felt__surface::before { border-color: rgba(117, 213, 225, 0.16) !important; }
+html .cinematic-table .table2d-felt__surface::after { border-color: rgba(120, 170, 255, 0.12) !important; }
+/* the faint TM APP watermark below the board */
+html .cinematic-table .table2d-felt__logo {
+  top: 73% !important;
+  width: 46% !important;
+  max-width: 46% !important;
+  max-height: 26% !important;
+}
+/* wide ovals (landscape, tablets, desktop): the same mark, sized by the felt's height */
+@media (min-width: 601px), (orientation: landscape) {
+  html .cinematic-table .table2d-felt__logo { width: 24% !important; max-width: 24% !important; top: 75% !important; }
+}
+html .cinematic-table .table2d-felt__logo::before { display: none !important; }
+html .cinematic-table .table2d-logo-img {
+  width: 100% !important;
+  height: auto !important;
+  opacity: 0.42 !important;
+}
+
+/* ── 3. The top bar ─────────────────────────────────────────────────────── */
+html .hud.cinematic-hud .hud-top.app-top {
+  display: grid !important;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  grid-template-rows: var(--app-logo-row) auto auto auto;
+  grid-template-areas: "menu logo chat" "strip strip strip" "info info info" "ticker ticker ticker";
+  align-items: center;
+  gap: 0 8px !important;
+  padding: 0 calc(8px + env(safe-area-inset-right, 0px)) 4px calc(8px + env(safe-area-inset-left, 0px)) !important;
+  margin: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  flex-wrap: nowrap !important;
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-family: var(--app-font);
+}
+/* the old top row: every control has a new home (menu / ticker / strip) */
+html .hud.cinematic-hud .app-top > .hud-back,
+html .hud.cinematic-hud .app-top > .hud-center-info,
+html .hud.cinematic-hud .app-top .hud-player > .hud-name,
+html .hud.cinematic-hud .app-top .hud-player > .hud-chip-stack,
+html .hud.cinematic-hud .app-top .hud-player > .hud-spectator-tag,
+html .hud.cinematic-hud .app-top .hud-player > .sit-out-quick-btn:not(.sit-out-quick-btn--active) {
+  display: none !important;
+}
+html .hud.cinematic-hud .app-top .hud-player { display: contents !important; }
+
+/* logo */
+html .hud.cinematic-hud .app-top__logo {
+  grid-area: logo;
+  justify-self: center;
+  align-self: center;
+  display: block;
+  height: calc(var(--app-logo-row) + 12px);
+  width: auto;
+  max-width: 100%;
+  margin: -6px 0 -6px;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+/* with the Training dock beside the hamburger the logo gives it room */
+html .hud.cinematic-hud .app-top:has(.hud-training-badge) .app-top__logo { max-width: calc(100% - 2 * 84px); }
+html .hud.cinematic-hud .app-top .hud-training-badge {
+  grid-area: logo;
+  justify-self: start;
+  align-self: center;
+  z-index: 1;
+  margin: 0 !important;
+  min-height: 44px !important;
+  padding: 0 10px !important;
+  border-radius: 12px !important;
+  font-family: var(--app-font);
+  font-weight: 700;
+}
+
+/* hamburger = the Options button (its "Options" label stays for screen readers) */
+html .hud.cinematic-hud .app-top .hud-options-wrapper {
+  grid-area: menu;
+  justify-self: start;
+  align-self: center;
+  width: 44px;
+  height: 44px;
+}
+html .hud.cinematic-hud .app-top .hud-options-wrapper .hud-icon-btn {
+  position: relative;
+  display: block !important;
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 11px !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+  background:
+    linear-gradient(#f2f9ff, #f2f9ff) center calc(50% - 6px) / 18px 2px no-repeat,
+    linear-gradient(#f2f9ff, #f2f9ff) center 50% / 18px 2px no-repeat,
+    linear-gradient(#f2f9ff, #f2f9ff) center calc(50% + 6px) / 18px 2px no-repeat,
+    linear-gradient(180deg, #1e3757 0%, #0a1d36 55%, #001328 100%) !important;
+  border: 1px solid #7fb4e6 !important;
+  box-shadow: inset 0 1px 0 rgba(234, 253, 254, 0.45), 0 0 10px rgba(0, 140, 255, 0.45), 0 3px 8px rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+html .hud.cinematic-hud .app-top .hud-options-wrapper .hud-icon-btn.hud-icon-btn-active {
+  border-color: #b8f1fd !important;
+  box-shadow: inset 0 1px 0 rgba(234, 253, 254, 0.55), 0 0 14px rgba(0, 170, 255, 0.75), 0 3px 8px rgba(0, 0, 0, 0.6) !important;
+}
+/* sitting out: the hamburger keeps a gold edge (the menu row brings him back) */
+html .hud.cinematic-hud .app-top .hud-options-wrapper .hud-icon-btn.hud-icon-btn-sitout {
+  border-color: #f2cf6b !important;
+}
+/* the "⋯ Options" words: no visible size (font-size 0), still the button's name */
+html .hud.cinematic-hud .app-top .hud-icon-btn .icon-btn-label {
+  display: inline !important;
+  font-size: 0 !important;
+}
+
+/* chat bubble = the Emote button (table chat is off in code), moved from
+   the left rail to the logo row's right end; its panel is fixed + centred */
+html .hud.cinematic-hud .left-rail-btns,
+html.table-geometry .hud.cinematic-hud .left-rail-btns {
+  position: fixed !important;
+  top: calc(var(--app-pad-top) + (var(--app-logo-row) - 44px) / 2) !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: calc(8px + env(safe-area-inset-right, 0px)) !important;
+  width: 44px !important;
+  height: 44px !important;
+  gap: 0 !important;
+}
+html .hud.cinematic-hud .left-rail-btns .emote-trigger-btn {
+  position: relative;
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 !important;
+  border-radius: 11px !important;
+  font-size: 0 !important;
+  color: transparent !important;
+  background: linear-gradient(180deg, #1e3757 0%, #0a1d36 55%, #001328 100%) !important;
+  border: 1px solid #7fb4e6 !important;
+  box-shadow: inset 0 1px 0 rgba(234, 253, 254, 0.45), 0 0 10px rgba(0, 140, 255, 0.45), 0 3px 8px rgba(0, 0, 0, 0.6) !important;
+}
+html .hud.cinematic-hud .left-rail-btns .emote-trigger-btn::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  width: 24px;
+  height: 24px;
+  background: #e2fafe;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 4.5h14a2.5 2.5 0 0 1 2.5 2.5v8.5a2.5 2.5 0 0 1-2.5 2.5h-7l-4.6 3.4V18H5a2.5 2.5 0 0 1-2.5-2.5V7A2.5 2.5 0 0 1 5 4.5z' fill='none' stroke='%23000' stroke-width='1.8' stroke-linejoin='round'/%3E%3Ccircle cx='8' cy='11.25' r='1.35'/%3E%3Ccircle cx='12' cy='11.25' r='1.35'/%3E%3Ccircle cx='16' cy='11.25' r='1.35'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 4.5h14a2.5 2.5 0 0 1 2.5 2.5v8.5a2.5 2.5 0 0 1-2.5 2.5h-7l-4.6 3.4V18H5a2.5 2.5 0 0 1-2.5-2.5V7A2.5 2.5 0 0 1 5 4.5z' fill='none' stroke='%23000' stroke-width='1.8' stroke-linejoin='round'/%3E%3Ccircle cx='8' cy='11.25' r='1.35'/%3E%3Ccircle cx='12' cy='11.25' r='1.35'/%3E%3Ccircle cx='16' cy='11.25' r='1.35'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+html .hud.cinematic-hud .left-rail-btns .emote-trigger-btn:disabled { opacity: 0.45 !important; }
+/* the "not unlocked" note under the bubble */
+html .hud.cinematic-hud .left-rail-btns .emote-note {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  white-space: nowrap;
+}
+
+/* sitting out: the active "Sitting Out" button stays in sight as a gold
+   glass pill above the bar's left end (where Emote used to be) */
+html .hud.cinematic-hud .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
+  position: fixed !important;
+  top: auto !important;
+  left: calc(8px + env(safe-area-inset-left, 0px)) !important;
+  bottom: calc(var(--hud-bar-h, 150px) + 8px) !important;
+  z-index: 505 !important;
+  min-height: 44px !important;
+  height: 44px !important;
+  padding: 0 12px !important;
+  border-radius: 999px !important;
+  font: 700 12px/1 var(--app-font) !important;
+  color: #ffe9a8 !important;
+  background: linear-gradient(180deg, rgba(36, 60, 104, 0.96), rgba(8, 22, 52, 0.96)) !important;
+  border: 1px solid #f2cf6b !important;
+  box-shadow: 0 0 10px rgba(242, 207, 107, 0.35), 0 3px 8px rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: none !important;
+  animation: none !important;
+}
+
+/* ── 3a. Stat strip ── */
+html .hud.cinematic-hud .app-strip {
+  grid-area: strip;
+  display: grid;
+  grid-template-columns: 1.14fr 1fr 0.62fr 1.02fr;
+  gap: 4px;
+  margin-top: 3px;
+  padding: 0 3px;
+  min-width: 0;
+}
+html .hud.cinematic-hud .app-strip--three { grid-template-columns: 1.14fr 1fr 1.02fr; }
+html .hud.cinematic-hud .app-strip--level { grid-template-columns: 1.08fr 1fr 0.86fr 1.02fr; }
+/* a variant / dealer's choice name rides in the street panel: it gets more room */
+html .hud.cinematic-hud .app-strip--variant { grid-template-columns: 1fr 0.92fr 0.6fr 1.32fr; }
+html .hud.cinematic-hud .app-strip--variant.app-strip--three { grid-template-columns: 1fr 0.92fr 1.32fr; }
+html .hud.cinematic-hud .app-strip--variant.app-strip--level { grid-template-columns: 1fr 0.92fr 0.82fr 1.32fr; }
+html .hud.cinematic-hud .app-strip__panel {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  min-height: var(--app-strip-h);
+  padding: 3px 7px 4px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  text-align: center;
+  color: #fff;
+  /* the values size to their panel (container query units) */
+  container-type: inline-size;
+}
+html .hud.cinematic-hud .app-strip__panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 7px;
+  transform: skewX(-8deg);
+  background: linear-gradient(180deg, rgba(30, 63, 100, 0.78) 0%, rgba(2, 24, 52, 0.94) 45%, rgba(0, 13, 30, 0.96) 100%);
+  border: 1px solid rgba(120, 190, 255, 0.55);
+  box-shadow: inset 0 1px 0 rgba(234, 253, 254, 0.35), 0 0 10px rgba(0, 110, 255, 0.35), 0 4px 10px rgba(0, 0, 0, 0.6);
+}
+html .hud.cinematic-hud .app-strip__panel::after {
+  content: '';
+  position: absolute;
+  left: 16%;
+  right: 16%;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #b8f1fd, transparent);
+  pointer-events: none;
+}
+html .hud.cinematic-hud .app-strip__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 11px/13px var(--app-font);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(232, 241, 250, 0.86);
+}
+html .hud.cinematic-hud .app-strip__value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  font-style: italic;
+  font-weight: 800;
+  font-family: var(--app-font);
+  line-height: 22px;
+  font-size: clamp(14px, 4.4vw, 19px);
+  font-size: clamp(11px, calc((100cqi - var(--app-icon-w, 0px)) / (var(--app-chars, 6) * 0.6)), 19px);
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+html .hud.cinematic-hud .app-strip__value--gold { --app-icon-w: 25px; }
+html .hud.cinematic-hud .app-strip__value--gold .app-strip__num {
+  background: var(--app-gold-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html .hud.cinematic-hud .app-strip__value--flash { animation: app-pot-bump 0.5s ease-out; }
+@keyframes app-pot-bump { 0% { transform: scale(1.1); } 100% { transform: scale(1); } }
+html .hud.cinematic-hud .app-strip__chip {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #f7d774 0 33%, #a8731f 34% 41%, transparent 42%),
+    repeating-conic-gradient(#fff1bf 0deg 16deg, #c38d2c 16deg 45deg);
+  box-shadow: inset 0 0 0 1px rgba(90, 56, 8, 0.8), 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+html .hud.cinematic-hud .app-strip__sub {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 11px/13px var(--app-font);
+  color: #d6e4f3;
+}
+/* SPR tiers: under 3 cyan, 3-8 gold, 8+ green (no red) */
+html .hud.cinematic-hud .app-spr--low { color: #16fcfe !important; }
+html .hud.cinematic-hud .app-spr--mid { color: #f2cf6b !important; }
+html .hud.cinematic-hud .app-spr--high { color: #4ade80 !important; }
+/* the level clock's bar */
+html .hud.cinematic-hud .app-strip__bar {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: 4px;
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(202, 249, 254, 0.18);
+}
+html .hud.cinematic-hud .app-strip__bar-fill { display: block; height: 100%; }
+html .hud.cinematic-hud .app-strip__panel--level { padding-bottom: 8px; }
+/* street: the street word in cyan italics over one dash per street */
+html .hud.cinematic-hud .app-strip__variant {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 11px/13px var(--app-font);
+  color: #ffd24a;
+}
+html .hud.cinematic-hud .app-strip__street {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: italic 700 13px/16px var(--app-font);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #16fcfe;
+  text-shadow: 0 0 8px rgba(22, 252, 254, 0.45);
+}
+html .hud.cinematic-hud .app-strip__dashes {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  margin-top: 4px;
+}
+html .hud.cinematic-hud .app-dash {
+  flex: 0 1 17px;
+  min-width: 5px;
+  height: 4px;
+  border-radius: 1px;
+  transform: skewX(-20deg);
+  background: rgba(202, 249, 254, 0.35);
+}
+html .hud.cinematic-hud .app-dash--on {
+  background: #0efdfe;
+  box-shadow: 0 0 6px rgba(14, 253, 254, 0.8);
+}
+
+/* ── 3b. Extras line (side pots, next level, standings, dealer's choice next) ── */
+/* APP Precision repair: always ONE line, so the top bar keeps its height (a
+   second line pushed the board under the hero cards at 320x568). A line too
+   long for the screen scrolls sideways inside itself (never the page); the
+   average stack drops on narrow phones as the old clock strip did. */
+html .hud.cinematic-hud .app-info {
+  grid-area: info;
+  justify-self: center;
+  max-width: 100%;
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  justify-content: safe center;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  font: 600 11px/15px var(--app-font);
+  color: #cfe0f5;
+  text-align: center;
+  white-space: nowrap;
+}
+html .hud.cinematic-hud .app-info::-webkit-scrollbar { display: none; }
+html .hud.cinematic-hud .app-info__item { flex: none; display: inline-flex; align-items: center; white-space: nowrap; }
+@media (max-width: 400px) {
+  html .hud.cinematic-hud .app-info__item--avg { display: none; }
+}
+html .hud.cinematic-hud .app-info__sep { padding: 0 6px; color: #4d6e93; }
+html .hud.cinematic-hud .app-info__next,
+html .hud.cinematic-hud .app-info__status { color: #f2cf6b; }
+html .hud.cinematic-hud .app-info__pot {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(5, 26, 59, 0.85);
+  border: 1px solid rgba(120, 190, 255, 0.45);
+  color: #f2dfa0;
+}
+html .hud.cinematic-hud .app-info__pot--main { border-color: rgba(242, 207, 107, 0.6); }
+
+/* ── 3c. Action ticker ── */
+html .hud.cinematic-hud .app-ticker {
+  grid-area: ticker;
+  justify-self: center;
+  /* as wide as its line (a centred pill), between 75% and 92% of the screen */
+  width: auto;
+  min-width: min(100%, 75vw);
+  max-width: min(100%, 92vw, 600px);
+  height: var(--app-ticker-h);
+  margin-top: 5px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(8, 30, 66, 0.88), rgba(3, 14, 34, 0.92));
+  box-shadow: inset 0 -1px 0 #0798f6, inset 0 1px 0 rgba(184, 241, 253, 0.12), 0 0 8px rgba(0, 110, 255, 0.25);
+  overflow: hidden;
+  font: italic 400 11px/13px var(--app-font);
+  color: #d7dae2;
+}
+html .hud.cinematic-hud .app-ticker .app-ticker__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin: 0;
+}
+html .hud.cinematic-hud .app-ticker__watching {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(242, 207, 107, 0.55);
+  color: #ffd24a;
+  font-style: normal;
+  font-weight: 700;
+}
+/* newest first in the DOM, drawn oldest -> newest (a right-to-left row whose
+   items read left-to-right): centred while it fits; when it does not, `safe`
+   falls back to the row's start (the right end), so the OLDEST end is cut */
+html .hud.cinematic-hud .app-ticker__items {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  direction: rtl;
+  justify-content: center;
+  justify-content: safe center;
+  overflow: hidden;
+  white-space: nowrap;
+  /* the fade only ever covers cut-off text: a line that fits starts after it */
+  padding-left: 14px;
+  margin-left: -14px;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px);
+  mask-image: linear-gradient(90deg, transparent 0, #000 14px);
+}
+html .hud.cinematic-hud .app-ticker__item { flex: none; direction: ltr; unicode-bidi: isolate; color: #b9c2d2; }
+html .hud.cinematic-hud .app-ticker__item--latest { color: #eef2f8; }
+html .hud.cinematic-hud .app-ticker__item--bet { color: #f2dfa0; }
+html .hud.cinematic-hud .app-ticker__item + .app-ticker__item::after {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 11px;
+  margin: 0 10px;
+  vertical-align: -1px;
+  background: #4d6e93;
+}
+
+/* ── 3d. Notices that were pinned just under the OLD 44px top row now sit
+   under the new top bar, so none covers the strip, the menu or the chat
+   bubble (their own order / looks unchanged). The winner banner keeps its
+   place (spec: overlays unchanged). */
+html .hud.cinematic-hud .afk-warning-banner,
+html .hud.cinematic-hud .afk-away-banner,
+html .hud.cinematic-hud .bomb-pot-banner,
+html .hud.cinematic-hud .chop-pot-banner,
+html .hud.cinematic-hud .missed-blinds-panel,
+html .hud.cinematic-hud .hand-strength-container,
+html .hud.cinematic-hud .app-spectator-banner {
+  top: calc(var(--hud-top-h, 150px) + 6px) !important;
+}
+html .hud.cinematic-hud .mucked-hands-container { top: calc(var(--hud-top-h, 150px) + 40px) !important; }
+/* the Split Pot banner inside the open showdown panel, under its title
+   (GameHUD draws it there only with the skin on) */
+html .hud.cinematic-hud .showdown-panel .chop-pot-banner.app-chop-in-panel {
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  transform: none !important;
+  z-index: auto;
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 2px auto 10px;
+  padding: 6px 16px;
+  animation: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: linear-gradient(180deg, rgba(30, 63, 100, 0.55), rgba(2, 24, 52, 0.9));
+  border: 1px solid rgba(242, 207, 107, 0.55);
+}
+html .hud.cinematic-hud .showdown-panel .app-chop-in-panel .chop-pot-shares { flex-wrap: wrap; gap: 2px 16px; }
+html .hud.cinematic-hud .bomb-pot-banner { white-space: nowrap; }
+/* tablets / desktop: the hand-strength pill hung at 56px (under the old row);
+   phones place it on the felt (TableLayout.css) */
+@media (min-width: 601px) and (min-height: 501px) {
+  html .hud.cinematic-hud .hand-strength-portal { top: calc(var(--hud-top-h, 150px) + 6px) !important; }
+}
+/* the away notice wraps on a phone instead of running under the bubbles:
+   one wide row (its text wraps, the button stays beside it), so it stays a
+   short band under the ticker and clears the top seats (APP Precision repair) */
+html .hud.cinematic-hud .afk-warning-banner,
+html .hud.cinematic-hud .afk-away-banner {
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  white-space: normal;
+  flex-wrap: nowrap;
+  justify-content: center;
+  padding: 4px 6px 4px 12px;
+  line-height: 1.3;
+  text-align: left;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: linear-gradient(180deg, rgba(14, 34, 66, 0.96), rgba(3, 13, 31, 0.96)) !important;
+}
+html .hud.cinematic-hud .afk-back-btn,
+html .hud.cinematic-hud .afk-warning-dismiss { flex: none; min-height: 44px; padding: 0 14px; white-space: nowrap; }
+
+/* ── 4. The menu (Options): a sheet under the hamburger, 44px rows ── */
+html .hud.cinematic-hud .hud-options-dropdown.app-menu {
+  position: fixed !important;
+  top: calc(var(--app-pad-top) + var(--app-logo-row) + 2px) !important;
+  left: calc(8px + env(safe-area-inset-left, 0px)) !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  width: min(340px, calc(100vw - 16px)) !important;
+  max-width: calc(100vw - 16px) !important;
+  max-height: calc(100dvh - var(--app-pad-top) - var(--app-logo-row) - 12px) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  padding: 10px !important;
+  gap: 6px !important;
+  border-radius: 14px !important;
+  background: linear-gradient(180deg, rgba(14, 34, 66, 0.985), rgba(3, 13, 31, 0.985)) !important;
+  border: 1px solid rgba(120, 190, 255, 0.55) !important;
+  box-shadow: inset 0 1px 0 rgba(234, 253, 254, 0.3), 0 0 14px rgba(0, 110, 255, 0.35), 0 12px 30px rgba(0, 0, 0, 0.7) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  font-family: var(--app-font);
+}
+html .hud.cinematic-hud .app-menu .options-row { min-height: 44px; }
+html .hud.cinematic-hud .app-menu .options-label { font-size: 13px !important; color: #d6e4f3 !important; font-weight: 600; }
+html .hud.cinematic-hud .app-menu .options-toggle {
+  min-width: 58px !important;
+  min-height: 44px !important;
+  border-radius: 10px !important;
+  font: 800 12px/1 var(--app-font) !important;
+  letter-spacing: 0.08em;
+}
+html .hud.cinematic-hud .app-menu .options-on {
+  background: linear-gradient(180deg, #0d4486, #062452) !important;
+  border: 1px solid #3fb8ff !important;
+  color: #ffd24a !important;
+  box-shadow: 0 0 8px rgba(0, 150, 255, 0.5) !important;
+}
+html .hud.cinematic-hud .app-menu .options-off {
+  background: linear-gradient(180deg, #2a3a58, #17233a) !important;
+  border: 1px solid #5d7192 !important;
+  color: #b9c6db !important;
+}
+html .hud.cinematic-hud .app-menu .options-action-btn,
+html .hud.cinematic-hud .app-menu .options-adv-header,
+html .hud.cinematic-hud .app-menu .options-adv-btn {
+  min-height: 44px !important;
+  border-radius: 10px !important;
+  font-family: var(--app-font) !important;
+  font-size: 14px !important;
+  color: #e6eef9 !important;
+  background: linear-gradient(180deg, rgba(30, 63, 100, 0.55), rgba(2, 24, 52, 0.9)) !important;
+  border: 1px solid rgba(120, 190, 255, 0.4) !important;
+}
+html .hud.cinematic-hud .app-menu .options-adv-btn.active {
+  border-color: #3fb8ff !important;
+  color: #ffd24a !important;
+  box-shadow: 0 0 8px rgba(0, 150, 255, 0.45) !important;
+}
+html .hud.cinematic-hud .app-menu .options-queue-chip,
+html .hud.cinematic-hud .app-menu .options-theme-swatch { min-width: 44px !important; min-height: 44px !important; }
+html .hud.cinematic-hud .app-menu .options-volume-slider { min-height: 44px; }
+html .hud.cinematic-hud .app-menu .options-volume-label,
+html .hud.cinematic-hud .app-menu .options-volume-pct,
+html .hud.cinematic-hud .app-menu .options-queue-label,
+html .hud.cinematic-hud .app-menu .options-help-off-note { font-size: 12px !important; }
+html .hud.cinematic-hud .app-menu .options-divider { background: rgba(120, 190, 255, 0.22) !important; }
+/* header: who, connection, table stack, wallet, session result */
+html .hud.cinematic-hud .app-menu__head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 2px 4px;
+}
+html .hud.cinematic-hud .app-menu__who { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+html .hud.cinematic-hud .app-menu__who .conn-dot { flex: none; margin: 0; }
+html .hud.cinematic-hud .app-menu__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: italic 800 17px/1.2 'Playfair Display', Georgia, serif;
+  color: #fff;
+}
+html .hud.cinematic-hud .app-menu__conn {
+  margin-left: auto;
+  flex: none;
+  font: 600 11px/13px var(--app-font);
+  color: #9fc3e6;
+}
+html .hud.cinematic-hud .app-menu__money { display: flex; gap: 6px; }
+html .hud.cinematic-hud .app-menu__money-item {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  background: rgba(2, 24, 52, 0.85);
+  border: 1px solid rgba(120, 190, 255, 0.3);
+}
+html .hud.cinematic-hud .app-menu__money-label {
+  font: 600 11px/13px var(--app-font);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(232, 241, 250, 0.82);
+}
+html .hud.cinematic-hud .app-menu__money-val {
+  font: italic 800 16px/1.2 var(--app-font);
+  font-variant-numeric: tabular-nums;
+  background: var(--app-gold-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+html .hud.cinematic-hud .app-menu__session:empty { display: none; }
+html .hud.cinematic-hud .app-menu__session-line {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: rgba(2, 24, 52, 0.85);
+  border: 1px solid rgba(120, 190, 255, 0.3);
+  color: #e6eef9;
+  font: 600 12px/1.2 var(--app-font);
+  cursor: pointer;
+  text-align: left;
+}
+html .hud.cinematic-hud .app-menu__session-meta { margin-left: auto; color: #b9c6db; font-size: 11px; }
+html .hud.cinematic-hud .app-menu__session-caret { color: #9fc3e6; }
+html .hud.cinematic-hud .app-menu__session-block .session-stats { padding: 8px 10px 4px; }
+html .hud.cinematic-hud .app-menu__session-block .session-stat-label { font-size: 12px; color: #9fc3e6; }
+html .hud.cinematic-hud .app-menu__lobby { font-weight: 700 !important; }
+html .hud.cinematic-hud .app-menu__sitout--active {
+  border-color: #f2cf6b !important;
+  color: #ffe9a8 !important;
+}
+
+/* ── 5. Wider screens / landscape (package 5 refines these) ── */
+@media (min-width: 601px) {
+  html .hud.cinematic-hud .app-strip { justify-self: center; width: min(100%, 640px); }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  html .hud.cinematic-hud { --app-logo-row: 44px; --app-strip-h: 40px; --app-ticker-h: 20px; }
+  html .hud.cinematic-hud .hud-top.app-top {
+    grid-template-rows: auto auto auto;
+    grid-template-areas: "menu strip chat" "info info info" "ticker ticker ticker";
+    padding-top: 0 !important;
+  }
+  html .hud.cinematic-hud .app-top__logo { display: none; }
+  html .hud.cinematic-hud .app-strip { margin-top: 0; justify-self: center; width: min(100%, 560px); }
+  html .hud.cinematic-hud .app-top .hud-training-badge { grid-area: strip; }
+  html .hud.cinematic-hud .app-ticker { margin-top: 3px; width: min(100%, 520px); }
+}
+
+/* Small phones: no chip icon, tighter labels. */
+@media (max-width: 340px) {
+  html .hud.cinematic-hud .app-strip { gap: 3px; padding: 0 2px; }
+  html .hud.cinematic-hud .app-strip__panel { padding: 3px 4px 4px; }
+  html .hud.cinematic-hud .app-strip__chip { display: none; }
+  html .hud.cinematic-hud .app-strip__label { letter-spacing: 0.05em; }
+  html .hud.cinematic-hud .app-strip__value--gold { --app-icon-w: 0px; }
+  html .hud.cinematic-hud .app-strip__street { letter-spacing: 0.04em; font-size: 12px; }
+  html .hud.cinematic-hud .app-dash { min-width: 4px; }
+}
+/* Short phones held upright (APP Precision repair): tighter lines in the
+   strip, the extras line and the ticker, so a qualifier's top bar (ante
+   line, level clock, standings) stays near a cash table's height. */
+@media (max-height: 640px) and (orientation: portrait) {
+  html .hud.cinematic-hud .app-strip__panel { padding-top: 2px; padding-bottom: 3px; gap: 0; }
+  html .hud.cinematic-hud .app-strip__panel--level { padding-bottom: 5px; }
+  html .hud.cinematic-hud .app-strip__label,
+  html .hud.cinematic-hud .app-strip__sub,
+  html .hud.cinematic-hud .app-strip__variant { line-height: 12px; }
+  html .hud.cinematic-hud .app-strip__value { line-height: 20px; }
+  html .hud.cinematic-hud .app-strip__bar { bottom: 2px; }
+  html .hud.cinematic-hud .app-info { margin-top: 2px; line-height: 13px; }
+  html .hud.cinematic-hud .app-ticker { margin-top: 3px; }
+  html .hud.cinematic-hud .hud-top.app-top { padding-bottom: 2px !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html .hud.cinematic-hud .app-strip__value--flash { animation: none; }
+}

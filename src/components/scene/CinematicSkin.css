@@ -1,31 +1,10 @@
 /* APP cinematic skin. Visual only; existing DOM, timers, seat placement, and
    action handlers remain authoritative. Relative asset URLs resolve via Vite. */
-.cinematic-table .table2d-bg {
-  background: linear-gradient(180deg, #020610 0%, transparent 18%, transparent 45%, #020611 78%, #02040b 100%), url('/cinematic/lounge.webp') center top / 100% 57% no-repeat, #030812 !important;
-}
-.cinematic-table .table2d-bg::after { background: linear-gradient(0deg, #020611 0%, transparent 42%); }
-.cinematic-table .table2d-rays, .cinematic-table .table2d-motes { display:none; }
-.cinematic-table .table2d-felt { background: transparent !important; box-shadow: none !important; isolation:isolate; }
-/* The photographed table is aligned to the live felt rectangle, not the screen.
-   The measured rectangle still drives every seat, chip flight and board. */
-.cinematic-table .table2d-felt::before {
-  content:''; position:absolute; inset:auto !important; left:-13.5% !important; top:-8.5% !important;
-  width:127% !important; height:145% !important; border-radius:0 !important;
-  background:url('/cinematic/table.webp') center / 100% 100% no-repeat !important;
-  box-shadow:none !important; z-index:-1; pointer-events:none;
-}
-.cinematic-table .table2d-felt::after { display:none; }
-.cinematic-table .table2d-felt__surface { background:transparent !important; box-shadow:none !important; overflow:visible; }
-.cinematic-table .table2d-felt__surface::before, .cinematic-table .table2d-felt__surface::after { display:none; }
-.cinematic-table .table2d-felt__spot { display:none; }
-/* Maintain the existing felt selector and equipped shop cosmetics. */
-.cinematic-table .table2d-felt:not([data-cinematic-felt="blue"]) .table2d-felt__surface {
-  background: var(--felt-bg) !important; box-shadow:inset 0 0 34px #02040c99 !important;
-  background-image: var(--felt-bg),url('/cinematic/felt-texture.webp') !important; background-blend-mode:color,normal !important; background-size:cover,cover !important;
-}
-.cinematic-table .table2d-felt__logo { top:72%; width:57%; max-width:57%; max-height:22%; mix-blend-mode:screen; }
-.cinematic-table .table2d-felt__logo::before { display:none; }
-.cinematic-table .table2d-logo-img { opacity:.92; width:100%; object-fit:contain; }
+/* APP Precision package 1 (2026-11-24): the room, the table rail / felt /
+   watermark, the top bar and the board's place on the felt moved to
+   AppPrecision.css (the old rules here sized the felt and the board from the
+   SCREEN, floated a photo table under the real felt and showed the old top
+   row); the seats, pot, cards, hero and action bar rules below are unchanged. */
 .cinematic-table .table2d-pot-label {
   background:linear-gradient(180deg,#414854 0%,#101623 30%,#02050c 80%,#202c3b) !important;
   color:#fff !important; border:1px solid #f7d289 !important; border-radius:7px !important;
@@ -49,11 +28,7 @@
 .cinematic-hud .hud-nameplate-me--active { border-color:#d5f9ff !important; box-shadow:0 0 0 2px #059eff,0 0 15px #00bbffb0,inset 0 0 9px #1b93ff66 !important; }
 .cinematic-table .seat-pod--allin .seat-pod__nameplate, .cinematic-table .seat-pod--winner .seat-pod__nameplate { border-color:#ffe8a1 !important; box-shadow:0 0 0 2px #dba526,0 0 18px #ffb92daa,inset 0 0 8px #ffc86244 !important; }
 .cinematic-table .seat-pod--folded .seat-pod__nameplate { opacity:.77; }
-.cinematic-hud .hud-top { background:linear-gradient(180deg,#030814 0%,#06182b 70%,#03101d 100%) !important; border-bottom:1px solid #4dbbff !important; box-shadow:0 2px 13px #008bff55; }
-.cinematic-hud .cinematic-brand { display:block; width:clamp(88px,13vw,180px); height:auto; max-height:60px; object-fit:contain; mix-blend-mode:screen; pointer-events:none; flex:0 0 auto; order:-1; }
-.cinematic-hud .hud-pot, .cinematic-hud .hud-phase, .cinematic-hud .hud-chips { color:#e2efff !important; }
-.cinematic-hud .hud-pot > span:not(.spr-badge), .cinematic-hud .hud-chips { color:#ffe198 !important; text-shadow:0 0 8px #ffd26a55; }
-.cinematic-hud .hud-back, .cinematic-hud .hud-icon-btn, .cinematic-hud .sit-out-quick-btn, .cinematic-hud .ab-preset {
+.cinematic-hud .ab-preset {
   background:linear-gradient(155deg,#375777,#0b2038 35%,#030814 80%,#122b46) !important;
   color:#f2f8ff !important; border:1px solid #7da5c7 !important; box-shadow:inset 0 1px 2px #d7eeff55,0 2px 5px #0009 !important;
 }
@@ -71,14 +46,6 @@
 .cinematic-hud .hud-bottom .action-btn:disabled { opacity:.45; box-shadow:none !important; }
 .cinematic-hud .hud-bottom .action-btn:not(:disabled):focus-visible { outline:3px solid #fff !important; outline-offset:2px; }
 .cinematic-hud .hud-bottom .action-btn:not(:disabled):active { filter:brightness(.86); }
-@media (max-width:600px) and (orientation:portrait) {
-  .cinematic-hud .hud-top { flex-wrap:wrap !important; }
-  .cinematic-hud .cinematic-brand { flex-basis:100%; width:100%; max-height:42px; order:-1; }
-  .cinematic-table .table2d-bg { background-size:100% 100%,100% 47%,auto !important; }
-  html.table-geometry .cinematic-table .table2d-felt { width:min(calc(100vw - 126px),calc((100dvh - var(--hud-top-h,110px) - var(--hud-bar-h,150px) - 156px)*.98),340px) !important; aspect-ratio:.98/1; }
-  .cinematic-table .table2d-felt__logo { top:74%; }
-}
-@media (orientation:landscape) and (max-height:500px) { .cinematic-hud .cinematic-brand { max-width:80px; max-height:32px; } }
 @media (prefers-reduced-motion:reduce) { .cinematic-table .table2d-felt__win-glow { animation:none!important; } }
 
 /* Respect frames already earned/equipped in the shop. */
@@ -88,17 +55,8 @@
 /* Prevent legacy oversized action glyphs from crossing the actual labels. */
 .cinematic-hud .hud-bottom .action-btn::before { display:none !important; }
 .cinematic-table .seat-pod--empty .seat-pod__label { color:#d8efff !important; text-shadow:0 1px 4px #000; }
-.cinematic-table .table2d-bg { background:linear-gradient(180deg,#02061133,transparent 22%,#02061100 35%,#020611 58%),url('/cinematic/lounge.webp') center top / 100% 47% no-repeat,#020611 !important; }
-@media (max-width:600px) and (orientation:portrait) { .cinematic-table .table2d-bg { background-size:100% 100%,100% 38%,auto !important; } }
-/* Finish the measured portrait/desktop spacing without touching seat logic. */
-.cinematic-table .table2d-bg { background-image:linear-gradient(180deg,#02061122,transparent 18%,transparent 25%,#020611 47%),url('/cinematic/lounge.webp') !important; }
-@media (max-width:600px) and (orientation:portrait) {
-  .cinematic-table .table2d-bg { background-image:linear-gradient(180deg,#02061122,transparent 12%,transparent 22%,#020611 38%),url('/cinematic/lounge.webp') !important; }
-  html.table-geometry .cinematic-table .table2d-felt { width:min(calc(100vw - 150px),calc((100dvh - var(--hud-top-h,110px) - var(--hud-bar-h,150px) - 156px)*.98),340px) !important; }
-}
 @media (min-width:601px) and (min-height:501px) {
   html.table-geometry .cinematic-hud .hud-community { top:calc(var(--felt-t,230px) + var(--felt-h,300px)*.48) !important; left:calc(var(--felt-l,100px) + var(--felt-w,600px)/2) !important; transform:translate(-50%,-50%) !important; }
-  .cinematic-table .table2d-felt__logo { top:77%;width:34%;max-width:34%; }
 }
 
 /* Reference edition: bitmap material sampled from the approved 864×1536
@@ -110,7 +68,7 @@
 .cinematic-hud .hud-bottom .action-btn:disabled { filter:saturate(.45);opacity:.46; }
 .cinematic-hud .hud-bottom .action-btn:not(:disabled):active { filter:brightness(1.3); transform:translateY(1px); }
 .cinematic-hud .hud-bottom .action-btn .action-verb { font-weight:900; font-style:italic; letter-spacing:.015em; }
-.cinematic-hud .hud-bottom .ab-preset,.cinematic-hud .hud-back,.cinematic-hud .hud-icon-btn { background:url('/cinematic/exact/preset.png') center/100% 100% no-repeat !important;border:0!important;box-shadow:none!important; }
+.cinematic-hud .hud-bottom .ab-preset { background:url('/cinematic/exact/preset.png') center/100% 100% no-repeat !important;border:0!important;box-shadow:none!important; }
 .cinematic-table .table2d-pot-label { background:url('/cinematic/exact/pot-frame.png') center/100% 100% no-repeat !important; border:0!important; border-radius:0!important;box-shadow:none!important; padding:8px 20px!important; }
 .cinematic-table .pot-chips { position:relative; width:clamp(74px,23vw,160px); height:clamp(26px,7vw,54px); margin:0 0 -2px;background:url('/cinematic/exact/chip-stack.png') center bottom/contain no-repeat; }
 /* Pot chip image is decorative; actual chip count remains in the live pot label. */
@@ -125,28 +83,12 @@
 .cinematic-hud .card-peek-front .card-suit,.cinematic-hud .community-card .card-suit { font-weight:900; }
 .cinematic-table .card2d--back:not([class*="card-back-"]),.cinematic-hud .card-peek-back:not([class*="card-back-"]) { background:url('/cinematic/exact/card-back.png') center/100% 100% no-repeat !important; }
 .cinematic-table .card2d--back:not([class*="card-back-"]) .card2d__back-pattern { opacity:0; }
-.cinematic-hud .hud-center-info .hud-pot,.cinematic-hud .hud-center-info .hud-phase { background:url('/cinematic/exact/stat-frame.png') center/100% 100% no-repeat; padding:6px 12px; }
 .cinematic-hud .hud-bottom { border-top:1px solid #9befff!important;box-shadow:0 -2px 16px #008dff99!important; }
 .cinematic-table .seat-pod--winner .seat-pod__avatar { animation:reference-win 1.3s ease-out 2; }
 @keyframes reference-win { 0%,100%{filter:drop-shadow(0 0 5px #ffc544)} 45%{filter:drop-shadow(0 0 20px #ffe19a) brightness(1.4)} }
 @media(max-width:600px) and (orientation:portrait) and (min-aspect-ratio: 1/3) and (max-aspect-ratio: 3/5) {
-  .cinematic-table .table2d-bg { background: url('/cinematic/exact/scene-portrait.webp') center 52.2% / 100% 62.63% no-repeat, #040a15 !important; background-position: center 52.2%,center!important; }
-  .cinematic-table .table2d-bg::after { display:none; }
-  html.table-geometry .cinematic-table .table2d-felt,.cinematic-table .table2d-felt { width:73vw!important; height:36.8dvh!important; min-width:0!important; aspect-ratio:auto!important; top:50.5%!important;left:50%!important; }
-  .cinematic-table .table2d-felt::before { display:none!important; }
-  .cinematic-table .table2d-felt__logo { top:76%!important;width:49%!important;max-width:49%!important; }
   .cinematic-table .table2d-pot-area { top:23%!important;left:50%!important;right:auto!important;transform:translate(-50%,-50%)!important; }
   .cinematic-table .table2d-pot-label { font-size:clamp(12px,3.4vw,20px)!important;min-width:30vw;text-align:center; }
-  html.table-geometry .cinematic-hud .hud-community { top:48.25dvh!important;left:50%!important;gap:3px!important; }
-  html.table-geometry .cinematic-hud { --board-card-w: min(11.25vw,6.4dvh)!important;--board-cy:48.25dvh!important; }
-  html.table-geometry .cinematic-hud .hud-community .community-card { height:calc(var(--board-card-w)*1.29)!important; }
-  html.table-geometry .cinematic-hud .hud-community .card-rank { font-size:calc(var(--board-card-w)*.53)!important;line-height:1!important; }
-  html.table-geometry .cinematic-hud .hud-community .card-suit { font-size:calc(var(--board-card-w)*.58)!important;line-height:1!important; }
-  .cinematic-hud .hud-top { background:linear-gradient(110deg,#030813,#0a1e38,#020811)!important; padding:3px 8px!important; gap:3px!important; }
-  .cinematic-hud .cinematic-brand { max-height:9.6dvh!important; height:9.6dvh!important; width:100%!important; }
-  .cinematic-hud .hud-top .hud-center-info { flex: 1 1 100%!important;display:flex!important;flex-wrap:wrap!important;align-items:stretch!important;gap:2px!important; }
-  .cinematic-hud .hud-center-info .hud-pot,.cinematic-hud .hud-center-info .hud-phase { flex:1 1 44%!important;justify-content:center!important;text-align:center!important;min-height:28px;white-space:normal!important; }
-  .cinematic-hud .hud-center-info .hud-phase { display:flex!important;align-items:center;flex-wrap:wrap; }
   .cinematic-hud .hud-bottom .action-btn { min-height: clamp(46px,7.7dvh,80px)!important; }
   html.table-geometry .cinematic-hud .hud-nameplate-me { min-width:48vw; max-width:76vw; min-height:6.6dvh; padding:6px 12px 6px 5px!important; bottom:calc(var(--hud-bar-h,130px) + 8px)!important; }
   .cinematic-hud .hud-nameplate-me .hud-np-avatar { width:clamp(32px,10vw,58px)!important;height:clamp(32px,10vw,58px)!important; }
@@ -167,12 +109,6 @@
   text-shadow:0 1px 4px #000;
 }
 @media(max-width:600px) and (orientation:portrait) and (min-aspect-ratio:1/3) and (max-aspect-ratio:3/5) {
-  .cinematic-hud .hud-top {
-    background:#020813 url('/cinematic/exact/header-room.webp') center top / 100% auto no-repeat!important;
-  }
-  .cinematic-hud .hud-top .cinematic-brand {
-    object-fit:contain; max-height:10.8dvh!important; height:10.8dvh!important;
-  }
   .cinematic-hud .hud-bottom {
     background:#061321 url('/cinematic/exact/deck-frame.webp') center/100% 100% no-repeat!important;
     border:0!important; border-radius:12px 12px 0 0!important; box-shadow:0 -2px 12px #00a9ff66!important;
@@ -184,11 +120,6 @@
     font-size:clamp(13px,4vw,23px)!important; text-transform:uppercase; line-height:1.02;
   }
   .cinematic-hud .hud-bottom .action-amount-sub { font-size:clamp(11px,3.4vw,18px)!important; font-weight:800; color:#fff0b7!important; }
-  .cinematic-table .table2d-felt__logo { width:46%!important; max-width:46%!important; top:78%!important; }
-  .cinematic-table .table2d-logo-img { opacity:.84!important; }
-  html.table-geometry .hud.cinematic-hud .hud-community { top:48.24dvh!important; gap:.45vw!important; }
-  html.table-geometry .hud.cinematic-hud { --board-card-w:min(11.2vw,6.45dvh)!important; }
-  html.table-geometry .hud.cinematic-hud .hud-community .community-card { width:var(--board-card-w)!important; height:calc(var(--board-card-w)*1.29)!important; }
   html.table-geometry .hud.cinematic-hud .hud-community .board-texture-badge { bottom:-2.8dvh!important; min-height:2.6dvh; white-space:nowrap; }
   .cinematic-table .seat-pod__avatar-wrap { width:clamp(34px,11.7vw,64px)!important; height:clamp(34px,11.7vw,64px)!important; }
   .cinematic-table .seat-pod__avatar { width:100%!important;height:100%!important; }
@@ -203,20 +134,3 @@
   .cinematic-hud .hud-bottom .raise-inline-slider { accent-color:#12ccff; }
 }
 @media(prefers-reduced-motion:reduce){.cinematic-hud .action-btn,.cinematic-table .seat-pod__avatar-wrap{animation:none!important;transition:none!important}}
-
-/* Exact reference header structure. Only the standard, no-extra-stats view
-   uses the four-panel variant; side pots, ante, clock, variant and qualifier
-   gating keep their original authoritative controls and display. */
-.precision-stat-strip {display:none;}
-@media(max-width:600px) and (orientation:portrait) and (min-aspect-ratio:1/3) and (max-aspect-ratio:3/5) {
-  .cinematic-hud .hud-center-info.precision-stat-ready > .hud-pot,
-  .cinematic-hud .hud-center-info.precision-stat-ready > .hud-phase {display:none!important;}
-  .cinematic-hud .precision-stat-strip {display:grid;width:100%;grid-template-columns:1.24fr 1.08fr .68fr 1.04fr;gap:2px;}
-  .cinematic-hud .precision-stat-strip--no-spr {grid-template-columns:1.2fr 1fr 1fr;}
-  .cinematic-hud .precision-stat {background:url('/cinematic/exact/stat-frame.png') center/100% 100% no-repeat;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;min-height:5.6dvh;padding:4px 6px;}
-  .cinematic-hud .precision-stat small {font-size:clamp(8px,2.05vw,12px);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#d7e6f4;}
-  .cinematic-hud .precision-stat strong {font-size:clamp(11px,3.25vw,19px);font-weight:900;font-style:italic;color:#fff;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;}
-  .cinematic-hud .precision-stat--pot strong {color:#ffe398;}
-  .cinematic-hud .precision-stat--spr strong,.cinematic-hud .precision-stat--street strong {color:#39e5ff;}
-  .cinematic-hud .precision-stat--street strong {text-transform:uppercase;font-size:clamp(10px,2.55vw,15px);}
-}

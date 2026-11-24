@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useTableStore } from '../../store/tableStore';
 import { getSocket } from '../../services/socketService';
 import {
@@ -7,13 +8,16 @@ import {
 } from '../../utils/sessionLedger';
 import './SessionTracker.css';
 
-export default function SessionTracker() {
+// menuSlot (APP Precision skin only): a DOM node in the table menu; the
+// session result is ALSO drawn there (phones hide the corner pill).
+export default function SessionTracker({ menuSlot = null }) {
   const gameState = useTableStore((s) => s.gameState);
   const mySeat = useTableStore((s) => s.mySeat);
   const activeTables = useTableStore((s) => s.activeTables);
   const connected = useTableStore((s) => s.connected);
 
   const [expanded, setExpanded] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [, setLedgerVersion] = useState(0);
 
@@ -133,25 +137,8 @@ export default function SessionTracker() {
 
   if (!view) return null;
 
-  if (!expanded) {
-    return (
-      <div className="session-tracker">
-        <div className="session-tracker-collapsed" onClick={() => setExpanded(true)}>
-          <span className={`session-profit ${profitClass}`}>{profitDisplay}</span>
-          <span className={`session-expand-icon`}>&#9650;</span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="session-tracker">
-      <div className="session-tracker-panel">
-        <div className="session-header" onClick={() => setExpanded(false)}>
-          <span className="session-title">Session Stats</span>
-          <button className="session-close">&#9660;</button>
-        </div>
-
+  // The Session Stats rows (built only where they are shown).
+  const statsBody = () => (
         <div className="session-stats">
           <div className="session-stat-row">
             <span className="session-stat-label">Duration</span>
@@ -180,7 +167,51 @@ export default function SessionTracker() {
             {renderSparkline()}
           </div>
         </div>
+  );
+
+  // APP Precision: the session result's line in the table menu (its own
+  // open/closed state, so it never opens the corner panel on a big screen).
+  const menuLine = menuSlot ? createPortal(
+    <div className="app-menu__session-block">
+      <button
+        type="button"
+        className="app-menu__session-line"
+        aria-expanded={menuOpen}
+        onClick={() => setMenuOpen((v) => !v)}
+      >
+        <span className="app-menu__money-label">Session</span>
+        <span className={`session-profit ${profitClass}`}>{profitDisplay}</span>
+        <span className="app-menu__session-meta">{view.hands} {view.hands === 1 ? 'hand' : 'hands'} · {formatTime(elapsed)}</span>
+        <span className="app-menu__session-caret" aria-hidden="true">{menuOpen ? '▾' : '▸'}</span>
+      </button>
+      {menuOpen && statsBody()}
+    </div>,
+    menuSlot,
+  ) : null;
+
+  if (!expanded) {
+    return (
+      <div className="session-tracker">
+        <div className="session-tracker-collapsed" onClick={() => setExpanded(true)}>
+          <span className={`session-profit ${profitClass}`}>{profitDisplay}</span>
+          <span className={`session-expand-icon`}>&#9650;</span>
+        </div>
+        {menuLine}
       </div>
+    );
+  }
+
+  return (
+    <div className="session-tracker">
+      <div className="session-tracker-panel">
+        <div className="session-header" onClick={() => setExpanded(false)}>
+          <span className="session-title">Session Stats</span>
+          <button className="session-close">&#9660;</button>
+        </div>
+
+        {statsBody()}
+      </div>
+      {menuLine}
     </div>
   );
 }

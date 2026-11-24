@@ -1468,3 +1468,21 @@ Online League Rules
 # 2026-11-21 repair round 2 - the weekly's "how to earn a credit" copy names the Online League's
 # top-5 route (owner: the top 5 each night earn the weekly credit) while a league night gives it.
 online-league-credit-route
+# 2026-11-24 APP Precision table skin
+# (behind the VITE_APP_CINEMATIC=1 build switch; its CSS ships in every build, scoped to the skin's
+# classes.) Package 1, the scene and the top area: the Denver lounge room, the leather / chrome / LED
+# rail drawn on the measured felt, the TM logo row (hamburger = the Options menu, chat bubble = Emote),
+# the stat strip with street dashes, the extras line, the one-line action ticker, and the menu header
+# that is now the home of the old top row (table stack, wallet, session result, Back to Lobby, Sit Out).
+app-top__logo
+app-strip__panel
+app-strip__dashes
+app-ticker__items
+app-menu__session-line
+app-spectator-banner
+room-window.webp
+# Repair 1: the sky above the window band (no gap on tall phones), the Split Pot banner inside the
+# open showdown panel, and the one-line extras line (the ante rides there at tournament tables).
+room-sky.webp
+app-chop-in-panel
+app-info__item--avg
