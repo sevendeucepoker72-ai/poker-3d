@@ -26,6 +26,9 @@
 //                         seeds private until it ends (flag; absent = each
 //                         hand's seed can be read as soon as that hand ends,
 //                         which is today's server)
+//   leaguePoints, leaguePrize, leagueMinField
+//                         read only by the Online League Rules
+//                         (content/onlineLeagueRules.js, 2026-11-21)
 // So the week's seat package and bubble come from the qualifier itself, and a
 // rule that needs a server change shows only once that server says it does it.
 // Never write a rule here that the code does not do.
@@ -37,6 +40,11 @@
 // original line comes back.
 
 import { MONTHLY_QUALIFIERS_SHOWN } from '../utils/monthlyQualifiers.js';
+// 2026-11-21 (owner: the Online League) - the league's own rules (a separate
+// data module, the same shape); the same window shows them for a league night.
+import {
+  ONLINE_LEAGUE_RULES, ONLINE_LEAGUE_RULES_TITLE, ONLINE_LEAGUE_RULES_SUBTITLE, ONLINE_LEAGUE_RULES_UPDATED,
+} from './onlineLeagueRules.js';
 
 export const QUALIFIER_RULES_TITLE = 'Weekly Qualifier Rules';
 
@@ -330,6 +338,37 @@ export function qualifierHasWeeklyRules(q) {
   return !!q && typeof q === 'object' && String(q.type ?? '').toLowerCase() === 'weekly';
 }
 
+/**
+ * 2026-11-21 (owner: the Online League) - an Online League night (kind
+ * 'league', or its type) links to the Online League Rules
+ * (content/onlineLeagueRules.js) instead.
+ */
+export function qualifierHasLeagueRules(q) {
+  if (!q || typeof q !== 'object') return false;
+  return q.kind === 'league' || String(q.type ?? '').toLowerCase() === 'online_league';
+}
+
+/**
+ * The rules window for ONE item: { title, subtitle, updated, sections } - the
+ * Online League Rules for a league night, else the Weekly Qualifier Rules.
+ */
+export function rulesPageFor(q) {
+  if (qualifierHasLeagueRules(q)) {
+    return {
+      title: ONLINE_LEAGUE_RULES_TITLE,
+      subtitle: ONLINE_LEAGUE_RULES_SUBTITLE,
+      updated: rulesUpdatedLine(ONLINE_LEAGUE_RULES_UPDATED),
+      sections: qualifierRulesFor(q, ONLINE_LEAGUE_RULES),
+    };
+  }
+  return {
+    title: QUALIFIER_RULES_TITLE,
+    subtitle: QUALIFIER_RULES_SUBTITLE,
+    updated: rulesUpdatedLine(),
+    sections: qualifierRulesFor(q),
+  };
+}
+
 function ordinalWord(n) {
   const m = n % 100;
   const s = ['th', 'st', 'nd', 'rd'];
@@ -402,6 +441,13 @@ export function qualifierRulesContext(q) {
   else if (top) ctx.noSeatPackage = true;
   if (q.lateRegClosesAtBubble === true) ctx.lateRegClosesAtBubble = true;
   if (q.seedsHeldUntilEnd === true) ctx.seedsHeldUntilEnd = true;
+  // 2026-11-21 (owner: the Online League) - read only by the league's rules
+  // (content/onlineLeagueRules.js): the server's points / prize switches and
+  // its minimum field for the night's credits + prize (> 1 only).
+  if (q.leaguePoints === true) ctx.leaguePoints = true;
+  if (q.leaguePrize === 'chair_month' && q.leaguePoints !== false) ctx.leaguePrize = true;
+  const minField = Number(q.leagueAwardsMinField);
+  if (Number.isInteger(minField) && minField > 1 && minField <= 1000) ctx.leagueMinField = String(minField);
   return ctx;
 }
 

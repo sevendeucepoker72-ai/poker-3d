@@ -28,6 +28,24 @@ import { MONTHLY_QUALIFIERS_SHOWN, withoutHiddenMonthlyQualifiers } from './mont
 
 const STATUSES = new Set(['scheduled', 'registering', 'running', 'finished']);
 
+// ── The Online League (owner 2026-11-21) ─────────────────────────────────────
+// A free No-Limit Hold'em tournament on americanpubpoker.online, Monday to
+// Saturday at 6:00 PM MT. poker-server lists it as a qualifier-registry item of
+// type 'online_league' (kind 'league', requiresCredit false, ONE re-entry, 4:00
+// PM sign-up, late entry until 7:00 PM, 10-minute levels), but ONLY to a lobby
+// that asks for it: every `getQualifierTournaments` emit sends
+// QUALIFIER_LIST_REQUEST. An older server ignores the payload and lists no
+// league item, and an older cached client (no payload) is never sent one (it
+// would call a free event "not yet qualified" and offer credit copy). The
+// league's id, points / prize switches and minimum field come from the server
+// item (`leagueId`, `leaguePoints`, `leaguePrize`, `leagueAwardsMinField`):
+// nothing about the league is hard-coded here except its type name.
+export const ONLINE_LEAGUE_TYPE = 'online_league';
+/** The payload of every `getQualifierTournaments` emit: this lobby shows league items. */
+export const QUALIFIER_LIST_REQUEST = Object.freeze({ kinds: Object.freeze(['league']) });
+
+const LEAGUE_ID_RE = /^[0-9a-f-]{32,36}$/i;
+
 function ms(v) {
   if (v === null || v === undefined || v === '') return null;
   const n = typeof v === 'number' ? v : Date.parse(String(v));
@@ -55,6 +73,7 @@ export function qualifierTypeLabel(type) {
   const t = String(type || '').toLowerCase();
   if (t === 'weekly') return 'Weekly';
   if (t === 'monthly') return 'Monthly';
+  if (t === ONLINE_LEAGUE_TYPE) return 'Online League';
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : 'Qualifier';
 }
 
@@ -64,6 +83,7 @@ function defaultName(type) {
   // a monthly item never reaches a player list while the flag is off).
   if (MONTHLY_QUALIFIERS_SHOWN && t === 'monthly') return 'Monthly Major Qualifier';
   if (t === 'weekly') return 'Weekly Qualifier';
+  if (t === ONLINE_LEAGUE_TYPE) return 'Online League';
   return 'Qualifier Tournament';
 }
 
@@ -156,6 +176,17 @@ function lateRegReasonOf(v) {
   return v === 'seat_bubble' || v === 'time' ? v : null;
 }
 
+/** 2026-11-21 — 'league' | 'qualifier': the server's `kind`, else from the type. */
+function kindOf(rawKind, type) {
+  if (rawKind === 'league' || rawKind === 'qualifier') return rawKind;
+  return type === ONLINE_LEAGUE_TYPE ? 'league' : 'qualifier';
+}
+
+/** 2026-11-21 — an integer >= 1, else null (the server's minimum field for awards). */
+function minFieldOf(v) {
+  return Number.isInteger(v) && v >= 1 ? v : null;
+}
+
 /** One list item → the shape the lobby renders; null when it has no id. */
 export function normalizeQualifierItem(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -222,6 +253,18 @@ export function normalizeQualifierItem(raw) {
     lateRegOpen: typeof raw.lateRegOpen === 'boolean' ? raw.lateRegOpen : null,
     lateRegClosedAt: ms(raw.lateRegClosedAt),
     lateRegClosedReason: lateRegReasonOf(raw.lateRegClosedReason),
+    // 2026-11-21 (owner: the Online League) — additive, from a newer poker-server:
+    // kind ('league' for an Online League night, else 'qualifier'; from the type
+    // when not sent), requiresCredit (false = free entry; null = not sent), the
+    // league's id (the standings link), whether its points / the winner's chair
+    // prize are on (null = not sent), and the minimum number of finishers a night
+    // needs for its weekly credits + prize (null = 1, no minimum).
+    kind: kindOf(raw.kind, type),
+    requiresCredit: typeof raw.requiresCredit === 'boolean' ? raw.requiresCredit : null,
+    leagueId: typeof raw.leagueId === 'string' && LEAGUE_ID_RE.test(raw.leagueId) ? raw.leagueId : null,
+    leaguePoints: typeof raw.leaguePoints === 'boolean' ? raw.leaguePoints : null,
+    leaguePrize: raw.leaguePrize === 'chair_month' ? 'chair_month' : null,
+    leagueAwardsMinField: minFieldOf(raw.leagueAwardsMinField),
     result: normalizeResult(raw),
     // An older server's own window verdict (it had no status for "not open yet").
     legacySignupOpen: typeof raw.signupOpen === 'boolean' ? raw.signupOpen : null,
@@ -301,6 +344,144 @@ export function qualifierResultText(result) {
     : `You finished ${ordinal(place)}.`;
 }
 
+// ── Online League copy (owner 2026-11-21) ────────────────────────────────────
+// Free entry, ONE re-entry, points like a live venue league, the top 5 each
+// night earn a weekly qualifier credit, the winner a free month in a chair at
+// a live game. Never "seat" (no championship seats from a league night), never
+// "credit" for entering, and a credit / prize is promised only while the
+// server's switches say it is given (`leaguePoints`, `leaguePrize`) and the
+// field is big enough (`leagueAwardsMinField`).
+
+/** An Online League night: the server's kind 'league', or its type. */
+export function isLeagueItem(q) {
+  if (!q || typeof q !== 'object') return false;
+  if (q.kind === 'league') return true;
+  return String(q.type ?? q.qualifierType ?? '').toLowerCase() === ONLINE_LEAGUE_TYPE;
+}
+
+/**
+ * Entry needs no qualifier credit: the server's `requiresCredit: false`, or a
+ * league item that does not say (every league night is free). The server's
+ * entry gate is the authority; this only picks the copy and the buttons.
+ */
+export function qualifierEntryIsFree(q) {
+  if (!q || typeof q !== 'object') return false;
+  if (q.requiresCredit === false) return true;
+  return q.requiresCredit !== true && isLeagueItem(q);
+}
+
+/**
+ * Re-entries left at a FREE event (credits never limit it): the server's
+ * `reEntriesLeft`, else the cap minus the re-entries made; null = unknown.
+ */
+export function leagueReentriesLeft(q) {
+  if (!q || typeof q !== 'object') return null;
+  if (Number.isInteger(q.reEntriesLeft) && q.reEntriesLeft >= 0) return q.reEntriesLeft;
+  if (Number.isInteger(q.maxReEntries) && q.maxReEntries >= 0 && Number.isInteger(q.reEntries) && q.reEntries >= 0) {
+    return Math.max(0, q.maxReEntries - q.reEntries);
+  }
+  return null;
+}
+
+/** The night's weekly credits + prize are given at this field size (min unset / 1 = always). */
+export function leagueAwardsFieldOk(minField, field) {
+  const min = minFieldOf(minField) || 1;
+  if (min <= 1) return true;
+  const n = Number(field);
+  return Number.isInteger(n) && n >= min;
+}
+
+/**
+ * 2026-11-21 repair round 2 — the owner gave the Online League's top 5 each
+ * night the WEEKLY qualifier credit, so the weekly's "how to earn a credit"
+ * copy names that route too - only while the list carries a league night that
+ * gives it (the server lists one only while the league is on and the client
+ * asked; the credits ride on its points: `leaguePoints`).
+ */
+export function onlineLeagueGivesWeeklyCredit(list) {
+  return Array.isArray(list) && list.some((x) => isLeagueItem(x) && x.leaguePoints === true);
+}
+export const ONLINE_LEAGUE_WEEKLY_ROUTE_TEXT = 'Or finish top 5 in a nightly Online League game here on americanpubpoker.online (free, Monday to Saturday at 6:00 PM MT).';
+
+export const ONLINE_LEAGUE_POINTS_TEXT = 'Points post to the Online League standings.';
+export const ONLINE_LEAGUE_TOP5_CREDIT_TEXT = "Top 5 earn a weekly qualifier credit for Sunday's Weekly Qualifier - yours shows in the American Pub Poker app.";
+export const ONLINE_LEAGUE_PRIZE_WON_TEXT = 'You won a free month in a chair at a live game - claim it in the American Pub Poker app.';
+
+/**
+ * A finished league night's line on the card / detail window: "You finished
+ * 3rd. Points post to the Online League standings." (the points sentence only
+ * while the server does not say points are off); null with nothing to say.
+ */
+export function onlineLeagueResultText(result, q) {
+  const place = posInt(result?.place);
+  const parts = [];
+  if (place) parts.push(`You finished ${ordinal(place)}.`);
+  if (!q || q.leaguePoints !== false) parts.push(ONLINE_LEAGUE_POINTS_TEXT);
+  return parts.length ? parts.join(' ') : null;
+}
+
+/** The finished line for any listed item: the league line for a league night, else qualifierResultText. */
+export function qualifierItemResultText(q) {
+  if (!q) return null;
+  return isLeagueItem(q) ? onlineLeagueResultText(q.result, q) : qualifierResultText(q.result);
+}
+
+/**
+ * The home card's league lines (null for any other item):
+ *   entry   "Free entry · 1 re-entry · late entry until 7:00 PM MT" (from the server's fields)
+ *   points  "Every finisher earns league points; top 5 earn a weekly qualifier credit" (leaguePoints true only)
+ *   prize   "Winner: a free month in a chair at a live game" (leaguePrize, points not off)
+ * A minimum field (leagueAwardsMinField > 1) adds "(nights with N+ finishers)" to the award lines.
+ */
+export function onlineLeagueCardLines(q) {
+  if (!isLeagueItem(q)) return null;
+  const parts = [];
+  if (qualifierEntryIsFree(q)) parts.push('Free entry');
+  const cap = Number.isInteger(q.maxReEntries) && q.maxReEntries >= 0 ? q.maxReEntries : null;
+  if (cap === 0) parts.push('no re-entry');
+  else if (cap === 1) parts.push('1 re-entry');
+  else if (cap !== null) parts.push(`${cap} re-entries`);
+  if (q.lateRegUntil != null) parts.push(`late entry until ${formatDenverTime(q.lateRegUntil)}`);
+  const min = minFieldOf(q.leagueAwardsMinField) || 1;
+  const minNote = min > 1 ? ` (nights with ${min}+ finishers)` : '';
+  return {
+    entry: parts.join(' · '),
+    points: q.leaguePoints === true ? `Every finisher earns league points; top 5 earn a weekly qualifier credit${minNote}` : null,
+    prize: q.leaguePrize === 'chair_month' && q.leaguePoints !== false ? `Winner: a free month in a chair at a live game${minNote}` : null,
+  };
+}
+
+/** The detail window's league paragraph (null for any other item). */
+export function onlineLeagueAboutText(q) {
+  if (!isLeagueItem(q)) return null;
+  const min = minFieldOf(q.leagueAwardsMinField) || 1;
+  const minNote = min > 1 ? ` on nights with ${min} or more finishers` : '';
+  let text = "Online League: free No-Limit Hold'em for every American Pub Poker member, Monday to Saturday at 6:00 PM MT. Sign-up opens at 4:00 PM; late entry and one re-entry until 7:00 PM; 10-minute levels.";
+  if (q.leaguePoints === true) text += ` Every finisher earns league points; the top 5 earn a weekly qualifier credit for the Sunday Weekly Qualifier${minNote}.`;
+  if (q.leaguePrize === 'chair_month' && q.leaguePoints !== false) text += ` The winner gets a free month (4 games) in a chair at a live American Pub Poker game${minNote}.`;
+  return text;
+}
+
+/**
+ * The Game Over line for a finished Online League night (the per-socket
+ * `tournamentFinished` with kind 'league'): never "seat" or "chips".
+ *   "Online League complete! You finished 3rd. Points post to the Online League standings."
+ *   + the top-5 weekly-credit sentence (leaguePoints true, 1st-5th, field >= min)
+ *   + the winner's prize sentence (1st, leaguePrize, points not off, field >= min)
+ */
+export function onlineLeagueCompleteMessage(data, myUserId) {
+  const rows = Array.isArray(data?.results) ? data.results.filter((r) => r && typeof r === 'object') : [];
+  const mine = myUserId != null ? rows.find((r) => r.userId != null && String(r.userId) === String(myUserId)) : null;
+  const place = posInt(data?.place) || posInt(data?.myResult?.place) || posInt(mine?.place) || posInt(mine?.position);
+  let msg = 'Online League complete!';
+  if (place) msg += ` You finished ${ordinal(place)}.`;
+  if (data?.leaguePoints !== false) msg += ` ${ONLINE_LEAGUE_POINTS_TEXT}`;
+  const fieldOk = leagueAwardsFieldOk(data?.leagueAwardsMinField, data?.field);
+  if (data?.leaguePoints === true && place && place <= 5 && fieldOk) msg += ` ${ONLINE_LEAGUE_TOP5_CREDIT_TEXT}`;
+  if (place === 1 && data?.leaguePrize === 'chair_month' && data?.leaguePoints !== false && fieldOk) msg += ` ${ONLINE_LEAGUE_PRIZE_WON_TEXT}`;
+  return msg;
+}
+
 /**
  * "Top 3 win a championship seat" — only when the server said how many. With
  * a seat package (2026-10-21): "The top 10 win 15 championship seats (1st: 3,
@@ -374,6 +555,12 @@ export function qualifierTablesHeld(q, now = Date.now()) {
 /** A registrant's note before the start: be online at the start or be released (+ refund). */
 export function qualifierBeOnlineText(q) {
   const at = q && q.scheduledAt != null ? formatDenverTime(q.scheduledAt) : '';
+  // 2026-11-21 — a free event (the Online League) used no credit: nothing to refund.
+  if (qualifierEntryIsFree(q)) {
+    return at
+      ? `Be on americanpubpoker.online by ${at} — anyone not here when it starts is released.`
+      : 'Be on americanpubpoker.online when it starts — anyone not here then is released.';
+  }
   return at
     ? `Be on americanpubpoker.online by ${at} — anyone not here when it starts is released and the credit refunded.`
     : 'Be on americanpubpoker.online when it starts — anyone not here then is released and the credit refunded.';
@@ -502,8 +689,13 @@ export function qualifierCreditsHeld(q, qualForType) {
   return null;
 }
 
-/** He holds a credit of this tier (what the server's entry gate checks). */
+/**
+ * He holds a credit of this tier (what the server's entry gate checks).
+ * 2026-11-21 — a FREE event (the server's requiresCredit false: the Online
+ * League) needs no credit: always true, whatever his credits.
+ */
 export function qualifierIsQualified(q, qualForType) {
+  if (qualifierEntryIsFree(q)) return true;
   if (q && Number.isInteger(q.creditsHeld) && q.creditsHeld >= 0) return q.creditsHeld > 0;
   return !!(qualForType && qualForType.qualified);
 }
@@ -541,6 +733,17 @@ export function qualifierReentryCapReached(q, credits) {
  */
 export function qualifierHomeYouText(q, { state, registered, credits, reentries, qualified } = {}) {
   if (!q || state === 'finished') return null;
+  // 2026-11-21 (owner: the Online League) — a free event: no credit words at all.
+  if (qualifierEntryIsFree(q)) {
+    if (registered && q.eliminated === true) {
+      if (state !== 'late') return "You're out · late entry is closed";
+      const n = Number.isInteger(reentries) && reentries >= 0 ? reentries : leagueReentriesLeft(q);
+      if (n === null) return "You're out · you can re-enter";
+      if (n > 0) return `You're out · ${n} re-entr${n === 1 ? 'y' : 'ies'} left`;
+      return q.maxReEntries === 0 ? "You're out · no re-entry" : "You're out · re-entry used";
+    }
+    return registered ? "You're entered" : null;
+  }
   // 2026-11-21 - no "monthly credits" line while the monthly qualifiers are hidden.
   const unit = MONTHLY_QUALIFIERS_SHOWN && q.type === 'monthly' ? 'monthly' : (q.type === 'weekly' ? 'weekly' : 'qualifier');
   const creditsText = (n) => `${n} ${unit} credit${n === 1 ? '' : 's'}`;
@@ -624,8 +827,10 @@ export function qualifierFinishFrame(data, myUserId) {
   const mine = myUserId != null ? rows.find((r) => r.userId != null && String(r.userId) === String(myUserId)) : null;
   const wonSeat = typeof data?.wonSeat === 'boolean' ? data.wonSeat
     : (typeof mine?.wonSeat === 'boolean' ? mine.wonSeat : null);
+  // 2026-11-21 — an Online League night (kind 'league') is a qualifier-registry
+  // event too: no chip own-line, no chip bankroll result.
   return data?.isQualifier === true || data?.qualifierId != null || wonSeat !== null
-    || rows.some((r) => typeof r.wonSeat === 'boolean');
+    || data?.kind === 'league' || rows.some((r) => typeof r.wonSeat === 'boolean');
 }
 
 /**
@@ -635,6 +840,9 @@ export function qualifierFinishFrame(data, myUserId) {
  * id); never "<winner> wins 0 chips". A chip tournament keeps the winner line.
  */
 export function tournamentCompleteMessage(data, myUserId) {
+  // 2026-11-21 (owner: the Online League) — a league night pays points (and the
+  // top 5 a weekly credit, the winner a chair month), never seats or chips.
+  if (data && typeof data === 'object' && data.kind === 'league') return onlineLeagueCompleteMessage(data, myUserId);
   const rows = Array.isArray(data?.results) ? data.results.filter((r) => r && typeof r === 'object') : [];
   const mine = myUserId != null ? rows.find((r) => r.userId != null && String(r.userId) === String(myUserId)) : null;
   const place = posInt(data?.place) || posInt(mine?.place) || posInt(mine?.position);

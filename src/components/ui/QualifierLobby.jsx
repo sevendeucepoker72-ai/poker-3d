@@ -16,18 +16,30 @@ import { returnToTournament } from '../../services/tournamentReturn';
 import { reportPlayRefusal, runPlayFlow, GAME_SERVER_UNREACHABLE_TEXT } from '../../services/playRefusal';
 import {
   normalizeQualifierList, qualifierSignupState, qualifierStatusCounts,
-  qualifierResultText, seatsForTopText,
+  seatsForTopText,
   featuredQualifier, qualifierHomeStatus, formatDenverWhen, formatDenverTime,
   qualifierCreditsHeld, qualifierIsQualified, qualifierReentriesAvailable, qualifierHomeYouText,
   QUALIFICATIONS_RECHECK_MS, qualificationsMountPlan, qualifierRegistrationsDropped,
   qualifierTablesHeld, qualifierBeOnlineText, qualifierTablesOpenText, qualifierTablesOpenStatusText,
   qualifierBreaksText, qualifierUpdateExtras, qualifierLateRegClosedText,
 } from '../../utils/qualifierList';
+// 2026-11-21 (owner: the Online League) — every list request asks for league
+// nights too (QUALIFIER_LIST_REQUEST); a league night is free (no credit words),
+// has one re-entry, earns points, and links to its standings in the player app.
+import {
+  QUALIFIER_LIST_REQUEST, isLeagueItem, qualifierEntryIsFree, leagueReentriesLeft,
+  qualifierItemResultText, onlineLeagueCardLines,
+  // Repair round 2 — the weekly's credit copy names the Online League route.
+  onlineLeagueGivesWeeklyCredit, ONLINE_LEAGUE_WEEKLY_ROUTE_TEXT,
+} from '../../utils/qualifierList';
+import { withBridge } from '../../services/bridge';
+import { PLAYER_APP } from '../../config';
 import { useProgressStore } from '../../store/progressStore';
 import QualifierDashboard from './QualifierDashboard';
 // 2026-10-23 (owner) — the Weekly Qualifier Rules (text: content/qualifierRules.js).
+// 2026-11-21 — a league night's card links to the Online League Rules instead.
 import QualifierRules from './QualifierRules';
-import { qualifierHasWeeklyRules } from '../../content/qualifierRules';
+import { qualifierHasWeeklyRules, qualifierHasLeagueRules } from '../../content/qualifierRules';
 // 2026-11-21 (owner: "I said turn them off. Don't show them at all." / "Do not
 // show the monthly qualifiers.") - ONE flag hides every monthly qualifier here:
 // no row, no home card, no cancelled card, no "Monthly Major" line.
@@ -136,8 +148,22 @@ function askBroadcastOptOut() {
   try { socket.emit('getBroadcastOptOut', {}); } catch { /* the next sign-in / resume asks */ }
 }
 
-const TYPE_ICONS = { weekly: '🗓️', monthly: '🏆' };
-const TYPE_COLORS = { weekly: '#ffd24a', monthly: '#9db8ff' };
+// 2026-11-21 — the Online League: its own icon, blue (never red).
+const TYPE_ICONS = { weekly: '🗓️', monthly: '🏆', online_league: '🃏' };
+const TYPE_COLORS = { weekly: '#ffd24a', monthly: '#9db8ff', online_league: '#6abaff' };
+
+/**
+ * 2026-11-21 (owner: the Online League) — "Online League standings →": the
+ * league's board in the player app. The bridged URL (it carries this tab's
+ * id_token) is built AT CLICK and never rendered into the DOM.
+ */
+function openLeagueStandings(leagueId) {
+  if (!leagueId) return;
+  try {
+    const url = `${PLAYER_APP}/leaderboards?league=${encodeURIComponent(leagueId)}`;
+    window.open(withBridge(url), '_blank', 'noopener');
+  } catch { /* a blocked pop-up: nothing else to do */ }
+}
 
 const box = (extra = {}) => ({
   padding: '10px 14px', borderRadius: 8, fontSize: '0.82rem', textAlign: 'center', lineHeight: 1.45, ...extra,
@@ -166,6 +192,10 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
 
   const [list, setList] = useState([]);
   const [listLoaded, setListLoaded] = useState(false);
+  // 2026-11-21 — the shown list for the socket handlers (a registration answer
+  // names its event: an Online League night is called that, not "Qualifier").
+  const listRef = useRef([]);
+  useEffect(() => { listRef.current = list; }, [list]);
   // A recent answer for this account (another mount's) is shown at once.
   const [qualStatus, setQualStatus] = useState(() => reusableQualifications(owner) || { weekly: false, monthly: false });
   const [qualLoaded, setQualLoaded] = useState(() => reusableQualifications(owner) != null);
@@ -330,7 +360,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       if (socket.connected) { qualRecheckOnSignIn = false; askQualificationsNow(); }
       else qualRecheckOnSignIn = true;
     }
-    socket.emit('getQualifierTournaments');
+    socket.emit('getQualifierTournaments', QUALIFIER_LIST_REQUEST);
     const loadingTimeout = setTimeout(() => { setQualLoaded(true); setListLoaded(true); }, 8000);
 
     const qualHandler = (data) => {
@@ -340,7 +370,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       setQualLoaded(true);
       if (qualListAfterAnswer) {
         qualListAfterAnswer = false;
-        try { socket.emit('getQualifierTournaments'); } catch { /* next poll */ }
+        try { socket.emit('getQualifierTournaments', QUALIFIER_LIST_REQUEST); } catch { /* next poll */ }
       }
     };
     // A (re)connected socket signs in again; a re-read that came due while it
@@ -364,7 +394,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       if (listAskTimer) return;
       listAskTimer = setTimeout(() => {
         listAskTimer = null;
-        try { socket.emit('getQualifierTournaments'); } catch { /* next poll */ }
+        try { socket.emit('getQualifierTournaments', QUALIFIER_LIST_REQUEST); } catch { /* next poll */ }
       }, 300 + Math.floor(Math.random() * 1700));
     };
     const updateHandler = (data) => {
@@ -405,9 +435,11 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       if (data?.success) {
         setRegMsg(null);
         if (data.qualifierId) noteLocalReg(data.qualifierId, !data.unregistered);
+        let leagueNight = false;
+        try { leagueNight = isLeagueItem(listRef.current.find((x) => x.qualifierId === String(data.qualifierId))) || data.kind === 'league'; } catch { /* best-effort */ }
         // A newer server may seat a late entry / re-entry alone at a new table.
         if (data.waitingForPlayers === true) {
-          try { useProgressStore.getState().addNotification({ type: 'mission', title: 'Qualifier seat', message: QUALIFIER_WAITING_FOR_PLAYERS_TEXT }); } catch { /* best-effort */ }
+          try { useProgressStore.getState().addNotification({ type: 'mission', title: leagueNight ? 'Online League seat' : 'Qualifier seat', message: QUALIFIER_WAITING_FOR_PLAYERS_TEXT }); } catch { /* best-effort */ }
         }
         // Gameplay audit F142 (2026-10-21) — a RE-ENTRY seated him at once
         // (a fresh stack, blinds running): take him to that table. A newer
@@ -415,12 +447,12 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
         // doing it twice is harmless); an older one sends only this.
         if (data.reentry === true && data.tableId != null) {
           try { noteQualifierTournamentId(data.tournamentId); } catch { /* best-effort */ }
-          try { noteTournamentSeat({ tournamentId: data.tournamentId, tableId: data.tableId, name: 'Qualifier Tournament' }); } catch { /* best-effort */ }
+          try { noteTournamentSeat({ tournamentId: data.tournamentId, tableId: data.tableId, name: leagueNight ? 'Online League' : 'Qualifier Tournament' }); } catch { /* best-effort */ }
           try { clearTableLeft(data.tableId); } catch { /* ignore */ }
           try { useGameStore.getState().setScreen('table'); } catch { /* ignore */ }
         }
         // The server's own flag + count, at once.
-        try { socket.emit('getQualifierTournaments'); } catch { /* next poll */ }
+        try { socket.emit('getQualifierTournaments', QUALIFIER_LIST_REQUEST); } catch { /* next poll */ }
         return;
       }
       if (reportPlayRefusal(data)) { setRegMsg(null); return; }
@@ -462,7 +494,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
     const scheduleNextPoll = () => {
       pollTimer = setTimeout(() => {
         if (Date.now() - lastListAt > currentDelay * 2) currentDelay = Math.min(MAX_MS, currentDelay * 2);
-        socket.emit('getQualifierTournaments');
+        socket.emit('getQualifierTournaments', QUALIFIER_LIST_REQUEST);
         scheduleNextPoll();
       }, currentDelay);
     };
@@ -509,7 +541,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       setPendingReg(null);
       // A withdraw the server ignored (an older server answers some branches
       // with nothing) is not proof it is unreachable: ask for the list again.
-      if (pendingReg.kind === 'withdraw') { try { socket.emit('getQualifierTournaments'); } catch { /* ignore */ } return; }
+      if (pendingReg.kind === 'withdraw') { try { socket.emit('getQualifierTournaments', QUALIFIER_LIST_REQUEST); } catch { /* ignore */ } return; }
       setRegMsg(GAME_SERVER_UNREACHABLE_TEXT);
     }, REGISTER_WATCHDOG_MS);
     return () => {
@@ -613,22 +645,27 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
     // 2026-10-22 — a newer server's per-viewer `creditsHeld` first (fresh with
     // every list), else the 'qualifications' answer, as before.
     const qualified = qualifierIsQualified(q, qs);
+    // 2026-11-21 (owner: the Online League) — a FREE event (the server's
+    // requiresCredit false): no credit words anywhere, never the "Not yet
+    // qualified" box, and credits never limit its re-entry (its own cap does).
+    const free = qualifierEntryIsFree(q);
     const mine = isRegistered(q);
     const pend = pendingReg && pendingReg.id === q.qualifierId ? pendingReg.kind : null;
     const pad = compact ? '10px 14px' : '12px 18px';
-    if (!qualLoaded) return <div style={{ color: '#8298c4', fontSize: '0.8rem', padding: '10px 0' }}>Checking qualification…</div>;
+    if (!qualLoaded && !free) return <div style={{ color: '#8298c4', fontSize: '0.8rem', padding: '10px 0' }}>Checking qualification…</div>;
     if (state === 'finished' && q.cancelled) {
       // R2 review (K3-5) — a cancelled event never says "completed".
       // R3 (contract Q1) — no reason here: a game-server restart cancels with
       // the same update as too few players (the toast says which).
       return (
         <div className="qualifier-result-line" style={box({ background: 'rgba(130,152,196,0.08)', border: '1px solid rgba(130,152,196,0.25)', color: '#cfe0ff' })}>
-          Cancelled. Any qualifier credit it used was refunded.
+          {free ? 'Cancelled.' : 'Cancelled. Any qualifier credit it used was refunded.'}
         </div>
       );
     }
     if (state === 'finished') {
-      const line = qualifierResultText(q.result);
+      // 2026-11-21 — a league night's line: his place + "Points post to the Online League standings."
+      const line = qualifierItemResultText(q);
       return (
         <div className="qualifier-result-line" style={box({ background: 'rgba(130,152,196,0.08)', border: '1px solid rgba(130,152,196,0.25)', color: line ? (q.result?.wonSeat ? '#ffd24a' : '#cfe0ff') : '#9fb4d8' })}>
           {line || 'Tournament completed'}
@@ -644,7 +681,8 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       // 2026-10-22 (owner: "re entries if they have more credits") — the
       // re-entries he can make: the server's count, never more than the
       // credits he holds (each re-entry uses one).
-      const reEntriesLeft = qualifierReentriesAvailable(q, qualLoaded ? qualifierCreditsHeld(q, qs) : null);
+      // 2026-11-21 — a free event: its own re-entry cap only (the Online League: one).
+      const reEntriesLeft = free ? leagueReentriesLeft(q) : qualifierReentriesAvailable(q, qualLoaded ? qualifierCreditsHeld(q, qs) : null);
       const acts = qualifierRunningActions({
         state, mine, eliminated: q.eliminated, qualified, reEntriesLeft, tournamentId: q.tournamentId,
       });
@@ -664,17 +702,21 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {acts.reenter && (
             <button className="qualifier-reenter" onClick={(e) => { e.stopPropagation(); handleRegister(q); }} disabled={!!pend} style={{ flex: 1, minWidth: 140, padding: pad, borderRadius: 8, fontWeight: 800, fontSize: '0.88rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: pend ? 'default' : 'pointer', opacity: pend ? 0.7 : 1 }}>
-              {pend === 'register' ? 'Registering…' : 'Re-enter (uses 1 credit)'}
+              {pend === 'register' ? 'Registering…' : (free
+                ? (Number.isInteger(reEntriesLeft) ? `Re-enter (${reEntriesLeft} left)` : 'Re-enter — Free')
+                : 'Re-enter (uses 1 credit)')}
             </button>
           )}
           {acts.outLine && (
             <div className="qualifier-out-line" style={box({ flex: 1, background: 'rgba(106,186,255,0.08)', border: '1px solid rgba(106,186,255,0.25)', color: '#cfe0ff' })}>
-              You are out of this qualifier.
+              {isLeagueItem(q) ? 'You are out of this Online League game.' : 'You are out of this qualifier.'}
             </div>
           )}
           {canLate && (
             <button onClick={(e) => { e.stopPropagation(); handleRegister(q); }} disabled={!!pend} style={{ flex: 1, minWidth: 140, padding: pad, borderRadius: 8, fontWeight: 700, fontSize: '0.88rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: pend ? 'default' : 'pointer', opacity: pend ? 0.7 : 1 }}>
-              {pend === 'register' ? 'Registering…' : (held ? 'Register (uses 1 credit)' : 'Late Register (uses 1 credit)')}
+              {pend === 'register' ? 'Registering…' : (free
+                ? (held ? 'Register — Free' : 'Late Register — Free')
+                : (held ? 'Register (uses 1 credit)' : 'Late Register (uses 1 credit)'))}
             </button>
           )}
           {acts.goToTable && (
@@ -725,7 +767,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       if (qualified) {
         return (
           <button onClick={(e) => { e.stopPropagation(); handleRegister(q); }} disabled={!!pend} style={{ width: '100%', padding: pad, borderRadius: 8, fontWeight: 700, fontSize: '0.9rem', background: 'linear-gradient(135deg,#ffd24a,#e6b422)', color: '#0a1628', border: 'none', cursor: pend ? 'default' : 'pointer', opacity: pend ? 0.7 : 1 }}>
-            {pend === 'register' ? 'Registering…' : "Register — You're Qualified!"}
+            {pend === 'register' ? 'Registering…' : (free ? 'Register — Free' : "Register — You're Qualified!")}
           </button>
         );
       }
@@ -733,9 +775,12 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
         <div style={box({ background: 'rgba(12,28,72,0.6)', border: '1px solid rgba(255,210,74,0.25)', color: '#cfe0ff' })}>
           {/* Review fix-up 2026-10-22 — "(see above)" only where HOW TO QUALIFY is above (the Play tab). */}
           {/* 2026-11-21 — the monthly line only while MONTHLY_QUALIFIERS_SHOWN (no monthly event is listed otherwise). */}
+          {/* Repair round 2 — the weekly also names the Online League's top-5 route while a league night gives it. */}
           {MONTHLY_QUALIFIERS_SHOWN && q.type === 'monthly'
             ? `Not yet qualified — qualify via a Weekly, league standings, or attendance${home ? '' : ' (see above)'}`
-            : 'Not yet qualified — finish top 5 in any live game to earn entry'}
+            : (q.type === 'weekly' && onlineLeagueGivesWeeklyCredit(list)
+              ? 'Not yet qualified — finish top 5 in any live game or in a nightly Online League game to earn entry'
+              : 'Not yet qualified — finish top 5 in any live game to earn entry')}
         </div>
       );
     }
@@ -743,7 +788,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
       return (
         <div style={box({ background: 'rgba(255,210,74,0.06)', border: '1px solid rgba(255,210,74,0.25)', color: '#ffd24a' })}>
           {q.signupOpensAt != null ? `Signup opens in ${formatCountdown(q.signupOpensAt, now)} — ${formatWhen(q.signupOpensAt)}` : 'Signup has not opened yet'}
-          {qualified ? ' · you are qualified' : ''}
+          {qualified && !free ? ' · you are qualified' : ''}
         </div>
       );
     }
@@ -774,11 +819,13 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
 
   // 2026-10-23 (owner) — the weekly card's "Rules" link (blue + gold). It
   // opens the rules on their own, never the detail window under them.
-  const rulesLink = (q, label) => (qualifierHasWeeklyRules(q) ? (
+  // 2026-11-21 (owner: the Online League) — a league night's card links to the
+  // Online League Rules (content/onlineLeagueRules.js) in the same window.
+  const rulesLink = (q, label) => ((qualifierHasWeeklyRules(q) || qualifierHasLeagueRules(q)) ? (
     <button
       className="qualifier-rules-link"
       onClick={(e) => { e.stopPropagation(); setRulesFor(q.qualifierId); }}
-      aria-label="Weekly Qualifier Rules"
+      aria-label={qualifierHasLeagueRules(q) ? 'Online League Rules' : 'Weekly Qualifier Rules'}
       style={{
         background: 'rgba(255,210,74,0.08)', border: '1px solid rgba(255,210,74,0.45)', color: '#ffd24a',
         borderRadius: 16, padding: '6px 12px', minHeight: 32, fontWeight: 700, fontSize: '0.76rem', cursor: 'pointer',
@@ -791,6 +838,34 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
     ? <QualifierRules qualifier={list.find((x) => x.qualifierId === rulesFor)} onClose={() => setRulesFor(null)} />
     : null;
 
+  // 2026-11-21 (owner: the Online League) — a league night's lines (blue +
+  // gold only): free entry / re-entry / late entry, every finisher's points +
+  // the top-5 weekly qualifier credit, the winner's chair month - each award
+  // line only while the server says it is given (utils/qualifierList
+  // onlineLeagueCardLines). No seat or credit-to-enter wording.
+  const leagueInfo = (q) => {
+    const lines = onlineLeagueCardLines(q);
+    if (!lines) return null;
+    return (
+      <div className="online-league-line" style={{ marginTop: 6, fontSize: '0.78rem', color: '#cfe0ff', lineHeight: 1.45, display: 'flex', flexDirection: 'column', gap: 3, overflowWrap: 'anywhere' }}>
+        {lines.entry && <div style={{ color: '#6abaff', fontWeight: 700 }}>{lines.entry}</div>}
+        {lines.points && <div>{lines.points}</div>}
+        {lines.prize && <div style={{ color: '#ffd24a', fontWeight: 700 }}>🏆 {lines.prize}</div>}
+      </div>
+    );
+  };
+  // The league's standings in the player app (only with the server's leagueId;
+  // the bridged URL is built at the tap, see openLeagueStandings).
+  const standingsLink = (q) => (isLeagueItem(q) && q.leagueId ? (
+    <button
+      className="online-league-standings"
+      onClick={(e) => { e.stopPropagation(); openLeagueStandings(q.leagueId); }}
+      style={{ background: 'transparent', border: 'none', color: '#6abaff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', padding: '6px 0', minHeight: 32 }}
+    >
+      Online League standings →
+    </button>
+  ) : null);
+
   // 2026-11-02 (owner: stream the qualifiers) — next to Register: the event
   // may be streamed (the owner's approved rules line (1), word for word, the
   // same line as content/qualifierRules.js) and his "Show me as Player on broadcasts"
@@ -800,6 +875,9 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
   // cancelled event. Taps never open the detail window under it.
   const broadcastNotice = (q) => {
     if (qualifierSignupState(q, now) === 'finished') return null;
+    // 2026-11-21 (owner: the Online League) — league nights are never broadcast
+    // (poker-server isBroadcastableQualifier): no streaming notice, no opt-out.
+    if (isLeagueItem(q)) return null;
     const shown = optOutPending !== null ? optOutPending : optOut === true;
     return (
       <div
@@ -842,6 +920,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
         isQualified={qualifierIsQualified(q, qs)}
         action={renderAction(q, true)}
         onClose={() => setOpenDashboard(null)}
+        onlineLeagueCredit={onlineLeagueGivesWeeklyCredit(list)}
       />
     );
   })();
@@ -850,21 +929,29 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
     // 2026-10-22 (owner) — the home page's qualifier card: one event, its
     // start in Denver time, its seat package, where it stands (late entry
     // until the server's lateRegUntil) and his own credits / re-entries.
+    // 2026-11-21 (owner: "show whichever qualifier/league event is SOONEST") —
+    // featuredQualifier already picks it once league nights are listed: the
+    // Mon-Sat league night, the Sunday weekly from Saturday night. ONE card,
+    // ONE mount (the module state above is shared).
     const q = featured;
     if (!q) return null;
+    const league = isLeagueItem(q);
+    const free = qualifierEntryIsFree(q);
     const state = qualifierSignupState(q, now);
     const live = state === 'running' || state === 'late';
     const color = TYPE_COLORS[q.type] || '#ffd24a';
     const status = qualifierHomeStatus(q, now);
-    const seatsLine = seatsForTopText(q.seatsForTop, q.seatPackage);
+    const seatsLine = league ? null : seatsForTopText(q.seatsForTop, q.seatPackage);
     const qs = qualStatus?.[q.type];
     const credits = qualLoaded ? qualifierCreditsHeld(q, qs) : (Number.isInteger(q.creditsHeld) ? q.creditsHeld : null);
-    const youText = qualLoaded ? qualifierHomeYouText(q, {
+    const youText = (qualLoaded || free) ? qualifierHomeYouText(q, {
       state, registered: isRegistered(q), credits,
-      reentries: qualifierReentriesAvailable(q, credits), qualified: qualifierIsQualified(q, qs),
+      reentries: free ? leagueReentriesLeft(q) : qualifierReentriesAvailable(q, credits), qualified: qualifierIsQualified(q, qs),
     }) : null;
     const held = qualifierTablesHeld(q, now);
-    const eyebrow = held ? 'Tables are open' : (live ? 'Qualifier live now' : (state === 'finished' ? 'Latest qualifier' : 'Next online qualifier'));
+    const eyebrow = held ? 'Tables are open' : (league
+      ? (live ? 'Online League live now' : (state === 'finished' ? 'Latest Online League game' : 'Next Online League game'))
+      : (live ? 'Qualifier live now' : (state === 'finished' ? 'Latest qualifier' : 'Next online qualifier')));
     return (
       <>
         {regMsgNode}
@@ -899,6 +986,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
           {seatsLine && (
             <div style={{ marginTop: 4, fontSize: '0.78rem', color: '#ffd24a', lineHeight: 1.4 }}>🎟 {seatsLine}</div>
           )}
+          {league && leagueInfo(q)}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4, fontSize: '0.76rem', color: '#9fb4d8' }}>
             <span>👥 <strong style={{ color: '#fff' }}>{q.players}{q.maxPlayers ? `/${q.maxPlayers}` : ''}</strong> registered</span>
             {youText && <span className="home-qualifier-you" style={{ color: '#cfe0ff', fontWeight: 600 }}>{youText}</span>}
@@ -908,7 +996,8 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
             <span style={{ color: '#8298c4', fontSize: '0.7rem' }}>Tap for details</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              {rulesLink(q, 'Rules')}
+              {rulesLink(q, league ? 'Online League Rules' : 'Rules')}
+              {standingsLink(q)}
               {onSeeAll && (
                 <button className="home-qualifier-all" onClick={(e) => { e.stopPropagation(); onSeeAll(); }} style={{ background: 'transparent', border: 'none', color: '#6abaff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', padding: '6px 0', minHeight: 32 }}>
                   All qualifiers →
@@ -964,7 +1053,9 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
         const state = qualifierSignupState(q, now);
         const live = state === 'running' || state === 'late';
         const qs = qualStatus?.[q.type];
-        const seatsLine = seatsForTopText(q.seatsForTop, q.seatPackage);
+        // 2026-11-21 — a league night pays no championship seats.
+        const league = isLeagueItem(q);
+        const seatsLine = league ? null : seatsForTopText(q.seatsForTop, q.seatPackage);
         const held = qualifierTablesHeld(q, now);
         const breaksLine = qualifierBreaksText(q.structure);
         return (
@@ -1018,7 +1109,19 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
               )}
             </div>
 
-            {/* How to qualify — the official guidelines. */}
+            {/* 2026-11-21 (owner: the Online League) — a league night: free entry,
+                its lines, rules + standings, instead of HOW TO QUALIFY (no credit). */}
+            {league ? (
+            <div className="online-league-about" style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(90,140,230,0.06)', border: '1px solid rgba(90,140,230,0.18)', fontSize: '0.76rem', color: '#9fb4d8', lineHeight: 1.5 }}>
+              <div style={{ color: '#cfe0ff', fontWeight: 700, marginBottom: 4, fontSize: '0.7rem', letterSpacing: '0.05em' }}>🃏 ONLINE LEAGUE</div>
+              {leagueInfo(q)}
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                {rulesLink(q, 'Online League Rules')}
+                {standingsLink(q)}
+              </div>
+            </div>
+            ) : (
+            /* How to qualify — the official guidelines. */
             <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(90,140,230,0.06)', border: '1px solid rgba(90,140,230,0.18)', fontSize: '0.76rem', color: '#9fb4d8', lineHeight: 1.5 }}>
               <div style={{ color: '#cfe0ff', fontWeight: 700, marginBottom: 4, fontSize: '0.7rem', letterSpacing: '0.05em' }}>📋 HOW TO QUALIFY</div>
               {/* 2026-11-21 (owner: "Do not show the monthly qualifiers") — while
@@ -1032,8 +1135,14 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
               ) : (
                 <>Finish <strong style={{ color: '#fff' }}>top 5 in any live game</strong> at any venue to earn a credit and an entry here.{seatsLine ? ` ${seatsLine} at Bally's Blackhawk.` : ''}</>
               )}
+              {/* 2026-11-21 repair round 2 — the Online League's top 5 each night also
+                  earn the weekly credit (owner): named while a league night gives it. */}
+              {q.type === 'weekly' && onlineLeagueGivesWeeklyCredit(list) && (
+                <div className="online-league-credit-route" style={{ marginTop: 6 }}>{ONLINE_LEAGUE_WEEKLY_ROUTE_TEXT}</div>
+              )}
               {qualifierHasWeeklyRules(q) && <div style={{ marginTop: 8 }}>{rulesLink(q, 'Weekly Qualifier Rules')}</div>}
             </div>
+            )}
 
             {renderAction(q)}
             {broadcastNotice(q)}

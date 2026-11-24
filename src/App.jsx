@@ -1131,8 +1131,12 @@ function App() {
     // qualifier registration (reason 'server_restart'): he must register again.
     const handleQualifierCancelled = (d) => {
       const credit = d?.creditRefunded ? ' Your qualifier credit was refunded.' : '';
+      // 2026-11-21 (owner: the Online League) — a league night's notice (the
+      // server adds kind 'league') is titled and worded as the Online League;
+      // it used no credit (creditRefunded is false), so no credit sentence.
+      const league = d?.kind === 'league';
       if (d?.reason === 'server_restart') {
-        useProgressStore.getState().addNotification({ type: 'mission', title: 'Qualifier cancelled', message: `Your qualifier registration was cancelled because the game server restarted — please register again.${credit}` });
+        useProgressStore.getState().addNotification({ type: 'mission', title: league ? 'Online League cancelled' : 'Qualifier cancelled', message: `Your ${league ? 'Online League' : 'qualifier'} registration was cancelled because the game server restarted — please register again.${credit}` });
         return;
       }
       // 2026-10-20 (owner: no-shows removed + refunded at the start) — told at
@@ -1143,16 +1147,16 @@ function App() {
         // late entry is not offered: it is not listed in Qualifiers while hidden.
         // The released entry and the refund are still said.
         const hiddenMonthly = monthlyQualifierHidden(d);
-        const name = hiddenMonthly ? 'A qualifier you registered for' : (d?.qualifierName || 'The qualifier');
+        const name = hiddenMonthly ? 'A qualifier you registered for' : (d?.qualifierName || (league ? 'The Online League game' : 'The qualifier'));
         const until = d?.lateRegUntil ? new Date(d.lateRegUntil) : null;
         const late = !hiddenMonthly && d?.lateRegOpen && until && !Number.isNaN(until.getTime())
           ? ` Late registration is open until ${until.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} — enter again from Qualifiers if a seat is free.`
           : '';
-        useProgressStore.getState().addNotification({ type: 'mission', title: 'Qualifier started without you', message: `${name} started while you were offline, so your entry was released.${credit}${late}` });
+        useProgressStore.getState().addNotification({ type: 'mission', title: league ? 'Online League started without you' : 'Qualifier started without you', message: `${name} started while you were offline, so your entry was released.${credit}${late}` });
         return;
       }
       const why = d?.reason === 'removed_from_schedule' ? 'it was taken off the schedule' : 'not enough players registered';
-      useProgressStore.getState().addNotification({ type: 'mission', title: 'Qualifier cancelled', message: `A qualifier you registered for was cancelled — ${why}.${credit}` });
+      useProgressStore.getState().addNotification({ type: 'mission', title: league ? 'Online League cancelled' : 'Qualifier cancelled', message: `${league ? 'An Online League game' : 'A qualifier'} you registered for was cancelled — ${why}.${credit}` });
     };
     socket.on('qualifierCancelled', handleQualifierCancelled);
 

@@ -1,10 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
 import { notify } from '../../hooks/usePushNotifications';
-import { qualifierSignupState, qualifierResultText, seatsForTopText, ordinal, formatDenverWhen, qualifierBreaksText, qualifierLateRegClosedText } from '../../utils/qualifierList';
+import { qualifierSignupState, seatsForTopText, ordinal, formatDenverWhen, qualifierBreaksText, qualifierLateRegClosedText } from '../../utils/qualifierList';
+// 2026-11-21 (owner: the Online League) — a league night's own paragraph and
+// finished line (points, never seats), no credit / Seats lines.
+import { isLeagueItem, qualifierEntryIsFree, qualifierItemResultText, onlineLeagueAboutText } from '../../utils/qualifierList';
+// 2026-11-21 repair round 2 — the weekly also names the Online League's top-5
+// credit route while the lobby's list carries a league night that gives it.
+import { ONLINE_LEAGUE_WEEKLY_ROUTE_TEXT } from '../../utils/qualifierList';
 // 2026-10-23 (owner) — a weekly qualifier's detail window has a Rules tab.
+// 2026-11-21 — and a league night's has the Online League Rules.
 import { QualifierRulesBody } from './QualifierRules';
-import { qualifierHasWeeklyRules } from '../../content/qualifierRules';
+import { qualifierHasWeeklyRules, qualifierHasLeagueRules } from '../../content/qualifierRules';
 // 2026-11-21 (owner: "Do not show the monthly qualifiers") - one flag hides them.
 import { MONTHLY_QUALIFIERS_SHOWN } from '../../utils/monthlyQualifiers';
 
@@ -38,7 +45,7 @@ function formatWhen(t) {
  * copy the server never promised. `action` is the card's own action area
  * (Register / Withdraw / Watch Live), so both places behave the same.
  */
-export default function QualifierDashboard({ qualifier, now: nowProp, isRegistered, isQualified, action, onClose }) {
+export default function QualifierDashboard({ qualifier, now: nowProp, isRegistered, isQualified, action, onClose, onlineLeagueCredit = false }) {
   const q = qualifier;
   const [now, setNow] = useState(() => nowProp || Date.now());
   const [activeTab, setActiveTab] = useState('overview');
@@ -55,10 +62,13 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
   const state = qualifierSignupState(q, now);
   const isRunning = state === 'running' || state === 'late';
   const isFinished = state === 'finished';
-  const color = q.type === 'monthly' ? '#9db8ff' : '#ffd24a';
+  const league = isLeagueItem(q);
+  const freeEntry = qualifierEntryIsFree(q);
+  const color = league ? '#6abaff' : (q.type === 'monthly' ? '#9db8ff' : '#ffd24a');
   const levels = q.structure?.levels || [];
-  const seatsLine = seatsForTopText(q.seatsForTop, q.seatPackage);
-  const resultLine = qualifierResultText(q.result);
+  // A league night pays no championship seats (no Seats tab, no seat line).
+  const seatsLine = league ? null : seatsForTopText(q.seatsForTop, q.seatPackage);
+  const resultLine = qualifierItemResultText(q);
 
   // Local push when this qualifier transitions to running (rising edge), so a
   // registered player who backgrounded the tab gets nudged to their seat.
@@ -76,8 +86,8 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
 
   const tabs = [{ key: 'overview', label: 'Overview' }];
   if (levels.length > 0) tabs.push({ key: 'blinds', label: 'Blind Schedule' });
-  if (seatsLine || resultLine) tabs.push({ key: 'prizes', label: 'Seats' });
-  const hasRules = qualifierHasWeeklyRules(q);
+  if (!league && (seatsLine || resultLine)) tabs.push({ key: 'prizes', label: 'Seats' });
+  const hasRules = qualifierHasWeeklyRules(q) || qualifierHasLeagueRules(q);
   if (hasRules) tabs.push({ key: 'rules', label: 'Rules' });
 
   const startCountdown = !isRunning && !isFinished ? formatCountdown(q.scheduledAt, now) : '';
@@ -115,7 +125,7 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
 
         {/* Header */}
         <div style={{ padding: '18px 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-          <span style={{ fontSize: '2rem', lineHeight: 1 }}>{q.type === 'monthly' ? '🏆' : '🗓️'}</span>
+          <span style={{ fontSize: '2rem', lineHeight: 1 }}>{league ? '🃏' : (q.type === 'monthly' ? '🏆' : '🗓️')}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <h2 style={{ margin: 0, color: '#fff', fontSize: '1.15rem' }}>{q.name}</h2>
@@ -162,6 +172,14 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
                   {resultLine}
                 </div>
               )}
+              {/* 2026-11-21 (owner: the Online League) — a league night: its own
+                  paragraph (free entry, one re-entry, points; the top-5 credit and
+                  the winner's chair month only while the server gives them). */}
+              {league ? (
+              <div className="online-league-about" style={{ color: '#cfe0ff', fontSize: '0.88rem', lineHeight: 1.6 }}>
+                <p style={{ margin: 0 }}>{onlineLeagueAboutText(q)}</p>
+              </div>
+              ) : (
               <div style={{ color: '#cfe0ff', fontSize: '0.88rem', lineHeight: 1.6 }}>
                 {/* 2026-11-21 (owner: "Do not show the monthly qualifiers") — while
                     MONTHLY_QUALIFIERS_SHOWN is false the weekly line ends at the seats
@@ -174,12 +192,17 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
                 ) : (
                   <p style={{ margin: 0 }}>Top 5 finishers at any live American Pub Poker game earn a qualification credit for this weekly online qualifier.{seatsLine ? ` ${seatsLine} at the Championship at Bally's Blackhawk.` : ''}</p>
                 )}
+                {q.type === 'weekly' && onlineLeagueCredit && (
+                  <p className="online-league-credit-route" style={{ margin: '8px 0 0' }}>{ONLINE_LEAGUE_WEEKLY_ROUTE_TEXT}</p>
+                )}
               </div>
+              )}
               <div className="qualifier-window" style={{ color: '#9fb4d8', fontSize: '0.8rem', lineHeight: 1.6 }}>
                 {windowLines.map((l) => <div key={l}>{l}</div>)}
                 {state === 'unknown' && <div>Signup times have not been announced yet.</div>}
                 {isRegistered && !isFinished && <div style={{ color: '#ffd24a', fontWeight: 600 }}>You are registered.</div>}
-                {!isRegistered && isQualified && !isFinished && <div style={{ color: '#ffd24a' }}>You have a qualifier credit for this event.</div>}
+                {/* 2026-11-21 — a free event (the Online League) uses no credit: no credit line. */}
+                {!isRegistered && isQualified && !isFinished && !freeEntry && <div style={{ color: '#ffd24a' }}>You have a qualifier credit for this event.</div>}
               </div>
             </div>
           )}
@@ -211,7 +234,7 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
             </div>
           )}
 
-          {activeTab === 'prizes' && (
+          {activeTab === 'prizes' && !league && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {q.seatsForTop ? Array.from({ length: Math.min(q.seatsForTop, 20) }, (_, i) => (
                 <div key={i} style={{

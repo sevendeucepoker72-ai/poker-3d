@@ -1,8 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useBackButtonClose } from '../../hooks/useBackButtonClose';
-import {
-  QUALIFIER_RULES_TITLE, QUALIFIER_RULES_SUBTITLE, qualifierRulesFor, rulesUpdatedLine, rulesJumpRowWraps,
-} from '../../content/qualifierRules';
+// 2026-11-21 (owner: the Online League) - rulesPageFor picks the page for the
+// item it was opened from: the Online League Rules (content/onlineLeagueRules.js)
+// for a league night, else the Weekly Qualifier Rules, as before.
+import { rulesPageFor, rulesJumpRowWraps } from '../../content/qualifierRules';
 
 // 2026-10-23 (owner) — the Weekly Qualifier Rules. The text lives in ONE data
 // module (content/qualifierRules.js) so the owner's edits are one-file
@@ -29,9 +30,9 @@ function sectionDomId(prefix, i) {
 export function QualifierRulesBody({ idPrefix, qualifier, sections: sectionsProp }) {
   const autoId = useId();
   const prefix = idPrefix || `qualifier-rules-${autoId.replace(/[^A-Za-z0-9_-]/g, '')}`;
-  const own = useMemo(() => qualifierRulesFor(qualifier), [qualifier]);
-  const sections = sectionsProp || own;
-  const updated = rulesUpdatedLine();
+  const page = useMemo(() => rulesPageFor(qualifier), [qualifier]);
+  const sections = sectionsProp || page.sections;
+  const updated = page.updated;
   return (
     <div className="qualifier-rules-body" style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
       {updated && (
@@ -111,7 +112,8 @@ export default function QualifierRules({ onClose, qualifier }) {
   const headerRef = useRef(null);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
-  const sections = useMemo(() => qualifierRulesFor(qualifier), [qualifier]);
+  const page = useMemo(() => rulesPageFor(qualifier), [qualifier]);
+  const sections = page.sections;
   const vp = useViewport();
 
   // Hardware / browser Back closes the rules (not the page).
@@ -174,8 +176,8 @@ export default function QualifierRules({ onClose, qualifier }) {
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: shortScreen ? '6px 12px 2px 16px' : '14px 12px 8px 16px' }}>
             <span aria-hidden="true" style={{ fontSize: '1.6rem', lineHeight: 1 }}>📋</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h2 id={titleId} style={{ margin: 0, color: '#fff', fontSize: '1.12rem', fontWeight: 800 }}>{QUALIFIER_RULES_TITLE}</h2>
-              {!shortScreen && <div style={{ color: BLUE, fontSize: '0.74rem', marginTop: 3 }}>{QUALIFIER_RULES_SUBTITLE}</div>}
+              <h2 id={titleId} style={{ margin: 0, color: '#fff', fontSize: '1.12rem', fontWeight: 800 }}>{page.title}</h2>
+              {!shortScreen && <div style={{ color: BLUE, fontSize: '0.74rem', marginTop: 3 }}>{page.subtitle}</div>}
             </div>
             <button
               ref={closeRef}
@@ -203,7 +205,7 @@ export default function QualifierRules({ onClose, qualifier }) {
         </div>
 
         <div style={{ padding: '14px 16px 8px' }}>
-          <QualifierRulesBody idPrefix={prefix} sections={sections} />
+          <QualifierRulesBody idPrefix={prefix} qualifier={qualifier} sections={sections} />
         </div>
 
         <div style={{ padding: '12px 16px 18px', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 10 }}>

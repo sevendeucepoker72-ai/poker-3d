@@ -1455,3 +1455,16 @@ stream-qualifier-official-note
 # Fix round 2026-11-02 (checker) - the broadcast legal line (contract.js LEGAL_LINE; the producer's legal
 # lower third imports the same constant) ends in approved rules line (2) word for word, not a bare "21+".
 No purchase necessary · 21+ to enter.
+# 2026-11-21 (owner decisions: the Online League) - a free No-Limit Hold'em tournament Mon-Sat 6:00 PM MT
+# (type online_league, kind league). The lobby asks for league nights on every list request
+# (QUALIFIER_LIST_REQUEST {kinds:['league']}); the home card shows the SOONEST event; a league night shows
+# free Register / one Re-enter, its lines (free entry, points + the top-5 weekly credit, the winner's chair
+# month - each only while the server gives it), the Online League Rules (content/onlineLeagueRules.js,
+# draft for owner approval) and its standings in the player app; the finish screen says place + points.
+online-league-line
+online-league-standings
+Points post to the Online League standings
+Online League Rules
+# 2026-11-21 repair round 2 - the weekly's "how to earn a credit" copy names the Online League's
+# top-5 route (owner: the top 5 each night earn the weekly credit) while a league night gives it.
+online-league-credit-route
