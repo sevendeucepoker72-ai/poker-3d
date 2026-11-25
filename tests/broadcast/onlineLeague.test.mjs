@@ -3,8 +3,9 @@
 // 'online_league', kind 'league'): free Register / one Re-enter / Take your
 // seat, the home card shows the SOONEST event (league Mon-Sat, the weekly from
 // Saturday night), league copy says points + the top-5 weekly credit + the
-// winner's chair month (only while the server gives them; no seat or
-// credit-to-enter wording), standings link to the player app, the finish
+// winner's 1-month seat subscription to a live game (only while the server
+// gives them; owner 2026-11-25: never "a free month in a chair"; no
+// championship-seat or credit-to-enter wording), standings link to the player app, the finish
 // screen says the place + points, an older server's list behaves as today, and
 // the monthly stays hidden.
 // node:test, no dependency; loads the REAL modules (+ static guards on JSX).
@@ -187,7 +188,7 @@ test('home card lines: free entry / 1 re-entry / 7:00 PM, points + top-5 credit 
   assert.deepEqual(on, {
     entry: 'Free entry · 1 re-entry · late entry until 7:00 PM MT',
     points: 'Every finisher earns league points; top 5 earn a weekly qualifier credit',
-    prize: 'Winner: a free month in a chair at a live game',
+    prize: 'Winner: a 1-month seat subscription to a live game',
   });
   const off = L.onlineLeagueCardLines(L.normalizeQualifierItem(leagueRaw({ leaguePoints: false, leaguePrize: null })));
   assert.equal(off.points, null);
@@ -195,9 +196,11 @@ test('home card lines: free entry / 1 re-entry / 7:00 PM, points + top-5 credit 
   assert.equal(L.onlineLeagueCardLines(L.normalizeQualifierItem(leagueRaw({ leaguePoints: false }))).prize, null, 'no prize while points are off (it hangs off the night\'s game)');
   const min = L.onlineLeagueCardLines(L.normalizeQualifierItem(leagueRaw({ leagueAwardsMinField: 6 })));
   assert.equal(min.points, 'Every finisher earns league points; top 5 earn a weekly qualifier credit (nights with 6+ finishers)');
-  assert.equal(min.prize, 'Winner: a free month in a chair at a live game (nights with 6+ finishers)');
+  assert.equal(min.prize, 'Winner: a 1-month seat subscription to a live game (nights with 6+ finishers)');
   assert.equal(L.onlineLeagueCardLines(L.normalizeQualifierItem(weeklyRaw())), null);
-  for (const v of Object.values(on)) assert.doesNotMatch(v, /\bseat|championship|uses 1 credit|credit to enter/i, v);
+  // The only "seat" word is the prize's "seat subscription" (owner 2026-11-25), never a championship seat.
+  for (const v of Object.values(on)) assert.doesNotMatch(v, /\bseat(?! subscription)|championship|uses 1 credit|credit to enter/i, v);
+  for (const v of [on.prize, min.prize]) assert.doesNotMatch(v, /free month|chair/i, `owner 2026-11-25: never "a free month in a chair": ${v}`);
   // The card's "Sign-up opens" time is COMPUTED from the server's signupOpensAt
   // (3 hours before since poker-server 32533fe): 3:00 PM MT before it opens.
   assert.deepEqual(L.qualifierHomeStatus(L.normalizeQualifierItem(leagueRaw()), Date.parse('2026-11-28T21:00:00Z')), { state: 'scheduled', text: 'Sign-up opens 3:00 PM MT' });
@@ -205,10 +208,11 @@ test('home card lines: free entry / 1 re-entry / 7:00 PM, points + top-5 credit 
   assert.match(about, /^Online League: free No-Limit Hold'em for every American Pub Poker member, Monday to Saturday at 6:00 PM MT\. Sign-up opens at 3:00 PM; late entry and one re-entry until 7:00 PM; 10-minute levels\./);
   assert.doesNotMatch(about, /4:00 PM/, 'owner 2026-11-25: sign-up opens 3 hours before (3:00 PM MT), never the old 4:00 PM');
   assert.match(about, /top 5 earn a weekly qualifier credit/);
-  assert.match(about, /free month \(4 games\) in a chair at a live American Pub Poker game/);
+  assert.match(about, /The winner gets a 1-month seat subscription \(4 games\) to a live American Pub Poker game\./);
   const aboutOff = L.onlineLeagueAboutText(L.normalizeQualifierItem(leagueRaw({ leaguePoints: false, leaguePrize: null })));
-  assert.doesNotMatch(aboutOff, /credit|chair|points/i);
-  assert.doesNotMatch(about, /\bseat/i);
+  assert.doesNotMatch(aboutOff, /credit|chair|seat subscription|points/i);
+  assert.doesNotMatch(about, /\bseat(?! subscription)/i);
+  assert.doesNotMatch(about, /free month|chair/i, 'owner 2026-11-25: never "a free month in a chair"');
 });
 
 test('finished line + Game Over: place + points; top-5 credit / prize only when given; never seat or chips', () => {
@@ -228,7 +232,8 @@ test('finished line + Game Over: place + points; top-5 credit / prize only when 
   assert.equal(third, "Online League complete! You finished 3rd. Points post to the Online League standings. Top 5 earn a weekly qualifier credit for Sunday's Weekly Qualifier - yours shows in the American Pub Poker app.");
   const first = L.tournamentCompleteMessage(frame({ place: 1, wonSeat: false }), 'u1');
   assert.ok(first.startsWith('Online League complete! You finished 1st. Points post to the Online League standings. Top 5 earn'));
-  assert.ok(first.endsWith(' You won a free month in a chair at a live game - claim it in the American Pub Poker app.'));
+  assert.ok(first.endsWith(' You won a 1-month seat subscription to a live game - claim it in the American Pub Poker app.'));
+  assert.doesNotMatch(first, /free month|chair/i, 'owner 2026-11-25: never "a free month in a chair"');
   const sixth = L.tournamentCompleteMessage(frame({ place: 6 }), 'u1');
   assert.equal(sixth, 'Online League complete! You finished 6th. Points post to the Online League standings.');
   // Points off: no points / credit / prize sentence.
@@ -236,16 +241,16 @@ test('finished line + Game Over: place + points; top-5 credit / prize only when 
   // leaguePoints unknown (null): the points sentence, but no credit promise.
   assert.equal(L.tournamentCompleteMessage(frame({ place: 2, leaguePoints: null, leaguePrize: null }), 'u1'), 'Online League complete! You finished 2nd. Points post to the Online League standings.');
   // Prize off: no prize line for the winner.
-  assert.doesNotMatch(L.tournamentCompleteMessage(frame({ place: 1, leaguePrize: null }), 'u1'), /chair/);
+  assert.doesNotMatch(L.tournamentCompleteMessage(frame({ place: 1, leaguePrize: null }), 'u1'), /seat subscription|chair/);
   // Below the minimum field: points only.
   const small = L.tournamentCompleteMessage(frame({ place: 1, leagueAwardsMinField: 6, field: 5 }), 'u1');
   assert.equal(small, 'Online League complete! You finished 1st. Points post to the Online League standings.');
-  assert.match(L.tournamentCompleteMessage(frame({ place: 1, leagueAwardsMinField: 6, field: 6 }), 'u1'), /chair/);
-  assert.doesNotMatch(L.tournamentCompleteMessage(frame({ place: 1, leagueAwardsMinField: 6, field: undefined }), 'u1'), /credit|chair/, 'unknown field + a minimum: no promise');
+  assert.match(L.tournamentCompleteMessage(frame({ place: 1, leagueAwardsMinField: 6, field: 6 }), 'u1'), /1-month seat subscription/);
+  assert.doesNotMatch(L.tournamentCompleteMessage(frame({ place: 1, leagueAwardsMinField: 6, field: undefined }), 'u1'), /credit|seat subscription|chair/, 'unknown field + a minimum: no promise');
   // A spectator (no own place).
   assert.equal(L.tournamentCompleteMessage(frame({}), null), 'Online League complete! Points post to the Online League standings.');
   for (const m of [third, first, sixth, small]) {
-    assert.doesNotMatch(m, /\bseat|chips|Qualifier complete/i, m);
+    assert.doesNotMatch(m, /\bseat(?! subscription)|chips|Qualifier complete/i, m);
   }
   // The Game Over overlay: no chip own-line, no chip bankroll result for a league night.
   assert.deepEqual(F.finishOverlay(frame({ place: 3 }), 'u1'), { message: L.tournamentCompleteMessage(frame({ place: 3 }), 'u1'), ownLine: '' });
@@ -265,6 +270,7 @@ test('Online League Rules: own title / subtitle / date, plain ASCII, the drafted
   assert.ok(/^[\x20-\x7e]*$/.test(raw), 'plain ASCII (AGENT.md rule 20)');
   assert.doesNotMatch(raw, /4:00 PM/, 'owner 2026-11-25: sign-up opens at 3:00 PM MT, never the old 4:00 PM');
   assert.doesNotMatch(raw, /monthly|championship seat/i);
+  assert.doesNotMatch(raw, /free month|in a chair|chair availability/i, 'owner 2026-11-25: the prize is a 1-month seat subscription, never "a free month in a chair"');
   const q = L.normalizeQualifierItem(leagueRaw());
   assert.equal(R.qualifierHasLeagueRules(q), true);
   assert.equal(R.qualifierHasWeeklyRules(q), false);
@@ -286,6 +292,9 @@ test('Online League Rules: own title / subtitle / date, plain ASCII, the drafted
     'Sign-up opens at 3:00 PM MT. Tap Register on the Online League card.',
     'Late entry and one re-entry are open until 7:00 PM MT.',
     'The top 5 each night earn a weekly qualifier credit for the Sunday Weekly Qualifier.',
+    'The winner each night gets a 1-month seat subscription (4 weekly games) to a live American Pub Poker game the winner chooses.',
+    'No purchase, VIP or card is needed to claim it. The 1-month seat subscription is never charged.',
+    "The prize depends on seat availability and the venue's own house rules, including age limits.",
     'It has no cash value and cannot be transferred. Claim it in the American Pub Poker app within 90 days.',
     'American Pub Poker may void points, credits or prizes for multiple accounts, collusion or cheating.',
   ]) assert.ok(lines.includes(want), `missing: ${want}`);

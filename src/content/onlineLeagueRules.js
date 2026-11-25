@@ -1,14 +1,18 @@
 // Online League Rules - the text players read on americanpubpoker.online
 // (owner decisions 2026-11-21: a free No-Limit Hold'em tournament Monday to
 // Saturday at 6:00 PM MT, one re-entry, points like a live venue league, the
-// top 5 each night earn a weekly qualifier credit, the nightly winner a free
-// month in a chair at a live game).
+// top 5 each night earn a weekly qualifier credit, the nightly winner a
+// 1-month seat subscription to a live game).
 //
 // OWNER-APPROVED 2026-11-21 ("Use your picks"): change it only with the
 // owner, then bump ONLINE_LEAGUE_RULES_UPDATED.
 // Owner change 2026-11-25 ("signup should be 3 hours before"): sign-up opens
 // at 3:00 PM MT (was 4:00 PM), matching poker-server 32533fe
 // ONLINE_LEAGUE_SIGNUP_OPENS_BEFORE_MS = 3 h. Nothing else in the text changed.
+// Owner change 2026-11-25 ("It should be more clear its a 1month seat
+// subscription to a live game"): the prize lines name the prize a "1-month
+// seat subscription" (one month of the player app's paid seat subscription),
+// never "a free month in a chair". Only the prize description changed.
 //
 // Same shape as content/qualifierRules.js QUALIFIER_RULES, so the same rules
 // window (components/ui/QualifierRules.jsx) renders it: [{ heading, rules }],
@@ -82,15 +86,15 @@ export const ONLINE_LEAGUE_RULES = [
     rules: [
       {
         needs: ['leaguePrize'],
-        text: 'The winner each night wins one free month (4 weekly games) in a chair at a live American Pub Poker game the winner chooses.',
+        text: 'The winner each night gets a 1-month seat subscription (4 weekly games) to a live American Pub Poker game the winner chooses.',
       },
       {
         needs: ['leaguePrize'],
-        text: 'No purchase, VIP or card is needed to claim it. The free month is never charged.',
+        text: 'No purchase, VIP or card is needed to claim it. The 1-month seat subscription is never charged.',
       },
       {
         needs: ['leaguePrize'],
-        text: "The prize depends on chair availability and the venue's own house rules, including age limits.",
+        text: "The prize depends on seat availability and the venue's own house rules, including age limits.",
       },
       {
         needs: ['leaguePrize'],

@@ -174,7 +174,8 @@ export default function QualifierDashboard({ qualifier, now: nowProp, isRegister
               )}
               {/* 2026-11-21 (owner: the Online League) — a league night: its own
                   paragraph (free entry, one re-entry, points; the top-5 credit and
-                  the winner's chair month only while the server gives them). */}
+                  the winner's 1-month seat subscription only while the server
+                  gives them). */}
               {league ? (
               <div className="online-league-about" style={{ color: '#cfe0ff', fontSize: '0.88rem', lineHeight: 1.6 }}>
                 <p style={{ margin: 0 }}>{onlineLeagueAboutText(q)}</p>

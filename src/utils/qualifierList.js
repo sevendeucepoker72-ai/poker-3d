@@ -346,8 +346,11 @@ export function qualifierResultText(result) {
 
 // ── Online League copy (owner 2026-11-21) ────────────────────────────────────
 // Free entry, ONE re-entry, points like a live venue league, the top 5 each
-// night earn a weekly qualifier credit, the winner a free month in a chair at
-// a live game. Never "seat" (no championship seats from a league night), never
+// night earn a weekly qualifier credit, the winner a 1-month seat subscription
+// to a live game (owner 2026-11-25: "It should be more clear its a 1month seat
+// subscription to a live game"; was "a free month in a chair"). Never a
+// championship "seat" (no championship seats from a league night; the only
+// "seat" word is the prize's "seat subscription"), never
 // "credit" for entering, and a credit / prize is promised only while the
 // server's switches say it is given (`leaguePoints`, `leaguePrize`) and the
 // field is big enough (`leagueAwardsMinField`).
@@ -405,7 +408,7 @@ export const ONLINE_LEAGUE_WEEKLY_ROUTE_TEXT = 'Or finish top 5 in a nightly Onl
 
 export const ONLINE_LEAGUE_POINTS_TEXT = 'Points post to the Online League standings.';
 export const ONLINE_LEAGUE_TOP5_CREDIT_TEXT = "Top 5 earn a weekly qualifier credit for Sunday's Weekly Qualifier - yours shows in the American Pub Poker app.";
-export const ONLINE_LEAGUE_PRIZE_WON_TEXT = 'You won a free month in a chair at a live game - claim it in the American Pub Poker app.';
+export const ONLINE_LEAGUE_PRIZE_WON_TEXT = 'You won a 1-month seat subscription to a live game - claim it in the American Pub Poker app.';
 
 /**
  * A finished league night's line on the card / detail window: "You finished
@@ -430,7 +433,7 @@ export function qualifierItemResultText(q) {
  * The home card's league lines (null for any other item):
  *   entry   "Free entry · 1 re-entry · late entry until 7:00 PM MT" (from the server's fields)
  *   points  "Every finisher earns league points; top 5 earn a weekly qualifier credit" (leaguePoints true only)
- *   prize   "Winner: a free month in a chair at a live game" (leaguePrize, points not off)
+ *   prize   "Winner: a 1-month seat subscription to a live game" (leaguePrize, points not off)
  * A minimum field (leagueAwardsMinField > 1) adds "(nights with N+ finishers)" to the award lines.
  */
 export function onlineLeagueCardLines(q) {
@@ -447,7 +450,7 @@ export function onlineLeagueCardLines(q) {
   return {
     entry: parts.join(' · '),
     points: q.leaguePoints === true ? `Every finisher earns league points; top 5 earn a weekly qualifier credit${minNote}` : null,
-    prize: q.leaguePrize === 'chair_month' && q.leaguePoints !== false ? `Winner: a free month in a chair at a live game${minNote}` : null,
+    prize: q.leaguePrize === 'chair_month' && q.leaguePoints !== false ? `Winner: a 1-month seat subscription to a live game${minNote}` : null,
   };
 }
 
@@ -458,7 +461,7 @@ export function onlineLeagueAboutText(q) {
   const minNote = min > 1 ? ` on nights with ${min} or more finishers` : '';
   let text = "Online League: free No-Limit Hold'em for every American Pub Poker member, Monday to Saturday at 6:00 PM MT. Sign-up opens at 3:00 PM; late entry and one re-entry until 7:00 PM; 10-minute levels.";
   if (q.leaguePoints === true) text += ` Every finisher earns league points; the top 5 earn a weekly qualifier credit for the Sunday Weekly Qualifier${minNote}.`;
-  if (q.leaguePrize === 'chair_month' && q.leaguePoints !== false) text += ` The winner gets a free month (4 games) in a chair at a live American Pub Poker game${minNote}.`;
+  if (q.leaguePrize === 'chair_month' && q.leaguePoints !== false) text += ` The winner gets a 1-month seat subscription (4 games) to a live American Pub Poker game${minNote}.`;
   return text;
 }
 
@@ -841,7 +844,8 @@ export function qualifierFinishFrame(data, myUserId) {
  */
 export function tournamentCompleteMessage(data, myUserId) {
   // 2026-11-21 (owner: the Online League) — a league night pays points (and the
-  // top 5 a weekly credit, the winner a chair month), never seats or chips.
+  // top 5 a weekly credit, the winner a 1-month seat subscription), never
+  // championship seats or chips.
   if (data && typeof data === 'object' && data.kind === 'league') return onlineLeagueCompleteMessage(data, myUserId);
   const rows = Array.isArray(data?.results) ? data.results.filter((r) => r && typeof r === 'object') : [];
   const mine = myUserId != null ? rows.find((r) => r.userId != null && String(r.userId) === String(myUserId)) : null;

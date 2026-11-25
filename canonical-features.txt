@@ -1458,8 +1458,8 @@ No purchase necessary · 21+ to enter.
 # 2026-11-21 (owner decisions: the Online League) - a free No-Limit Hold'em tournament Mon-Sat 6:00 PM MT
 # (type online_league, kind league). The lobby asks for league nights on every list request
 # (QUALIFIER_LIST_REQUEST {kinds:['league']}); the home card shows the SOONEST event; a league night shows
-# free Register / one Re-enter, its lines (free entry, points + the top-5 weekly credit, the winner's chair
-# month - each only while the server gives it), the Online League Rules (content/onlineLeagueRules.js,
+# free Register / one Re-enter, its lines (free entry, points + the top-5 weekly credit, the winner's 1-month seat
+# subscription - each only while the server gives it), the Online League Rules (content/onlineLeagueRules.js,
 # draft for owner approval) and its standings in the player app; the finish screen says place + points.
 online-league-line
 online-league-standings
@@ -1588,3 +1588,5 @@ app-pod-up
 app-card-marked
 --app-wb-b
 app-tab--noclose
+# Online League prize wording (owner 2026-11-25: 1-month seat subscription)
+1-month seat subscription to a live game

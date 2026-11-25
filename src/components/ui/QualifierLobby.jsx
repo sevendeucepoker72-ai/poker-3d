@@ -840,9 +840,9 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
 
   // 2026-11-21 (owner: the Online League) — a league night's lines (blue +
   // gold only): free entry / re-entry / late entry, every finisher's points +
-  // the top-5 weekly qualifier credit, the winner's chair month - each award
-  // line only while the server says it is given (utils/qualifierList
-  // onlineLeagueCardLines). No seat or credit-to-enter wording.
+  // the top-5 weekly qualifier credit, the winner's 1-month seat subscription
+  // - each award line only while the server says it is given (utils/qualifierList
+  // onlineLeagueCardLines). No championship-seat or credit-to-enter wording.
   const leagueInfo = (q) => {
     const lines = onlineLeagueCardLines(q);
     if (!lines) return null;
