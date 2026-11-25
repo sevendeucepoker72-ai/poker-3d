@@ -688,7 +688,8 @@ const SeatPod = memo(function SeatPod({
           title={`Owes ${(deadBlindOwedChips || 0).toLocaleString()} in dead blinds (${missedBlind})`}
           aria-label={`${name || 'Player'} owes dead blinds from sitting out`}
         >
-          🎯 {(deadBlindOwedChips || 0).toLocaleString()}
+          {/* APP Precision P5: a gold chip in the skin (the dart is red) */}
+          {cinematicEnabled ? <span className="app-owed-chip" aria-hidden="true" /> : '🎯'} {(deadBlindOwedChips || 0).toLocaleString()}
         </div>
       )}
 
@@ -977,10 +978,36 @@ export default function PokerTable2D() {
   const appSpectator = !(yourSeat >= 0 && yourSeat < seatCap);
   const appBox = seatEllipse?.appBox || null;
   const [appMeas, setAppMeas] = useState(null);
-  const appGeo = useMemo(
-    () => (appBox ? appSeatGeometry(appBox.W, appBox.H, appBox.felt, { spectator: appSpectator, m: seatCap - 1, meas: appMeas }) : null),
-    [appBox, appSpectator, seatCap, appMeas],
-  );
+  // APP Precision P5: a side column that does not fit at this scene size (a
+  // 260-280 px phone, or the multi-table tabs on a 568 px one) lays the seats
+  // out tight (the outer corner seats join the top row; the side plates drop
+  // their last-action line: the ticker and the seat's bubble say it). Kept
+  // for the size, so the shorter layout never flips back.
+  const appTightRef = useRef('');
+  // (P5 repair 2) tight2: the tight columns measured too tall still (a
+  // 260 px phone with nine seats, or with the multi-table tabs): 24 px
+  // avatars and slimmer plates (AppPrecisionStates.css section 23); also kept
+  const appTight2Ref = useRef('');
+  const appTightKey = appBox ? `${Math.round(appBox.W)}x${Math.round(appBox.H)}:${seatCap}:${appSpectator ? 1 : 0}` : '';
+  const appGeo = useMemo(() => {
+    if (!appBox) return null;
+    const o = { spectator: appSpectator, m: seatCap - 1, meas: appMeas };
+    const tight = appTightRef.current === appTightKey;
+    const tight2 = tight && appTight2Ref.current === appTightKey;
+    const g = appSeatGeometry(appBox.W, appBox.H, appBox.felt, { ...o, tight, tight2 });
+    // (decided on a measured layout only, never on the first estimate)
+    if (!tight) {
+      if (g.fits || !g.measured) return g;
+      appTightRef.current = appTightKey;
+      return appSeatGeometry(appBox.W, appBox.H, appBox.felt, { ...o, tight: true });
+    }
+    // (tight2: only on pods measured as drawn tight)
+    if (tight2 || !g.tight || g.fits || !g.measuredTight) return g;
+    appTight2Ref.current = appTightKey;
+    return appSeatGeometry(appBox.W, appBox.H, appBox.felt, { ...o, tight: true, tight2: true });
+  }, [appBox, appSpectator, seatCap, appMeas, appTightKey]);
+  const appTight = !!appTightKey && appTightRef.current === appTightKey;
+  const appTight2 = appTight && appTight2Ref.current === appTightKey;
   // after each render: measure what was drawn (a change lays the seats out
   // again), then place the loose labels; GameHUD pings the same after its own
   // renders (the hero's row, the outs counter, the Split Pot banner)
@@ -1248,7 +1275,7 @@ export default function PokerTable2D() {
 
   return (
     <div
-      className={`table2d-scene${cinematicEnabled ? ' cinematic-table' : ''}${appGeo ? ` app-seat-layout${appGeo.short ? ' app-seat-short' : ''}` : ''}${seatEllipse?.appLand?.cols ? ' app-land-cols' : ''}`}
+      className={`table2d-scene${cinematicEnabled ? ' cinematic-table' : ''}${appGeo ? ` app-seat-layout${appGeo.short ? ' app-seat-short' : ''}${appTight ? ' app-seat-tight' : ''}${appTight2 ? ' app-seat-tight2' : ''}` : ''}${seatEllipse?.appLand?.cols ? ' app-land-cols' : ''}`}
       ref={sceneRef}
       style={appGeo ? {
         '--app-av': `${appGeo.av}px`,

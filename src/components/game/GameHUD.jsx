@@ -103,6 +103,9 @@ import AppSeatAvatar from '../scene/AppSeatAvatar';
 import '../scene/AppPrecisionHero.css';
 // APP Precision package 4 - phones held sideways, tablets, laptops, desktops.
 import '../scene/AppPrecisionWide.css';
+// APP Precision package 5 - game states and overlays (show / muck, hand
+// review, winner banner, bust banner, notices, panels).
+import '../scene/AppPrecisionStates.css';
 // APP Precision package 2 repair: the table re-measures its seats and places
 // its loose labels after the HUD changes (the hero's row, the outs counter).
 import { appLayoutPing } from '../scene/appPlacement';
@@ -4802,7 +4805,8 @@ export default function GameHUD() {
             <div className={cinematicEnabled ? 'app-spec-row' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', justifyContent: 'center' }}>
               {/* Eliminated banner */}
               {eliminatedPosition && (
-                <div style={{
+                /* APP Precision: the skin places it in the bar's band (it hid under the top bar) */
+                <div className={cinematicEnabled ? 'app-bust-banner' : undefined} style={{
                   // 2026-07-05 mobile audit fix: +safe-area, and lowered to clear the
                   // spectator banner above it (both show at once after a tournament bust).
                   position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 92px)', left: '50%', transform: 'translateX(-50%)',

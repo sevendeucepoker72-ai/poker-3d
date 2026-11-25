@@ -1,0 +1,181 @@
+/* ════════════════════════════════════════════════════════════════════════
+   APP Precision table skin (2026-11-24), package 5: the pieces drawn outside
+   the table HUD - the multi-table tab bar (App) and the seat picker (lobby).
+   Acts ONLY under .app-tabs / .app-tab* / .app-seat-picker, which the
+   components add only in a VITE_APP_CINEMATIC=1 build. The components are
+   inline-styled, so these rules use !important.
+   Phones: no backdrop-filter, no filter, no animated shadows.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Multi-table tabs: navy glass tabs, 44 px, the table's name over its
+   street (and YOUR TURN); the active tab has the gold edge. The row still
+   scrolls sideways inside itself when the tabs are wider than the screen. ── */
+html body .multi-table-tabs-bar.app-tabs {
+  height: 46px !important;
+  gap: 4px !important;
+  padding: 0 6px !important;
+  background: linear-gradient(180deg, rgba(10, 24, 48, 0.98), rgba(2, 10, 24, 0.98)) !important;
+  border-bottom: 1px solid rgba(120, 190, 255, 0.35) !important;
+  box-shadow: 0 2px 10px rgba(0, 110, 255, 0.18);
+  font-family: 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+  scrollbar-width: none;
+}
+html body .multi-table-tabs-bar.app-tabs::-webkit-scrollbar { display: none; }
+html body .multi-table-tabs-bar.app-tabs .app-tab {
+  flex: none;
+  display: grid !important;
+  grid-template-columns: auto auto auto;
+  grid-template-areas: "name name close" "phase turn close";
+  align-items: center;
+  column-gap: 5px !important;
+  row-gap: 1px !important;
+  box-sizing: border-box !important;
+  height: 44px;
+  min-height: 44px !important;
+  padding: 0 0 0 12px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(120, 190, 255, 0.32) !important;
+  background: linear-gradient(180deg, rgba(30, 63, 100, 0.55), rgba(2, 24, 52, 0.92)) !important;
+  color: #c9d6e8 !important;
+  transition: none !important;
+}
+html body .multi-table-tabs-bar.app-tabs .app-tab:not(:has(.app-tab__close)) { padding-right: 12px !important; }
+html body .multi-table-tabs-bar.app-tabs .app-tab--active {
+  border-color: #f2cf6b !important;
+  background: linear-gradient(180deg, rgba(36, 60, 104, 0.97), rgba(8, 22, 52, 0.97)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 246, 200, 0.22), 0 0 8px rgba(242, 207, 107, 0.3);
+  color: #ffe9a8 !important;
+}
+html body .multi-table-tabs-bar.app-tabs .app-tab__name {
+  grid-area: name;
+  font: 700 12px/14px 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+  white-space: nowrap;
+}
+html body .multi-table-tabs-bar.app-tabs .app-tab__phase {
+  grid-area: phase;
+  color: #8fb3d9 !important;
+  font: 600 11px/13px 'Exo 2', 'Segoe UI', system-ui, sans-serif !important;
+  white-space: nowrap;
+}
+html body .multi-table-tabs-bar.app-tabs .app-tab__turn {
+  grid-area: turn;
+  justify-self: start;
+  padding: 0 5px !important;
+  border-radius: 6px !important;
+  font: 800 11px/13px 'Exo 2', 'Segoe UI', system-ui, sans-serif !important;
+  letter-spacing: 0.04em;
+  animation: none !important;
+}
+html body .multi-table-tabs-bar.app-tabs .app-tab__close {
+  grid-area: close;
+  width: 44px;
+  min-width: 44px !important;
+  height: 44px;
+  min-height: 44px !important;
+  margin: -1px 0 !important;
+  padding: 0 !important;
+  border-radius: 0 10px 10px 0 !important;
+  color: #9fc3e6 !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+}
+html body .multi-table-tabs-bar.app-tabs .app-tab__add {
+  width: 44px !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  margin-left: 2px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(120, 190, 255, 0.45) !important;
+  background: linear-gradient(180deg, #1e3757 0%, #0a1d36 55%, #001328 100%) !important;
+  color: #e2fafe !important;
+  font-size: 20px !important;
+  transition: none !important;
+}
+html body .multi-table-tabs-bar.app-tabs .app-tab__add:disabled { opacity: 0.45 !important; }
+html body .multi-table-tabs-bar.app-tabs .app-tab__count {
+  margin-left: 4px !important;
+  padding-right: 4px;
+  color: #9fc3e6 !important;
+  font: 600 11px/1 'Exo 2', 'Segoe UI', system-ui, sans-serif !important;
+}
+
+/* ── 2. The seat picker (lobby -> Join): the table's glass, a deep blue felt
+   in a black leather rail with a chrome line and blue glow, 44 px seat
+   chips (gold = open, slate = taken), the gold "Any open seat". ── */
+html body .seat-picker-overlay.app-seat-picker { background: rgba(0, 4, 14, 0.8); }
+html body .app-seat-picker .seat-picker-card {
+  border: 1px solid rgba(120, 190, 255, 0.55);
+  background: linear-gradient(180deg, rgba(14, 34, 66, 0.985), rgba(3, 13, 31, 0.985));
+  box-shadow: inset 0 1px 0 rgba(234, 253, 254, 0.3), 0 0 14px rgba(0, 110, 255, 0.35), 0 18px 40px rgba(0, 0, 0, 0.7);
+  font-family: 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+}
+html body .app-seat-picker .seat-picker-title {
+  font: italic 800 20px/1.2 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  color: #ffe9a8;
+}
+html body .app-seat-picker .seat-picker-sub,
+html body .app-seat-picker .seat-picker-open { font-size: 13px; }
+html body .app-seat-picker .seat-picker-felt {
+  border: 5px solid #0b0e14;
+  background: radial-gradient(ellipse at 50% 40%, #0d4aa8 0%, #08307a 55%, #041a48 100%);
+  box-shadow: 0 0 0 2px #8aa2c2, 0 0 12px rgba(0, 150, 255, 0.55), inset 0 0 22px rgba(0, 0, 0, 0.5);
+}
+html body .app-seat-picker .seat-picker-felt span { color: rgba(170, 210, 255, 0.4); font-size: 11px; }
+html body .app-seat-picker .seat-picker-seat {
+  min-width: 60px;
+  min-height: 44px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  font-family: 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 14px;
+}
+html body .app-seat-picker .seat-picker-seat-num { font-size: 11px; opacity: 0.85; }
+html body .app-seat-picker .seat-picker-seat-state { font-weight: 700; }
+html body .app-seat-picker .seat-picker-seat--open {
+  border: 1px solid #f2cf6b;
+  background: linear-gradient(180deg, rgba(36, 60, 104, 0.97), rgba(8, 22, 52, 0.97));
+  color: #ffe9a8;
+  box-shadow: 0 0 8px rgba(242, 207, 107, 0.3);
+}
+html body .app-seat-picker .seat-picker-seat--taken {
+  border: 1px solid rgba(169, 183, 204, 0.4);
+  background: linear-gradient(180deg, rgba(52, 72, 108, 0.9), rgba(20, 31, 55, 0.95));
+  color: #b9c6db;
+}
+html body .app-seat-picker .seat-picker-any {
+  border: 1px solid #ffe08a;
+  background: linear-gradient(180deg, #ffe58a 0%, #f2c14e 50%, #c8942c 100%);
+  color: #2a1d00;
+  font: italic 800 15px/1 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+}
+html body .app-seat-picker .seat-picker-cancel {
+  border: 1px solid rgba(169, 183, 204, 0.55);
+  background: linear-gradient(180deg, #34486c 0%, #1d2d4c 55%, #141f37 100%);
+  color: #dfe8f6;
+  font: 700 14px/1 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+}
+@media (max-width: 360px) {
+  html body .app-seat-picker .seat-picker-seat { min-width: 54px; font-size: 11px; }
+  html body .app-seat-picker .seat-picker-seat-num { font-size: 11px; }
+}
+/* (repair) a phone held sideways: two columns - the words and Any open seat
+   / Cancel on the left, the table on the right, sized to the screen's
+   height (the 44 px seat chips made the card taller than the screen, so
+   the two keys sat below its fold) */
+@media (orientation: landscape) and (max-height: 500px) {
+  html body .app-seat-picker .seat-picker-card {
+    width: min(820px, 100%);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) min(56%, calc((100dvh - 48px) * 4 / 3));
+    grid-template-rows: 1fr auto auto auto auto 1fr;
+    column-gap: 16px;
+    align-items: center;
+  }
+  html body .app-seat-picker .seat-picker-title { grid-column: 1; grid-row: 2; }
+  html body .app-seat-picker .seat-picker-sub { grid-column: 1; grid-row: 3; }
+  html body .app-seat-picker .seat-picker-open { grid-column: 1; grid-row: 4; }
+  html body .app-seat-picker .seat-picker-actions { grid-column: 1; grid-row: 5; margin-top: 6px; }
+  html body .app-seat-picker .seat-picker-table { grid-column: 2; grid-row: 1 / 7; margin: 0; }
+}

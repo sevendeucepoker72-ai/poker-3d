@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTableStore, liveTableIds } from '../../store/tableStore';
 import { useGameStore } from '../../store/gameStore';
+// APP Precision package 5: glass tabs in the table skin (classes only in skin builds)
+import { cinematicEnabled } from '../scene/cinematicSkin';
+import '../scene/AppPrecisionChrome.css';
 
 const MAX_TABLES = 4;
+const appCls = (c) => (cinematicEnabled ? c : undefined);
 
 const tabBarStyle = {
   position: 'fixed',
@@ -204,7 +208,7 @@ export default function MultiTableTabs() {
   return (
     <>
       {showBar && (
-      <div style={tabBarStyle} className="multi-table-tabs-bar">
+      <div style={tabBarStyle} className={`multi-table-tabs-bar${cinematicEnabled ? ' app-tabs' : ''}`}>
         {liveIds.map((tableId) => {
           const tableData = activeTables.get(tableId);
           const isActive = tableId === currentTableId;
@@ -217,16 +221,18 @@ export default function MultiTableTabs() {
             <div
               key={tableId}
               style={isActive ? tabActiveStyle : tabStyle}
+              className={appCls(`app-tab${isActive ? ' app-tab--active' : ''}`)}
               onClick={() => switchActiveTable(tableId)}
             >
-              <span>{tableName}</span>
-              {phase && <span style={{ color: '#555', fontSize: '0.65rem' }}>({phase})</span>}
-              {isYourTurn && !isActive && <span style={yourTurnBadge}>YOUR TURN</span>}
+              <span className={appCls('app-tab__name')}>{tableName}</span>
+              {phase && <span className={appCls('app-tab__phase')} style={{ color: '#555', fontSize: '0.65rem' }}>({phase})</span>}
+              {isYourTurn && !isActive && <span className={appCls('app-tab__turn')} style={yourTurnBadge}>YOUR TURN</span>}
               {/* R2 — only an EXTRA table is closed here; the main seat is
                   left with Back to Lobby (which leaves every table). */}
               {tableData?.extra && (
                 <button
                   style={closeBtn}
+                  className={appCls('app-tab__close')}
                   onClick={(e) => { e.stopPropagation(); leaveAdditionalTable(tableId); }}
                   title="Leave this table"
                   aria-label={`Leave ${tableName}`}
@@ -241,6 +247,7 @@ export default function MultiTableTabs() {
         {/* Add table button */}
         <button
           style={!canAddMore ? addTabBtnDisabled : addBtnHover ? addTabBtnHover : addTabBtn}
+          className={appCls('app-tab__add')}
           onMouseEnter={() => setAddBtnHover(true)}
           onMouseLeave={() => setAddBtnHover(false)}
           onClick={handleOpenPicker}
@@ -251,7 +258,7 @@ export default function MultiTableTabs() {
           +
         </button>
 
-        <span style={{ marginLeft: '8px', color: '#555', fontSize: '0.65rem', flexShrink: 0 }}>
+        <span className={appCls('app-tab__count')} style={{ marginLeft: '8px', color: '#555', fontSize: '0.65rem', flexShrink: 0 }}>
           {tableCount}/{MAX_TABLES}
         </span>
       </div>

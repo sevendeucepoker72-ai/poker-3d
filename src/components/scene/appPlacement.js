@@ -27,12 +27,24 @@ const shown = (el) => {
   return getComputedStyle(el).visibility !== 'hidden';
 };
 const rnd = (v) => Math.round(v);
+// (APP Precision P5 repair 2) a board card's laid-out box: while its deal-in
+// flip runs its drawn box is about 1 px wide, so the labels placed then took
+// the board's place (the outs box over the flop at 320 px)
+const cardBox = (el) => {
+  const p = el.offsetParent;
+  if (!p || !el.offsetWidth) return rectOf(el);
+  const pr = p.getBoundingClientRect();
+  return { x: pr.left + p.clientLeft + el.offsetLeft, y: pr.top + p.clientTop + el.offsetTop, w: el.offsetWidth, h: el.offsetHeight };
+};
+const cardShown = (el) => !!el && el.offsetWidth > 0 && el.offsetHeight > 0 && getComputedStyle(el).visibility !== 'hidden';
 
 // ── 1. measuring ─────────────────────────────────────────────────────────
 const POD_PARTS = ':scope > .seat-pod__avatar-wrap, :scope > .seat-pod__nameplate, :scope > .seat-pod__label, '
   + ':scope > .seat-pod__sit-btn, :scope > .seat-pod__cards, :scope > .seat-pod__owed-badge';
 // (APP Precision package 3: the hero's big avatar hangs left of his plate)
-const HERO_ROW = '.hud.cinematic-hud .hud-cards.hud-cards-floating, .hud.cinematic-hud .hud-nameplate-me, '
+// (APP Precision P5: each card of a 4-6 card hand too - a draw game lifts the
+// cards picked to discard above the row's box, onto the lower side seat)
+const HERO_ROW = '.hud.cinematic-hud .hud-cards.hud-cards-floating, .hud.cinematic-hud .hud-cards.hud-cards-many > .card-peek, .hud.cinematic-hud .hud-nameplate-me, '
   + '.hud.cinematic-hud .hud-nameplate-me .app-hero__av-wrap, '
   + '.hud.cinematic-hud .sit-out-quick-btn--active, .hud.cinematic-hud .app-spectator-banner';
 const NOTICES = '.afk-warning-banner, .afk-away-banner, .bomb-pot-banner, .missed-blinds-panel, .mucked-hands-container';
@@ -76,7 +88,9 @@ export function measureAppSeats(scene) {
     hero.push({ x: rnd(b.left - sr.left), y: rnd(b.top - sr.top), w: rnd(b.width), h: rnd(b.height) });
   }
   hero.sort((p, q) => p.x - q.x || p.y - q.y);
-  return { W: rnd(sr.width), H: rnd(sr.height), ext, hero };
+  // (APP Precision P5 repair 2: whether these pods were drawn tight)
+  const tight = scene.classList.contains('app-seat-tight') ? 1 : 0;
+  return { W: rnd(sr.width), H: rnd(sr.height), ext, hero, tight };
 }
 
 export const sameAppMeas = (p, q) => JSON.stringify(p) === JSON.stringify(q);
@@ -283,6 +297,8 @@ export function placeAppFloaters() {
   if (hud) {
     for (const el of hud.querySelectorAll(NOTICES)) {
       if (!shown(el)) continue;
+      // (APP Precision P5: a notice the skin puts in the bar's band is not placed)
+      if (getComputedStyle(el).getPropertyValue('--app-in-band').trim() === '1') continue;
       const sizes = {};
       for (const w of [noteWide, noteFelt]) {
         if (sizes[w]) continue;
@@ -315,7 +331,12 @@ export function placeAppFloaters() {
   const pods = Array.from(scene.querySelectorAll('.seat-pod.seat-pod--app'));
   const heroPod = pods.find((p) => p.classList.contains('seat-pod--app-hero')) || null;
   for (const pod of pods) {
-    if (pod === heroPod) continue;
+    if (pod === heroPod) {
+      // (APP Precision P5 repair: his owed-blinds badge; the Post Blinds
+      // panel was placed over it)
+      pod.querySelectorAll(':scope > .seat-pod__owed-badge').forEach(add(4));
+      continue;
+    }
     const open = pod.classList.contains('seat-pod--empty');
     const folded = pod.classList.contains('seat-pod--folded');
     pod.querySelectorAll(`${POD_PARTS}, :scope > .dealer-btn`).forEach(add(open ? 1 : folded ? 2 : 3));
@@ -332,13 +353,13 @@ export function placeAppFloaters() {
     // (the HUD draws over the table: a label under these is hidden, so they
     // weigh the most; repair 2: the hero's own tag no longer goes under his
     // cards, where it could not be seen)
-    hud.querySelectorAll('.hud-community .community-card').forEach(add(4));
+    hud.querySelectorAll('.hud-community .community-card').forEach((el) => { if (cardShown(el)) obs.push({ ...cardBox(el), wt: 4 }); });
     hud.querySelectorAll('.hud-cards.hud-cards-floating').forEach(add(4));
     hud.querySelectorAll('.hud-nameplate-me, .hud-nameplate-me > .np-title, .hud-nameplate-me > .np-vip, .hud-nameplate-me > .app-hero__av-wrap, .hud-actions-inner .action-btn.straddle, .sit-out-quick-btn--active, .app-spectator-banner').forEach(add(4));
   }
   const fcx = F.x + F.w / 2;
-  const boardEls = hud ? Array.from(hud.querySelectorAll('.hud-community .community-card')).filter(shown) : [];
-  const board = boardEls.length ? boardEls.map(rectOf).reduce((p, q) => {
+  const boardEls = hud ? Array.from(hud.querySelectorAll('.hud-community .community-card')).filter(cardShown) : [];
+  const board = boardEls.length ? boardEls.map(cardBox).reduce((p, q) => {
     const x = Math.min(p.x, q.x);
     const y = Math.min(p.y, q.y);
     return { x, y, w: Math.max(p.x + p.w, q.x + q.w) - x, h: Math.max(p.y + p.h, q.y + q.h) - y };
@@ -370,6 +391,10 @@ export function placeAppFloaters() {
         C ? { x: C.x + C.w + 3, y: C.y + C.h - br.h } : null,
         board ? { x: board.x - 3 - br.w, y: board.y + board.h - br.h } : null,
         board ? { x: board.x + board.w + 3, y: board.y + board.h - br.h } : null,
+        // (APP Precision P5 repair: a 260 px phone has no room under the
+        // board or beside his cards: just over the board, where the felt's
+        // pot plate is the cheapest thing to cover)
+        board ? { x: nat.x, y: board.y - 3 - br.h } : null,
       ], obs, B);
       if (got) spot = got.r;
     }
@@ -679,15 +704,30 @@ export function placeAppFloaters() {
       if (best && best.s === 0) break;
     }
     // a crowded small phone: the spot along the screen's edges that covers least
+    // (APP Precision P5 repair 2: here a player's plate - his name and stack -
+    // costs more, and an open seat less, than the pot plate; the scan steps
+    // 4 px: at 320 px the box sat on a folded seat's stack)
     if (best && best.s > 0) {
-      for (const w of [outsCorner, outsSide]) {
+      const empties = pods.filter((p) => p !== heroPod && p.classList.contains('seat-pod--empty') && shown(p)).map(rectOf);
+      const inOpen = (o) => empties.some((e) => o.x >= e.x - 1 && o.y >= e.y - 1 && o.x + o.w <= e.x + e.w + 1 && o.y + o.h <= e.y + e.h + 1);
+      const obsOuts = obs.map((o) => (inOpen(o) ? { ...o, wt: 0.3 } : o));
+      for (const pod of pods) {
+        if (pod === heroPod || pod.classList.contains('seat-pod--empty')) continue;
+        for (const el of pod.querySelectorAll(':scope > .seat-pod__nameplate')) {
+          if (shown(el)) obsOuts.push({ ...rectOf(el), wt: 12 });
+        }
+      }
+      best.s = score(best.r, obsOuts, B, undefined, Infinity);
+      // (and the felt-wide box, two lines, across the felt)
+      for (const w of [outsCorner, outsSide, outsWide]) {
         const sz = outsSize[w];
         if (!sz) continue;
         const cands = [];
-        for (let y = B.y + 2; y + sz.h <= B.y + B.h; y += 8) {
-          cands.push({ x: B.x + 2, y }, { x: B.x + B.w - 2 - sz.w, y }, { x: fcx - sz.w / 2, y });
+        for (let y = B.y + 2; y + sz.h <= B.y + B.h; y += 4) {
+          if (w === outsWide) cands.push({ x: fcx - sz.w / 2, y });
+          else cands.push({ x: B.x + 2, y }, { x: B.x + B.w - 2 - sz.w, y }, { x: fcx - sz.w / 2, y });
         }
-        const got = pick(sz.w, sz.h, cands, obs, B);
+        const got = pick(sz.w, sz.h, cands, obsOuts, B);
         if (got && got.s < best.s) best = { ...got, w };
       }
     }

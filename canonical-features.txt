@@ -1552,3 +1552,26 @@ seat-pod--ring-crown
 --app-hsp-w
 --app-band-b
 --app-tk-w
+# Package 5, game states and overlays (AppPrecisionStates.css, AppPrecisionChrome.css): Show Hand / Muck
+# first when his fold ends the hand (the hand review takes the bar's foot row while they or the rabbit
+# show), the winner banner on the ticker row, the bust banner in the bar's band (app-bust-banner), the
+# away notices in the band (--app-in-band), tight side columns on a short scene (app-seat-tight: the
+# corner seats join the top row), the seat's action word held on its own avatar (app-bubble-fade), and
+# the multi-table tabs and seat picker in the skin's glass (app-tab__turn, app-seat-picker).
+app-bust-banner
+--app-in-band
+app-seat-tight
+app-bubble-fade
+app-tab__turn
+app-seat-picker
+# Package 5 repair: every Stud up card in sight (the row over the avatar, --app-su), the Post Blinds
+# panel and the owed-blinds badge in the skin (a gold chip, app-owed-chip), and the Last Hand replay's
+# timeline and keys riding at the sheet's foot (--app-rc-h).
+--app-su
+app-owed-chip
+--app-rc-h
+# Package 5 repair 2: the qualifier seat's sit-out note in the bar's band (every word kept, its I'm back
+# 44 px), the reconnect line on the ticker row, a toast and the showdown sheet clear of the winner banner
+# on a phone held sideways, the outs box off the players' plates, and the slimmer seats where the tight
+# side columns still do not fit (app-seat-tight2: 24 px avatars, slimmer plates).
+app-seat-tight2

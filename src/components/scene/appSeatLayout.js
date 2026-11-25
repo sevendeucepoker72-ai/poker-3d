@@ -52,8 +52,14 @@ export function appSeatGeometry(W, H, felt, opts = {}) {
   const spectator = !!opts.spectator;
   const m = clamp(Math.round(opts.m || 8), 1, 8);
   const list = SLOTS[m];
+  // (APP Precision P5) tight: the side columns did not fit at this size (a
+  // 260-280 px phone, or the multi-table tabs on a 568 px one), so the outer
+  // corner seats (To) join the top row and the columns keep U and L only
+  const tight = !!opts.tight && list.includes('To');
   const meas = opts.meas && Math.abs(opts.meas.W - W) < 1.5 && Math.abs(opts.meas.H - H) < 1.5 ? opts.meas : null;
-  const av = Math.round(clamp(W * 0.108, 34, 48));
+  // (tight: a smaller avatar on a 260-310 px phone, 28-33 px; tight2 - the
+  // tight columns still too tall, P5 repair 2 - 24 px, with slimmer plates)
+  const av = opts.tight2 ? 24 : Math.round(clamp(W * 0.108, opts.tight ? 28 : 34, 48));
   const pw = W < 360 ? 70 : W < 400 ? 76 : 80;
   // a short screen drops the plate's last-action line while a bet shows or
   // the seat has folded (AppPrecisionSeats.css), so its pods are shorter
@@ -106,6 +112,7 @@ export function appSeatGeometry(W, H, felt, opts = {}) {
   const topKeys = [];
   if (list.includes('Ti')) topKeys.push('Ti-l', 'Ti-r');
   if (list.includes('C')) topKeys.push('C-c');
+  if (tight) topKeys.push('To-l', 'To-r');
   const tDown = topKeys.length ? Math.max(...topKeys.map((k) => downOf(k, true))) : podDown + betH;
   const topMin = a + 2;
   let yTop = Math.max(topMin, Math.min(fy + 12 - tDown, potTop - tDown - 2));
@@ -115,10 +122,11 @@ export function appSeatGeometry(W, H, felt, opts = {}) {
   // hero's row, never on the row above (with its bet under the plate when
   // that fits, else without: the bet then goes beside the seat)
   const cornerDrop = av * 0.4;
-  const rows = ['To', 'U', 'L'].filter((r) => list.includes(r));
+  const rows = ['To', 'U', 'L'].filter((r) => list.includes(r) && !(tight && r === 'To'));
   const lClearEst = spectator || xs + pmax / 2 + 2 <= hz.left + 0.5;
   const col = { l: {}, r: {} };
   const gap = 3;
+  let fits = true;
   for (const side of ['l', 'r']) {
     const x = side === 'l' ? xs : W - xs;
     const items = rows.map((r) => {
@@ -138,28 +146,33 @@ export function appSeatGeometry(W, H, felt, opts = {}) {
       return { k, up: e ? e.up : a, bottom: bottom - 4, pref };
     });
     const n = items.length;
+    // (tight: the column starts under its corner seat, now in the top row)
+    const first = tight ? yTop + downOf(`To-${side}`, false) + gap : 0;
     const solve = (withBet) => {
       const dn = items.map((it) => downOf(it.k, withBet));
       const up = items.map((it) => it.up);
       const ys = items.map((it) => it.pref);
       for (let i = 0; i < n; i += 1) {
-        ys[i] = Math.max(ys[i], i ? ys[i - 1] + dn[i - 1] + gap + up[i] : Math.max(topMin, up[0] + 2));
+        ys[i] = Math.max(ys[i], i ? ys[i - 1] + dn[i - 1] + gap + up[i] : Math.max(topMin, up[0] + 2, first + up[0]));
       }
       for (let i = n - 1; i >= 0; i -= 1) {
         ys[i] = Math.min(ys[i], items[i].bottom - dn[i], i < n - 1 ? ys[i + 1] - up[i + 1] - gap - dn[i] : Infinity);
       }
-      let ok = n === 0 || ys[0] - up[0] >= 1.5;
+      let ok = n === 0 || ys[0] - up[0] >= Math.max(1.5, first - 0.5);
       for (let i = 1; i < n && ok; i += 1) ok = ys[i] - up[i] >= ys[i - 1] + dn[i - 1] + gap - 0.5;
       return { ys, dn, up, ok };
     };
     let res = solve(true);
     if (!res.ok && meas) res = solve('actual');
     if (!res.ok) res = solve(false);
+    // (APP Precision P5: a column that does not fit even without bets asks
+    // for the tight plates, see PokerTable2D app-seat-tight)
+    if (!res.ok && n) fits = false;
     if (!res.ok && n) {
       // still too tall: from the top bar down to the lowest bound, the rows
       // share the shortfall evenly (no row under the top bar or the hero)
       const { dn, up } = res;
-      const lo = Math.max(topMin, up[0] + 2);
+      const lo = Math.max(topMin, up[0] + 2, first + up[0]);
       const hi = Math.max(lo, items[n - 1].bottom - dn[n - 1]);
       let sum = 0;
       for (let i = 1; i < n; i += 1) sum += dn[i - 1] + gap + up[i];
@@ -180,7 +193,7 @@ export function appSeatGeometry(W, H, felt, opts = {}) {
   const potY = boardCy - (cardW * 1.24) / 2 - 30;
   // the hero's nameplate may use the width between the lower side seats
   const heroMax = list.includes('L') && !spectator ? Math.floor(W - 2 * (xs + pmax / 2 + 4)) : null;
-  return { W, H, av, pw, pmax, short, cx, cy, xs, yTop, col, yH, dTi, hz, potY, heroMax };
+  return { W, H, av, pw, pmax, short, cx, cy, xs, yTop, col, yH, dTi, hz, potY, heroMax, fits, tight, measured: !!meas, measuredTight: !!(meas && meas.tight) };
 }
 
 // One seat's spot: the avatar centre (as % of the scene, for left / top), its
@@ -212,7 +225,7 @@ export function appSeatSpot(g, rel, cap, heroSeated) {
   let x;
   let y;
   switch (slot) {
-    case 'To': x = sgn < 0 ? xs : W - xs; y = colY('To'); break;
+    case 'To': x = sgn < 0 ? xs : W - xs; y = g.tight ? g.yTop : colY('To'); break;
     case 'Ti': x = cx + sgn * g.dTi; y = g.yTop; break;
     case 'C': x = cx; y = g.yTop; break;
     case 'U': x = sgn < 0 ? xs : W - xs; y = colY('U'); break;

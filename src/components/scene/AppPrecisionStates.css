@@ -1,0 +1,815 @@
+/* ════════════════════════════════════════════════════════════════════════
+   APP Precision table skin (2026-11-24), package 5: game states, variants
+   and overlays. Acts ONLY under the skin's classes (.cinematic-hud on the
+   HUD, .cinematic-table on the scene, app-* classes GameHUD adds only with
+   the skin on), which exist only in a VITE_APP_CINEMATIC=1 build. Rules
+   start with `html body` so they win over packages 1-4 whatever order the
+   lazy chunks load their CSS in.
+   - Show Hand / Muck first: when the hand ends at once after his fold, the
+     hand review (Hand Analysis) moves out of their row (package-3 item A);
+   - the winner banner rides on the ticker row (it covered the menu, the
+     chat bubble and the strip);
+   - a spectator's empty hand slots are hidden on every screen;
+   - the tournament bust banner in the bar's band (it hid under the top bar);
+   - the away warning in the bar's band while it is not his turn;
+   - the showdown sheet, the range chart and other panels in the skin's
+     navy glass, no red or orange.
+   Phones: no backdrop-filter, no filter, no animated shadows.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Show Hand / Muck, the rabbit and the hand review (APP Precision P5) ──
+   A phone held upright. The bar's band (44 px) holds Show / Muck and the
+   rabbit; with either of them up, the hand review's header takes the foot
+   row's left end and Deal now its right end ("Starting next hand" gives way
+   while the review shows, as on the wider screens). Show / Muck and the
+   rabbit stay over the review's panel (they keep priority). */
+@media (max-width: 600px) and (orientation: portrait) {
+  html body .hud.cinematic-hud .show-muck-prompt,
+  html body .hud.cinematic-hud .rabbit-hunt-btn { z-index: 560 !important; }
+  html.table-geometry body .hud.cinematic-hud:has(.show-muck-prompt, .rabbit-hunt-btn) .post-hand-analysis {
+    bottom: calc(var(--app-bar-foot) + var(--app-bar-pad) + (var(--app-btn-h) - 48px) / 2) !important;
+    left: calc(16px + env(safe-area-inset-left, 0px)) !important;
+    right: calc(112px + env(safe-area-inset-right, 0px)) !important;
+    max-height: calc(100dvh - var(--hud-top-h, 140px) - var(--app-bar-foot) - var(--app-bar-pad) - 8px) !important;
+  }
+  html body .hud.cinematic-hud:has(.post-hand-analysis):has(.show-muck-prompt, .rabbit-hunt-btn) .hud-bottom .app-wait-row { justify-content: flex-end !important; }
+  html body .hud.cinematic-hud:has(.post-hand-analysis):has(.show-muck-prompt, .rabbit-hunt-btn) .hud-bottom .app-wait-row > .app-wait-pill { visibility: hidden; }
+  /* (a showdown's dimmed action row gives the review its place too) */
+  html body .hud.cinematic-hud:has(.post-hand-analysis):has(.show-muck-prompt, .rabbit-hunt-btn) .hud-bottom .hud-actions-inner.hud-actions--inactive { visibility: hidden; }
+}
+/* a narrow phone: Show / Muck and the rabbit a size smaller, so all three
+   share the band (320 px: about 160 + 112 px of 288) */
+@media (max-width: 374px) and (orientation: portrait) {
+  html body .hud.cinematic-hud .show-muck-prompt .show-muck-btn {
+    min-width: 56px;
+    padding: 0 10px !important;
+    font-size: 12px !important;
+    letter-spacing: 0.02em;
+  }
+  html body .hud.cinematic-hud .rabbit-hunt-btn { font-size: 12px !important; }
+}
+/* 300 px and narrower: the band has two rows here (package 3), so the
+   review's header takes the band's upper row, Show / Muck its lower row
+   (the whole width), and the rabbit the foot row beside Deal now */
+@media (max-width: 300px) and (orientation: portrait) {
+  html.table-geometry body .hud.cinematic-hud:has(.show-muck-prompt, .rabbit-hunt-btn) .post-hand-analysis {
+    bottom: calc(var(--hud-bar-h, 134px) - var(--app-bar-pad) - 47px) !important;
+    right: calc(16px + env(safe-area-inset-right, 0px)) !important;
+  }
+  html body .hud.cinematic-hud:has(.post-hand-analysis):has(.show-muck-prompt, .rabbit-hunt-btn) .hud-bottom .app-wait-row { justify-content: center !important; }
+  html body .hud.cinematic-hud:has(.post-hand-analysis):has(.show-muck-prompt, .rabbit-hunt-btn) .hud-bottom .app-wait-row > .app-wait-pill { visibility: visible; }
+  html body .hud.cinematic-hud:has(.rabbit-hunt-btn) .hud-bottom .app-wait-row { justify-content: flex-end !important; }
+  html body .hud.cinematic-hud:has(.rabbit-hunt-btn) .hud-bottom .app-wait-row > .app-wait-pill { visibility: hidden !important; }
+  html.table-geometry body .hud.cinematic-hud:has(.rabbit-hunt-btn) .rabbit-hunt-btn {
+    bottom: calc(var(--app-bar-foot) + var(--app-bar-pad) + (var(--app-btn-h) - 44px) / 2) !important;
+    left: calc(16px + env(safe-area-inset-left, 0px)) !important;
+    right: auto !important;
+    max-width: calc(100vw - 128px) !important;
+    transform: none !important;
+  }
+  html.table-geometry body .hud.cinematic-hud:has(.show-muck-prompt) .show-muck-prompt {
+    left: calc(16px + env(safe-area-inset-left, 0px)) !important;
+    right: calc(16px + env(safe-area-inset-right, 0px)) !important;
+    transform: none !important;
+    max-width: none !important;
+  }
+  html body .hud.cinematic-hud .show-muck-prompt .show-muck-btn { flex: 1 1 0; }
+}
+/* a phone held sideways 616-739 px wide: the band has room for the review's
+   header between Show / Muck + the rabbit and Deal now (package 4 hid it for
+   the five seconds of Show / Muck below 740 px; that stays below 616 px) */
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 616px) {
+  html.table-geometry body .hud.cinematic-hud:has(.show-muck-prompt):has(.rabbit-hunt-btn) .post-hand-analysis { visibility: visible; }
+}
+/* the rabbit's words were cut ("Show Rabbit ..."): a little less padding
+   (every screen that uses the two-row bar) */
+@media (max-width: 600px) and (orientation: portrait), (min-width: 601px) and (min-height: 501px) {
+  html body .hud.cinematic-hud .rabbit-hunt-btn { padding: 0 11px !important; }
+  html.table-geometry body .hud.cinematic-hud:has(.rabbit-hunt-btn) .rabbit-hunt-btn { max-width: 140px; }
+}
+/* the review's header on one line (it wrapped at 320 px) */
+html body .hud.cinematic-hud .post-hand-analysis .pha-header { gap: 6px; padding-left: 12px; padding-right: 10px; }
+html body .hud.cinematic-hud .post-hand-analysis .pha-header-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  font-family: var(--app-font);
+}
+html body .hud.cinematic-hud .post-hand-analysis .pha-header > span:last-child { flex: none; }
+html body .hud.cinematic-hud .post-hand-analysis .pha-header-toggle { color: #9fc3e6; }
+/* no orange: the D grade (and its banner) is gold */
+html body .hud.cinematic-hud .post-hand-analysis [style*="249, 115, 22"] { color: #f2cf6b !important; }
+html body .hud.cinematic-hud .post-hand-analysis div[style*="249, 115, 22"] {
+  background: rgba(242, 207, 107, 0.09) !important;
+  border-color: rgba(242, 207, 107, 0.3) !important;
+}
+
+/* ── 2. The winner banner on the ticker row (APP Precision P5) ──
+   It spanned the top of the screen over the menu, the chat bubble and the
+   strip; now a gold-edged glass pill over the one-line ticker (which it
+   stands in for while it shows), centred, as wide as its words. */
+html body .hud.cinematic-hud .winner-banner {
+  top: calc(var(--hud-top-h, 150px) - var(--app-ticker-h, 22px) - 6px);
+  left: 0;
+  right: 0;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  margin: 0 auto;
+  box-sizing: border-box;
+  min-height: calc(var(--app-ticker-h, 22px) + 4px);
+  flex-wrap: wrap;
+  gap: 0 5px;
+  padding: 2px 14px;
+  border-radius: 13px;
+  border: 1px solid rgba(242, 207, 107, 0.8);
+  background: linear-gradient(180deg, rgba(14, 34, 66, 0.97), rgba(3, 13, 31, 0.97));
+  box-shadow: inset 0 1px 0 rgba(255, 246, 200, 0.25), 0 0 10px rgba(242, 207, 107, 0.35), 0 4px 12px rgba(0, 0, 0, 0.6);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  font: italic 700 13px/1.25 var(--app-font);
+  text-shadow: none;
+  color: #ffe9a8;
+}
+html body .hud.cinematic-hud .winner-banner .winner-banner-pot-line { font-size: 12px; gap: 4px; }
+html body .hud.cinematic-hud .winner-banner .winner-banner-pot-name { color: #f2cf6b; font-size: 11px; min-width: 0; }
+html body .hud.cinematic-hud .winner-banner .winner-banner-hand { color: #ffe9a8; }
+@media (pointer: coarse) {
+  html body .hud.cinematic-hud .winner-banner .winner-banner-verify { min-height: 44px; }
+}
+
+/* ── 3. A spectator holds no hand (APP Precision P5) ──
+   The empty "?" slots stood on the bottom-middle seat (its name, stack or
+   OPEN pill) on tablets and desktops; hidden on every screen now. */
+html body .hud.cinematic-hud:has(.app-spec-row, .app-spectator-banner) .hud-cards.hud-cards-floating:has(.card-slot) { visibility: hidden; }
+
+/* ── 4. The tournament bust banner (APP Precision P5) ──
+   "You placed Nth / out of N players" hid under the top bar on a phone; it
+   now sits in the bar's band (free while he watches), gold-edged glass. */
+html body .hud.cinematic-hud .app-bust-banner {
+  position: fixed !important;
+  top: auto !important;
+  bottom: calc(var(--hud-bar-h, 134px) - var(--app-bar-pad, 8px) - var(--app-bet-h, 44px) + 1px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 171 !important;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0 8px;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  min-height: 44px;
+  padding: 4px 16px !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(242, 207, 107, 0.85) !important;
+  background: linear-gradient(180deg, rgba(36, 60, 104, 0.97), rgba(8, 22, 52, 0.97)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 246, 200, 0.25), 0 0 10px rgba(242, 207, 107, 0.3), 0 3px 8px rgba(0, 0, 0, 0.6);
+  font-family: var(--app-font);
+  align-content: center;
+}
+html body .hud.cinematic-hud .app-bust-banner > div:first-child { font: italic 800 15px/19px var(--app-font) !important; color: #ffe9a8 !important; }
+html body .hud.cinematic-hud .app-bust-banner > div:last-child:not(:first-child) { font: 600 12px/19px var(--app-font) !important; color: #b9c6db !important; }
+/* big screens: the bust banner at the band's left end and Spectating /
+   Leave at its right end (it hung over the top seats: Priya S. at 1366) */
+@media (min-width: 601px) and (min-height: 501px) {
+  html.table-geometry body .hud.cinematic-hud .app-spectator-banner {
+    top: auto !important;
+    bottom: calc(var(--hud-bar-h, 142px) - var(--app-bar-pad, 8px) - var(--app-bet-h, 44px) + 1px) !important;
+    left: auto !important;
+    right: calc(var(--app-bar-side, 8px) + 16px) !important;
+    transform: none !important;
+  }
+  html body .hud.cinematic-hud .app-bust-banner {
+    left: calc(var(--app-bar-side, 8px) + 16px) !important;
+    transform: none !important;
+    max-width: calc(var(--app-bar-w, 760px) - 220px);
+  }
+}
+/* a phone held sideways (one band): stacked, left of Spectating / Leave */
+@media (orientation: landscape) and (max-height: 500px) {
+  html body .hud.cinematic-hud .app-bust-banner {
+    bottom: var(--app-band-b, 8px) !important;
+    left: auto !important;
+    right: calc(190px + env(safe-area-inset-right, 0px)) !important;
+    transform: none !important;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    padding: 2px 12px !important;
+  }
+  html body .hud.cinematic-hud .app-bust-banner > div { line-height: 17px !important; }
+}
+
+/* ── 5. The away warning (APP Precision P5) ──
+   A phone held upright, not his turn: "You'll be marked away ... I'm here"
+   in the bar's band (over the dimmed slider), where his eyes are; it was
+   squeezed to the felt's width over the pot (five lines at 320 px).
+   appPlacement.js leaves a notice with --app-in-band: 1 alone. */
+@media (max-width: 600px) and (orientation: portrait) {
+  html.table-geometry body .hud.cinematic-hud:not(:has(.hud-bottom--my-turn)) :is(.afk-warning-banner, .afk-away-banner:not(.tournament-sitout-note)),
+  html.app-fl.table-geometry body .hud.cinematic-hud:not(:has(.hud-bottom--my-turn)) :is(.afk-warning-banner, .afk-away-banner:not(.tournament-sitout-note))[data-app-fl] {
+    --app-in-band: 1;
+    position: fixed !important;
+    top: auto !important;
+    bottom: calc(var(--hud-bar-h, 134px) - var(--app-bar-pad) - var(--app-bet-h) + 1px) !important;
+    left: calc(16px + env(safe-area-inset-left, 0px)) !important;
+    right: calc(16px + env(safe-area-inset-right, 0px)) !important;
+    width: auto !important;
+    max-width: none !important;
+    min-height: 44px;
+    transform: none !important;
+    z-index: 560 !important;
+    margin: 0 !important;
+    padding: 0 4px 0 10px !important;
+    gap: 8px;
+    font-size: 12px !important;
+    line-height: 15px !important;
+  }
+  html body .hud.cinematic-hud :is(.afk-warning-banner, .afk-away-banner) > span:nth-child(2) { flex: 1 1 auto; min-width: 0; }
+  /* (the gold Sitting Out pill keeps the band's left end) */
+  html.table-geometry body .hud.cinematic-hud:has(.sit-out-quick-btn--active):not(:has(.hud-bottom--my-turn)) :is(.afk-warning-banner, .afk-away-banner:not(.tournament-sitout-note)),
+  html.app-fl.table-geometry body .hud.cinematic-hud:has(.sit-out-quick-btn--active):not(:has(.hud-bottom--my-turn)) :is(.afk-warning-banner, .afk-away-banner:not(.tournament-sitout-note))[data-app-fl] {
+    left: calc(132px + env(safe-area-inset-left, 0px)) !important;
+  }
+}
+/* the away line in the same navy glass (no violet fill) */
+html body .hud.cinematic-hud .afk-away-banner {
+  border-color: rgba(120, 190, 255, 0.6) !important;
+  color: #d7e6f8 !important;
+}
+/* the warning's gold edge (no amber fill) */
+html body .hud.cinematic-hud .afk-warning-banner {
+  border-color: rgba(242, 207, 107, 0.75) !important;
+  color: #ffe9a8 !important;
+}
+
+/* ── 6. The showdown sheet (APP Precision P5) ──
+   Navy glass with a gold edge in the skin's type; on a phone held upright
+   it ends above the bar, so the hand review's header (in the band) no
+   longer covers its last lines; no blur on phones. */
+html body .hud.cinematic-hud .showdown-panel {
+  background: linear-gradient(180deg, rgba(14, 34, 66, 0.985), rgba(3, 13, 31, 0.985)) !important;
+  border: 1px solid rgba(242, 207, 107, 0.85) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 246, 200, 0.22), 0 0 16px rgba(0, 110, 255, 0.3), 0 12px 30px rgba(0, 0, 0, 0.7) !important;
+  font-family: var(--app-font);
+}
+html body .hud.cinematic-hud .showdown-panel .showdown-title { font-family: var(--app-font); font-style: italic; letter-spacing: 0.12em; }
+/* (its WIN tag at 11 px on every screen; package 4 did it on big screens) */
+html body .hud.cinematic-hud .showdown-panel .showdown-winner-badge { font-size: 11px; }
+@media (max-width: 600px) and (orientation: portrait) {
+  /* (the sheet sits between the bars: the winner banner on the ticker row
+     and a toast under the top bar stay clear of its title; the dimmed bars
+     stay part of the backdrop, a tap there dismisses it) */
+  html body .hud.cinematic-hud .showdown-overlay {
+    box-sizing: border-box;
+    padding: var(--hud-top-h, 140px) 8px calc(var(--hud-bar-h, 134px) - var(--app-bar-pad, 8px) + 6px) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(0, 4, 14, 0.72) !important;
+  }
+  html body .hud.cinematic-hud:has(.toast-stack) .showdown-overlay { padding-top: calc(var(--hud-top-h, 140px) + 44px) !important; }
+  html body .hud.cinematic-hud .showdown-overlay .showdown-panel {
+    max-height: 100% !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* ── 7. Toasts and the Pineapple prompt in the skin's glass (APP Precision
+   P5): navy fill, a coloured edge (gold = info / warning, green = done,
+   blue = error); no amber or orange fill, no blur. ── */
+html body .hud.cinematic-hud .toast-item {
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(14, 34, 66, 0.97), rgba(3, 13, 31, 0.97)) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  font: 700 13px/1.3 var(--app-font);
+}
+html body .hud.cinematic-hud .toast-item--info,
+html body .hud.cinematic-hud .toast-item--warn { border: 1px solid rgba(242, 207, 107, 0.85) !important; color: #ffe9a8 !important; }
+html body .hud.cinematic-hud .toast-item--success { border: 1px solid #4ade80 !important; color: #c9f7dc !important; }
+html body .hud.cinematic-hud .toast-item--error { border: 1px solid #60a5fa !important; color: #dbeafe !important; }
+html body .hud.cinematic-hud .hud-bottom-panel > div[style*="top: -28px"] {
+  background: linear-gradient(180deg, rgba(36, 60, 104, 0.97), rgba(8, 22, 52, 0.97)) !important;
+  border: 1px solid rgba(242, 207, 107, 0.85);
+  color: #ffe9a8 !important;
+  font-family: var(--app-font);
+}
+html body .hud.cinematic-hud .hud-bottom-panel > div[style*="top: -28px"][style*="16, 185, 129"] { border-color: #4ade80; color: #c9f7dc !important; }
+@media (max-width: 1024px) {
+  html body .hud.cinematic-hud .showdown-overlay,
+  html body .hud.cinematic-hud .showdown-panel,
+  html body .hud.cinematic-hud .rabbit-overlay { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+}
+
+/* ── 8. Tight side columns (APP Precision P5) ──
+   PokerTable2D marks the scene app-seat-tight when a side column of seats
+   does not fit its height (a 260 px phone; the multi-table tabs on a 568 px
+   one): the side plates drop their last-action line and AWAY words (the
+   seat's floating bubble and the ticker say the action; the avatar wears
+   the AWAY badge), so the seats no longer overlap. */
+html body .cinematic-table.app-seat-tight .seat-pod:is(.seat-pod--app-To, .seat-pod--app-U, .seat-pod--app-L) .seat-pod__action-pill,
+html body .cinematic-table.app-seat-tight .seat-pod:is(.seat-pod--app-To, .seat-pod--app-U, .seat-pod--app-L) .seat-pod__nameplate .seat-pod__sitout-text { display: none; }
+/* (and the stack row a little tighter, so stack + position keep one line) */
+html body .cinematic-table.app-seat-tight .seat-pod:is(.seat-pod--app-To, .seat-pod--app-U, .seat-pod--app-L) .seat-pod__nameplate { padding-left: 2px !important; padding-right: 2px !important; }
+html body .cinematic-table.app-seat-tight .seat-pod:is(.seat-pod--app-To, .seat-pod--app-U, .seat-pod--app-L) .seat-pod__chips { gap: 2px; }
+html body .cinematic-table.app-seat-tight .seat-pod:is(.seat-pod--app-To, .seat-pod--app-U, .seat-pod--app-L) .seat-pod__pos { padding: 0 1px; letter-spacing: 0; }
+
+/* ── 9. A seat's floating action word (APP Precision P5, package-3 item E) ──
+   A phone held upright: the word stays on the seat's own avatar for its
+   1.8 s (it pops in, then fades; it no longer rises 16 px, which carried it
+   onto the name and stack of the seat above in a tight column). */
+html body .cinematic-table.app-seat-layout .seat-pod:not(.seat-pod--app-hero) .seat-pod__action-bubble {
+  animation: app-bubble-pop 0.25s ease-out both, app-bubble-fade 1.8s ease-out 0.25s forwards !important;
+}
+@keyframes app-bubble-pop {
+  from { opacity: 0; transform: translateX(-50%) scale(0.6); }
+  to { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+@keyframes app-bubble-fade {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ── 10. The Last Hand replay (Options / rail) in the skin (APP Precision P5)
+   Navy glass, the skin's type, 44 px keys. Its rows no longer shrink into
+   each other on a short phone (the timeline ran over "Pot", the step's
+   words over Back / Play / Next): the sheet scrolls instead. ── */
+html:has(.hud.cinematic-hud) body .replay-overlay {
+  background: linear-gradient(180deg, rgba(6, 18, 40, 0.98), rgba(2, 8, 20, 0.98));
+  font-family: 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+}
+html:has(.hud.cinematic-hud) body .replay-overlay > * { flex-shrink: 0; }
+html:has(.hud.cinematic-hud) body .replay-title { font: italic 800 20px/1.2 'Exo 2', 'Segoe UI', system-ui, sans-serif; color: #ffe9a8; letter-spacing: 0.03em; }
+html:has(.hud.cinematic-hud) body .replay-player-row {
+  background: linear-gradient(180deg, rgba(30, 63, 100, 0.45), rgba(2, 24, 52, 0.85));
+  border: 1px solid rgba(120, 190, 255, 0.25);
+  border-radius: 10px;
+}
+html:has(.hud.cinematic-hud) body .replay-player-row.active { border-color: #4ade80; }
+html:has(.hud.cinematic-hud) body .replay-player-row.winner { border-color: #f2cf6b; }
+html:has(.hud.cinematic-hud) body .replay-action-display {
+  border-radius: 10px;
+  border: 1px solid rgba(120, 190, 255, 0.3);
+  background: rgba(2, 24, 52, 0.85);
+}
+html:has(.hud.cinematic-hud) body .replay-pot { color: #f2cf6b; }
+html:has(.hud.cinematic-hud) body :is(.replay-btn, .replay-close, .replay-speed-btn) {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 190, 255, 0.45);
+  background: linear-gradient(180deg, rgba(30, 63, 100, 0.55), rgba(2, 24, 52, 0.92));
+  color: #e6eef9;
+  font: 700 14px/1 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+}
+html:has(.hud.cinematic-hud) body .replay-speed-btn { min-width: 44px; }
+html:has(.hud.cinematic-hud) body :is(.replay-btn, .replay-speed-btn).active { border-color: #f2cf6b; color: #ffe9a8; }
+html:has(.hud.cinematic-hud) body .replay-step-counter { font-size: 12px; color: #9fc3e6; }
+
+/* ── 11. The emote panel (chat bubble): its close key no longer reaches 2 px
+   into the first row of tiles (APP Precision P5) ── */
+html body .hud.cinematic-hud .emote-panel__close { margin-bottom: -2px; }
+
+/* ── 12. The range chart (a help tool; Options) in the skin (APP Precision P5)
+   It is drawn into <body>, so it is scoped to a page that holds the skin's
+   HUD. Blue and gold tiers, no red or orange: Premium gold, Strong cyan,
+   Playable blue, the rest slate; 11 px hands (the grid scrolls sideways
+   inside the sheet on a narrow phone, never the page). ── */
+html:has(.hud.cinematic-hud) body .range-chart-overlay { backdrop-filter: none; -webkit-backdrop-filter: none; }
+html:has(.hud.cinematic-hud) body .range-chart-panel {
+  box-sizing: border-box;
+  max-width: min(560px, calc(100vw - 16px));
+  padding: 14px 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(14, 34, 66, 0.985), rgba(3, 13, 31, 0.985));
+  border: 1px solid rgba(120, 190, 255, 0.55);
+  box-shadow: inset 0 1px 0 rgba(234, 253, 254, 0.3), 0 0 14px rgba(0, 110, 255, 0.35), 0 12px 30px rgba(0, 0, 0, 0.7);
+  font-family: 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+}
+html:has(.hud.cinematic-hud) body .range-chart-title { font: italic 800 17px/1.2 'Exo 2', 'Segoe UI', system-ui, sans-serif; color: #ffe9a8; }
+html:has(.hud.cinematic-hud) body .range-chart-close {
+  min-width: 64px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 190, 255, 0.45);
+  background: linear-gradient(180deg, rgba(30, 63, 100, 0.55), rgba(2, 24, 52, 0.9));
+  color: #e6eef9;
+  font: 700 13px/1 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+}
+html:has(.hud.cinematic-hud) body .range-legend-item { font-size: 12px; color: #c9d6e8; }
+html:has(.hud.cinematic-hud) body .range-legend-item:nth-child(1) .range-legend-swatch { background: #f2cf6b !important; }
+html:has(.hud.cinematic-hud) body .range-legend-item:nth-child(2) .range-legend-swatch { background: #16c8fe !important; }
+html:has(.hud.cinematic-hud) body .range-legend-item:nth-child(3) .range-legend-swatch { background: #2f6fe0 !important; }
+html:has(.hud.cinematic-hud) body .range-legend-item:nth-child(4) .range-legend-swatch { background: #3a4a66 !important; }
+html:has(.hud.cinematic-hud) body .range-chart-grid {
+  grid-template-columns: 22px repeat(13, minmax(28px, 1fr));
+  min-width: 390px;
+  font-size: 11px;
+}
+html:has(.hud.cinematic-hud) body .range-chart-grid-header { font-size: 11px; color: #9fc3e6; }
+html:has(.hud.cinematic-hud) body .range-cell { font-size: 11px; letter-spacing: -0.02em; padding: 2px 0; }
+html:has(.hud.cinematic-hud) body .range-cell.tier-1 { background: #f2cf6b; color: #2a1d00; }
+html:has(.hud.cinematic-hud) body .range-cell.tier-2 { background: #16c8fe; color: #022235; }
+html:has(.hud.cinematic-hud) body .range-cell.tier-3 { background: #2f6fe0; color: #ffffff; }
+html:has(.hud.cinematic-hud) body .range-cell.tier-4 { background: #2a3a58; color: #b9c6db; }
+
+/* ── 13. Stud: every up card in sight (APP Precision P5 repair) ──
+   A Stud seat's row (its down cards, then its up cards) was tucked half
+   under the avatar like a Hold'em pair, so the avatar hid up cards (Earl's
+   Q of Q J T, Lou's 5 and 8). The row now lies over the avatar from its
+   outer edge toward the table (the dealer button stays outside): the down
+   cards stacked tight, each up card showing its rank corner (12 px), the
+   last one whole; a 7th-street down card peeks out under the last up card. */
+html body .cinematic-table .seat-pod > .seat-pod__cards.seat-pod__cards--stud {
+  --app-sb: calc(var(--app-av, 46px) * 0.5);
+  --app-su: calc(var(--app-av, 46px) * 0.58);
+  align-items: center;
+  gap: 0 !important;
+  transition: none !important;
+}
+/* (the seat's floating action word under the row, not over its up cards;
+   a phone held sideways has the row above the seat) */
+@media not all and (orientation: landscape) and (max-height: 500px) {
+  html body .cinematic-table .seat-pod:has(> .seat-pod__cards--stud) > .seat-pod__action-bubble { top: calc(var(--app-av, 46px) * 0.9) !important; }
+}
+html body .cinematic-table .seat-pod > .seat-pod__cards.seat-pod__cards--stud > .card2d--small {
+  flex: none;
+  width: var(--app-sb) !important;
+  height: calc(var(--app-av, 46px) * 0.7) !important;
+}
+html body .cinematic-table .seat-pod > .seat-pod__cards.seat-pod__cards--stud > .card2d--small:not(.card2d--back) {
+  width: var(--app-su) !important;
+  height: calc(var(--app-av, 46px) * 0.8) !important;
+}
+html body .cinematic-table .seat-pod > .seat-pod__cards.seat-pod__cards--stud > .card2d--back + .card2d--back { margin-left: calc(3px - var(--app-sb)) !important; }
+html body .cinematic-table .seat-pod > .seat-pod__cards.seat-pod__cards--stud > .card2d--back + .card2d:not(.card2d--back) { margin-left: calc(5px - var(--app-sb)) !important; }
+html body .cinematic-table .seat-pod > .seat-pod__cards.seat-pod__cards--stud > .card2d:not(.card2d--back) + .card2d:not(.card2d--back) { margin-left: calc(12px - var(--app-su)) !important; }
+html body .cinematic-table .seat-pod > .seat-pod__cards.seat-pod__cards--stud > .card2d:not(.card2d--back) + .card2d--back {
+  margin-left: calc(4px - var(--app-sb)) !important;
+  z-index: -1;
+}
+/* a phone held upright (--app-cards-x: 1 = toward the right, -1 = left) */
+html body .cinematic-table.app-seat-layout .seat-pod > .seat-pod__cards.seat-pod__cards--stud.seat-pod__cards--many {
+  top: calc(4px + var(--app-av, 46px) * 0.5) !important;
+  left: calc(50% - var(--app-cards-x, -1) * (var(--app-av, 46px) / 2 - 2px)) !important;
+  transform: translate(calc((var(--app-cards-x, -1) - 1) * 50%), -50%) !important;
+  z-index: 3 !important;
+}
+/* the ring seats of the wider screens (--app-dir: the felt's side) */
+html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) > .seat-pod__cards.seat-pod__cards--stud.seat-pod__cards--many {
+  top: calc(4px + var(--app-av) * 0.5) !important;
+  left: calc(50% - var(--app-dir, 1) * (var(--app-av) / 2 - 2px)) !important;
+  transform: translate(calc((var(--app-dir, 1) - 1) * 50%), -50%) !important;
+  z-index: 3 !important;
+}
+/* a phone held sideways ([avatar][plate] seats): above the seat from the
+   avatar toward the plate, the rank corners over the plate's top edge */
+@media (orientation: landscape) and (max-height: 500px) {
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) > .seat-pod__cards.seat-pod__cards--stud.seat-pod__cards--many {
+    top: 2px !important;
+    left: calc(var(--app-avx, 50%) - var(--app-dir, 1) * (var(--app-av) / 2 - 2px)) !important;
+    transform: translate(calc((var(--app-dir, 1) - 1) * 50%), -70%) !important;
+    z-index: 0 !important;
+  }
+}
+
+/* ── 14. The Post Blinds panel (APP Precision P5 repair) ──
+   The skin's navy glass with a gold edge (it was amber, blurred, 10.7 px
+   small print and a 40 px flat green key): 13 / 12 px words and a 44 px
+   green key like CALL. No blur. appPlacement.js keeps it off the hero's
+   owed-blinds badge. */
+html body .hud.cinematic-hud .missed-blinds-panel {
+  box-sizing: border-box;
+  gap: 6px;
+  padding: 6px 10px 8px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(14, 34, 66, 0.97), rgba(3, 13, 31, 0.97));
+  border: 1px solid rgba(242, 207, 107, 0.85);
+  box-shadow: inset 0 1px 0 rgba(255, 246, 200, 0.22), 0 0 10px rgba(242, 207, 107, 0.25), 0 6px 16px rgba(0, 0, 0, 0.6);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  text-align: center;
+}
+html body .hud.cinematic-hud .missed-blinds-panel .missed-blinds-text {
+  font: 700 13px/16px var(--app-font);
+  color: #ffe9a8;
+}
+html body .hud.cinematic-hud .missed-blinds-panel .missed-blinds-text > small {
+  margin-top: 2px !important;
+  font: 600 12px/15px var(--app-font);
+  color: #c9d6e8;
+  opacity: 1 !important;
+}
+html body .hud.cinematic-hud .missed-blinds-panel .action-btn.deal {
+  flex: none !important;
+  height: auto !important;
+  min-height: 44px !important;
+  max-width: 100%;
+  padding: 6px 20px !important;
+  border-radius: 10px;
+  border: 1px solid #3fe79f;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0.1) 46%, rgba(255, 255, 255, 0) 50%),
+    linear-gradient(180deg, #3fe0a0 0%, #17b06e 40%, #078a4f 72%, #046b3c 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 0 10px rgba(5, 214, 124, 0.4), 0 3px 8px rgba(0, 0, 0, 0.5);
+  color: #ffffff;
+  font: italic 900 15px/1 var(--app-font) !important;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(0, 40, 20, 0.6);
+  filter: none;
+  animation: none;
+}
+html body .hud.cinematic-hud .missed-blinds-panel .action-btn.deal:disabled { opacity: 0.55; }
+/* a phone held sideways: under the top bar, between the side seats (it
+   hid a top seat's bet); 740 px and wider in one row (words left, the key
+   right), so it covers less of the short table */
+@media (orientation: landscape) and (max-height: 500px) {
+  html body .hud.cinematic-hud .missed-blinds-panel { width: min(300px, calc(100vw - 240px)); }
+}
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 740px) {
+  html body .hud.cinematic-hud .missed-blinds-panel {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    width: min(360px, calc(100vw - 300px));
+    padding: 6px 8px 6px 12px;
+    text-align: left;
+  }
+  html body .hud.cinematic-hud .missed-blinds-panel .missed-blinds-text { flex: 1 1 auto; min-width: 0; }
+  html body .hud.cinematic-hud .missed-blinds-panel .action-btn.deal { padding: 6px 12px !important; font-size: 14px !important; white-space: nowrap; }
+}
+
+/* ── 15. The owed-blinds badge (APP Precision P5 repair) ──
+   A seat that owes dead blinds: a navy pill with a gold edge and a gold
+   chip (it was an orange-brown pill with a red dart). */
+html body .cinematic-table .seat-pod .seat-pod__owed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px 1px 4px;
+  border: 1px solid rgba(242, 207, 107, 0.85);
+  background: linear-gradient(180deg, rgba(36, 60, 104, 0.97), rgba(8, 22, 52, 0.97));
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  color: #ffe9a8;
+  font: italic 800 11px/14px var(--app-hud-font) !important;
+  animation: none !important;
+}
+/* (his own badge left of his AWAY badge; on it, it hid the AWAY) */
+html body .cinematic-table.app-seat-layout .seat-pod--app-hero:has(.seat-pod__away-badge) > .seat-pod__owed-badge { right: 32px; }
+html body .cinematic-table .seat-pod .seat-pod__owed-badge > .app-owed-chip {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #f7d774 0 33%, #a8731f 34% 41%, transparent 42%),
+    repeating-conic-gradient(#fff1bf 0deg 16deg, #c38d2c 16deg 45deg);
+  box-shadow: inset 0 0 0 1px rgba(90, 56, 8, 0.8);
+}
+
+/* ── 16. Tight side columns: one stack line (APP Precision P5 repair) ──
+   On a 260-280 px phone the top row's narrow plates (the room between four
+   top seats) were applied to the side seats too, so a stack and its
+   position wrapped to a third line and the column overlapped (Brock on
+   Wyatt's plate). A side seat's plate may be its full width there. */
+html body .cinematic-table.app-seat-tight .seat-pod:is(.seat-pod--app-U, .seat-pod--app-L) .seat-pod__nameplate {
+  max-width: calc(var(--app-pw, 70px) + 8px) !important;
+}
+html body .cinematic-table.app-seat-tight .seat-pod:is(.seat-pod--app-U, .seat-pod--app-L) .seat-pod__chips { flex-wrap: nowrap; white-space: nowrap; }
+
+/* ── 17. The showdown sheet's pot label and hand rows (APP Precision P5
+   repair): the MAIN POT / side pot label gold (it was amber), and a long
+   hand name wraps inside its row (it ran past the row's border). ── */
+html body .hud.cinematic-hud .showdown-panel .showdown-pot-label {
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(242, 207, 107, 0.4);
+  background: rgba(242, 207, 107, 0.1);
+  color: #f2cf6b;
+  font: 800 11px/15px var(--app-font);
+  letter-spacing: 0.1em;
+}
+/* (the WIN tag gold, no orange end) */
+html body .hud.cinematic-hud .showdown-panel .showdown-winner-badge { background: linear-gradient(180deg, #ffe58a 0%, #f2c14e 50%, #c8942c 100%); color: #2a1d00; }
+html body .hud.cinematic-hud .showdown-panel .showdown-hand-row { min-width: 0; }
+html body .hud.cinematic-hud .showdown-panel .showdown-hand-cards { flex: 0 0 auto; }
+html body .hud.cinematic-hud .showdown-panel .showdown-hand-eval {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+/* ── 18. The Last Hand replay's keys stay in sight (APP Precision P5 repair)
+   On a short screen the sheet scrolls; the timeline and Back / Play / Next
+   with the speed keys now ride at its foot as one glass footer (they sat
+   below the fold at 320 px and on a phone held sideways). --app-rc-h is
+   the keys' height (two rows upright, one row sideways). ── */
+@media (max-width: 600px), (orientation: landscape) and (max-height: 500px) {
+  html:has(.hud.cinematic-hud) body .replay-overlay { padding-bottom: 0 !important; }
+  html:has(.hud.cinematic-hud) body .replay-overlay > .replay-timeline {
+    position: sticky;
+    bottom: var(--app-rc-h, 62px);
+    z-index: 2;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+    margin-top: 8px;
+    padding: 8px 12px 2px;
+    border: 1px solid rgba(120, 190, 255, 0.3);
+    border-bottom: 0;
+    border-radius: 12px 12px 0 0;
+    background: #050e20;
+  }
+  html:has(.hud.cinematic-hud) body .replay-overlay > .replay-controls {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--app-rc-h, 62px);
+    margin: 0;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    border: 1px solid rgba(120, 190, 255, 0.3);
+    border-top: 0;
+    border-radius: 0 0 12px 12px;
+    background: #050e20;
+  }
+}
+@media (max-width: 600px) and (orientation: portrait) {
+  html:has(.hud.cinematic-hud) body .replay-overlay { --app-rc-h: calc(112px + env(safe-area-inset-bottom, 0px)); }
+  html:has(.hud.cinematic-hud) body .replay-overlay > .replay-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: 44px 44px;
+    gap: 8px;
+  }
+  html:has(.hud.cinematic-hud) body .replay-overlay > .replay-controls > .replay-btn { min-width: 0; padding: 0 6px; }
+  html:has(.hud.cinematic-hud) body .replay-overlay > .replay-controls > .replay-speed-group { grid-column: 1 / -1; justify-content: center; gap: 8px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  html:has(.hud.cinematic-hud) body .replay-overlay { --app-rc-h: calc(62px + env(safe-area-inset-bottom, 0px)); }
+  html:has(.hud.cinematic-hud) body .replay-overlay > .replay-controls { flex-wrap: nowrap; justify-content: center; }
+  html:has(.hud.cinematic-hud) body .replay-overlay > .replay-controls > .replay-btn { min-height: 44px; }
+}
+
+/* ── 19. Small fits (APP Precision P5 repair) ──
+   - a 260-280 px phone (tight top row): the top seats' pods as wide as
+     their plates (a 70 px pod reached into its neighbour's);
+   - 300 px and narrower: the street name keeps its words (HAND OVER,
+     PRE-FLOP were cut);
+   - 340 px and narrower: his own floating action word a little closer to
+     his cards (it tucked under the lower right seat's cards). */
+html body .cinematic-table.app-seat-tight .seat-pod:is(.seat-pod--app-To, .seat-pod--app-Ti, .seat-pod--app-C):not(.seat-pod--empty) { width: var(--app-pmax, 70px); }
+@media (max-width: 300px) {
+  html body .hud.cinematic-hud .app-strip__street { font-size: 11px; letter-spacing: 0.02em; }
+  /* (repair 2: a qualifier's four panels - LEVEL too - kept "TOTAL POT",
+     "LVL 6/20" and "PRE-FLOP" whole only without letter spacing) */
+  html body .hud.cinematic-hud .app-strip--level .app-strip__panel { padding-left: 2px; padding-right: 2px; }
+  html body .hud.cinematic-hud .app-strip--level :is(.app-strip__label, .app-strip__street) { letter-spacing: 0; }
+}
+@media (max-width: 340px) and (orientation: portrait) {
+  html body .cinematic-table.app-seat-layout .seat-pod--app-hero .seat-pod__action-bubble { left: 64px; }
+}
+/* - a phone held upright: the BOMB POT notice a size smaller (at 320 px its
+     words were cut and it reached the side seats' plates) */
+@media (max-width: 600px) and (orientation: portrait) {
+  html body .hud.cinematic-hud .bomb-pot-banner {
+    padding: 3px 16px;
+    font: italic 800 17px/22px var(--app-font);
+    letter-spacing: 0.12em;
+  }
+}
+/* - a phone held sideways with the multi-table tabs (a short felt): the
+     felt's pot plate stays inside the felt (it went behind the rail) */
+@media (orientation: landscape) and (max-height: 500px) {
+  html.table-geometry body .cinematic-table .table2d-felt > .table2d-felt__surface > .table2d-pot-area {
+    bottom: min(calc(var(--felt-t, 120px) + var(--felt-h, 150px) - var(--app-lbcy) + var(--app-lcw) * 0.7 + 3px), calc(100% - 28px)) !important;
+  }
+}
+
+/* ── 20. Sitting out at a qualifier seat (APP Precision P5 repair 2) ──
+   A phone held upright, not his turn: the note ("Sitting out - you stay
+   dealt in: ... we may check or limp the blind for you", every word kept)
+   sits in the bar's band, the whole band wide, with its 44 px I'm back; it
+   was placed on the felt for as long as he sat out (over the board, the pot
+   and two seats). The note starts with "Sitting out" and its I'm back does
+   what the gold Sitting Out pill does, so the pill waits under it (the menu
+   keeps "Sitting Out - I'm back" too). A note taller than the band grows
+   upward over the bar's top edge, never onto the felt. */
+@media (max-width: 600px) and (orientation: portrait) {
+  html.table-geometry body .hud.cinematic-hud:not(:has(.hud-bottom--my-turn)) .tournament-sitout-note,
+  html.app-fl.table-geometry body .hud.cinematic-hud:not(:has(.hud-bottom--my-turn)) .tournament-sitout-note[data-app-fl] {
+    --app-in-band: 1;
+    position: fixed !important;
+    top: auto !important;
+    bottom: calc(var(--hud-bar-h, 134px) - var(--app-bar-pad) - var(--app-bet-h) + 1px) !important;
+    left: calc(16px + env(safe-area-inset-left, 0px)) !important;
+    right: calc(16px + env(safe-area-inset-right, 0px)) !important;
+    width: auto !important;
+    max-width: none !important;
+    min-height: min(var(--app-bet-h), 92px);
+    transform: none !important;
+    z-index: 560 !important;
+    margin: 0 !important;
+    padding: 2px 4px 2px 10px !important;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-start !important;
+    border-radius: 12px !important;
+    font-size: 12px !important;
+    line-height: 14px !important;
+    animation: none !important;
+  }
+  html body .hud.cinematic-hud .tournament-sitout-note > span:nth-child(2) { flex: 1 1 auto; min-width: 0; }
+  html body .hud.cinematic-hud:not(:has(.hud-bottom--my-turn)) .tournament-sitout-note > .afk-back-btn { padding: 0 12px; font-size: 13px; }
+  html.table-geometry body .hud.cinematic-hud:has(.tournament-sitout-note):not(:has(.hud-bottom--my-turn)) .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active { visibility: hidden; }
+}
+/* (a narrow phone: 11 px words, no chair icon, a slimmer I'm back) */
+@media (max-width: 374px) and (orientation: portrait) {
+  html.table-geometry body .hud.cinematic-hud:not(:has(.hud-bottom--my-turn)) .tournament-sitout-note,
+  html.app-fl.table-geometry body .hud.cinematic-hud:not(:has(.hud-bottom--my-turn)) .tournament-sitout-note[data-app-fl] {
+    font-size: 11px !important;
+    line-height: 13px !important;
+    padding-left: 8px !important;
+    gap: 6px;
+  }
+  html body .hud.cinematic-hud:not(:has(.hud-bottom--my-turn)) .tournament-sitout-note > span:first-child { display: none; }
+  html body .hud.cinematic-hud:not(:has(.hud-bottom--my-turn)) .tournament-sitout-note > .afk-back-btn { padding: 0 9px; font-size: 12px; }
+}
+@media (max-width: 300px) and (orientation: portrait) {
+  html.table-geometry body .hud.cinematic-hud:not(:has(.hud-bottom--my-turn)) .tournament-sitout-note,
+  html.app-fl.table-geometry body .hud.cinematic-hud:not(:has(.hud-bottom--my-turn)) .tournament-sitout-note[data-app-fl] {
+    left: calc(8px + env(safe-area-inset-left, 0px)) !important;
+    right: calc(8px + env(safe-area-inset-right, 0px)) !important;
+  }
+}
+
+/* ── 21. The reconnect line on the ticker row (APP Precision P5 repair 2) ──
+   "Reconnecting... your seat is held" was drawn at the old top bar's foot,
+   over the strip's panels (TOTAL POT / BLINDS / SPR). It now stands in for
+   the one-line ticker, like the winner banner; "Connection lost" with its
+   44 px "Tap to reconnect" sits just under the ticker row (it is taller).
+   App.jsx draws it outside the HUD, so it is scoped to a page that holds the
+   skin's HUD. */
+html:has(.hud.cinematic-hud) body .table-reconnect-banner {
+  top: calc(var(--hud-top-h, 150px) - 25px) !important;
+  min-height: 24px;
+  box-sizing: border-box;
+  padding: 2px 14px !important;
+  border-color: rgba(242, 207, 107, 0.8) !important;
+  background: linear-gradient(180deg, rgba(14, 34, 66, 0.97), rgba(3, 13, 31, 0.97)) !important;
+  font-family: 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+  line-height: 18px;
+}
+html:has(.hud.cinematic-hud) body .table-reconnect-banner--failed { top: calc(var(--hud-top-h, 150px) + 4px) !important; }
+
+/* ── 22. Toasts and the showdown sheet on a phone held sideways (APP
+   Precision P5 repair 2) ──
+   The sheet ran up to the top bar, so the winner banner (on the ticker row)
+   covered its SHOWDOWN title, and a toast ("Rebuying 2,000 chips...") sat on
+   the winner banner. Now the sheet ends above the bar (its last lines were
+   under the hand review's band) and, while the winner banner shows, starts
+   under the ticker row; a toast then sits just under the ticker row with
+   the sheet below it. */
+@media (orientation: landscape) and (max-height: 500px) {
+  html body .hud.cinematic-hud .showdown-overlay {
+    box-sizing: border-box;
+    padding: 8px 8px calc(var(--hud-bar-h, 70px) - var(--app-bar-pad, 8px) + 6px) !important;
+    background: rgba(0, 4, 14, 0.72) !important;
+  }
+  html body .hud.cinematic-hud:has(.winner-banner) .showdown-overlay { padding-top: var(--hud-top-h, 80px) !important; }
+  html body .hud.cinematic-hud .showdown-overlay .showdown-panel { max-height: 100% !important; }
+  html.table-geometry body .hud.cinematic-hud:has(.winner-banner, .showdown-overlay) .toast-stack {
+    top: calc(var(--hud-top-h, 80px) + 2px) !important;
+    bottom: auto !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+  }
+  html body .hud.cinematic-hud:has(.toast-stack) .showdown-overlay { padding-top: calc(var(--hud-top-h, 80px) + 40px) !important; }
+}
+
+/* ── 23. Tight side columns still too tall (APP Precision P5 repair 2) ──
+   A 260 px phone with nine seats (or with the multi-table tabs): the tight
+   layout (section 8) still had a lower side seat's avatar on the plate of
+   the seat above (Brock on Wyatt, Marcus T. on Dana P.). PokerTable2D then
+   marks the scene app-seat-tight2: 24 px avatars (appSeatLayout) and plates
+   1 px slimmer per edge with 13 px rows; the words stay 11 px. */
+html body .cinematic-table.app-seat-tight2 .seat-pod:not(.seat-pod--empty) .seat-pod__nameplate {
+  margin-top: -8px;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+}
+html body .cinematic-table.app-seat-tight2 .seat-pod:not(.seat-pod--empty) :is(.seat-pod__name, .seat-pod__chips) { line-height: 13px !important; }
+html body .cinematic-table.app-seat-tight2 .seat-pod:not(.seat-pod--empty) .seat-pod__chips { row-gap: 0; }

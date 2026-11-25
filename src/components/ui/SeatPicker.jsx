@@ -2,6 +2,11 @@ import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { phaseLabel } from '../../utils/tableList';
 import './SeatPicker.css';
+// APP Precision package 5: the picker in the table skin's glass (skin builds only)
+import { cinematicEnabled } from '../scene/cinematicSkin';
+import '../scene/AppPrecisionChrome.css';
+
+const OVERLAY_CLASS = `seat-picker-overlay${cinematicEnabled ? ' app-seat-picker' : ''}`;
 
 /**
  * Seat picker (R2 C1, 2026-10-11 — APPUI-39).
@@ -35,7 +40,7 @@ export default function SeatPicker({ table, preferredSeat = null, onPick, onClos
 
   if (!table) {
     return mount(
-      <div className="seat-picker-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Choose your seat">
+      <div className={OVERLAY_CLASS} onClick={onClose} role="dialog" aria-modal="true" aria-label="Choose your seat">
         <div className="seat-picker-card" onClick={(e) => e.stopPropagation()}>
           <h3 className="seat-picker-title">Table closed</h3>
           <p className="seat-picker-sub">This table is no longer in the lobby. Pick another one.</p>
@@ -53,7 +58,7 @@ export default function SeatPicker({ table, preferredSeat = null, onPick, onClos
   const phase = phaseLabel(table.phase);
 
   return mount(
-    <div className="seat-picker-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Choose your seat">
+    <div className={OVERLAY_CLASS} onClick={onClose} role="dialog" aria-modal="true" aria-label="Choose your seat">
       <div className="seat-picker-card" onClick={(e) => e.stopPropagation()}>
         <h3 className="seat-picker-title">Choose your seat</h3>
         <p className="seat-picker-sub">
