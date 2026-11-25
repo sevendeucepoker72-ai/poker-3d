@@ -24,9 +24,11 @@ const LEAGUE_ID = '2e4d68d2-c71e-4447-b16d-38e31f3a9ffd';
 
 // Sat Nov 28 2026: the league at 6:00 PM MST = 2026-11-29T01:00Z; the Sunday
 // weekly at 11:00 AM MST = 2026-11-29T18:00Z; Monday's league 2026-12-01T01:00Z.
+// League sign-up opens 3 hours before (3:00 PM MST = 22:00Z; owner 2026-11-25,
+// poker-server 32533fe; it was 2 hours / 4:00 PM).
 const leagueRaw = (over = {}) => ({
   qualifierId: 'ol-1128', masterQualifierId: 'ol-1128', type: 'online_league', name: 'Online League — Sat, Nov 28',
-  scheduledAt: '2026-11-29T01:00:00.000Z', signupOpensAt: '2026-11-28T23:00:00.000Z',
+  scheduledAt: '2026-11-29T01:00:00.000Z', signupOpensAt: '2026-11-28T22:00:00.000Z',
   signupClosesAt: '2026-11-29T02:00:00.000Z', lateRegUntil: '2026-11-29T02:00:00.000Z',
   status: 'scheduled', registered: false, eliminated: false, reEntriesLeft: null, creditsHeld: null,
   maxReEntries: 1, reEntries: null, players: 0, seatsForTop: 0, seatPackage: null,
@@ -117,7 +119,7 @@ test('featuredQualifier: the SOONEST event (league Mon-Sat, the weekly from Satu
   assert.equal(L.featuredQualifier(list, satAfternoon).qualifierId, 'ol-1128', 'the Saturday league night comes before the Sunday weekly');
   // After Saturday's league finishes (Monday's night is listed too): the Sunday weekly.
   const satNight = Date.parse('2026-11-29T06:00:00Z'); // Sat 11:00 PM MT
-  const monday = leagueRaw({ qualifierId: 'ol-1130', name: 'Online League — Mon, Nov 30', scheduledAt: '2026-12-01T01:00:00.000Z', signupOpensAt: '2026-11-30T23:00:00.000Z', signupClosesAt: '2026-12-01T02:00:00.000Z', lateRegUntil: '2026-12-01T02:00:00.000Z' });
+  const monday = leagueRaw({ qualifierId: 'ol-1130', name: 'Online League — Mon, Nov 30', scheduledAt: '2026-12-01T01:00:00.000Z', signupOpensAt: '2026-11-30T22:00:00.000Z', signupClosesAt: '2026-12-01T02:00:00.000Z', lateRegUntil: '2026-12-01T02:00:00.000Z' });
   const after = L.normalizeQualifierList([leagueRaw({ status: 'finished' }), weeklyRaw(), monday]);
   assert.equal(L.featuredQualifier(after, satNight).qualifierId, 'w-1129');
   // A live weekly beats an upcoming league night.
@@ -129,7 +131,7 @@ test('featuredQualifier: the SOONEST event (league Mon-Sat, the weekly from Satu
   const sunDone = L.normalizeQualifierList([weeklyRaw({ status: 'finished' }), monday]);
   assert.equal(L.featuredQualifier(sunDone, sunEvening).qualifierId, 'ol-1130');
   // A finished (or cancelled) league night never beats an upcoming one.
-  const tue = leagueRaw({ qualifierId: 'ol-1201', scheduledAt: '2026-12-02T01:00:00.000Z', signupOpensAt: '2026-12-01T23:00:00.000Z', lateRegUntil: '2026-12-02T02:00:00.000Z', signupClosesAt: '2026-12-02T02:00:00.000Z' });
+  const tue = leagueRaw({ qualifierId: 'ol-1201', scheduledAt: '2026-12-02T01:00:00.000Z', signupOpensAt: '2026-12-01T22:00:00.000Z', lateRegUntil: '2026-12-02T02:00:00.000Z', signupClosesAt: '2026-12-02T02:00:00.000Z' });
   const monNight = Date.parse('2026-12-01T05:00:00Z');
   for (const done of [{ status: 'finished' }, { status: 'finished', cancelled: true }]) {
     const l2 = L.normalizeQualifierList([{ ...monday, ...done }, tue]);
@@ -196,8 +198,12 @@ test('home card lines: free entry / 1 re-entry / 7:00 PM, points + top-5 credit 
   assert.equal(min.prize, 'Winner: a free month in a chair at a live game (nights with 6+ finishers)');
   assert.equal(L.onlineLeagueCardLines(L.normalizeQualifierItem(weeklyRaw())), null);
   for (const v of Object.values(on)) assert.doesNotMatch(v, /\bseat|championship|uses 1 credit|credit to enter/i, v);
+  // The card's "Sign-up opens" time is COMPUTED from the server's signupOpensAt
+  // (3 hours before since poker-server 32533fe): 3:00 PM MT before it opens.
+  assert.deepEqual(L.qualifierHomeStatus(L.normalizeQualifierItem(leagueRaw()), Date.parse('2026-11-28T21:00:00Z')), { state: 'scheduled', text: 'Sign-up opens 3:00 PM MT' });
   const about = L.onlineLeagueAboutText(L.normalizeQualifierItem(leagueRaw()));
-  assert.match(about, /^Online League: free No-Limit Hold'em for every American Pub Poker member, Monday to Saturday at 6:00 PM MT\. Sign-up opens at 4:00 PM; late entry and one re-entry until 7:00 PM; 10-minute levels\./);
+  assert.match(about, /^Online League: free No-Limit Hold'em for every American Pub Poker member, Monday to Saturday at 6:00 PM MT\. Sign-up opens at 3:00 PM; late entry and one re-entry until 7:00 PM; 10-minute levels\./);
+  assert.doesNotMatch(about, /4:00 PM/, 'owner 2026-11-25: sign-up opens 3 hours before (3:00 PM MT), never the old 4:00 PM');
   assert.match(about, /top 5 earn a weekly qualifier credit/);
   assert.match(about, /free month \(4 games\) in a chair at a live American Pub Poker game/);
   const aboutOff = L.onlineLeagueAboutText(L.normalizeQualifierItem(leagueRaw({ leaguePoints: false, leaguePrize: null })));
@@ -254,9 +260,10 @@ test('finished line + Game Over: place + points; top-5 credit / prize only when 
 
 test('Online League Rules: own title / subtitle / date, plain ASCII, the drafted sections, lines follow the switches', () => {
   assert.equal(OLR.ONLINE_LEAGUE_RULES_TITLE, 'Online League Rules');
-  assert.equal(OLR.ONLINE_LEAGUE_RULES_UPDATED, '2026-11-21');
+  assert.equal(OLR.ONLINE_LEAGUE_RULES_UPDATED, '2026-11-25');
   const raw = JSON.stringify(OLR.ONLINE_LEAGUE_RULES);
   assert.ok(/^[\x20-\x7e]*$/.test(raw), 'plain ASCII (AGENT.md rule 20)');
+  assert.doesNotMatch(raw, /4:00 PM/, 'owner 2026-11-25: sign-up opens at 3:00 PM MT, never the old 4:00 PM');
   assert.doesNotMatch(raw, /monthly|championship seat/i);
   const q = L.normalizeQualifierItem(leagueRaw());
   assert.equal(R.qualifierHasLeagueRules(q), true);
@@ -267,7 +274,7 @@ test('Online League Rules: own title / subtitle / date, plain ASCII, the drafted
   const page = R.rulesPageFor(q);
   assert.equal(page.title, 'Online League Rules');
   assert.equal(page.subtitle, 'Monday to Saturday at 6:00 PM MT on americanpubpoker.online');
-  assert.equal(page.updated, 'Updated Nov 21, 2026.');
+  assert.equal(page.updated, 'Updated Nov 25, 2026.');
   const headings = page.sections.map((s) => s.heading);
   assert.deepEqual(headings, ['Free to enter', 'Who can play', 'Schedule', 'Points and weekly credits', "Nightly winner's prize", 'Fair play']);
   const lines = page.sections.flatMap((s) => s.rules);
@@ -276,6 +283,7 @@ test('Online League Rules: own title / subtitle / date, plain ASCII, the drafted
     'Buying chips, VIP or anything else gives no advantage.',
     'Chips are play money with no cash value.',
     'One account per person.',
+    'Sign-up opens at 3:00 PM MT. Tap Register on the Online League card.',
     'Late entry and one re-entry are open until 7:00 PM MT.',
     'The top 5 each night earn a weekly qualifier credit for the Sunday Weekly Qualifier.',
     'It has no cash value and cannot be transferred. Claim it in the American Pub Poker app within 90 days.',

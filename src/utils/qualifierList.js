@@ -456,7 +456,7 @@ export function onlineLeagueAboutText(q) {
   if (!isLeagueItem(q)) return null;
   const min = minFieldOf(q.leagueAwardsMinField) || 1;
   const minNote = min > 1 ? ` on nights with ${min} or more finishers` : '';
-  let text = "Online League: free No-Limit Hold'em for every American Pub Poker member, Monday to Saturday at 6:00 PM MT. Sign-up opens at 4:00 PM; late entry and one re-entry until 7:00 PM; 10-minute levels.";
+  let text = "Online League: free No-Limit Hold'em for every American Pub Poker member, Monday to Saturday at 6:00 PM MT. Sign-up opens at 3:00 PM; late entry and one re-entry until 7:00 PM; 10-minute levels.";
   if (q.leaguePoints === true) text += ` Every finisher earns league points; the top 5 earn a weekly qualifier credit for the Sunday Weekly Qualifier${minNote}.`;
   if (q.leaguePrize === 'chair_month' && q.leaguePoints !== false) text += ` The winner gets a free month (4 games) in a chair at a live American Pub Poker game${minNote}.`;
   return text;

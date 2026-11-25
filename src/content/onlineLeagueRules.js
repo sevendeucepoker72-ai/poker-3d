@@ -6,6 +6,9 @@
 //
 // OWNER-APPROVED 2026-11-21 ("Use your picks"): change it only with the
 // owner, then bump ONLINE_LEAGUE_RULES_UPDATED.
+// Owner change 2026-11-25 ("signup should be 3 hours before"): sign-up opens
+// at 3:00 PM MT (was 4:00 PM), matching poker-server 32533fe
+// ONLINE_LEAGUE_SIGNUP_OPENS_BEFORE_MS = 3 h. Nothing else in the text changed.
 //
 // Same shape as content/qualifierRules.js QUALIFIER_RULES, so the same rules
 // window (components/ui/QualifierRules.jsx) renders it: [{ heading, rules }],
@@ -29,7 +32,7 @@ export const ONLINE_LEAGUE_RULES_TITLE = 'Online League Rules';
 export const ONLINE_LEAGUE_RULES_SUBTITLE = 'Monday to Saturday at 6:00 PM MT on americanpubpoker.online';
 
 /** The day these rules were last changed (YYYY-MM-DD). */
-export const ONLINE_LEAGUE_RULES_UPDATED = '2026-11-21';
+export const ONLINE_LEAGUE_RULES_UPDATED = '2026-11-25';
 
 export const ONLINE_LEAGUE_RULES = [
   {
@@ -51,7 +54,7 @@ export const ONLINE_LEAGUE_RULES = [
     heading: 'Schedule',
     rules: [
       'The Online League plays Monday to Saturday at 6:00 PM MT.',
-      'Sign-up opens at 4:00 PM MT. Tap Register on the Online League card.',
+      'Sign-up opens at 3:00 PM MT. Tap Register on the Online League card.',
       'Late entry and one re-entry are open until 7:00 PM MT.',
       'Levels are 10 minutes long, with a 5-minute break after every 5 levels.',
       'All times are Mountain Time (MT).',
