@@ -1,6 +1,10 @@
 // Explicit staging opt-in; set VITE_APP_CINEMATIC=1 at build time.
+import APP_ART_VERSIONS from 'virtual:app-art-versions';
+
 export const cinematicEnabled = import.meta.env.VITE_APP_CINEMATIC === '1';
-export const cinematicAsset = (name) => `${import.meta.env.BASE_URL}cinematic/${name}`;
+// (?v=<content hash>: the host keeps /cinematic/ art for a year, so a changed
+// picture needs a new URL; see vite.config.js appArtCacheBust)
+export const cinematicAsset = (name) => `${import.meta.env.BASE_URL}cinematic/${name}${APP_ART_VERSIONS[name] ? `?v=${APP_ART_VERSIONS[name]}` : ''}`;
 
 // APP Precision: the skin's two display faces (Exo 2 for the HUD, Playfair
 // Display for the hero name), loaded only when the skin is on. The CSP already

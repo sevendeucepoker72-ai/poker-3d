@@ -164,6 +164,24 @@ if (!socketHostChunk) {
 }
 console.log(`[deploy-online] socket host ${SOCKET_HOST} verified in ${path.basename(socketHostChunk)}.`);
 
+// 2026-11-25 (APP Precision) — say which table look this build ships. The
+// switch is a BUILD flag (VITE_APP_CINEMATIC=1), so nothing else in the deploy
+// output shows it. A switch-off build carries the skin's CSS only as one
+// unlinked file (assets/app-precision-skin-*.css, kept for the token check);
+// a switch-on build links it. Information only, never a FAIL.
+{
+  const assetNames = fs.existsSync(path.join(DIST_DIR, 'assets')) ? fs.readdirSync(path.join(DIST_DIR, 'assets')) : [];
+  const offMarker = assetNames.some((n) => /^app-precision-skin-.*\.css$/.test(n));
+  const skinCss = assetNames.filter((n) => n.endsWith('.css')).some((n) => {
+    try { return fs.readFileSync(path.join(DIST_DIR, 'assets', n), 'utf8').includes('cinematic-hud'); } catch (_) { return false; }
+  });
+  if (!offMarker && skinCss) {
+    console.warn('[deploy-online] table look: APP Precision is ON in this build (VITE_APP_CINEMATIC=1) - every player gets the new table. Ship only with the owner\'s OK; rollback = rebuild without the flag.');
+  } else {
+    console.log('[deploy-online] table look: the live look (APP Precision switch OFF).');
+  }
+}
+
 // 2026-11-02 (lead spec C9 / R5) — deploy freeze while a broadcast is on air.
 // The upload is not atomic: an OBS source reloading mid-upload can fetch new
 // HTML that names chunks not uploaded yet. ON AIR if EITHER poker-server

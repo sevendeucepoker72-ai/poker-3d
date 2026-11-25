@@ -3758,7 +3758,7 @@ export default function GameHUD() {
       {/* Top bar */}
       <div className={`hud-top${cinematicEnabled ? ' app-top' : ''}`}>
         {/* APP Precision: the TM logo in the middle of the logo row (no registered mark). */}
-        {cinematicEnabled && <img className="app-top__logo" src={cinematicAsset('app-logo.webp')} alt="American Pub Poker" draggable={false} />}
+        {cinematicEnabled && <img className="app-top__logo" src={cinematicAsset('app-logo.webp')} alt="American Pub Poker" draggable={false} onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />}
         <button className="hud-back" onClick={handleBackToLobby}>
           Back to Lobby
         </button>

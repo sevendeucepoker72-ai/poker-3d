@@ -36,6 +36,12 @@ html .hud.cinematic-hud.hud--tabs {
   --app-pad-top: calc(env(safe-area-inset-top, 0px) + 48px);
   --app-logo-row: 44px;
 }
+/* (final polish, F4) a tall phone held upright (360x780, 390x844, 430x932;
+   taller than the mockup's 9:16): the logo row may grow to 92 px. The
+   multi-table tabs keep their 44 px row (the rule above weighs more). */
+@media (max-width: 600px) and (orientation: portrait) and (min-height: 780px) {
+  html .hud.cinematic-hud { --app-logo-row: clamp(44px, calc(18vh - 60px), 92px); }
+}
 @media (max-height: 640px) {
   html .hud.cinematic-hud { --app-strip-h: 38px; --app-ticker-h: 20px; }
 }
@@ -91,6 +97,11 @@ html .cinematic-table {
   /* the cloth's shape: a rounded oval like the mockup's (the box is unchanged) */
   --app-felt-radius: 43% / 50%;
 }
+/* (final polish, F4) a tall phone held upright: the window band may grow to
+   34vw, so the extra height is room, not an empty band of sky */
+@media (max-width: 600px) and (orientation: portrait) and (min-height: 780px) {
+  html .cinematic-table { --app-win-h: clamp(17.36vw, calc(var(--felt-t, 260px) - var(--app-rail-top) - var(--hud-top-h, 150px) + 40px), 34vw); }
+}
 html .cinematic-table .table2d-felt {
   background: transparent !important;
   box-shadow: none !important;
@@ -109,10 +120,10 @@ html .cinematic-table .table2d-felt::before {
   pointer-events: none;
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E"),
-    radial-gradient(ellipse 16% 8% at 24% 10%, rgba(255, 255, 255, 0.30), transparent 72%),
-    radial-gradient(ellipse 16% 8% at 76% 10%, rgba(255, 255, 255, 0.30), transparent 72%),
-    radial-gradient(ellipse 7% 20% at 4% 42%, rgba(226, 236, 255, 0.26), transparent 72%),
-    radial-gradient(ellipse 7% 20% at 96% 42%, rgba(226, 236, 255, 0.26), transparent 72%),
+    radial-gradient(ellipse 16% 8% at 24% 10%, rgba(255, 255, 255, 0.42), transparent 72%),
+    radial-gradient(ellipse 16% 8% at 76% 10%, rgba(255, 255, 255, 0.42), transparent 72%),
+    radial-gradient(ellipse 7% 20% at 4% 42%, rgba(226, 236, 255, 0.38), transparent 72%),
+    radial-gradient(ellipse 7% 20% at 96% 42%, rgba(226, 236, 255, 0.38), transparent 72%),
     radial-gradient(ellipse 30% 7% at 50% 97%, rgba(200, 214, 240, 0.20), transparent 72%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 40%, rgba(0, 0, 0, 0.28) 100%),
     radial-gradient(ellipse closest-side at 50% 48%, #050608 66%, #16191f 71%, #3e4450 79%, #20242c 85%, #0a0b0f 92%, #2a2f38 98%, #07080b 100%) !important;
@@ -136,9 +147,11 @@ html .cinematic-table .table2d-felt::after {
   animation: none !important;
   pointer-events: none;
   background:
-    repeating-conic-gradient(from 3deg, #e9fbff 0deg 2deg, rgba(96, 205, 255, 0.85) 2deg 3.4deg, transparent 3.4deg 13deg),
-    conic-gradient(from 200deg, #e9ecf1, #6d7380, #22252c, #9aa1ad, #e9ecf1, #6d7380, #22252c, #9aa1ad, #e9ecf1) !important;
-  box-shadow: 0 0 0 1.5px rgba(222, 230, 242, 0.9), 0 0 10px 2px rgba(0, 170, 255, 0.6) !important;
+    /* (final polish: a bright silver lip with small LED studs, not a dark
+       dashed band) */
+    repeating-conic-gradient(from 3deg, rgba(233, 251, 255, 0.95) 0deg 0.9deg, transparent 0.9deg 7.5deg),
+    conic-gradient(from 200deg, #f8f2eb, #b4b8c4, #858596, #b4b8c4, #f8f2eb, #b4b8c4, #858596, #b4b8c4, #f8f2eb) !important;
+  box-shadow: 0 0 0 1.5px rgba(222, 230, 242, 0.9), 0 0 14px 3px rgba(0, 170, 255, 0.65) !important;
 }
 html .cinematic-table .table2d-felt__surface {
   border-radius: var(--app-felt-radius) !important;
@@ -147,7 +160,7 @@ html .cinematic-table .table2d-felt__surface {
     0 0 0 3px #eef1f6,
     0 0 0 5px #8b919e,
     0 0 0 6px rgba(14, 16, 20, 0.95),
-    inset 0 0 14px rgba(0, 170, 255, 0.55),
+    inset 0 0 22px 3px rgba(0, 170, 255, 0.7),
     inset 0 0 64px 18px rgba(1, 10, 32, 0.6),
     inset 0 10px 40px rgba(140, 195, 255, 0.10) !important;
 }
@@ -916,5 +929,20 @@ html .hud.cinematic-hud .app-menu__sitout--active {
   html .cinematic-table * {
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
+  }
+}
+/* (final polish, F9) a phone held upright: the ticker shows whole actions
+   only. An action that does not fit wraps to a second, hidden line instead
+   of being cut mid-word by the left fade ("e called 6,486"). */
+@media (max-width: 600px) and (orientation: portrait) {
+  html .hud.cinematic-hud .app-ticker__items {
+    flex-wrap: wrap;
+    align-content: flex-start;
+    height: 13px;
+    row-gap: 20px;
+    padding-left: 0;
+    margin-left: 0;
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 }

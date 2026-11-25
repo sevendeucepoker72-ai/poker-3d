@@ -967,3 +967,11 @@ html.app-hero-fit.table-geometry .hud.cinematic-hud .hud-nameplate-me {
 }
 html.app-hero-fit .hud.cinematic-hud .hud-nameplate-me .hud-np-info { min-width: 0; }
 html.app-hero-fit .hud.cinematic-hud .hud-nameplate-me .hud-np-chips { white-space: normal; }
+/* (final polish, F8) a 360 px phone held upright and at least 700 px tall
+   (360x780, the common Android size) has room for both the board texture
+   badge and the hand-strength pill; live hides the badge at 360 or less
+   while the pill shows (TableLayout.css). The badge is still left out at
+   qualifiers (help tools off), and a 320x568 phone still hides it. */
+@media (max-width: 360px) and (orientation: portrait) and (min-height: 700px) {
+  html.table-geometry.app-h-hsp .hud.cinematic-hud .hud-community .board-texture-badge { display: flex !important; }
+}

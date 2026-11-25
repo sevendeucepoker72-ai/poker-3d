@@ -1,8 +1,55 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 
 const rootFile = (name) => fileURLToPath(new URL(name, import.meta.url))
+
+// APP Precision: the skin's art in public/cinematic/ keeps fixed names, and
+// the host serves .webp / .png as immutable for a year, so a changed picture
+// would never reach a phone that already has the old one. Every reference
+// gets ?v=<first 8 hex of the file's md5>: CSS url('/cinematic/...') is
+// rewritten here, JS goes through cinematicAsset() and
+// 'virtual:app-art-versions'. A switch-off build gets an empty map.
+const APP_ART = 'virtual:app-art-versions'
+function appArtVersions() {
+  const dir = rootFile('./public/cinematic')
+  const out = {}
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name)
+      if (e.isDirectory()) walk(p)
+      else out[relative(dir, p).split('\\').join('/')] = createHash('md5').update(readFileSync(p)).digest('hex').slice(0, 8)
+    }
+  }
+  try { walk(dir) } catch { /* no art folder */ }
+  return out
+}
+function appArtCacheBust() {
+  let on = false
+  let build = false
+  let versions = {}
+  return {
+    name: 'app-art-cache-bust',
+    enforce: 'pre',
+    configResolved(c) {
+      on = c.env.VITE_APP_CINEMATIC === '1'
+      build = c.command === 'build'
+      versions = appArtVersions()
+    },
+    resolveId(id) { return id === APP_ART ? `\0${APP_ART}` : null },
+    load(id) {
+      if (id !== `\0${APP_ART}`) return null
+      return `export default ${JSON.stringify(on || !build ? versions : {})}`
+    },
+    transform(code, id) {
+      if (!id.split('?')[0].endsWith('.css') || !code.includes('/cinematic/')) return null
+      return code.replace(/url\((['"]?)\/cinematic\/([^'")?#]+)\1\)/g, (m, q, p) => (versions[p] ? `url(${q}/cinematic/${p}?v=${versions[p]}${q})` : m))
+    },
+  }
+}
 
 // APP Precision (final repair 1): the table skin's CSS is linked only in a
 // switch-on build (VITE_APP_CINEMATIC=1). Components import
@@ -67,7 +114,7 @@ const APP_JS_STUBS = {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [appPrecisionStyles(), react()],
+  plugins: [appPrecisionStyles(), appArtCacheBust(), react()],
   base: '/',
   resolve: {
     dedupe: ['react', 'react-dom', 'zustand'],
