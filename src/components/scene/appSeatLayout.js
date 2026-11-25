@@ -246,3 +246,97 @@ export function appSeatSpot(g, rel, cap, heroSeated) {
     dY,
   };
 }
+
+// APP Precision package 4: a phone held sideways. The seats ring the wide
+// felt at fixed spots (the even-angle ellipse piled the side seats on top of
+// each other on so short a table): two along the top, two on each side,
+// one at each bottom corner beside the hero's row. The pods there are one
+// row (avatar beside the plate, AppPrecisionWide.css), about 105 x 56 px.
+export const APP_LAND_MQ = '(orientation: landscape) and (max-height: 500px)';
+// unit spots by `rel` (seats clockwise from the hero); null = the bottom
+// centre (the hero, or a spectator's seat 0), which keeps the ellipse.
+// 'b' = the bottom corners (as low as the scene allows), 'm' = the middle
+// side seats, halfway between the upper side seat and the bottom corner (the
+// three seats of a side are evenly spaced, one above the other)
+const LAND_UP = -0.62;
+// (repair: the two top seats at +-0.46, not 0.42 - a three-line top seat's
+// corner touched the felt's pot plate)
+const LAND_SPOTS = [null, [-0.8, 'b'], [-1, 'm'], [-0.98, LAND_UP], [-0.46, -1], [0.46, -1], [0.98, LAND_UP], [1, 'm'], [0.8, 'b']];
+
+// APP Precision package 4 repair: a scene too short for two seats over the
+// board (a 320 px tall phone, or a qualifier's extra header line: the top
+// seats covered the felt's pot plate and hid their bets behind the board)
+// seats everyone in two columns of four beside the felt instead, the top
+// row in the scene's top corners. Below this scene height the columns apply.
+export const APP_LAND_COLS_H = 228;
+// rows of a column by `rel`: 0 = the top corner ... 3 = the bottom corner
+const LAND_COLS = [null, [-1, 3], [-1, 2], [-1, 1], [-1, 0], [1, 0], [1, 1], [1, 2], [1, 3]];
+
+// W, H: the scene box (between the bars); felt: the felt box in scene px.
+// The top seats sit just under the top bar (their bets then clear the
+// felt's pot plate), the side seats on the rail's ends.
+export function appLandRing(W, H, felt) {
+  const hw = 52;   // half a pod's width
+  const hh = 28;   // half a pod's height (three lines: name, stack, last action)
+  const cx = felt.x + felt.w / 2;
+  const cy = felt.y + felt.h / 2;
+  if (H < APP_LAND_COLS_H) {
+    // the columns: a pod is 44 px tall here (its lines a little tighter,
+    // AppPrecisionWide.css), the rows spread from the scene's top to its
+    // foot; the columns stand beside the felt, far enough out for a bet
+    // between a seat and the board (the board is at most 0.6 of the felt's
+    // width), with room for the cards outside a seat's avatar
+    const ch = 22;
+    const rx = Math.max(60, Math.min(W / 2 - hw - 34, Math.max(felt.w * 0.65, felt.w * 0.3 + 122)));
+    const y0 = ch;
+    const pitch = Math.max(0, (H - 2 * ch) / 3);
+    return { W, H, cx, cy, rx, ry: 1, sb: 1, cols: true, y0, pitch };
+  }
+  const rx = Math.max(60, Math.min(felt.w / 2 + 40, W / 2 - hw - 4));
+  // (a very short scene, a 320 px tall phone: the top seats as high as a
+  // two-line seat allows, so the board fits under them; their last-action
+  // line steps aside while they have a bet or have folded)
+  const ht = H < 220 ? 22 : hh;
+  const ry = Math.max(30, Math.min(felt.h / 2 + 24, cy - ht - 2));
+  // the bottom corners: as low as the scene allows, never under the bar
+  const sb = clamp((H - 4 - hh - cy) / ry, 0.3, 1);
+  return { W, H, cx, cy, rx, ry, sb, cols: false };
+}
+
+// One seat's spot on that ring: left / top in % of the scene and its unit
+// position (ux, uy) for the side / height classes; null = use the ellipse.
+// crown = the seat's pod stands on the scene's top edge (its cards cannot
+// peek over it: the top bar covers them).
+// (repair 2) spectator: a watcher has no seat, so seat 0 (rel 0) takes the
+// bottom middle as a seat, as low as the scene allows (on the ellipse its
+// pod hung into the bar)
+const LAND_SPEC0 = [0, 'b'];
+const LAND_COLS_SPEC0 = [0, 3];
+export function appLandSpot(land, rel, spectator = false) {
+  if (!land) return null;
+  if (land.cols) {
+    const c = rel === 0 && spectator ? LAND_COLS_SPEC0 : LAND_COLS[rel];
+    if (!c) return null;
+    const row = c[1];
+    // (uy: the top row -0.85, so its bet goes beside it - under it is the
+    // next seat - and its class stays "top"; the middle rows "mid")
+    return {
+      left: ((land.cx + c[0] * land.rx) / land.W) * 100,
+      top: ((land.y0 + row * land.pitch) / land.H) * 100,
+      ux: c[0],
+      uy: [-0.85, -0.3, 0.3, 1][row],
+      crown: row === 0,
+    };
+  }
+  const s = rel === 0 && spectator ? LAND_SPEC0 : LAND_SPOTS[rel];
+  if (!s) return null;
+  const ux = s[0];
+  const uy = s[1] === 'b' ? land.sb : s[1] === 'm' ? (land.sb + LAND_UP) / 2 : s[1];
+  return {
+    left: ((land.cx + ux * land.rx) / land.W) * 100,
+    top: ((land.cy + uy * land.ry) / land.H) * 100,
+    ux,
+    uy,
+    crown: uy <= -1,
+  };
+}

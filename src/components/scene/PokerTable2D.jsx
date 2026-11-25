@@ -43,8 +43,10 @@ import './CinematicSkin.css';
 import './AppPrecision.css';
 // APP Precision package 2: the seats, open seats, pot, board and texture badge.
 import './AppPrecisionSeats.css';
+// APP Precision package 4: the room, ring seats and table on wide screens.
+import './AppPrecisionWide.css';
 import AppSeatAvatar from './AppSeatAvatar';
-import { APP_PORTRAIT_MQ, appSeatGeometry, appSeatSpot } from './appSeatLayout';
+import { APP_PORTRAIT_MQ, APP_LAND_MQ, appSeatGeometry, appSeatSpot, appLandRing, appLandSpot } from './appSeatLayout';
 import { measureAppSeats, sameAppMeas, placeAppFloaters, setAppLayoutPing, invalidateAppPlacement } from './appPlacement';
 
 /* ── Player-notes callback (App.jsx sets this) ─────────────── */
@@ -161,6 +163,15 @@ function appSpotFor(seatIndex, heroSeat, cap, geo) {
   const heroSeated = heroSeat >= 0 && heroSeat < cap;
   const rel = heroSeated ? (seatIndex - heroSeat + cap) % cap : seatIndex;
   return appSeatSpot(geo, rel, cap, heroSeated);
+}
+// APP Precision package 4: a phone held sideways (skin on): the seat's spot on
+// the landscape ring (seats clockwise from the hero, as SEAT_ANGLES rotates
+// them). null = the measured ellipse.
+function appLandSpotFor(seatIndex, heroSeat, land) {
+  if (!land) return null;
+  const rel = heroSeat >= 0 ? (seatIndex - heroSeat + SEAT_COUNT) % SEAT_COUNT : seatIndex;
+  // (repair 2: with no hero seated, seat 0 is a seat like the others)
+  return appLandSpot(land, rel, heroSeat < 0);
 }
 
 // APP Precision: a stack over 7 digits reads in millions on a seat plate (the
@@ -318,10 +329,14 @@ const SeatPod = memo(function SeatPod({
   bigBlind, heroEmoji, onSitHere, winStreak,
   isTournament, heroAlreadySeated, isPendingMoveTarget,
   onBetSlide, spectatorSits, betSide, backCount, beyondCap, handNumber,
-  hideStats, appSlot = null,
+  hideStats, appSlot = null, appRing = null,
 }) {
-  // APP Precision package 2: the portrait slot classes (skin on, phone upright)
-  const appCls = cinematicEnabled && appSlot ? ` seat-pod--app seat-pod--app-${appSlot.slot} seat-pod--app-${appSlot.side}` : '';
+  // APP Precision package 2: the portrait slot classes (skin on, phone upright);
+  // package 4: on the ring (wide screens) the seat's side and height ("l-top"),
+  // and "-crown" for a seat on the scene's top edge (a phone held sideways)
+  const appRingParts = appRing ? appRing.split('-') : null;
+  const appCls = cinematicEnabled && appSlot ? ` seat-pod--app seat-pod--app-${appSlot.slot} seat-pod--app-${appSlot.side}`
+    : cinematicEnabled && appRingParts ? ` seat-pod--ring seat-pod--ring-${appRingParts[0]} seat-pod--ring-${appRingParts[1]}${appRingParts[2] ? ' seat-pod--ring-crown' : ''}` : '';
   const turnStartedAt = useTimerStore(s => s.turnStartedAt);
   const turnTimeout   = useTimerStore(s => s.turnTimeout);
   const TIMER_TOTAL_S = turnTimeout / 1000;
@@ -917,14 +932,24 @@ export default function PokerTable2D() {
       // APP Precision package 2: the skin's portrait slots (phone held upright)
       // are laid out from these boxes (appGeo below)
       let appBox = null;
+      // APP Precision package 4: a phone held sideways rings the felt at
+      // fixed spots (appLandRing)
+      let appLand = null;
       if (cinematicEnabled) {
         let portrait = false;
-        try { portrait = !!window.matchMedia?.(APP_PORTRAIT_MQ).matches; } catch { /* no matchMedia */ }
+        let land = false;
+        try {
+          portrait = !!window.matchMedia?.(APP_PORTRAIT_MQ).matches;
+          land = !portrait && !!window.matchMedia?.(APP_LAND_MQ).matches;
+        } catch { /* no matchMedia */ }
+        const feltBox = { x: fr.left - sr.left, y: fr.top - sr.top, w: fr.width, h: fr.height };
         if (portrait) {
-          appBox = { W: sr.width, H: sr.height, felt: { x: fr.left - sr.left, y: fr.top - sr.top, w: fr.width, h: fr.height } };
+          appBox = { W: sr.width, H: sr.height, felt: feltBox };
+        } else if (land) {
+          appLand = appLandRing(sr.width, sr.height, feltBox);
         }
       }
-      setSeatEllipse({ xR, yR, cx, cy, appBox });
+      setSeatEllipse({ xR, yR, cx, cy, appBox, appLand });
       // R2 (TABLEUI-8/9) — GameHUD's useTableGeometry re-reads the felt rect
       // (the board, hero cards and pot label are placed from it).
       try { window.dispatchEvent(new Event(TABLE_GEOMETRY_EVENT)); } catch { /* ignore */ }
@@ -1050,12 +1075,14 @@ export default function PokerTable2D() {
     const heroAngle = ys >= 0 ? SEAT_ANGLES[ys] : Math.PI / 2;
     const angle = SEAT_ANGLES[seatIndex] + (Math.PI / 2 - heroAngle);
     // APP Precision: the same slot the seat map drew (portrait phones)
-    const spot = appSpotFor(seatIndex, ys, cap, geo);
+    // (package 4: or the landscape ring's spot, phones held sideways)
+    const pSpot = appSpotFor(seatIndex, ys, cap, geo);
+    const spot = pSpot || appLandSpotFor(seatIndex, ys, se.appLand);
     const seatLeft = spot ? spot.left : (se.cx + Math.cos(angle) * se.xR) * 100;
     const seatTop  = spot ? spot.top : (se.cy + Math.sin(angle) * se.yR) * 100;
     // Target = felt centre (se.cx/se.cy) — the same measured point seats orbit.
     // APP Precision: there the pot pile sits above the board (appGeo.potY).
-    const targetTop = spot ? (geo.potY / geo.H) * 100 : se.cy * 100;
+    const targetTop = pSpot ? (geo.potY / geo.H) * 100 : se.cy * 100;
     const dx = (se.cx * 100 - seatLeft) / 100 * sr.width;
     const dy = (targetTop - seatTop)  / 100 * sr.height;
     const id = flyerIdRef.current++;
@@ -1221,7 +1248,7 @@ export default function PokerTable2D() {
 
   return (
     <div
-      className={`table2d-scene${cinematicEnabled ? ' cinematic-table' : ''}${appGeo ? ` app-seat-layout${appGeo.short ? ' app-seat-short' : ''}` : ''}`}
+      className={`table2d-scene${cinematicEnabled ? ' cinematic-table' : ''}${appGeo ? ` app-seat-layout${appGeo.short ? ' app-seat-short' : ''}` : ''}${seatEllipse?.appLand?.cols ? ' app-land-cols' : ''}`}
       ref={sceneRef}
       style={appGeo ? {
         '--app-av': `${appGeo.av}px`,
@@ -1399,17 +1426,32 @@ export default function PokerTable2D() {
         // Use measured ellipse if available, otherwise fall back to % heuristic
         // (APP Precision, portrait phone: the skin's slot for this seat)
         const spot = appSpotFor(i, yourSeat, seatCap, appGeo);
-        const leftPct = spot ? spot.left : (seatEllipse
+        // APP Precision package 4: a phone held sideways (skin on): the
+        // landscape ring's spot (null = the ellipse, as before)
+        const land = spot ? null : appLandSpotFor(i, yourSeat, seatEllipse?.appLand);
+        const leftPct = spot ? spot.left : land ? land.left : (seatEllipse
           ? (seatEllipse.cx + x * seatEllipse.xR) * 100
           : 50 + x * 44);
-        const topPct = spot ? spot.top : (seatEllipse
+        const topPct = spot ? spot.top : land ? land.top : (seatEllipse
           ? (seatEllipse.cy + y * seatEllipse.yR) * 100
           : 50 + y * 28);
         // R2 (TABLEUI-9) — a SIDE seat's bet chips go toward the felt (left of a
         // right-hand seat, right of a left-hand one); stacked above it they
         // covered the nameplate of the seat above. (APP Precision slots place
-        // the bet under the plate themselves: --app-bet-x.)
-        const betSide = spot ? null : (Math.abs(y) <= 0.6 ? (x > 0 ? 'left' : 'right') : null);
+        // the bet under the plate themselves: --app-bet-x; the landscape ring
+        // puts every bet but the two top seats' beside the seat.)
+        // (repair 2: a spectator's bottom-middle seat 0 keeps its bet over it)
+        const betSide = spot ? null : land
+          ? (land.uy > -0.9 && land.ux !== 0 ? (land.ux > 0 ? 'left' : 'right') : null)
+          : (Math.abs(y) <= 0.6 ? (x > 0 ? 'left' : 'right') : null);
+        // APP Precision package 4: the ring seat's side (l / c / r) and height
+        // (top / mid / bot), so the skin tucks its cards, bet and dealer button
+        // toward the felt (wide screens; skin on only)
+        const rx = land ? land.ux : x;
+        const ry = land ? land.uy : y;
+        const appRing = cinematicEnabled && !spot
+          ? `${rx < -0.2 ? 'l' : rx > 0.2 ? 'r' : 'c'}-${ry < -0.5 ? 'top' : ry > 0.5 ? 'bot' : 'mid'}${land && land.crown ? '-crown' : ''}`
+          : null;
         const isTournamentTbl =
           gameState?.isTournament === true ||
           gameState?.tournamentId != null ||
@@ -1453,6 +1495,7 @@ export default function PokerTable2D() {
             isPendingMoveTarget={pendingSeat === i}
             onBetSlide={handleBetSlide}
             betSide={betSide}
+            appRing={appRing}
             backCount={backCount}
             beyondCap={i >= seatCap}
             handNumber={gameState?.handNumber ?? null}

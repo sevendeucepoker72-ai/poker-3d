@@ -1,0 +1,1485 @@
+/* ════════════════════════════════════════════════════════════════════════
+   APP Precision table skin (2026-11-24), package 4: phones held sideways,
+   tablets, laptops and desktops. The mockup is a phone held upright; these
+   rules bring the same look to the other screens. Acts ONLY under the
+   skin's classes (.cinematic-table on the scene, .cinematic-hud on the HUD),
+   which exist only in a VITE_APP_CINEMATIC=1 build. Every rule starts with
+   `html body` so it wins over packages 1-3 and the older layers whatever
+   order the lazy chunks load their CSS in.
+   Screens:
+     phone upright    (max-width: 600px) and (orientation: portrait)   pkgs 1-3
+     phone sideways   (orientation: landscape) and (max-height: 500px)
+     big              (min-width: 601px) and (min-height: 501px)
+   - the room: the wide lounge band (windows, skyline, mountains, chairs)
+     behind the table on any screen held sideways;
+   - the top bar on a screen held sideways: ONE row, the logo between the
+     strip's panels (pot, blinds | logo | SPR / level, street), the ticker
+     under it;
+   - big screens: the table lives between the bars (measured), the felt is
+     sized from the room left by the top seats and the hero; the hero
+     cluster and the two-row bar of a phone held upright (AppPrecisionHero.css
+     section 8), the bar a centred glass panel; Last Hand and the session
+     pill beside it;
+   - the ring seats (every screen but a phone held upright): avatar on the
+     rail, cards fanned beside it toward the felt, the bet toward the felt,
+     the dealer button on the outer side (PokerTable2D: seat-pod--ring-*).
+   Phones: no backdrop-filter, no filter, no animated shadows.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. The room on a screen held sideways: the lounge band ──────────────
+   lounge.webp (928x275) spans the screen; its foot (the chairs) sits behind
+   the rail's top half, the skyline and mountains above the table. When the
+   band is shorter than the room above the table it grows (cropped at the
+   sides). A soft fade turns its foot into the dark floor. A screen 1200 px
+   wide or more gets lounge-wide.webp (the same art at 1920x569, so a
+   desktop is not shown a 928 px picture stretched twice). */
+@media (orientation: landscape) {
+  html body .cinematic-table {
+    --app-lng-b: calc(var(--felt-t, 200px) + var(--felt-h, 240px) * 0.34);
+    --app-lng-h: max(29.64vw, calc(var(--app-lng-b) + 24px));
+    --app-lng-img: url('/cinematic/lounge.webp');
+  }
+  html body .cinematic-table .table2d-bg {
+    background:
+      url('/cinematic/room-glass.webp') left 0 bottom calc(var(--hud-bar-h, 120px) + 2px) / clamp(46px, 6vw, 96px) auto no-repeat,
+      url('/cinematic/room-chips.webp') right 0 bottom calc(var(--hud-bar-h, 120px) + 8px) / clamp(42px, 5.4vw, 88px) auto no-repeat,
+      linear-gradient(180deg, rgba(4, 10, 24, 0) 0%, rgba(4, 10, 24, 0.82) 70%, #040a18 100%) 0 calc(var(--app-lng-b) - var(--app-lng-h) * 0.34) / 100% calc(var(--app-lng-h) * 0.34 + 2px) no-repeat,
+      linear-gradient(180deg, rgba(2, 6, 15, 0.72) 0%, rgba(2, 6, 15, 0.38) 70%, rgba(2, 6, 15, 0) 100%) 0 0 / 100% calc(var(--hud-top-h, 100px) + 30px) no-repeat,
+      var(--app-lng-img) center calc(var(--app-lng-b) - var(--app-lng-h)) / auto var(--app-lng-h) no-repeat,
+      radial-gradient(ellipse 62% 42% at 50% 64%, rgba(8, 72, 180, 0.26), transparent 72%),
+      linear-gradient(180deg, #02060f 0%, #040a18 45%, #060e1e 72%, #02050c 100%) !important;
+  }
+}
+@media (orientation: landscape) and (min-width: 1200px) {
+  html body .cinematic-table { --app-lng-img: url('/cinematic/lounge-wide.webp'); }
+}
+
+/* ── 2. The top bar on a screen held sideways: one row ───────────────────
+   [menu] [TOTAL POT] [BLINDS] [ logo ] [SPR / LEVEL] [STREET] [chat], then
+   the extras line and the ticker, as wide as the row. The strip keeps its
+   five columns whatever shows (a third panel that comes and goes never
+   moves the street panel). */
+@media (orientation: landscape) {
+  html body .hud.cinematic-hud {
+    --app-strip-h: 40px;
+    --app-logo-h: 40px;
+    --app-strip-w: 640px;
+    --app-logo-row: max(44px, var(--app-logo-h));
+    --app-logo-gap: calc(var(--app-logo-h) * 1.727 + 12px);
+  }
+  html body .hud.cinematic-hud .hud-top.app-top {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    grid-template-rows: var(--app-logo-row) auto auto;
+    grid-template-areas: "menu strip chat" "info info info" "ticker ticker ticker";
+    padding-top: 0 !important;
+  }
+  html body .hud.cinematic-hud .app-top__logo {
+    grid-area: strip;
+    display: block;
+    justify-self: center;
+    align-self: center;
+    position: relative;
+    z-index: 1;
+    height: var(--app-logo-h);
+    max-width: none;
+    margin: 0;
+  }
+  html body .hud.cinematic-hud .app-top:has(.hud-training-badge) .app-top__logo { max-width: none; }
+  html body .hud.cinematic-hud .app-strip,
+  html body .hud.cinematic-hud .app-strip.app-strip--three,
+  html body .hud.cinematic-hud .app-strip.app-strip--level,
+  html body .hud.cinematic-hud .app-strip.app-strip--variant {
+    grid-area: strip;
+    justify-self: center;
+    align-self: center;
+    width: min(100%, var(--app-strip-w));
+    margin-top: 0;
+    padding: 0;
+    grid-template-columns: 1.1fr 1fr var(--app-logo-gap) 0.8fr 1.3fr;
+  }
+  html body .hud.cinematic-hud .app-strip__panel { grid-row: 1; }
+  html body .hud.cinematic-hud .app-strip__panel--pot { grid-column: 1; }
+  html body .hud.cinematic-hud .app-strip__panel--blinds { grid-column: 2; }
+  html body .hud.cinematic-hud .app-strip__panel--spr,
+  html body .hud.cinematic-hud .app-strip__panel--level { grid-column: 4; }
+  html body .hud.cinematic-hud .app-strip__panel--street { grid-column: 5; }
+  /* the Training dock: under the hamburger, clear of the strip */
+  html body .hud.cinematic-hud .app-top .hud-training-badge {
+    grid-area: info;
+    justify-self: start;
+    margin: 4px 0 0 !important;
+  }
+  html body .hud.cinematic-hud .app-info { max-width: min(100%, var(--app-strip-w)); }
+  html body .hud.cinematic-hud .app-ticker {
+    width: min(100%, var(--app-strip-w));
+    min-width: 0;
+    max-width: none;
+    margin-top: 4px;
+  }
+}
+/* big screens held sideways: a bigger logo and strip */
+@media (orientation: landscape) and (min-width: 601px) and (min-height: 501px) {
+  html body .hud.cinematic-hud {
+    --app-strip-h: 46px;
+    --app-logo-h: 62px;
+    --app-strip-w: 860px;
+    --app-ticker-h: 24px;
+  }
+  html body .hud.cinematic-hud .hud-top.app-top { padding-top: 4px !important; }
+  html body .hud.cinematic-hud .app-strip { gap: 6px; }
+  html body .hud.cinematic-hud .app-strip__label { font-size: 12px; line-height: 14px; }
+  html body .hud.cinematic-hud .app-strip__value { line-height: 24px; font-size: clamp(11px, calc((100cqi - var(--app-icon-w, 0px)) / (var(--app-chars, 6) * 0.6)), 22px); }
+  html body .hud.cinematic-hud .app-ticker { font-size: 12px; line-height: 14px; }
+}
+@media (orientation: landscape) and (min-width: 1500px) and (min-height: 860px) {
+  html body .hud.cinematic-hud { --app-strip-h: 52px; --app-logo-h: 74px; --app-strip-w: 960px; }
+}
+/* a big screen held upright (a tablet): the mockup's stacked bar, wider */
+@media (orientation: portrait) and (min-width: 601px) {
+  html body .hud.cinematic-hud { --app-strip-h: 46px; }
+  html body .hud.cinematic-hud .app-strip { width: min(100%, 680px); gap: 6px; }
+  html body .hud.cinematic-hud .app-ticker { width: min(100%, 680px); min-width: 0; max-width: none; }
+  html body .hud.cinematic-hud .app-info { max-width: min(100%, 680px); }
+}
+
+/* ── 3. Big screens: the table between the bars ─────────────────────────
+   The felt is sized from the room the top seats (--app-top-r above the
+   felt) and the hero (--app-hero-r under it: his plate and the lower part
+   of his cards, which stand on the rail) leave; at most 2.3 wide per 1 high,
+   rounder when there is height (a tablet upright), never wider than the
+   side seats allow. Its foot sits on the hero's row; spare height goes
+   mostly above it (the room's view). The seat ring is measured from it. */
+@media (min-width: 601px) and (min-height: 501px) {
+  html.table-geometry body .cinematic-table {
+    top: var(--hud-top-h, 110px) !important;
+    bottom: var(--hud-bar-h, 142px) !important;
+    height: auto !important;
+  }
+  html body .cinematic-table {
+    --app-top-r: 78px;
+    --app-hero-r: 112px;
+    --app-side-r: 104px;
+    --app-avail: calc(100dvh - var(--hud-top-h, 110px) - var(--hud-bar-h, 142px) - var(--app-top-r) - var(--app-hero-r));
+    --app-fw: max(240px, min(calc(100vw - 2 * var(--app-side-r)), calc(var(--app-avail) * 2.3), 1060px));
+    --app-fh: max(110px, clamp(calc(var(--app-fw) / 2.3), var(--app-avail), calc(var(--app-fw) / 1.3)));
+  }
+  html.table-geometry body .cinematic-table .table2d-felt {
+    width: var(--app-fw) !important;
+    height: var(--app-fh) !important;
+    min-width: 0 !important;
+    aspect-ratio: auto !important;
+    top: calc(100% - var(--app-hero-r) - var(--app-fh) / 2 - (var(--app-avail) - var(--app-fh)) * 0.35) !important;
+  }
+  /* the board's cards and centre, from the felt (scene and HUD alike) */
+  html body .cinematic-table,
+  html body .hud.cinematic-hud {
+    --app-card-w: clamp(40px, min(calc((var(--felt-w, 600px) * 0.62 - 24px) / 5), calc(var(--felt-h, 300px) * 0.2)), 76px);
+    --app-card-h: calc(var(--app-card-w) * 1.24);
+  }
+  html.table-geometry body .hud.cinematic-hud {
+    --board-card-w: var(--app-card-w);
+    --board-cy: calc(var(--felt-t, 230px) + var(--felt-h, 300px) * 0.52);
+  }
+  html.table-geometry body .hud.cinematic-hud .hud-community {
+    top: var(--board-cy) !important;
+    left: calc(var(--felt-l, 100px) + var(--felt-w, 600px) / 2) !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: translate(-50%, -50%) !important;
+    gap: 6px !important;
+  }
+  html.table-geometry body .hud.cinematic-hud .hud-community .community-card {
+    width: var(--app-card-w) !important;
+    height: var(--app-card-h) !important;
+    border-radius: 6px !important;
+  }
+  /* the pot: the chip pile and the gold plate just above the board */
+  html.table-geometry body .cinematic-table .table2d-felt .table2d-pot-area {
+    top: auto !important;
+    bottom: calc(var(--felt-h, 300px) * 0.48 + var(--app-card-h) / 2 + 6px) !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+  }
+  html body .cinematic-table .table2d-felt .table2d-pot-label strong { font-size: clamp(19px, calc(var(--felt-h, 300px) * 0.065), 26px); }
+  html body .cinematic-table .table2d-felt .table2d-pot-label { height: 32px; line-height: 32px; min-width: 132px; }
+  html body .cinematic-table .table2d-felt .table2d-pot-label::before { line-height: 32px; font-size: 13px; }
+  /* the hand-strength pill and the outs counter (help tools) on the felt
+     under the board's texture badge */
+  html.table-geometry body .hud.cinematic-hud .hand-strength-portal {
+    top: calc(var(--board-cy) + var(--app-card-h) / 2 + 33px) !important;
+    left: calc(var(--felt-l, 100px) + var(--felt-w, 600px) / 2) !important;
+    transform: translateX(-50%) !important;
+    max-width: calc(var(--felt-w, 600px) - 80px) !important;
+  }
+  html.table-geometry body .hud.cinematic-hud .hand-strength-portal.hand-strength-portal--plain {
+    top: calc(var(--board-cy) + var(--app-card-h) / 2 + 8px) !important;
+  }
+  /* (repair 2: 6 px lower, clear of the 33 px pill; 0.44 of the felt wide,
+     so it wraps between the lower side seats on a tablet held upright; held
+     sideways it moves to the ticker row, section 8 big screens) */
+  html.table-geometry body .hud.cinematic-hud .hand-strength-container {
+    top: calc(var(--board-cy) + var(--app-card-h) / 2 + 68px) !important;
+    left: calc(var(--felt-l, 100px) + var(--felt-w, 600px) / 2) !important;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: min(calc(var(--felt-w, 600px) * 0.44), 380px);
+  }
+  html.table-geometry body .hud.cinematic-hud .hand-strength-container .outs-display { max-width: none; }
+}
+
+/* ── 4. Big screens: the hero cluster and the bar's sizes ────────────────
+   (the rules are AppPrecisionHero.css section 8; the bar is a glass panel
+   --app-bar-w wide in the middle of the screen) */
+@media (min-width: 601px) and (min-height: 501px) {
+  html body .hud.cinematic-hud {
+    --app-hav: 76px;
+    --app-av-ring: 3px;
+    --app-hph: 58px;
+    --app-av-in: 12px;
+    --app-hcw: 52px;
+    --app-hch: 72px;
+    --app-hname: 20px;
+    --app-hstack: 16px;
+    --app-hero-gap: 8px;
+    --app-bar-w: min(calc(100vw - 16px), 760px);
+    --app-bar-pad: 10px;
+    --app-bet-h: 44px;
+    --app-row-gap: 8px;
+    --app-btn-h: 60px;
+    --app-bar-foot: calc(8px + env(safe-area-inset-bottom, 0px));
+    --app-verb: 19px;
+    --app-bar-side: max(8px, calc(50% - var(--app-bar-w) / 2));
+  }
+  /* the scene knows the hero's card size too: his dealer button, bet and
+     WINNER tag sit beside his cards (section 5) */
+  html body .cinematic-table { --app-hcw: 52px; --app-hch: 72px; --app-hph: 58px; --app-hero-gap: 8px; }
+  /* the panel in the middle (the bar element stays full width: it is the
+     measured bar) */
+  html body .hud.cinematic-hud .hud-bottom {
+    padding-left: calc(var(--app-bar-side) + var(--app-bar-pad)) !important;
+    padding-right: calc(var(--app-bar-side) + var(--app-bar-pad)) !important;
+  }
+  html body .hud.cinematic-hud .hud-bottom::before {
+    left: var(--app-bar-side);
+    right: var(--app-bar-side);
+  }
+  html body .hud.cinematic-hud .hud-bottom::after {
+    width: 260px;
+    height: 22px;
+  }
+  /* presets: the mockup's short labels on 52 px glass keys */
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-presets .ab-preset {
+    width: 52px !important;
+    max-width: 52px !important;
+  }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-val {
+    min-width: 76px !important;
+    height: 34px;
+    font-size: 17px !important;
+  }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .action-amount-sub {
+    font-size: clamp(11px, calc((100cqi - 4px) / 6), 15px) !important;
+    line-height: 17px !important;
+  }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn { gap: 3px !important; }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn .action-meta-row { line-height: 14px !important; }
+  /* the straddle offer: out of the bar's flow (it was a full-width row that
+     grew the bar and was pushed off the screen by the upright rule's top).
+     AppPrecisionHero.css section 8 puts it on the felt where the board will
+     be; without the measured table it sits above the bar's right end. */
+  html body .hud.cinematic-hud .hud-bottom .hud-actions-inner .action-btn.straddle {
+    position: fixed !important;
+    top: auto !important;
+    left: auto !important;
+    right: calc(var(--app-bar-side) + 8px) !important;
+    bottom: calc(var(--hud-bar-h, 142px) + 8px) !important;
+    flex: none !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    margin: 0 !important;
+    padding: 0 16px !important;
+    flex-direction: row !important;
+    gap: 8px !important;
+    white-space: nowrap;
+    z-index: 205 !important;
+  }
+  /* the hero cluster: the tab and the plate's words a size up */
+  html body .hud.cinematic-hud .hud-nameplate-me > .np-title { height: 20px; font-size: 12px !important; line-height: 20px !important; top: -14px !important; }
+  html.table-geometry body .hud.cinematic-hud .hud-bottom .hud-nameplate-me { min-width: 200px !important; }
+  html body .hud.cinematic-hud .app-hero__bb { font-size: 14px; line-height: 16px; }
+  /* Show / Muck, the rabbit, the hand review and the Sitting Out pill keep
+     to the panel (they were placed from the screen's edges) */
+  html.table-geometry body .hud.cinematic-hud .show-muck-prompt { max-width: calc(var(--app-bar-w) - 32px) !important; }
+  html.table-geometry body .hud.cinematic-hud .post-hand-analysis {
+    left: calc(var(--app-bar-side) + 16px) !important;
+    right: calc(var(--app-bar-side) + 16px) !important;
+  }
+  html.table-geometry body .hud.cinematic-hud:has(.rabbit-hunt-btn) .post-hand-analysis { right: calc(var(--app-bar-side) + 150px) !important; }
+  html.table-geometry body .hud.cinematic-hud:has(.show-muck-prompt) .rabbit-hunt-btn,
+  html.table-geometry body .hud.cinematic-hud:has(.post-hand-analysis) .rabbit-hunt-btn { right: calc(var(--app-bar-side) + 16px) !important; }
+  html.table-geometry body .hud.cinematic-hud:has(.rabbit-hunt-btn) .show-muck-prompt { left: calc(var(--app-bar-side) + 16px) !important; }
+  /* (repair 2) Show / Muck and the hand review at once (his fold ended the
+     hand): the review starts after the two keys (its header covered them) */
+  html.table-geometry body .hud.cinematic-hud:has(.post-hand-analysis) .show-muck-prompt {
+    left: calc(var(--app-bar-side) + 16px) !important;
+    transform: none !important;
+  }
+  html.table-geometry body .hud.cinematic-hud:has(.show-muck-prompt):has(.post-hand-analysis) .post-hand-analysis { left: calc(var(--app-bar-side) + 213px) !important; }
+  html.table-geometry body .hud.cinematic-hud .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
+    left: calc(var(--app-bar-side) + 16px) !important;
+  }
+  html.table-geometry body .hud.cinematic-hud:has(.hud-bottom--my-turn) .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
+    left: calc(var(--app-bar-side) + 8px) !important;
+  }
+  html.table-geometry body .hud.cinematic-hud:has(.sit-out-quick-btn--active):not(:has(.hud-bottom--my-turn)) .show-muck-prompt {
+    right: calc(var(--app-bar-side) + 16px) !important;
+  }
+  html.table-geometry body .hud.cinematic-hud:has(.sit-out-quick-btn--active):not(:has(.hud-bottom--my-turn)) .post-hand-analysis {
+    left: calc(var(--app-bar-side) + 150px) !important;
+  }
+  /* the session pill (its line is also in the menu) and Last Hand (also in
+     the menu): beside the panel's button row when the screen has room,
+     else above the bar's ends */
+  html.table-geometry body .hud.cinematic-hud .session-tracker {
+    left: calc(8px + env(safe-area-inset-left, 0px)) !important;
+    right: auto !important;
+    bottom: calc(var(--hud-bar-h, 142px) + 8px) !important;
+    z-index: 160 !important;
+    /* as wide as its words (the phone card rule made it a 360 px strip that
+       covered the hero and ran off the screen's left edge) */
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+  }
+  html.table-geometry body .hud.cinematic-hud .session-tracker-collapsed { max-width: calc(50vw - 150px); }
+  html.table-geometry body .hud.cinematic-hud .session-tracker-collapsed .session-profit {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  html.table-geometry body .hud.cinematic-hud .session-tracker-collapsed {
+    min-height: 44px;
+    box-sizing: border-box;
+    width: auto;
+    padding: 0 14px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(14, 34, 66, 0.96), rgba(3, 13, 31, 0.96));
+    border: 1px solid rgba(120, 190, 255, 0.45);
+    box-shadow: 0 0 8px rgba(0, 110, 255, 0.3), 0 4px 10px rgba(0, 0, 0, 0.55);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    font-family: var(--app-font);
+  }
+  /* the Pot Odds pill (cash tables only; GameHUD draws none at a qualifier):
+     navy glass and gold words, left of the felt's pot plate (it was a brown
+     pill half behind the board's first card) */
+  html.table-geometry body .table-pot-odds.app-pot-odds {
+    --app-po-cw: clamp(40px, min(calc((var(--felt-w, 600px) * 0.62 - 24px) / 5), calc(var(--felt-h, 300px) * 0.2)), 76px);
+    top: calc(var(--felt-t, 230px) + var(--felt-h, 300px) * 0.52 - var(--app-po-cw) * 0.62 - 22px);
+    left: calc(var(--felt-l, 100px) + var(--felt-w, 600px) / 2 - 108px);
+    transform: translate(-100%, -50%);
+    height: 28px;
+    box-sizing: border-box;
+    padding: 0 12px;
+    border-radius: 14px;
+    font: 700 12px/26px 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+    letter-spacing: 0.02em;
+  }
+  html.table-geometry body .hud.cinematic-hud .right-rail-btns {
+    left: auto !important;
+    right: calc(8px + env(safe-area-inset-right, 0px)) !important;
+    top: auto !important;
+    bottom: calc(var(--hud-bar-h, 142px) + 8px) !important;
+    width: auto !important;
+    z-index: 160 !important;
+  }
+  html body .hud.cinematic-hud .right-rail-btns .rail-btn {
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(14, 34, 66, 0.96), rgba(3, 13, 31, 0.96));
+    border: 1px solid rgba(120, 190, 255, 0.45);
+    box-shadow: 0 0 8px rgba(0, 110, 255, 0.3), 0 4px 10px rgba(0, 0, 0, 0.55);
+    color: #e6eef9;
+    font: 700 13px/1 var(--app-font);
+    /* (the phone rule's 0.68rem was 10.9 px) */
+    font-size: 13px !important;
+    padding: 0 14px !important;
+  }
+}
+@media (min-width: 1000px) and (min-height: 501px) {
+  html.table-geometry body .hud.cinematic-hud .session-tracker {
+    left: auto !important;
+    right: calc(50% + var(--app-bar-w) / 2 + 12px) !important;
+    bottom: calc(var(--app-bar-foot) + var(--app-bar-pad) + (var(--app-btn-h) - 44px) / 2) !important;
+  }
+  html.table-geometry body .hud.cinematic-hud .session-tracker-collapsed { max-width: calc(50vw - var(--app-bar-w) / 2 - 20px); }
+  /* opened, the stats panel grows up and to the left from beside the bar */
+  html.table-geometry body .hud.cinematic-hud .session-tracker:has(.session-tracker-panel) {
+    right: auto !important;
+    left: calc(8px + env(safe-area-inset-left, 0px)) !important;
+    bottom: calc(var(--hud-bar-h, 142px) + 8px) !important;
+  }
+  html.table-geometry body .hud.cinematic-hud .right-rail-btns {
+    right: auto !important;
+    left: calc(50% + var(--app-bar-w) / 2 + 12px) !important;
+    bottom: calc(var(--app-bar-foot) + var(--app-bar-pad) + (var(--app-btn-h) - 44px) / 2) !important;
+  }
+}
+/* (repair) the showdown panel's WIN / WINNER tag at 11 px (it was 10.4) */
+@media (orientation: landscape), (min-width: 601px) {
+  html body .hud.cinematic-hud .showdown-winner-badge { font-size: 11px; }
+}
+/* the Pot Odds pill's colours wherever it shows (no brown warning pill:
+   navy glass, gold words; a good price has a cyan edge) */
+html body .table-pot-odds.app-pot-odds {
+  background: linear-gradient(180deg, rgba(14, 34, 66, 0.96), rgba(3, 13, 31, 0.96));
+  border: 1px solid rgba(120, 190, 255, 0.45);
+  box-shadow: 0 0 8px rgba(0, 110, 255, 0.3), 0 3px 8px rgba(0, 0, 0, 0.55);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: #f2cf6b;
+  font-size: 12px;
+}
+html body .table-pot-odds.app-pot-odds.table-pot-odds--good { border-color: rgba(22, 252, 254, 0.65); }
+
+/* a desktop: everything a size up */
+@media (min-width: 1500px) and (min-height: 860px) {
+  html body .hud.cinematic-hud {
+    --app-hav: 88px;
+    --app-hph: 66px;
+    --app-av-in: 14px;
+    --app-hcw: 62px;
+    --app-hch: 86px;
+    --app-hname: 23px;
+    --app-hstack: 18px;
+    --app-hero-gap: 10px;
+    --app-bar-w: 860px;
+    --app-bar-pad: 12px;
+    --app-bet-h: 48px;
+    --app-btn-h: 68px;
+    --app-verb: 22px;
+  }
+  html body .cinematic-table {
+    --app-hero-r: 132px;
+    --app-top-r: 92px;
+    --app-side-r: 120px;
+    --app-hcw: 62px;
+    --app-hch: 86px;
+    --app-hph: 66px;
+    --app-hero-gap: 10px;
+  }
+  html body .cinematic-table,
+  html body .hud.cinematic-hud,
+  html.table-geometry body .table-pot-odds.app-pot-odds {
+    --app-card-w: clamp(40px, min(calc((var(--felt-w, 600px) * 0.62 - 24px) / 5), calc(var(--felt-h, 300px) * 0.2)), 92px);
+  }
+  html.table-geometry body .table-pot-odds.app-pot-odds {
+    --app-po-cw: var(--app-card-w);
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 30px;
+    left: calc(var(--felt-l, 100px) + var(--felt-w, 600px) / 2 - 124px);
+  }
+}
+
+/* ── 5. Ring seats (every screen but a phone held upright) ───────────────
+   seat-pod--ring-l / -r / -c: the seat's side of the table; -top / -mid /
+   -bot: its height. The avatar sits on the rail; the cards fan beside it
+   toward the felt, the bet goes toward the felt, the dealer button out. */
+html body .cinematic-table .seat-pod.seat-pod--ring {
+  --app-dir: 1;
+  --app-av: calc(50px * var(--sp, 1));
+}
+html body .cinematic-table .seat-pod.seat-pod--ring-r { --app-dir: -1; }
+@media (min-width: 601px) and (min-height: 501px) {
+  html body .cinematic-table .seat-pod.seat-pod--ring { --app-av: clamp(42px, calc(var(--felt-h, 300px) * 0.14), 60px); }
+}
+html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) .seat-pod__avatar-wrap,
+html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) .seat-pod__avatar-wrap > .seat-pod__avatar {
+  width: var(--app-av) !important;
+  height: var(--app-av) !important;
+}
+html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--empty .seat-pod__avatar-wrap,
+html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--empty .seat-pod__avatar-wrap > .seat-pod__avatar {
+  width: calc(var(--app-av) * 0.86) !important;
+  height: calc(var(--app-av) * 0.86) !important;
+}
+html body .cinematic-table .seat-pod.seat-pod--ring .app-seat-mono { font-size: calc(var(--app-av) * 0.48); }
+/* (repair) an open seat: the OPEN pill just under the glass circle (it
+   covered the circle's lower third) and the "+" on the circle's right side,
+   clear of the pill (it sat on the N), as in the mockup */
+html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--empty .seat-pod__label { margin-top: -3px; }
+html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--empty .seat-pod__sit-btn { margin-top: -14px; }
+html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--app-can-sit .seat-pod__avatar-wrap::after {
+  bottom: 7px;
+  right: -11px;
+}
+/* cards: two small backs fanned beside the avatar, on its felt side */
+html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__cards,
+html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--hovered .seat-pod__cards {
+  top: calc(4px + var(--app-av) * 0.5) !important;
+  left: calc(50% + var(--app-dir) * var(--app-av) * 0.62) !important;
+  transform: translate(-50%, -62%) !important;
+  z-index: 0 !important;
+  gap: 0 !important;
+  filter: none !important;
+}
+html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__cards .card2d--small {
+  width: calc(var(--app-av) * 0.5);
+  height: calc(var(--app-av) * 0.7);
+  border-radius: 3px;
+}
+html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__cards:not(.seat-pod__cards--many) .card2d--small:first-child { transform: rotate(-10deg) translateX(4px); }
+html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__cards:not(.seat-pod__cards--many) .card2d--small:last-child { transform: rotate(9deg) translateX(-4px) translateY(1px); }
+/* a hand shown at showdown: a little bigger, over the avatar's middle */
+html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__cards .card2d--small:not(.card2d--back) {
+  width: calc(var(--app-av) * 0.58);
+  height: calc(var(--app-av) * 0.8);
+}
+html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__cards:not(.seat-pod__cards--stud):not(.seat-pod__cards--many):has(> .card2d:not(.card2d--back)) {
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  z-index: 3 !important;
+}
+html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__cards:not(.seat-pod__cards--stud):not(.seat-pod__cards--many) > .card2d:not(.card2d--back) + .card2d:not(.card2d--back) {
+  margin-left: calc(var(--app-av) * -0.14);
+}
+/* the dealer button on the outer side of the avatar */
+html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) > .dealer-btn {
+  top: calc(4px + var(--app-av) * 0.18) !important;
+  left: calc(50% - var(--app-dir) * (var(--app-av) / 2 + 9px)) !important;
+  right: auto !important;
+  transform: translate(-50%, -50%);
+}
+/* the bet: a top seat's under its plate (toward the pot), a lower seat's
+   above its avatar, toward the middle; the side seats' beside them (as the
+   old table placed them) */
+html body .cinematic-table .seat-pod.seat-pod--ring-top > .chip-stack:not(.chip-stack--in-left):not(.chip-stack--in-right) {
+  top: calc(100% + 2px) !important;
+  bottom: auto !important;
+  left: calc(50% + var(--app-dir) * 18px) !important;
+  transform: translateX(-50%) !important;
+  animation: app-bet-in 0.3s ease-out both !important;
+}
+html body .cinematic-table .seat-pod.seat-pod--ring-bot:not(.seat-pod--hero) > .chip-stack:not(.chip-stack--in-left):not(.chip-stack--in-right) {
+  left: calc(50% + var(--app-dir) * (var(--app-av) / 2 + 30px)) !important;
+  bottom: auto !important;
+  top: 4px !important;
+  transform: translateX(-50%) !important;
+  animation: app-bet-in 0.3s ease-out both !important;
+}
+html body .cinematic-table .seat-pod.seat-pod--ring > .chip-stack.chip-stack--in-left,
+html body .cinematic-table .seat-pod.seat-pod--ring > .chip-stack.chip-stack--in-right {
+  top: calc(4px + var(--app-av) * 0.5) !important;
+  animation: app-bet-in 0.3s ease-out both !important;
+}
+/* WINNER: a gold-edged glass tag; a top seat's under its plate */
+html body .cinematic-table .seat-pod.seat-pod--ring > .seat-pod__winner-label {
+  z-index: 25;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 6px;
+  width: max-content;
+  max-width: 160px;
+  padding: 1px 8px 2px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(14, 34, 66, 0.96), rgba(3, 13, 31, 0.96));
+  border: 1px solid rgba(255, 210, 74, 0.75);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+html body .cinematic-table .seat-pod.seat-pod--ring > .seat-pod__winner-label > .seat-pod__winner-hand { order: 2; flex: 0 0 100%; text-align: center; }
+html body .cinematic-table .seat-pod.seat-pod--ring > .seat-pod__winner-label :is(.seat-pod__winner-text, .seat-pod__winner-hand, .seat-pod__winner-amount) {
+  font-size: 11px;
+  line-height: 14px;
+}
+html body .cinematic-table .seat-pod.seat-pod--ring-top > .seat-pod__winner-label { top: calc(100% + 2px); }
+html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--ring-top) > .seat-pod__winner-label { top: auto; bottom: calc(100% + 2px); }
+/* the hero's own seat (GameHUD draws him): no box; its point is the middle
+   of his hole cards (big screens and phones held sideways below), so his
+   dealer button sits right of his cards, his bet left of them and his WINNER
+   tag over them at any card size (--app-hcw / --app-hch) */
+html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--hero {
+  --app-hcw: 52px;
+  --app-hch: 72px;
+  width: 0;
+  height: 0;
+  padding: 0 !important;
+  pointer-events: none;
+  cursor: default;
+}
+@media (min-width: 601px) and (min-height: 501px) {
+  html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--hero {
+    --app-hcw: inherit;
+    --app-hch: inherit;
+    left: 50% !important;
+    top: auto !important;
+    bottom: calc(var(--app-hero-gap, 8px) + var(--app-hph, 58px) + var(--app-hch) * 0.5) !important;
+  }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  /* (the cards: 44 x 62, their foot 6 px over the one-line plate, section 7) */
+  html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--hero {
+    --app-hcw: 44px;
+    --app-hch: 62px;
+    left: 50% !important;
+    top: auto !important;
+    bottom: calc(10px + var(--hero-plate-h, 25px) + 31px) !important;
+  }
+}
+html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--hero .seat-pod__avatar-wrap { width: 0 !important; height: 0 !important; overflow: hidden; }
+html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--hero > .dealer-btn {
+  top: 0 !important;
+  left: calc(var(--app-hcw) * 1.12 + 16px) !important;
+  right: auto !important;
+  transform: translate(-50%, -50%) !important;
+}
+html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--hero > .chip-stack {
+  left: calc(var(--app-hcw) * -1.12 - 40px) !important;
+  top: 0 !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%) !important;
+  animation: app-bet-in 0.3s ease-out both !important;
+}
+html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--hero > .seat-pod__winner-label {
+  top: auto;
+  bottom: calc(var(--app-hch) * 0.5 + 6px);
+}
+html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--hero > .seat-pod__action-bubble {
+  top: calc(var(--app-hch) * -0.5);
+  left: calc(var(--app-hcw) * 1.12 + 44px);
+}
+/* the floating action word: never under 11 px */
+html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { font-size: 11px; }
+
+/* plates a size up on big screens (the words were set for a phone) */
+@media (min-width: 1200px) and (min-height: 700px) {
+  html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__name { font-size: 13px !important; line-height: 16px !important; }
+  html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__chips { font-size: 12px !important; line-height: 15px !important; }
+  html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__nameplate { padding: 3px 7px 4px !important; }
+}
+/* a desktop: the seats a size up again (they read small beside the big felt) */
+@media (min-width: 1500px) and (min-height: 860px) {
+  html body .cinematic-table .seat-pod.seat-pod--ring { --app-av: clamp(42px, calc(var(--felt-h, 300px) * 0.14), 68px); }
+  html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__name { font-size: 15px !important; line-height: 18px !important; }
+  html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__chips { font-size: 14px !important; line-height: 17px !important; }
+  html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__pos,
+  html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-pill { font-size: 12px !important; line-height: 15px !important; }
+  html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__nameplate { padding: 4px 9px 5px !important; max-width: 170px !important; }
+  html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__name-row,
+  html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__nameplate .np-title { max-width: 150px !important; }
+}
+
+/* ── 6. A phone held sideways: the one-row bar in the mockup's order ─────
+   [amount] [slider] [1/2] [2/3] [POT] [3x] | FOLD | CALL | RAISE | ALL-IN */
+@media (orientation: landscape) and (max-height: 500px) {
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-group { display: contents !important; }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-slider-wrap { order: 0 !important; }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-presets { order: 1 !important; }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.fold { order: 2 !important; }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-call-group,
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-aof-note,
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat > .action-btn.check { order: 3 !important; }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat > .action-btn.raise,
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-group .action-btn.raise { order: 4 !important; }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.allin { order: 5 !important; }
+  /* the gold amount pill beside the slider where the row has room */
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-slider-wrap {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-slider { flex: 1 1 auto !important; min-width: 40px !important; }
+  /* FOLD as wide as ALL-IN, so its two-tap hint ("Tap again") stays on one
+     line (it wrapped in the 58 px button and its second line was cut); the
+     longer free-check hint wraps under a smaller verb, inside the button */
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.fold {
+    flex: 0 0 66px !important;
+    max-width: 66px !important;
+  }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.fold .fold-confirm-hint { white-space: nowrap; letter-spacing: 0 !important; }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.fold.fold-pending .fold-confirm-hint {
+    white-space: normal;
+    line-height: 12px !important;
+  }
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.fold.fold-pending .action-verb { font-size: 14px !important; line-height: 15px !important; }
+  /* the hand review (Hand Analysis) after a hand: it covered the whole bar
+     and Deal now with it. Now a glass sheet on the bar's left part; Deal now
+     keeps the bar's right end ("Starting next hand" sits under the sheet) */
+  html.table-geometry body .hud.cinematic-hud .post-hand-analysis {
+    top: auto !important;
+    bottom: calc(6px + env(safe-area-inset-bottom, 0px)) !important;
+    left: calc(8px + env(safe-area-inset-left, 0px)) !important;
+    right: calc(112px + env(safe-area-inset-right, 0px)) !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: calc(100dvh - var(--hud-top-h, 80px) - 12px) !important;
+    padding-bottom: 0 !important;
+    border-radius: 10px !important;
+    border: 1px solid rgba(120, 190, 255, 0.5) !important;
+    background: linear-gradient(180deg, rgba(14, 34, 66, 0.98), rgba(3, 13, 31, 0.98)) !important;
+    box-shadow: inset 0 1px 0 rgba(234, 253, 254, 0.25), 0 0 10px rgba(0, 110, 255, 0.3), 0 6px 16px rgba(0, 0, 0, 0.6) !important;
+  }
+  html.table-geometry body .hud.cinematic-hud .post-hand-analysis .pha-header { min-height: 44px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
+  html.table-geometry body .hud.cinematic-hud .post-hand-analysis .pha-header span[style*="0.68rem"] { font-size: 12px !important; }
+  html body .hud.cinematic-hud:has(.post-hand-analysis) .hud-bottom .app-wait-row { justify-content: flex-end !important; }
+}
+/* (repair: from 640 px wide, not 740: the 667 px phones had no amount pill;
+   the slider keeps about 80 px there) */
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 640px) {
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-val {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    min-width: 50px !important;
+    height: 30px;
+    padding: 0 7px !important;
+    border-radius: 8px;
+    font-size: 13px !important;
+    line-height: 1 !important;
+  }
+}
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 740px) {
+  html body .hud.cinematic-hud .hud-bottom .action-bar-flat .raise-inline-val {
+    min-width: 54px !important;
+    padding: 0 8px !important;
+    font-size: 14px !important;
+  }
+}
+
+/* ── 7. A phone held sideways: the wide felt and one-row seats ──────────
+   The felt takes the height the bars leave (less room for the top seats and
+   the hero's row), up to 2.8 wide per 1 high; PokerTable2D rings it with
+   fixed spots (appSeatLayout.appLandRing: two on top, two each side, one at
+   each bottom corner). A seat is ONE row, its avatar on the outer side of
+   its plate, so two seats one above the other fit on so short a screen. */
+@media (orientation: landscape) and (max-height: 500px) {
+  html.table-geometry body .cinematic-table .table2d-felt {
+    --app-lfh: clamp(90px, calc(100dvh - var(--hud-top-h, 70px) - var(--hud-bar-h, 56px) - 84px), 220px);
+    height: var(--app-lfh) !important;
+    width: max(150px, min(calc(100vw - 230px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)), calc(var(--app-lfh) * 2.8), 760px)) !important;
+    min-width: 0 !important;
+    aspect-ratio: auto !important;
+  }
+  /* the board a little above the felt's middle, never down to the hero's
+     cards (they stand on the rail under it: their top is the bar, the plate
+     and 72 px up); its cards at most 0.3 of the felt's height (scene and
+     HUD alike: the felt's pot plate sits on the board's top edge) */
+  html body .cinematic-table,
+  html.table-geometry body .hud.cinematic-hud {
+    --app-lcw: max(22px, min(40px, calc((var(--felt-w, 320px) * 0.6 - 16px) / 5), calc(var(--felt-h, 150px) * 0.3)));
+    --app-lbcy: min(calc(var(--felt-t, 120px) + var(--felt-h, 150px) * 0.45), calc(100dvh - var(--hud-bar-h, 56px) - var(--hero-plate-h, 25px) - 76px - var(--app-lcw) * 0.7));
+  }
+  html.table-geometry body .hud.cinematic-hud { --board-card-w: var(--app-lcw); --board-cy: var(--app-lbcy); }
+  /* the Pot Odds pill (a phone wider than 900 px shows it): left of the
+     felt's pot plate, as on big screens */
+  html.table-geometry body .table-pot-odds.app-pot-odds {
+    --app-lcw: max(22px, min(40px, calc((var(--felt-w, 320px) * 0.6 - 16px) / 5), calc(var(--felt-h, 150px) * 0.3)));
+    --app-lbcy: min(calc(var(--felt-t, 120px) + var(--felt-h, 150px) * 0.45), calc(100dvh - var(--hud-bar-h, 56px) - var(--hero-plate-h, 25px) - 76px - var(--app-lcw) * 0.7));
+    top: calc(var(--app-lbcy) - var(--app-lcw) * 0.7 - 14px);
+    left: calc(var(--felt-l, 100px) + var(--felt-w, 320px) / 2 - 72px);
+    transform: translate(-100%, -50%);
+    height: 22px;
+    box-sizing: border-box;
+    padding: 0 10px;
+    border-radius: 11px;
+    font: 700 12px/20px 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+  }
+  /* the hero's cards: 44 px wide (a full touch target; they were 40), with
+     the mockup's big rank and suit (sizes before the 0.4 scale) */
+  html.table-geometry body .hud.cinematic-hud .hud-cards.hud-cards-floating { transform: translateX(-50%) scale(0.4) !important; }
+  html body .hud.cinematic-hud .hud-cards.hud-cards-floating .card-peek-front {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0;
+    padding: 0 0 6px !important;
+  }
+  html body .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) .card-peek-front .card-rank { font-size: 66px !important; line-height: 0.9 !important; }
+  html body .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) .card-peek-front .card-suit { font-size: 64px !important; line-height: 0.9 !important; }
+  /* the felt's pot plate: a compact gold plate just above the board (the
+     top seats' bets hang on each side of it) */
+  html.table-geometry body .cinematic-table .table2d-felt .table2d-pot-area {
+    top: auto !important;
+    bottom: calc(var(--felt-t, 120px) + var(--felt-h, 150px) - var(--app-lbcy) + var(--app-lcw) * 0.7 + 3px) !important;
+  }
+  html body .cinematic-table .table2d-felt .table2d-pot-label { height: 22px; line-height: 22px; min-width: 0; gap: 6px; padding: 0 10px !important; }
+  html body .cinematic-table .table2d-felt .table2d-pot-label::before { line-height: 22px; font-size: 11px; }
+  html body .cinematic-table .table2d-felt .table2d-pot-label strong { font-size: 15px; line-height: 22px; }
+
+  /* the seat: [avatar][plate] (left side and top-left), [plate][avatar]
+     (right side and top-right); --app-avx = the avatar's middle */
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero):not(.seat-pod--empty) {
+    --app-av: 32px;
+    --app-avx: calc(2px + var(--app-av) / 2);
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+    padding: 2px !important;
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+  html body .cinematic-table .seat-pod.seat-pod--ring-r:not(.seat-pod--hero):not(.seat-pod--empty) {
+    --app-avx: calc(100% - 2px - var(--app-av) / 2);
+    flex-direction: row-reverse;
+  }
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero):not(.seat-pod--empty) > .seat-pod__avatar-wrap {
+    flex: none;
+    z-index: 3;
+  }
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero):not(.seat-pod--empty) > .seat-pod__nameplate {
+    margin: 0 0 0 -8px;
+    padding: 2px 6px 3px 12px !important;
+    align-items: flex-start;
+  }
+  html body .cinematic-table .seat-pod.seat-pod--ring-r:not(.seat-pod--hero):not(.seat-pod--empty) > .seat-pod__nameplate {
+    margin: 0 -8px 0 0;
+    padding: 2px 12px 3px 6px !important;
+    align-items: flex-end;
+  }
+  /* cards: two small backs peeking over the avatar, toward the plate (repair:
+     a little further in, clear of the dealer button on the outer edge) */
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) .seat-pod__cards,
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero).seat-pod--hovered .seat-pod__cards {
+    top: 2px !important;
+    left: calc(var(--app-avx) + var(--app-dir) * var(--app-av) * 0.36) !important;
+    transform: translate(-50%, -70%) !important;
+  }
+  /* a hand shown at showdown: over the avatar */
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) .seat-pod__cards:not(.seat-pod__cards--stud):not(.seat-pod__cards--many):has(> .card2d:not(.card2d--back)) {
+    top: calc(2px + var(--app-av) / 2) !important;
+    left: var(--app-avx) !important;
+    transform: translate(-50%, -50%) !important;
+  }
+  /* the dealer button on the avatar's outer top edge (inside the screen) */
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) > .dealer-btn {
+    top: 4px !important;
+    left: calc(var(--app-avx) - var(--app-dir) * (var(--app-av) / 2 - 2px)) !important;
+  }
+  /* the floating action word over the avatar */
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) .seat-pod__action-bubble {
+    top: calc(2px + var(--app-av) / 2 - 10px);
+    left: var(--app-avx);
+  }
+  /* the two top seats: the bet under the middle of the seat (the felt's
+     pot plate is between them) */
+  html body .cinematic-table .seat-pod.seat-pod--ring-top:not(.seat-pod--hero) > .chip-stack:not(.chip-stack--in-left):not(.chip-stack--in-right) {
+    left: 50% !important;
+  }
+  /* the side seats' bets beside the plate, at the avatar's height */
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) > .chip-stack.chip-stack--in-left,
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) > .chip-stack.chip-stack--in-right {
+    top: 50% !important;
+  }
+  /* the hero's bet close to his cards (the bottom-left seat's bet is level
+     with it further out) */
+  html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--hero > .chip-stack {
+    left: calc(var(--app-hcw) * -1.12 - 28px) !important;
+    /* (repair: above his cards' middle and clear of them, clear of the
+       bottom-left seat's bet at its top edge - the blinds' bets touched) */
+    top: -21px !important;
+  }
+  /* (repair) his floating action word right of his cards, past the dealer
+     button and under the board (it ran onto the board's last card) */
+  html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--hero > .seat-pod__action-bubble {
+    top: calc(var(--app-hch) * -0.5 + 16px);
+    left: calc(var(--app-hcw) * 1.12 + 62px);
+  }
+  /* (repair) a top seat's bet right under its plate (2 px higher: it
+     touched the board's top edge) */
+  html body .cinematic-table .seat-pod.seat-pod--ring-crown:not(.seat-pod--hero) > .chip-stack:not(.chip-stack--in-left):not(.chip-stack--in-right) {
+    top: calc(100% - 2px) !important;
+  }
+  /* (an upper side seat's bet at its foot: level with it, it ran into the
+     top seat's bet) */
+  html body .cinematic-table .seat-pod.seat-pod--ring-top:not(.seat-pod--hero) > .chip-stack.chip-stack--in-left,
+  html body .cinematic-table .seat-pod.seat-pod--ring-top:not(.seat-pod--hero) > .chip-stack.chip-stack--in-right {
+    top: calc(100% - 4px) !important;
+  }
+  /* (a short phone, 340 px tall or less: as on a short phone held upright,
+     the plate's last-action line steps aside while the seat's bet shows or
+     it has folded, so three seats fit one above the other) */
+  @media (max-height: 340px) {
+    html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero):has(> .chip-stack) .seat-pod__action-pill,
+    html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--folded:not(.seat-pod--hero) .seat-pod__action-pill { display: none; }
+    /* (and the board's cards a quarter of the felt's height, so the board
+       fits between the top seats and the hero's cards) */
+    html body .cinematic-table,
+    html.table-geometry body .hud.cinematic-hud,
+    html.table-geometry body .table-pot-odds.app-pot-odds {
+      --app-lcw: max(22px, min(40px, calc((var(--felt-w, 320px) * 0.6 - 16px) / 5), calc(var(--felt-h, 110px) * 0.25)));
+    }
+  }
+  /* (a bottom corner seat's bet at its top edge: level with it, it ran into
+     the hero's plate) */
+  html body .cinematic-table .seat-pod.seat-pod--ring-bot:not(.seat-pod--hero) > .chip-stack.chip-stack--in-left,
+  html body .cinematic-table .seat-pod.seat-pod--ring-bot:not(.seat-pod--hero) > .chip-stack.chip-stack--in-right {
+    top: 0 !important;
+  }
+
+  /* (repair) a seat on the scene's top edge (seat-pod--ring-crown) and every
+     seat of the two columns (app-land-cols): its two backs beside the
+     avatar's outer side (peeking over the pod they were under the top bar's
+     ticker, or under the seat above), the dealer button under them */
+  html body .cinematic-table .seat-pod.seat-pod--ring-crown:not(.seat-pod--hero) .seat-pod__cards,
+  html body .cinematic-table .seat-pod.seat-pod--ring-crown:not(.seat-pod--hero).seat-pod--hovered .seat-pod__cards,
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring:not(.seat-pod--hero) .seat-pod__cards,
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring:not(.seat-pod--hero).seat-pod--hovered .seat-pod__cards {
+    top: calc(2px + var(--app-av) * 0.34) !important;
+    left: calc(var(--app-avx) - var(--app-dir) * var(--app-av) * 0.8) !important;
+    transform: translate(-50%, -50%) !important;
+  }
+  html body .cinematic-table .seat-pod.seat-pod--ring-crown:not(.seat-pod--hero) > .dealer-btn,
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring:not(.seat-pod--hero) > .dealer-btn {
+    top: calc(2px + var(--app-av) * 0.86) !important;
+    left: calc(var(--app-avx) - var(--app-dir) * (var(--app-av) / 2 + 4px)) !important;
+  }
+  /* (the hand's name pill, top left under the top bar, sat on the top
+     seats: repair 2 puts it in the top bar's ticker row, section 8) */
+  /* (repair) a top seat keeps two lines while its bet shows or it has
+     folded (the bet and the dimmed plate say it; the ticker names the
+     action), so its bet hangs beside the felt's pot plate, over the board
+     (a three-line top seat's bet sat behind the board's last card) */
+  html body .cinematic-table .seat-pod.seat-pod--ring-crown:not(.seat-pod--hero):has(> .chip-stack) .seat-pod__action-pill,
+  html body .cinematic-table .seat-pod.seat-pod--ring-crown.seat-pod--folded:not(.seat-pod--hero) .seat-pod__action-pill { display: none; }
+  /* (repair) the floating action word on the avatar's lower half, fading
+     where it appears (rising, it ran over the dealer button and the cards) */
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) .seat-pod__action-bubble {
+    top: calc(2px + var(--app-av) * 0.72 - 10px);
+    animation: bubble-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards, app-bubble-fade 1.8s ease-out 0.3s forwards;
+  }
+  /* (repair) an open seat's glass circle a size up (it was 25 px, its pill
+     half over it) */
+  html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--empty { --app-av: 34px; }
+
+  /* (repair) the two columns of a very short scene (app-land-cols,
+     appSeatLayout.appLandRing): a seat's lines a little tighter, so a seat
+     with three lines still fits its row */
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring:not(.seat-pod--hero):not(.seat-pod--empty) {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring .seat-pod__name { line-height: 13px !important; }
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring .seat-pod__chips { line-height: 13px !important; }
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring .seat-pod__action-pill { margin-top: 0; line-height: 12px !important; }
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring:not(.seat-pod--hero):not(.seat-pod--empty) > .seat-pod__nameplate {
+    padding-top: 0 !important;
+    padding-bottom: 1px !important;
+  }
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring.seat-pod--empty {
+    --app-av: 28px;
+    padding-top: 2px !important;
+    padding-bottom: 2px !important;
+  }
+  /* (WINNER beside the seat, toward the felt: over it, it covered the seat
+     above) */
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring:not(.seat-pod--hero) > .seat-pod__winner-label {
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+    max-width: 124px;
+  }
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring-l:not(.seat-pod--hero) > .seat-pod__winner-label { left: calc(100% + 4px); right: auto; }
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring-r:not(.seat-pod--hero) > .seat-pod__winner-label { left: auto; right: calc(100% + 4px); }
+}
+@keyframes app-bubble-fade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+
+/* (repair) a phone held sideways with the extras line (a qualifier's ante,
+   next level and standings; side pots): the line and the ticker share one
+   row, so the table keeps a cash table's height (the extra line cost 19 px:
+   the top seats then covered the felt's pot plate) */
+@media (orientation: landscape) and (max-height: 500px) {
+  html body .hud.cinematic-hud .hud-top.app-top:has(> .app-info):not(:has(> .hud-training-badge)) {
+    grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr) 44px;
+    grid-template-areas: "menu strip strip chat" "info info ticker ticker";
+  }
+  html body .hud.cinematic-hud .app-top:has(> .app-info):not(:has(> .hud-training-badge)) > .app-info {
+    justify-self: end;
+    max-width: 100%;
+    margin-top: 3px;
+  }
+  html body .hud.cinematic-hud .app-top:has(> .app-info):not(:has(> .hud-training-badge)) > .app-ticker {
+    justify-self: stretch;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    margin-top: 3px;
+  }
+  /* (the average stack steps aside, as on a narrow phone) */
+  html body .hud.cinematic-hud .app-top:has(> .app-info):not(:has(> .hud-training-badge)) .app-info__item--avg { display: none; }
+}
+
+/* ── 8. (repair 2) A phone held sideways: the loose controls ─────────────
+   On so short a screen the ring's corners and its top edge are all seats,
+   so nothing floats over them any more:
+   - the hand-strength pill takes the ticker row's left end and a bomb
+     pot's notice its right end (the ticker's line keeps the middle);
+   - the away / sitting-out notices take the top bar's first row, between
+     the menu and chat buttons, while they show (the strip's numbers are
+     also on the felt, the board and the ticker);
+   - in the bar's band, while it is not his turn: Sitting Out at the left
+     end, then Show Hand / Muck, then the rabbit; the hand review fills the
+     space after them; the queue row and Deal now keep the right end;
+     Spectating / Leave the band's right end;
+   - his own turn while sitting out (a qualifier's absent clock): Sitting
+     Out as a 44 px chair key at the row's left end;
+   - the straddle offer on the felt where the board will be (as on the
+     other screens). */
+@media (orientation: landscape) and (max-height: 500px) {
+  html body .hud.cinematic-hud {
+    /* the hand-strength pill's share of the ticker row */
+    --app-hsp-w: clamp(170px, 40vw, 250px);
+    /* the band's left-end controls: Sitting Out, Show / Muck, the rabbit
+       (each its width and a 6 px gap; 0 when it is not there) */
+    --app-so: 0px;
+    --app-sm: 0px;
+    --app-rb: 0px;
+    --app-lead: 0px;
+    --app-band-b: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  html body .hud.cinematic-hud:has(.sit-out-quick-btn--active):not(:has(.hud-bottom--my-turn)) { --app-so: 110px; --app-lead: 8px; }
+  html body .hud.cinematic-hud:has(.show-muck-prompt) { --app-sm: 162px; --app-lead: 8px; }
+  html body .hud.cinematic-hud:has(.rabbit-hunt-btn) { --app-rb: 138px; --app-lead: 8px; }
+  /* a qualifier's plain pill (the hand's name only) */
+  html body .hud.cinematic-hud:has(.hand-strength-portal--plain) { --app-hsp-w: clamp(104px, 22vw, 170px); }
+
+  /* the hand-strength pill: the ticker row's left end */
+  html.table-geometry body .hud.cinematic-hud .hand-strength-portal {
+    top: calc(var(--hud-top-h, 78px) - 4px - var(--app-ticker-h, 20px)) !important;
+    left: calc(50% - min(100vw - 16px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px), var(--app-strip-w, 640px)) / 2) !important;
+    transform: none !important;
+    width: var(--app-hsp-w) !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: var(--app-ticker-h, 20px);
+    box-sizing: border-box;
+    padding: 0 9px !important;
+    gap: 6px !important;
+    border-radius: 999px;
+  }
+  html body .hud.cinematic-hud .hand-strength-portal .hsp-bar { flex: 0 0 24px !important; width: 24px !important; }
+  html body .hud.cinematic-hud .hand-strength-portal .hsp-tier { padding: 0 6px !important; line-height: 14px; }
+  html body .hud.cinematic-hud .hand-strength-portal .hsp-label { line-height: 14px; }
+  html body .hud.cinematic-hud:has(.hand-strength-portal) .app-ticker { padding-left: calc(var(--app-hsp-w) + 8px); }
+  /* (a qualifier's extras line shares the row: the ticker is its right half) */
+  html.table-geometry body .hud.cinematic-hud:has(.app-top > .app-info):not(:has(.app-top > .hud-training-badge)) .hand-strength-portal {
+    left: calc(50% + 4px) !important;
+  }
+
+  /* a bomb pot's notice: a gold pill at the ticker row's right end */
+  html body .hud.cinematic-hud .bomb-pot-banner {
+    position: fixed !important;
+    top: calc(var(--hud-top-h, 78px) - 4px - var(--app-ticker-h, 20px)) !important;
+    left: auto !important;
+    right: calc(50% - min(100vw - 16px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px), var(--app-strip-w, 640px)) / 2) !important;
+    transform: none !important;
+    height: var(--app-ticker-h, 20px);
+    box-sizing: border-box;
+    margin: 0 !important;
+    padding: 0 12px !important;
+    border: 1px solid #f2cf6b !important;
+    border-radius: 999px !important;
+    background: linear-gradient(180deg, rgba(36, 60, 104, 0.97), rgba(8, 22, 52, 0.97)) !important;
+    box-shadow: 0 0 6px rgba(242, 207, 107, 0.4) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    animation: none !important;
+    text-shadow: none !important;
+    color: #ffe9a8 !important;
+    font: italic 800 11px/18px var(--app-font, 'Exo 2', sans-serif) !important;
+    letter-spacing: 0.08em !important;
+    white-space: nowrap;
+    z-index: 150 !important;
+  }
+  html body .hud.cinematic-hud:has(.bomb-pot-banner) .app-ticker { padding-right: 104px; }
+  /* (a narrow phone: the level panel's "LVL 6/20" a little tighter, it was
+     cut by 3 px) */
+  @media (max-width: 640px) {
+    html body .hud.cinematic-hud .app-strip__panel--level .app-strip__label { letter-spacing: 0.03em; }
+  }
+  /* (a qualifier's half-row ticker: its right end is the row's) */
+  html body .hud.cinematic-hud:has(.app-top > .app-info):not(:has(.app-top > .hud-training-badge)) .bomb-pot-banner {
+    right: calc(8px + env(safe-area-inset-right, 0px)) !important;
+  }
+
+  /* the away / sitting-out notices: the top bar's first row, between the
+     menu and chat buttons (their look: section 8b) */
+  html.table-geometry body .hud.cinematic-hud :is(.afk-warning-banner, .afk-away-banner) {
+    top: var(--app-pad-top, 6px) !important;
+    left: calc(60px + env(safe-area-inset-left, 0px)) !important;
+    right: calc(60px + env(safe-area-inset-right, 0px)) !important;
+    width: auto !important;
+  }
+
+  /* the band's left end: Sitting Out (not his turn) */
+  html.table-geometry body .hud.cinematic-hud .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
+    top: auto !important;
+    bottom: var(--app-band-b) !important;
+    left: calc(16px + env(safe-area-inset-left, 0px)) !important;
+    width: 104px !important;
+    min-width: 0 !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+    padding: 0 6px !important;
+    z-index: 171 !important;
+  }
+  /* his own turn: a 44 px chair key at the row's left end (its words stay
+     its name for a screen reader; the title says what a tap does) */
+  html.table-geometry body .hud.cinematic-hud:has(.hud-bottom--my-turn) .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
+    width: 44px !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+  html.table-geometry body .hud.cinematic-hud:has(.hud-bottom--my-turn) .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active::before {
+    content: '\1FA91';
+    font-size: 20px;
+    line-height: 1;
+  }
+  html body .hud.cinematic-hud:has(.sit-out-quick-btn--active) .hud-bottom.hud-bottom--my-turn .action-bar-flat { padding-left: 50px !important; }
+  /* (and the amount pill steps aside, as on the live table held sideways:
+     RAISE names the amount; the slider keeps its width) */
+  html body .hud.cinematic-hud:has(.sit-out-quick-btn--active) .hud-bottom.hud-bottom--my-turn .action-bar-flat .raise-inline-val { display: none !important; }
+
+  /* Show Hand / Muck: in the band after Sitting Out (44 px keys) */
+  html.table-geometry body .hud.cinematic-hud .show-muck-prompt {
+    top: auto !important;
+    bottom: var(--app-band-b) !important;
+    left: calc(16px + env(safe-area-inset-left, 0px) + var(--app-so)) !important;
+    right: auto !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: none !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    z-index: 171 !important;
+  }
+  html.table-geometry body .hud.cinematic-hud .show-muck-prompt .show-muck-btn {
+    box-sizing: border-box;
+    height: 44px;
+    min-height: 44px;
+    padding: 0 6px !important;
+    font: italic 800 12px/1 var(--app-font, 'Exo 2', sans-serif) !important;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  html.table-geometry body .hud.cinematic-hud .show-muck-prompt .show-muck-btn--show { width: 92px; }
+  html.table-geometry body .hud.cinematic-hud .show-muck-prompt .show-muck-btn--muck { width: 64px; }
+  /* the rabbit after them */
+  html.table-geometry body .hud.cinematic-hud .rabbit-hunt-btn {
+    top: auto !important;
+    bottom: var(--app-band-b) !important;
+    left: calc(16px + env(safe-area-inset-left, 0px) + var(--app-so) + var(--app-sm)) !important;
+    right: auto !important;
+    transform: none !important;
+    box-sizing: border-box;
+    width: 132px;
+    height: 44px;
+    min-height: 44px;
+    margin: 0 !important;
+    padding: 0 8px !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px !important;
+    line-height: 1 !important;
+    z-index: 171 !important;
+    /* (no slide when Show / Muck goes: it ran under the hand review) */
+    transition: none !important;
+  }
+  /* the queue row and the waiting line with Deal now keep the band's right
+     end while any of them shows (the waiting line words wrap, two lines) */
+  html body .hud.cinematic-hud:has(.sit-out-quick-btn--active, .show-muck-prompt, .rabbit-hunt-btn) .hud-bottom .pre-action-btns { justify-content: flex-end !important; }
+  html body .hud.cinematic-hud:has(.sit-out-quick-btn--active, .show-muck-prompt, .rabbit-hunt-btn, .post-hand-analysis) .hud-bottom .app-wait-row { justify-content: flex-end !important; }
+  html body .hud.cinematic-hud:has(.sit-out-quick-btn--active, .show-muck-prompt, .rabbit-hunt-btn) .hud-bottom .app-wait-row > .app-wait-pill {
+    max-width: 120px;
+    white-space: normal !important;
+    text-align: center;
+    line-height: 14px !important;
+  }
+  /* the hand review fills the band between them and Deal now; the waiting
+     line under it steps aside (it was hidden under the sheet), and so does
+     the dimmed action row of a showdown (its slider was under the sheet) */
+  html.table-geometry body .hud.cinematic-hud .post-hand-analysis {
+    left: calc(8px + env(safe-area-inset-left, 0px) + var(--app-lead) + var(--app-so) + var(--app-sm) + var(--app-rb)) !important;
+  }
+  html body .hud.cinematic-hud:has(.post-hand-analysis) .hud-bottom .app-wait-row > .app-wait-pill { visibility: hidden; }
+  html body .hud.cinematic-hud:has(.post-hand-analysis) .hud-bottom .hud-actions-inner.hud-actions--inactive { visibility: hidden; }
+  /* (a narrow phone with Show / Muck and the rabbit up: the review waits
+     the five seconds of Show / Muck, then takes the band) */
+  @media (max-width: 739px) {
+    html body .hud.cinematic-hud:has(.show-muck-prompt):has(.rabbit-hunt-btn) .post-hand-analysis { visibility: hidden; }
+  }
+
+  /* spectating: the status line at the band's left, Spectating / Leave at
+     its right end (the band is a 46 px row) */
+  html body .hud.cinematic-hud .hud-bottom .app-spec-row {
+    min-height: 46px;
+    justify-content: flex-start !important;
+    padding-left: 8px;
+    box-sizing: border-box;
+  }
+  html.table-geometry body .hud.cinematic-hud .app-spectator-banner {
+    top: auto !important;
+    bottom: var(--app-band-b) !important;
+    left: auto !important;
+    right: calc(16px + env(safe-area-inset-right, 0px)) !important;
+    transform: none !important;
+    height: 44px;
+    min-height: 44px;
+    z-index: 171 !important;
+  }
+
+  /* the straddle offer: on the felt where the board will be */
+  html.table-geometry body .hud.cinematic-hud .hud-bottom .hud-actions-inner .action-btn.straddle {
+    position: fixed !important;
+    top: calc(var(--board-cy, 180px) - 22px) !important;
+    bottom: auto !important;
+    left: calc(var(--felt-l, 100px) + var(--felt-w, 320px) / 2) !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    flex: none !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: calc(var(--felt-w, 320px) - 12px) !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    margin: 0 !important;
+    padding: 0 16px !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    white-space: nowrap;
+    z-index: 205 !important;
+  }
+  html.table-geometry body .hud.cinematic-hud .hud-bottom .action-btn.straddle .action-verb { font-size: 13px !important; line-height: 15px !important; }
+  html.table-geometry body .hud.cinematic-hud .hud-bottom .action-btn.straddle .action-amount-sub { font-size: 16px !important; line-height: 18px !important; }
+
+  /* a spectator's bottom-middle seat 0: its bet over the middle of its
+     plate, toward the pot (it sat on the plate's words) */
+  html body .cinematic-table .seat-pod.seat-pod--ring-c.seat-pod--ring-bot:not(.seat-pod--hero) > .chip-stack:not(.chip-stack--in-left):not(.chip-stack--in-right),
+  html body .cinematic-table .seat-pod.seat-pod--ring-c.seat-pod--ring-mid:not(.seat-pod--hero) > .chip-stack:not(.chip-stack--in-left):not(.chip-stack--in-right) {
+    left: 50% !important;
+    top: auto !important;
+    bottom: calc(100% + 2px) !important;
+    transform: translateX(-50%) !important;
+  }
+
+  /* the empty hand slots' "?" at 11 px after the cards' 0.4 scale */
+  html body .hud.cinematic-hud .hud-cards.hud-cards-floating .card-slot { font-size: 28px !important; }
+  /* (the columns of a short scene for a spectator: an open seat's Sit Here
+     key sits a little tighter on its glass circle, so the seats of a column
+     never touch) */
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring.seat-pod--empty:has(> .seat-pod__sit-btn) {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring.seat-pod--empty > .seat-pod__sit-btn { margin-top: -19px; }
+  /* (the columns' WINNER tag beside a seat: compact, WINNER over the amount,
+     so it stays clear of the hero's cards in the middle on a 568 px phone;
+     the hand's name stays in the tag for a screen reader and is named by
+     the shown cards and the showdown panel, as on a phone held upright) */
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring:not(.seat-pod--hero) > .seat-pod__winner-label { max-width: 76px; }
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring:not(.seat-pod--hero) > .seat-pod__winner-label > .seat-pod__winner-hand {
+    font-size: 0 !important;
+    line-height: 0 !important;
+  }
+  /* (a spectator holds no hand: the empty slots stood on seat 0's plate at
+     the bottom middle; the live table's dark slots hide behind that seat) */
+  html body .hud.cinematic-hud:has(.app-spectator-banner) .hud-cards.hud-cards-floating:has(.card-slot) { visibility: hidden; }
+
+  /* the all-in equity list (a help tool; cash tables only): one row in the
+     ticker row after the hand-strength pill (at the screen's right edge it
+     covered the side seats) */
+  html body .hud.cinematic-hud { --app-hsp-on: 0px; }
+  html body .hud.cinematic-hud:has(.hand-strength-portal) { --app-hsp-on: calc(var(--app-hsp-w) + 6px); }
+  html.table-geometry body .hud.cinematic-hud .equity-badges-container {
+    top: calc(var(--hud-top-h, 78px) - 4px - var(--app-ticker-h, 20px)) !important;
+    bottom: auto !important;
+    left: calc(50% - min(100vw - 16px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px), var(--app-strip-w, 640px)) / 2 + var(--app-hsp-on) + 26px) !important;
+    right: auto !important;
+    transform: none !important;
+    max-width: calc(min(100vw - 16px, var(--app-strip-w, 640px)) - var(--app-hsp-on) - 40px);
+    height: var(--app-ticker-h, 20px);
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    gap: 4px !important;
+    overflow: hidden;
+    animation: none !important;
+    z-index: 151 !important;
+  }
+  html body .hud.cinematic-hud .equity-badges-container .equity-badge {
+    flex: 0 1 auto;
+    min-width: 0;
+    height: 18px;
+    box-sizing: border-box;
+    padding: 0 8px !important;
+    gap: 5px !important;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(14, 34, 66, 0.97), rgba(3, 13, 31, 0.97)) !important;
+    border: 1px solid rgba(120, 190, 255, 0.5) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  html body .hud.cinematic-hud .equity-badges-container :is(.equity-player-name, .equity-pct) { font-size: 11px !important; line-height: 14px; }
+  html body .hud.cinematic-hud .equity-badges-container .equity-player-name { color: #c9d6ea; }
+  html body .hud.cinematic-hud .equity-badges-container .equity-pct { color: #9fe6ff; text-shadow: none; }
+  /* (the ticker's line steps aside while the list shows) */
+  html body .hud.cinematic-hud:has(.equity-badges-container) .app-ticker__items { visibility: hidden; }
+}
+
+/* ── 8b. (repair 2) Any screen held sideways: the away / sitting-out
+   notices take the top bar's first row while they show (under the top bar
+   they covered the top seats). A phone: between the menu and chat buttons
+   (section 8); a big screen: over the strip, as wide as it. ── */
+@media (orientation: landscape) {
+  html.table-geometry body .hud.cinematic-hud :is(.afk-warning-banner, .afk-away-banner) {
+    position: fixed !important;
+    bottom: auto !important;
+    transform: none !important;
+    max-width: none !important;
+    /* (46 px: its button keeps a 44 px target inside the 1 px edge) */
+    height: 46px;
+    box-sizing: border-box;
+    margin: 0 !important;
+    padding: 0 0 0 10px !important;
+    gap: 8px !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(120, 190, 255, 0.55) !important;
+    box-shadow: inset 0 1px 0 rgba(184, 241, 253, 0.2), 0 0 8px rgba(0, 110, 255, 0.3), 0 4px 10px rgba(0, 0, 0, 0.55) !important;
+    animation: none !important;
+    overflow: hidden;
+    z-index: 160 !important;
+    font-size: 11px !important;
+    line-height: 13px !important;
+  }
+  html.table-geometry body .hud.cinematic-hud :is(.afk-warning-banner, .afk-away-banner) > span:not(:first-child) {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 11px !important;
+    line-height: 13px !important;
+  }
+  html.table-geometry body .hud.cinematic-hud :is(.afk-warning-banner, .afk-away-banner) > :is(.afk-back-btn, .afk-warning-dismiss) {
+    align-self: stretch;
+    min-height: 0;
+    height: auto;
+    margin: 0 !important;
+    border-radius: 0 11px 11px 0 !important;
+    font-size: 13px !important;
+  }
+}
+@media (orientation: landscape) and (min-width: 601px) and (min-height: 501px) {
+  html.table-geometry body .hud.cinematic-hud :is(.afk-warning-banner, .afk-away-banner) {
+    top: calc(var(--app-pad-top, 6px) + 4px + (var(--app-logo-row, 62px) - 46px) / 2) !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: min(calc(100vw - 128px), var(--app-strip-w, 860px)) !important;
+    font-size: 13px !important;
+    line-height: 16px !important;
+  }
+  html.table-geometry body .hud.cinematic-hud :is(.afk-warning-banner, .afk-away-banner) > span:not(:first-child) { font-size: 13px !important; line-height: 16px !important; }
+}
+
+/* (repair 2) big screens: the all-in equity list in the ticker row too (at
+   the screen's right edge it covered a tablet's right-hand seats) */
+@media (min-width: 601px) and (min-height: 501px) {
+  html.table-geometry body .hud.cinematic-hud .equity-badges-container {
+    --app-tk-w: min(100vw - 16px, 680px);
+    top: calc(var(--hud-top-h, 110px) - 4px - var(--app-ticker-h, 22px)) !important;
+    bottom: auto !important;
+    left: calc(50% - var(--app-tk-w) / 2 + 26px) !important;
+    right: auto !important;
+    transform: none !important;
+    max-width: calc(var(--app-tk-w) - 40px);
+    height: var(--app-ticker-h, 22px);
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    gap: 4px !important;
+    overflow: hidden;
+    animation: none !important;
+    z-index: 151 !important;
+  }
+  html.table-geometry body .hud.cinematic-hud .equity-badges-container .equity-badge {
+    flex: 0 1 auto;
+    min-width: 0;
+    height: 18px;
+    box-sizing: border-box;
+    padding: 0 8px !important;
+    gap: 5px !important;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(14, 34, 66, 0.97), rgba(3, 13, 31, 0.97)) !important;
+    border: 1px solid rgba(120, 190, 255, 0.5) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  html.table-geometry body .hud.cinematic-hud .equity-badges-container :is(.equity-player-name, .equity-pct) { font-size: 12px !important; line-height: 14px; }
+  html.table-geometry body .hud.cinematic-hud .equity-badges-container .equity-player-name { color: #c9d6ea; max-width: 110px; }
+  html.table-geometry body .hud.cinematic-hud .equity-badges-container .equity-pct { color: #9fe6ff; text-shadow: none; }
+  html.table-geometry body .hud.cinematic-hud:has(.equity-badges-container) .app-ticker__items { visibility: hidden; }
+}
+@media (orientation: landscape) and (min-width: 601px) and (min-height: 501px) {
+  html.table-geometry body .hud.cinematic-hud .equity-badges-container { --app-tk-w: min(100vw - 16px, var(--app-strip-w, 860px)); }
+  /* (repair 2) the outs counter (a help tool): one line at the ticker row's
+     right end (under the hand-strength pill there was room for one line
+     only: two or three lines covered the hero's cards, one long line the
+     side seats); the ticker's line keeps the rest of the row */
+  html.table-geometry body .hud.cinematic-hud .hand-strength-container {
+    --app-tk-w: min(100vw - 16px, var(--app-strip-w, 860px));
+    top: calc(var(--hud-top-h, 110px) - 4px - var(--app-ticker-h, 24px)) !important;
+    left: auto !important;
+    right: calc(50% - var(--app-tk-w) / 2 + 10px) !important;
+    transform: none !important;
+    width: auto;
+    max-width: calc(var(--app-tk-w) * 0.56);
+    margin-top: 1px;
+  }
+  html.table-geometry body .hud.cinematic-hud .hand-strength-container .outs-display {
+    box-sizing: border-box;
+    height: calc(var(--app-ticker-h, 24px) - 2px);
+    padding: 0 10px;
+    border-radius: 999px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    line-height: calc(var(--app-ticker-h, 24px) - 4px);
+  }
+  html.table-geometry body .hud.cinematic-hud:has(.hand-strength-container .outs-display) .app-ticker { padding-right: calc(min(100vw - 16px, var(--app-strip-w, 860px)) * 0.56 + 16px); }
+  html.table-geometry body .hud.cinematic-hud:has(.hand-strength-container .outs-display) .equity-badges-container { max-width: calc(var(--app-tk-w) * 0.4); }
+}
+
+/* (repair 2) the hand-strength tier tag's LIGHT step in the skin's cyan, not
+   orange (no orange or red warning pills: owner rule) */
+html body .hud.cinematic-hud .hand-strength-portal--light { border-color: rgba(22, 252, 254, 0.5); box-shadow: 0 6px 24px rgba(0, 150, 255, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+html body .hud.cinematic-hud .hand-strength-portal--light .hsp-tier { color: #9fe6ff; background: rgba(22, 252, 254, 0.16); }
+html body .hud.cinematic-hud .hand-strength-portal--light .hsp-fill { background: #16c8fe !important; }
+/* (repair 2) the Emote sheet's words (Nice, LOL, Thinking...) at the 11 px
+   floor; they were 9 px */
+html body .hud.cinematic-hud .emote-item-label { font-size: 11px !important; line-height: 13px; }
+html body .hud.cinematic-hud .emote-panel__section { font-size: 11px; }
+/* (repair 2) the BOMB POT notice in navy glass and gold, not orange; still
+   (its pulse animated an orange glow) */
+html body .hud.cinematic-hud .bomb-pot-banner {
+  background: linear-gradient(180deg, rgba(36, 60, 104, 0.97), rgba(8, 22, 52, 0.97));
+  border-color: #f2cf6b;
+  color: #ffe9a8;
+  text-shadow: 0 0 8px rgba(242, 207, 107, 0.45);
+  box-shadow: 0 0 10px rgba(242, 207, 107, 0.4), 0 4px 10px rgba(0, 0, 0, 0.55);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  animation: none;
+}

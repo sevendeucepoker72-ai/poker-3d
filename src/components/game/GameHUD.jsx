@@ -101,6 +101,8 @@ import '../scene/AppPrecision.css';
 // plate) and the action bar; acts only under the cinematic classes.
 import AppSeatAvatar from '../scene/AppSeatAvatar';
 import '../scene/AppPrecisionHero.css';
+// APP Precision package 4 - phones held sideways, tablets, laptops, desktops.
+import '../scene/AppPrecisionWide.css';
 // APP Precision package 2 repair: the table re-measures its seats and places
 // its loose labels after the HUD changes (the hero's row, the outs counter).
 import { appLayoutPing } from '../scene/appPlacement';
@@ -5401,7 +5403,9 @@ export default function GameHUD() {
           the final street). 2026-04-22 audit fix.
           2026-10-23 — not at a qualifier table (its good / bad colour is advice). */}
       {!helpToolsOff && callAmount > 0 && potOddsDisplay && phase !== 'HandComplete' && phase !== 'Showdown' && phase !== 'WaitingForPlayers' && createPortal(
-        <div className={`table-pot-odds ${potOddsGood ? 'table-pot-odds--good' : 'table-pot-odds--bad'}`}>
+        // (APP Precision package 4: app-pot-odds = the skin's navy and gold pill
+        // beside the felt's pot plate, AppPrecisionWide.css)
+        <div className={`table-pot-odds ${potOddsGood ? 'table-pot-odds--good' : 'table-pot-odds--bad'}${cinematicEnabled ? ' app-pot-odds' : ''}`}>
           Pot Odds: {potOddsDisplay}
         </div>,
         document.body

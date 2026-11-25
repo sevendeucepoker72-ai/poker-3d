@@ -845,8 +845,10 @@ html .hud.cinematic-hud .rabbit-hunt-btn {
   animation: none !important;
 }
 
-/* ══ 8. A phone held upright: the hero cluster and the two-row bar ══════ */
-@media (max-width: 600px) and (orientation: portrait) {
+/* ══ 8. A phone held upright: the hero cluster and the two-row bar ══════
+   (APP Precision package 4: tablets, laptops and desktops use the same
+   cluster and bar; AppPrecisionWide.css sizes them and centres the panel) */
+@media (max-width: 600px) and (orientation: portrait), (min-width: 601px) and (min-height: 501px) {
   html .hud.cinematic-hud {
     /* hero: avatar, plate height, overlap, hole cards, name / stack type */
     --app-hav: clamp(56px, calc(20vw - 8px), 80px);

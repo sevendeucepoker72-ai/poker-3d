@@ -1529,3 +1529,26 @@ app-spec-row
 # its foot art); the amount pill stays on every phone width (compact at 360 px, over the slider at
 # 320 px, on its own line at 300 px and narrower).
 mountain-glow.webp
+# Package 4, phones held sideways, tablets, laptops and desktops (AppPrecisionWide.css): the lounge
+# band (a 1920 px copy on wide screens), the one-row top bar, the felt between the measured bars, the
+# ring seats (seat-pod--ring-l/c/r + -top/mid/bot; one-row seats on the landscape-phone ring,
+# appSeatLayout.appLandRing), the board and pot plate kept clear of the hero's cards, the hero's
+# dealer button and bet beside his cards, the bar as a centred glass panel, the session pill and Last
+# Hand beside it, and the Pot Odds pill in navy and gold.
+seat-pod--ring
+lounge-wide.webp
+--app-lng-img
+--app-lbcy
+app-pot-odds
+# Package 4 repair: a very short scene held sideways seats everyone in two columns beside the felt
+# (app-land-cols, appSeatLayout.appLandRing); a seat on the scene's top edge keeps its cards and
+# dealer button beside its avatar, under the top bar (seat-pod--ring-crown).
+app-land-cols
+seat-pod--ring-crown
+# Package 4 repair 2, a phone held sideways (AppPrecisionWide.css section 8): the hand-strength pill
+# at the ticker row's left end (--app-hsp-w); Sitting Out, Show Hand / Muck and the rabbit in the bar's
+# band (--app-band-b); the away / sitting-out notices in the top bar's first row (section 8b); the
+# all-in equity list in the ticker row on every screen held sideways (--app-tk-w on big screens).
+--app-hsp-w
+--app-band-b
+--app-tk-w
