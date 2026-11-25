@@ -555,9 +555,20 @@ export function qualifierTablesHeld(q, now = Date.now()) {
   return q.dealsAt == null || now < q.dealsAt;
 }
 
+/** An Online League registrant's note: anyone not here at the start is still seated and blinded out. */
+export const ONLINE_LEAGUE_NO_SHOW_TEXT = 'Anyone not here when it starts is still seated and blinded out until they arrive.';
+
 /** A registrant's note before the start: be online at the start or be released (+ refund). */
 export function qualifierBeOnlineText(q) {
   const at = q && q.scheduledAt != null ? formatDenverTime(q.scheduledAt) : '';
+  // 2026-11-25 (owner: "It should seat you and blind you out", Online League
+  // only) — a league night's no-shows are seated and blinded out (poker-server
+  // qualifierNoShow.noShowsSeatedAbsent), never released.
+  if (isLeagueItem(q)) {
+    return at
+      ? `Be on americanpubpoker.online by ${at}. ${ONLINE_LEAGUE_NO_SHOW_TEXT}`
+      : `Be on americanpubpoker.online at the start. ${ONLINE_LEAGUE_NO_SHOW_TEXT}`;
+  }
   // 2026-11-21 — a free event (the Online League) used no credit: nothing to refund.
   if (qualifierEntryIsFree(q)) {
     return at

@@ -13,6 +13,11 @@
 // subscription to a live game"): the prize lines name the prize a "1-month
 // seat subscription" (one month of the player app's paid seat subscription),
 // never "a free month in a chair". Only the prize description changed.
+// Owner change 2026-11-25 ("It currently says if your not online at start you
+// are removed. It should seat you and blind you out", Online League only): a
+// registrant not online at the start is seated and blinded out, never
+// released (poker-server qualifierNoShow.noShowsSeatedAbsent). Two Schedule
+// lines added.
 //
 // Same shape as content/qualifierRules.js QUALIFIER_RULES, so the same rules
 // window (components/ui/QualifierRules.jsx) renders it: [{ heading, rules }],
@@ -60,6 +65,8 @@ export const ONLINE_LEAGUE_RULES = [
       'The Online League plays Monday to Saturday at 6:00 PM MT.',
       'Sign-up opens at 3:00 PM MT. Tap Register on the Online League card.',
       'Late entry and one re-entry are open until 7:00 PM MT.',
+      'If you registered but are not online when it starts, you are still seated and blinded out.',
+      'You are dealt in and your blinds are posted until you sign in on americanpubpoker.online and take your seat.',
       'Levels are 10 minutes long, with a 5-minute break after every 5 levels.',
       'All times are Mountain Time (MT).',
     ],

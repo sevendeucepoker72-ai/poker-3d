@@ -1590,3 +1590,6 @@ app-card-marked
 app-tab--noclose
 # Online League prize wording (owner 2026-11-25: 1-month seat subscription)
 1-month seat subscription to a live game
+# Online League no-shows seated + blinded out, never released (owner 2026-11-25: "It should seat you and blind you out")
+is still seated and blinded out until they arrive
+you are still seated and blinded out.

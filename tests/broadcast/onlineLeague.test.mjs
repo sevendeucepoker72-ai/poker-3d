@@ -176,9 +176,12 @@ test('leagueReentriesLeft: credits never limit a free event', () => {
   assert.equal(L.leagueReentriesLeft(null), null);
 });
 
-test('be-online note: a free night promises no credit refund; the weekly note is unchanged', () => {
+test('be-online note: a league night SEATS its no-shows and blinds them out (owner 2026-11-25); the weekly note is unchanged', () => {
   const q = L.normalizeQualifierItem(leagueRaw());
-  assert.equal(L.qualifierBeOnlineText(q), 'Be on americanpubpoker.online by 6:00 PM MT — anyone not here when it starts is released.');
+  assert.equal(L.qualifierBeOnlineText(q), 'Be on americanpubpoker.online by 6:00 PM MT. Anyone not here when it starts is still seated and blinded out until they arrive.');
+  assert.doesNotMatch(L.qualifierBeOnlineText(q), /released|refund/);
+  // A league item with no start time known.
+  assert.equal(L.qualifierBeOnlineText({ ...q, scheduledAt: null }), 'Be on americanpubpoker.online at the start. Anyone not here when it starts is still seated and blinded out until they arrive.');
   const w = L.normalizeQualifierItem(weeklyRaw());
   assert.equal(L.qualifierBeOnlineText(w), 'Be on americanpubpoker.online by 11:00 AM MT — anyone not here when it starts is released and the credit refunded.');
 });
@@ -269,6 +272,7 @@ test('Online League Rules: own title / subtitle / date, plain ASCII, the drafted
   const raw = JSON.stringify(OLR.ONLINE_LEAGUE_RULES);
   assert.ok(/^[\x20-\x7e]*$/.test(raw), 'plain ASCII (AGENT.md rule 20)');
   assert.doesNotMatch(raw, /4:00 PM/, 'owner 2026-11-25: sign-up opens at 3:00 PM MT, never the old 4:00 PM');
+  assert.doesNotMatch(raw, /released|removed/i, 'owner 2026-11-25: a league no-show is seated and blinded out, never released / removed');
   assert.doesNotMatch(raw, /monthly|championship seat/i);
   assert.doesNotMatch(raw, /free month|in a chair|chair availability/i, 'owner 2026-11-25: the prize is a 1-month seat subscription, never "a free month in a chair"');
   const q = L.normalizeQualifierItem(leagueRaw());
@@ -291,6 +295,9 @@ test('Online League Rules: own title / subtitle / date, plain ASCII, the drafted
     'One account per person.',
     'Sign-up opens at 3:00 PM MT. Tap Register on the Online League card.',
     'Late entry and one re-entry are open until 7:00 PM MT.',
+    // Owner 2026-11-25: "It should seat you and blind you out" (Online League only).
+    'If you registered but are not online when it starts, you are still seated and blinded out.',
+    'You are dealt in and your blinds are posted until you sign in on americanpubpoker.online and take your seat.',
     'The top 5 each night earn a weekly qualifier credit for the Sunday Weekly Qualifier.',
     'The winner each night gets a 1-month seat subscription (4 weekly games) to a live American Pub Poker game the winner chooses.',
     'No purchase, VIP or card is needed to claim it. The 1-month seat subscription is never charged.',
