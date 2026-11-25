@@ -33,9 +33,36 @@ function appPrecisionStyles() {
       return on ? rootFile(`./src/components/scene/appPrecisionStyles.${part}.js`) : `\0${id}`
     },
     load(id) {
-      return id.startsWith(`\0${APP_STYLES}`) ? 'export {}' : null
+      if (id.startsWith(`\0${APP_STYLES}`)) return 'export {}'
+      // (APP Precision final check) a switch-off build also leaves out the
+      // skin's two runtime helpers. Every call to them is behind
+      // cinematicEnabled or is a no-op cleanup, so they become same-named
+      // no-ops, and the off build's index.html preloads exactly live's JS.
+      if (!on && build) {
+        const m = /[\\/]src[\\/]components[\\/]scene[\\/](appPlacement|appHudFlags)\.js$/.exec(id.split('?')[0])
+        if (m) return APP_JS_STUBS[m[1]]
+      }
+      return null
     },
   }
+}
+const APP_JS_STUBS = {
+  appPlacement: [
+    'export function measureAppSeats() { return null }',
+    'export const sameAppMeas = () => true',
+    'export function appInputsDirty() { return false }',
+    'export function appInputsClean() {}',
+    'export function appInputsReset() {}',
+    'export function invalidateAppPlacement() {}',
+    'export function placeAppFloaters() {}',
+    'export function setAppLayoutPing() {}',
+    'export function appLayoutPing() {}',
+  ].join('\n'),
+  appHudFlags: [
+    'export function syncAppHudFlags() { return false }',
+    'export function releaseAppHudFlags() {}',
+    'export function syncAppTableFlags() {}',
+  ].join('\n'),
 }
 
 // https://vite.dev/config/

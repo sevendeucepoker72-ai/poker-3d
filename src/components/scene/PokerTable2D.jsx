@@ -1013,8 +1013,15 @@ export default function PokerTable2D() {
     const tight2 = tight && appTight2Ref.current === appTightKey;
     const g = appSeatGeometry(appBox.W, appBox.H, appBox.felt, { ...o, tight, tight2 });
     // (decided on a measured layout only, never on the first estimate)
+    // (a phone under 340 px whose columns fit only with the bets moved out
+    // from under the plates, or with a corner seat pulled up, goes tight too.
+    // Before final repair 1 a passing measurement usually tipped a 320 px
+    // phone into tight; with fewer measurements it never did, and the top
+    // row sat low and uneven, a bet beside the wrong seat. Now it is decided,
+    // not timed. 360 px and wider are unchanged.)
     if (!tight) {
-      if (g.fits || !g.measured) return g;
+      const crowded = appBox.W < 340 && g.fitLevel >= 2;
+      if ((g.fits && !crowded) || !g.measured) return g;
       appTightRef.current = appTightKey;
       return appSeatGeometry(appBox.W, appBox.H, appBox.felt, { ...o, tight: true });
     }
@@ -1072,6 +1079,15 @@ export default function PokerTable2D() {
     // (not settled: left dirty, so the next run measures again)
     if (settled) appInputsClean();
     else if (appLoopRef.current.n < 6) appRunRef.current?.();
+    else {
+      // (the per-second cap stopped it: measure again once that second has
+      // passed. Before final repair 1 the next render did this; now a run
+      // waits for a DOM change, and a still table has none, so a 320 px
+      // phone kept the half-settled layout: the top row low, one seat lower)
+      clearTimeout(appLateRef.current);
+      const wait = Math.max(60, appLoopRef.current.t + 1000 - Date.now() + 30);
+      appLateRef.current = setTimeout(() => appRunRef.current?.(true), wait);
+    }
   }, [appGeoOn]);
   const appRunNowRef = useRef(null);
   const appFrameRef = useRef(0);

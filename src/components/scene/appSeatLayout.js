@@ -127,6 +127,11 @@ export function appSeatGeometry(W, H, felt, opts = {}) {
   const col = { l: {}, r: {} };
   const gap = 3;
   let fits = true;
+  // (how the columns fit: 0 with every plate's bet room, 1 with the bets out
+  // now, 2 only with no bets under the plates, 3 not at all; the corner seats
+  // pulled above their spot count as 2)
+  let fitLevel = 0;
+  const pref0 = {};
   for (const side of ['l', 'r']) {
     const x = side === 'l' ? xs : W - xs;
     const items = rows.map((r) => {
@@ -148,23 +153,31 @@ export function appSeatGeometry(W, H, felt, opts = {}) {
     const n = items.length;
     // (tight: the column starts under its corner seat, now in the top row)
     const first = tight ? yTop + downOf(`To-${side}`, false) + gap : 0;
+    // (final check: and under that corner seat's bet too, when the column has
+    // room for it, so the bet is not pushed beside the seat below it)
+    const firstOf = (withBet) => (tight ? yTop + downOf(`To-${side}`, withBet) + gap : 0);
     const solve = (withBet) => {
+      const f0 = firstOf(withBet);
       const dn = items.map((it) => downOf(it.k, withBet));
       const up = items.map((it) => it.up);
       const ys = items.map((it) => it.pref);
       for (let i = 0; i < n; i += 1) {
-        ys[i] = Math.max(ys[i], i ? ys[i - 1] + dn[i - 1] + gap + up[i] : Math.max(topMin, up[0] + 2, first + up[0]));
+        ys[i] = Math.max(ys[i], i ? ys[i - 1] + dn[i - 1] + gap + up[i] : Math.max(topMin, up[0] + 2, f0 + up[0]));
       }
       for (let i = n - 1; i >= 0; i -= 1) {
         ys[i] = Math.min(ys[i], items[i].bottom - dn[i], i < n - 1 ? ys[i + 1] - up[i + 1] - gap - dn[i] : Infinity);
       }
-      let ok = n === 0 || ys[0] - up[0] >= Math.max(1.5, first - 0.5);
+      let ok = n === 0 || ys[0] - up[0] >= Math.max(1.5, f0 - 0.5);
       for (let i = 1; i < n && ok; i += 1) ok = ys[i] - up[i] >= ys[i - 1] + dn[i - 1] + gap - 0.5;
       return { ys, dn, up, ok };
     };
     let res = solve(true);
-    if (!res.ok && meas) res = solve('actual');
-    if (!res.ok) res = solve(false);
+    let lvl = 0;
+    if (!res.ok && meas) { res = solve('actual'); lvl = 1; }
+    if (!res.ok) { res = solve(false); lvl = 2; }
+    if (!res.ok && n) lvl = 3;
+    fitLevel = Math.max(fitLevel, lvl);
+    if (n && rows[0] === 'To') pref0[side] = items[0].pref;
     // (APP Precision P5: a column that does not fit even without bets asks
     // for the tight plates, see PokerTable2D app-seat-tight)
     if (!res.ok && n) fits = false;
@@ -183,7 +196,10 @@ export function appSeatGeometry(W, H, felt, opts = {}) {
     rows.forEach((r, i) => { col[side][r] = res.ys[i]; });
   }
   // a corner seat pushed above the inner ones lifts the inner row with it
-  if (col.l.To != null && col.r.To != null) yTop = Math.max(topMin, Math.min(yTop, col.l.To, col.r.To));
+  if (col.l.To != null && col.r.To != null) {
+    if (col.l.To < pref0.l - 0.5 || col.r.To < pref0.r - 0.5) fitLevel = Math.max(fitLevel, 2);
+    yTop = Math.max(topMin, Math.min(yTop, col.l.To, col.r.To));
+  }
 
   // a spectator's seat 0: on the felt's bottom edge (its bet beside it), above
   // the empty hand slots GameHUD keeps at the bottom centre (and the
@@ -193,7 +209,7 @@ export function appSeatGeometry(W, H, felt, opts = {}) {
   const potY = boardCy - (cardW * 1.24) / 2 - 30;
   // the hero's nameplate may use the width between the lower side seats
   const heroMax = list.includes('L') && !spectator ? Math.floor(W - 2 * (xs + pmax / 2 + 4)) : null;
-  return { W, H, av, pw, pmax, short, cx, cy, xs, yTop, col, yH, dTi, hz, potY, heroMax, fits, tight, measured: !!meas, measuredTight: !!(meas && meas.tight) };
+  return { W, H, av, pw, pmax, short, cx, cy, xs, yTop, col, yH, dTi, hz, potY, heroMax, fits, fitLevel, tight, measured: !!meas, measuredTight: !!(meas && meas.tight) };
 }
 
 // One seat's spot: the avatar centre (as % of the scene, for left / top), its

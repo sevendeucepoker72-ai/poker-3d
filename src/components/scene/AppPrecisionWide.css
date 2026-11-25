@@ -370,8 +370,8 @@
     background: linear-gradient(180deg, rgba(14, 34, 66, 0.96), rgba(3, 13, 31, 0.96));
     border: 1px solid rgba(120, 190, 255, 0.45);
     box-shadow: 0 0 8px rgba(0, 110, 255, 0.3), 0 4px 10px rgba(0, 0, 0, 0.55);
-    backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     font-family: var(--app-font);
   }
   /* the Pot Odds pill (cash tables only; GameHUD draws none at a qualifier):
@@ -440,8 +440,8 @@ html body .table-pot-odds.app-pot-odds {
   background: linear-gradient(180deg, rgba(14, 34, 66, 0.96), rgba(3, 13, 31, 0.96));
   border: 1px solid rgba(120, 190, 255, 0.45);
   box-shadow: 0 0 8px rgba(0, 110, 255, 0.3), 0 3px 8px rgba(0, 0, 0, 0.55);
-  backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   color: #f2cf6b;
   font-size: 12px;
 }
@@ -1089,8 +1089,8 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
     border-radius: 999px !important;
     background: linear-gradient(180deg, rgba(36, 60, 104, 0.97), rgba(8, 22, 52, 0.97)) !important;
     box-shadow: 0 0 6px rgba(242, 207, 107, 0.4) !important;
-    backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
     animation: none !important;
     text-shadow: none !important;
     color: #ffe9a8 !important;
@@ -1329,8 +1329,8 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
     border-radius: 999px;
     background: linear-gradient(180deg, rgba(14, 34, 66, 0.97), rgba(3, 13, 31, 0.97)) !important;
     border: 1px solid rgba(120, 190, 255, 0.5) !important;
-    backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
   html body .hud.cinematic-hud .equity-badges-container :is(.equity-player-name, .equity-pct) { font-size: 11px !important; line-height: 14px; }
   html body .hud.cinematic-hud .equity-badges-container .equity-player-name { color: #c9d6ea; }
@@ -1424,8 +1424,8 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
     border-radius: 999px;
     background: linear-gradient(180deg, rgba(14, 34, 66, 0.97), rgba(3, 13, 31, 0.97)) !important;
     border: 1px solid rgba(120, 190, 255, 0.5) !important;
-    backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
   html.table-geometry body .hud.cinematic-hud .equity-badges-container :is(.equity-player-name, .equity-pct) { font-size: 12px !important; line-height: 14px; }
   html.table-geometry body .hud.cinematic-hud .equity-badges-container .equity-player-name { color: #c9d6ea; max-width: 110px; }
@@ -1479,8 +1479,8 @@ html body .hud.cinematic-hud .bomb-pot-banner {
   color: #ffe9a8;
   text-shadow: 0 0 8px rgba(242, 207, 107, 0.45);
   box-shadow: 0 0 10px rgba(242, 207, 107, 0.4), 0 4px 10px rgba(0, 0, 0, 0.55);
-  backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   animation: none;
 }
 
@@ -1491,7 +1491,7 @@ html body .hud.cinematic-hud .bomb-pot-banner {
 @media (orientation: landscape) and (max-height: 500px) {
   html body .hud.cinematic-hud :is(.pre-action-btn, .hand-strength-portal, .card-slot, .chop-pot-banner, .winner-banner),
   html body .cinematic-table .card-slot {
-    backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
 }
