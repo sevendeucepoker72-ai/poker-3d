@@ -159,7 +159,7 @@
     --app-top-r: 78px;
     --app-hero-r: 112px;
     --app-side-r: 104px;
-    --app-avail: calc(100dvh - var(--hud-top-h, 110px) - var(--hud-bar-h, 142px) - var(--app-top-r) - var(--app-hero-r));
+    --app-avail: calc(var(--app-vh, 100vh) - var(--hud-top-h, 110px) - var(--hud-bar-h, 142px) - var(--app-top-r) - var(--app-hero-r));
     --app-fw: max(240px, min(calc(100vw - 2 * var(--app-side-r)), calc(var(--app-avail) * 2.3), 1060px));
     --app-fh: max(110px, clamp(calc(var(--app-fw) / 2.3), var(--app-avail), calc(var(--app-fw) / 1.3)));
   }
@@ -721,7 +721,7 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
     right: calc(112px + env(safe-area-inset-right, 0px)) !important;
     width: auto !important;
     max-width: none !important;
-    max-height: calc(100dvh - var(--hud-top-h, 80px) - 12px) !important;
+    max-height: calc(var(--app-vh, 100vh) - var(--hud-top-h, 80px) - 12px) !important;
     padding-bottom: 0 !important;
     border-radius: 10px !important;
     border: 1px solid rgba(120, 190, 255, 0.5) !important;
@@ -763,7 +763,7 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
    its plate, so two seats one above the other fit on so short a screen. */
 @media (orientation: landscape) and (max-height: 500px) {
   html.table-geometry body .cinematic-table .table2d-felt {
-    --app-lfh: clamp(90px, calc(100dvh - var(--hud-top-h, 70px) - var(--hud-bar-h, 56px) - 84px), 220px);
+    --app-lfh: clamp(90px, calc(var(--app-vh, 100vh) - var(--hud-top-h, 70px) - var(--hud-bar-h, 56px) - 84px), 220px);
     height: var(--app-lfh) !important;
     width: max(150px, min(calc(100vw - 230px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)), calc(var(--app-lfh) * 2.8), 760px)) !important;
     min-width: 0 !important;
@@ -776,14 +776,14 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
   html body .cinematic-table,
   html.table-geometry body .hud.cinematic-hud {
     --app-lcw: max(22px, min(40px, calc((var(--felt-w, 320px) * 0.6 - 16px) / 5), calc(var(--felt-h, 150px) * 0.3)));
-    --app-lbcy: min(calc(var(--felt-t, 120px) + var(--felt-h, 150px) * 0.45), calc(100dvh - var(--hud-bar-h, 56px) - var(--hero-plate-h, 25px) - 76px - var(--app-lcw) * 0.7));
+    --app-lbcy: min(calc(var(--felt-t, 120px) + var(--felt-h, 150px) * 0.45), calc(var(--app-vh, 100vh) - var(--hud-bar-h, 56px) - var(--hero-plate-h, 25px) - 76px - var(--app-lcw) * 0.7));
   }
   html.table-geometry body .hud.cinematic-hud { --board-card-w: var(--app-lcw); --board-cy: var(--app-lbcy); }
   /* the Pot Odds pill (a phone wider than 900 px shows it): left of the
      felt's pot plate, as on big screens */
   html.table-geometry body .table-pot-odds.app-pot-odds {
     --app-lcw: max(22px, min(40px, calc((var(--felt-w, 320px) * 0.6 - 16px) / 5), calc(var(--felt-h, 150px) * 0.3)));
-    --app-lbcy: min(calc(var(--felt-t, 120px) + var(--felt-h, 150px) * 0.45), calc(100dvh - var(--hud-bar-h, 56px) - var(--hero-plate-h, 25px) - 76px - var(--app-lcw) * 0.7));
+    --app-lbcy: min(calc(var(--felt-t, 120px) + var(--felt-h, 150px) * 0.45), calc(var(--app-vh, 100vh) - var(--hud-bar-h, 56px) - var(--hero-plate-h, 25px) - 76px - var(--app-lcw) * 0.7));
     top: calc(var(--app-lbcy) - var(--app-lcw) * 0.7 - 14px);
     left: calc(var(--felt-l, 100px) + var(--felt-w, 320px) / 2 - 72px);
     transform: translate(-100%, -50%);
@@ -1381,17 +1381,24 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
     font-size: 13px !important;
   }
 }
+/* (pre-ship review 2026-11-25) a big screen: the notice takes the ACTION
+   TICKER's row, the top bar's last row (its bottom edge 2 px under the
+   measured --hud-top-h, clear of the top seats), never the strip: a player
+   sitting out at a tournament seat keeps BLINDS, the LEVEL clock and the
+   extras line (Next level, standings) in view. 32 px tall: two lines of
+   11 px text. (A phone held sideways keeps section 8's place: no room.) */
 @media (orientation: landscape) and (min-width: 601px) and (min-height: 501px) {
   html.table-geometry body .hud.cinematic-hud :is(.afk-warning-banner, .afk-away-banner) {
-    top: calc(var(--app-pad-top, 6px) + 4px + (var(--app-logo-row, 62px) - 46px) / 2) !important;
+    top: calc(var(--hud-top-h, 123px) - 30px) !important;
+    height: 32px;
     left: 50% !important;
     right: auto !important;
     transform: translateX(-50%) !important;
     width: min(calc(100vw - 128px), var(--app-strip-w, 860px)) !important;
-    font-size: 13px !important;
-    line-height: 16px !important;
+    font-size: 11px !important;
+    line-height: 13px !important;
   }
-  html.table-geometry body .hud.cinematic-hud :is(.afk-warning-banner, .afk-away-banner) > span:not(:first-child) { font-size: 13px !important; line-height: 16px !important; }
+  html.table-geometry body .hud.cinematic-hud :is(.afk-warning-banner, .afk-away-banner) > span:not(:first-child) { font-size: 11px !important; line-height: 13px !important; }
 }
 
 /* (repair 2) big screens: the all-in equity list in the ticker row too (at

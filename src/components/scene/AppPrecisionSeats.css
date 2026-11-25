@@ -25,7 +25,7 @@ html .hud.cinematic-hud {
   html.table-geometry .cinematic-table .table2d-felt {
     width: min(
       calc(100vw - 132px),
-      calc((100dvh - var(--hud-top-h, 110px) - var(--hud-bar-h, 150px) - 156px) * 1.1),
+      calc((var(--app-vh, 100vh) - var(--hud-top-h, 110px) - var(--hud-bar-h, 150px) - 156px) * 1.1),
       340px
     ) !important;
   }

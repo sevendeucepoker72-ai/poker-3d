@@ -3670,7 +3670,10 @@ export default function GameHUD() {
   // level, the tournament clock's words and standings, dealer's choice next).
   const appTopExtras = cinematicEnabled ? {
     pots: gameState?.pots,
-    nextLevel: handLevel.next && !showTournamentClock ? nextLevelText(handLevel) : '',
+    // (pre-ship review) the hand's own Next line shows at a clocked table
+    // too: a level that rose mid-hand is the NEXT hand's blinds, and the skin
+    // hides the old phase line that said so (hud-blinds-next)
+    nextLevel: handLevel.next ? nextLevelText(handLevel) : '',
     clock: showTournamentClock ? tournamentClock : null,
     dcNext: dcTruthful && dealersChoiceNext
       ? dealersChoiceNext.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())

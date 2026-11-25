@@ -181,7 +181,14 @@ console.log(`[deploy-online] socket host ${SOCKET_HOST} verified in ${path.basen
   });
   const lookOn = !offMarker && skinCss;
   const rollbackAsked = process.env.VITE_APP_CINEMATIC === '0';
-  if (lookOn) {
+  if (lookOn && rollbackAsked) {
+    // (pre-ship review) a rollback deploy whose build still has the new look
+    // (the =0 build was skipped or failed) must not print DONE as if it rolled back.
+    const say = CHECK_ONLY ? console.warn : console.error;
+    say(`[deploy-online] ${CHECK_ONLY ? 'WARN' : 'FAIL'}: VITE_APP_CINEMATIC=0 asks for the ROLLBACK, but this build still has the APP Precision table look.`);
+    say('  Run `VITE_APP_CINEMATIC=0 npm run build` first (it must finish without errors), then deploy again.');
+    if (!CHECK_ONLY) process.exit(1);
+  } else if (lookOn) {
     console.log('[deploy-online] table look: APP Precision (the live table look).');
   } else if (rollbackAsked) {
     console.warn('[deploy-online] table look: ROLLBACK build (VITE_APP_CINEMATIC=0) - every player gets the table look from before 2026-11-25.');

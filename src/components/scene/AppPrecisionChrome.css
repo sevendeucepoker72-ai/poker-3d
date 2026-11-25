@@ -2,10 +2,20 @@
    APP Precision table skin (2026-11-24), package 5: the pieces drawn outside
    the table HUD - the multi-table tab bar (App) and the seat picker (lobby).
    Acts ONLY under .app-tabs / .app-tab* / .app-seat-picker, which the
-   components add only in a VITE_APP_CINEMATIC=1 build. The components are
+   components add only in a build with the look on (the default; off =
+   VITE_APP_CINEMATIC=0). The components are
    inline-styled, so these rules use !important.
    Phones: no backdrop-filter, no filter, no animated shadows.
    ════════════════════════════════════════════════════════════════════════ */
+
+/* (pre-ship review 2026-11-25) the viewport-height token, as in
+   AppPrecision.css (the lobby's seat picker can load this file alone):
+   100dvh where the browser knows dvh, else 100vh. Never write 100dvh inside
+   a var() expression in the skin. */
+html { --app-vh: 100vh; }
+@supports (height: 100dvh) {
+  html { --app-vh: 100dvh; }
+}
 
 /* ── 1. Multi-table tabs: navy glass tabs, 44 px, the table's name over its
    street (and YOUR TURN); the active tab has the gold edge. The row still
@@ -168,7 +178,7 @@ html body .app-seat-picker .seat-picker-cancel {
   html body .app-seat-picker .seat-picker-card {
     width: min(820px, 100%);
     display: grid;
-    grid-template-columns: minmax(0, 1fr) min(56%, calc((100dvh - 48px) * 4 / 3));
+    grid-template-columns: minmax(0, 1fr) min(56%, calc((var(--app-vh, 100vh) - 48px) * 4 / 3));
     grid-template-rows: 1fr auto auto auto auto 1fr;
     column-gap: 16px;
     align-items: center;

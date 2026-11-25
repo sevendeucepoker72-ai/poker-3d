@@ -30,7 +30,7 @@
     bottom: calc(var(--app-bar-foot) + var(--app-bar-pad) + (var(--app-btn-h) - 48px) / 2) !important;
     left: calc(16px + env(safe-area-inset-left, 0px)) !important;
     right: calc(112px + env(safe-area-inset-right, 0px)) !important;
-    max-height: calc(100dvh - var(--hud-top-h, 140px) - var(--app-bar-foot) - var(--app-bar-pad) - 8px) !important;
+    max-height: calc(var(--app-vh, 100vh) - var(--hud-top-h, 140px) - var(--app-bar-foot) - var(--app-bar-pad) - 8px) !important;
   }
   html.app-h-pha:is(.app-h-muck, .app-h-rabbit) body .hud.cinematic-hud .hud-bottom .app-wait-row { justify-content: flex-end !important; }
   html.app-h-pha:is(.app-h-muck, .app-h-rabbit) body .hud.cinematic-hud .hud-bottom .app-wait-row > .app-wait-pill { visibility: hidden; }

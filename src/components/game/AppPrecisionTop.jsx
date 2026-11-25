@@ -158,12 +158,15 @@ export function AppStatStrip({
 
 // The words the old clock strip said after its countdown (same rules as
 // utils/tournamentClock clockStripParts), plus its standings line.
-function clockExtras(clock) {
+// handNext (pre-ship review): the hand's own "Next: 150/300" shows (the level
+// rose mid-hand), so the clock's "next" (the level AFTER that one) is left
+// out: two different "next" values side by side would skip a level.
+function clockExtras(clock, handNext) {
   if (!clock) return [];
   const out = [];
   const atTop = !!(clock.levels && clock.level && clock.level >= clock.levels);
   if (atTop) out.push({ k: 'final', t: 'final level' });
-  else if (clock.next && clock.next.bb) out.push({ k: 'next', t: `next ${chips(clock.next.sb)}/${chips(clock.next.bb)}`, cls: 'app-info__next' });
+  else if (!handNext && clock.next && clock.next.bb) out.push({ k: 'next', t: `next ${chips(clock.next.sb)}/${chips(clock.next.bb)}`, cls: 'app-info__next' });
   if (clock.paused) {
     const r = clock.pauseReason;
     out.push({ k: 'status', t: r === 'prestart' ? 'not started' : r === 'break' ? 'on break' : r === 'held' ? 'on hold' : 'clock paused', cls: 'app-info__status' });
@@ -185,7 +188,7 @@ function clockExtras(clock) {
  * repair: one line less in the top bar at tournament tables).
  */
 function hasTopExtras({ pots, nextLevel, clock, dcNext } = {}) {
-  return !!((Array.isArray(pots) && pots.length >= 2) || nextLevel || dcNext || clockExtras(clock).length);
+  return !!((Array.isArray(pots) && pots.length >= 2) || nextLevel || dcNext || clockExtras(clock, !!nextLevel).length);
 }
 
 /** The ante (see hasTopExtras), side pots, the next blind level, tournament standings, dealer's choice next. Nothing when none. */
@@ -201,7 +204,7 @@ export function AppTopExtras({ ante, pots, nextLevel, clock, dcNext }) {
     }));
   }
   if (nextLevel) items.push({ k: 'next-level', node: <span className="app-info__next">{nextLevel}</span> });
-  clockExtras(clock).forEach((e) => items.push({ k: e.k, item: e.item, node: <span className={e.cls || undefined}>{e.t}</span> }));
+  clockExtras(clock, !!nextLevel).forEach((e) => items.push({ k: e.k, item: e.item, node: <span className={e.cls || undefined}>{e.t}</span> }));
   if (dcNext) items.push({ k: 'dc-next', node: <span className="app-info__dc">Next: {dcNext}</span> });
   if (!items.length) return null;
   // One line (APP Precision repair): a line longer than the screen scrolls sideways.
