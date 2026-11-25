@@ -1575,3 +1575,16 @@ app-owed-chip
 # on a phone held sideways, the outs box off the players' plates, and the slimmer seats where the tight
 # side columns still do not fit (app-seat-tight2: 24 px avatars, slimmer plates).
 app-seat-tight2
+# Final repair 1: the skin's CSS is linked only in a switch-on build (a switch-off build loads exactly
+# the live CSS; the skin's CSS is still built there, as a file no page links, so the tokens above stay
+# checkable); no :has() in the skin (state classes on the page root and the seats: app-cin-hud,
+# app-h-*, app-t-active, app-pod-*); a hole card marked to discard keeps a gold edge and lifts
+# (app-card-marked); a toast while the winner banner shows sits under it (--app-wb-b); the tabs without
+# a close key (app-tab--noclose).
+app-cin-hud
+app-h-turn
+app-t-active
+app-pod-up
+app-card-marked
+--app-wb-b
+app-tab--noclose

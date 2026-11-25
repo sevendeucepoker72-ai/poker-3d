@@ -403,7 +403,3 @@
 @media (max-width: 400px) {
   .lb-col-hands { display: none; }
 }
-/* Reference skin, opt-in via the same staging flag as the table. */
-.reference-leaderboard .leaderboard-panel { background:linear-gradient(155deg,#102a4d,#06101f 40%,#020815);border:1px solid #b2dcff;box-shadow:0 0 0 2px #164a77,0 0 24px #0099ff99,inset 0 0 22px #154b7777; }
-.reference-leaderboard .leaderboard-title { color:#ffe2a2; text-shadow:0 2px 5px #000,0 0 12px #c3842a77; }
-.reference-leaderboard .leaderboard-tab.active,.reference-leaderboard .leaderboard-close { background:url('/cinematic/exact/stat-frame.png') center/100% 100% no-repeat;color:#eff8ff;border:0; }

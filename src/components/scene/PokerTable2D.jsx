@@ -6,6 +6,8 @@
  *   all-in pulse ring, win streak.
  */
 import { memo, useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
+// APP Precision final repair 1: a re-measured seat layout is committed at once
+import { flushSync } from 'react-dom';
 import { useTableStore } from '../../store/tableStore';
 import { useGameStore, SEAT_COUNT } from '../../store/gameStore';
 import { useTimerStore, serverNow } from '../../store/timerStore';
@@ -38,16 +40,15 @@ import { handLevelOf } from '../../utils/tournamentClock';
 import './PokerTable2D.css';
 import './TableCosmetics.css';
 import { cinematicEnabled, cinematicAsset } from './cinematicSkin';
-import './CinematicSkin.css';
-// APP Precision: the room / rail / watermark rules (scoped to .cinematic-table).
-import './AppPrecision.css';
-// APP Precision package 2: the seats, open seats, pot, board and texture badge.
-import './AppPrecisionSeats.css';
-// APP Precision package 4: the room, ring seats and table on wide screens.
-import './AppPrecisionWide.css';
+// APP Precision: the skin's CSS for the table (CinematicSkin, AppPrecision,
+// Seats, Wide; see appPrecisionStyles.table.js), in a switch-on build only
+// (vite.config.js); scoped to .cinematic-table.
+import 'virtual:app-precision-styles/table';
 import AppSeatAvatar from './AppSeatAvatar';
 import { APP_PORTRAIT_MQ, APP_LAND_MQ, appSeatGeometry, appSeatSpot, appLandRing, appLandSpot } from './appSeatLayout';
-import { measureAppSeats, sameAppMeas, placeAppFloaters, setAppLayoutPing, invalidateAppPlacement } from './appPlacement';
+import { measureAppSeats, sameAppMeas, placeAppFloaters, setAppLayoutPing, invalidateAppPlacement, appInputsDirty, appInputsClean, appInputsReset } from './appPlacement';
+// APP Precision final repair 1: the table's state class (a seat is to act)
+import { syncAppTableFlags } from './appHudFlags';
 
 /* ── Player-notes callback (App.jsx sets this) ─────────────── */
 let _onOpenPlayerNotes = null;
@@ -442,7 +443,9 @@ const SeatPod = memo(function SeatPod({
     // player still taps once to reveal "Move here" (no accidental moves).
     const showSitBtn = canInteract && (hovered || (!heroAlreadySeated && spectatorSits));
     // APP Precision: the "+" badge shows only where this viewer can sit / move
-    const appSitCls = cinematicEnabled && canInteract ? ' seat-pod--app-can-sit' : '';
+    const appSitCls = (cinematicEnabled && canInteract ? ' seat-pod--app-can-sit' : '')
+      // (final repair 1: the Sit Here / Move here key shows, for the skin CSS)
+      + (cinematicEnabled && !isPendingMoveTarget && showSitBtn ? ' app-pod-sit' : '');
     return (
       <div
         className={`seat-pod seat-pod--empty ${isPendingMoveTarget ? 'seat-pod--pending-move' : ''}${appCls}${appSitCls}`}
@@ -520,6 +523,20 @@ const SeatPod = memo(function SeatPod({
   const shownCount = showCardsFaceUp && holeCards?.length > 0 ? holeCards.length : cardSlots.length;
   const cardRowClass = `${shownCount > 2 ? ' seat-pod__cards--many' : ''}${
     showCardsFaceUp ? (shownCount > 2 ? ' seat-pod__cards--shown' : '') : (cardSlots.some((c) => c.card) ? ' seat-pod__cards--stud' : '')}`;
+  // APP Precision final repair 1: what the pod holds, as classes for the skin
+  // CSS (they replace its :has() selectors): a face-up card in the card row,
+  // a Stud row, the AWAY badge, a bet in front of the seat.
+  let appPodCls = '';
+  if (cinematicEnabled) {
+    const rowShown = !isMyPlayer && (showCardsFaceUp || showCardBacks);
+    const faceUp = rowShown && (showCardsFaceUp && holeCards?.length > 0
+      ? holeCards.some(Boolean)
+      : cardSlots.some((s) => !!s.card));
+    if (faceUp) appPodCls += ' app-pod-up';
+    if (rowShown && !showCardsFaceUp && cardSlots.some((c) => c.card)) appPodCls += ' app-pod-stud';
+    if (isSittingOut) appPodCls += ' app-pod-away';
+    if (currentBet > 0) appPodCls += ' app-pod-bet';
+  }
 
   // Derive timer % from server timestamp (timerTick forces re-render each second)
   const timerPct = (() => {
@@ -570,7 +587,7 @@ const SeatPod = memo(function SeatPod({
     isWinner     ? 'seat-pod--winner'   : '',
     hovered      ? 'seat-pod--hovered'  : '',
     isSittingOut ? 'seat-pod--sitout'   : '',
-  ].filter(Boolean).join(' ') + appCls;
+  ].filter(Boolean).join(' ') + appCls + appPodCls;
 
   return (
     <div
@@ -1016,28 +1033,73 @@ export default function PokerTable2D() {
   const appLateRef = useRef(0);
   const appRunRef = useRef(null);
   const appGeoOn = !!appGeo;
-  const appRun = useCallback(() => {
-    if (!cinematicEnabled) return;
-    if (!appGeoOn) { placeAppFloaters(); return; }
-    const meas = measureAppSeats(sceneRef.current);
-    if (meas && !sameAppMeas(meas, appMeasRef.current)) {
+  // (final repair 1) A run measures only when something it reads changed
+  // (appInputsDirty), and it runs once per frame: the layout effects, the
+  // HUD's pings, the timers and the page-root observer only ask for it; it
+  // runs in the next animation frame, after every commit of that frame and
+  // before its paint (it ran up to four times per table update, each one
+  // forcing a style + layout pass). force = measure even with no DOM change
+  // (fonts loaded, fades settled).
+  const appRunNow = useCallback((force) => {
+    const scene = sceneRef.current;
+    if (!appInputsDirty(scene) && force !== true) return;
+    // once more when fonts / fades have settled (a forced run that finds
+    // nothing new does not re-arm)
+    const late = () => {
+      clearTimeout(appLateRef.current);
+      appLateRef.current = setTimeout(() => appRunRef.current?.(true), 450);
+    };
+    if (force !== true) late();
+    if (!appGeoOn) { placeAppFloaters(); appInputsClean(); return; }
+    let meas = measureAppSeats(scene);
+    // a new measure lays the seats out again at once (flushSync) and is
+    // measured again, so the labels are placed on this frame's layout
+    let settled = true;
+    for (let tries = 0; meas && !sameAppMeas(meas, appMeasRef.current); tries++) {
       const now = Date.now();
       const loop = appLoopRef.current;
       if (now - loop.t > 1000) { loop.n = 0; loop.t = now; }
+      // (a layout that keeps changing what it measures stops after a few
+      // tries: the next frame, or after the late wait, it goes on)
+      if (tries >= 3 || loop.n >= 6) { settled = false; break; }
       loop.n += 1;
-      // (a layout that keeps changing what it measures stops after a few tries)
-      if (loop.n <= 6) {
-        appMeasRef.current = meas;
-        setAppMeas(meas);
-        // once more when fonts / fades have settled
-        clearTimeout(appLateRef.current);
-        appLateRef.current = setTimeout(() => appRunRef.current?.(), 450);
-        return;
-      }
+      appMeasRef.current = meas;
+      flushSync(() => setAppMeas(meas));
+      late();
+      meas = measureAppSeats(scene);
     }
     placeAppFloaters();
+    // (not settled: left dirty, so the next run measures again)
+    if (settled) appInputsClean();
+    else if (appLoopRef.current.n < 6) appRunRef.current?.();
   }, [appGeoOn]);
-  useLayoutEffect(() => { appRunRef.current = appRun; appRun(); });
+  const appRunNowRef = useRef(null);
+  const appFrameRef = useRef(0);
+  const appForceRef = useRef(false);
+  const appRun = useCallback((force) => {
+    if (!cinematicEnabled) return;
+    if (force === true) appForceRef.current = true;
+    if (appFrameRef.current) return;
+    appFrameRef.current = requestAnimationFrame(() => {
+      appFrameRef.current = 0;
+      const f = appForceRef.current;
+      appForceRef.current = false;
+      appRunNowRef.current?.(f);
+    });
+  }, []);
+  useLayoutEffect(() => {
+    appRunNowRef.current = appRunNow;
+    appRunRef.current = appRun;
+    if (!cinematicEnabled) return;
+    // (the table's state class at once: it is a plain DOM read)
+    syncAppTableFlags(sceneRef.current);
+    appRun();
+  });
+  useLayoutEffect(() => () => {
+    if (appFrameRef.current) cancelAnimationFrame(appFrameRef.current);
+    appFrameRef.current = 0;
+    appInputsReset();
+  }, []);
   useEffect(() => {
     if (!cinematicEnabled) return undefined;
     setAppLayoutPing(appRun);
@@ -1048,7 +1110,7 @@ export default function PokerTable2D() {
   // widths after they were placed: measure and place again when fonts load
   useEffect(() => {
     if (!cinematicEnabled || typeof document === 'undefined' || !document.fonts) return undefined;
-    const onFonts = () => { invalidateAppPlacement(); appRunRef.current?.(); };
+    const onFonts = () => { invalidateAppPlacement(); appRunRef.current?.(true); };
     let live = true;
     try { document.fonts.addEventListener('loadingdone', onFonts); } catch { /* old browser */ }
     document.fonts.ready.then(() => { if (live) onFonts(); }).catch(() => {});
@@ -1063,12 +1125,10 @@ export default function PokerTable2D() {
   // with nothing changed stops early)
   useEffect(() => {
     if (!cinematicEnabled || typeof MutationObserver === 'undefined' || typeof document === 'undefined') return undefined;
-    let raf = 0;
-    const mo = new MutationObserver(() => {
-      if (!raf) raf = requestAnimationFrame(() => { raf = 0; appRunRef.current?.(); });
-    });
+    // (final repair 1: appRun itself waits for the next frame)
+    const mo = new MutationObserver(() => { appRunRef.current?.(); });
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
-    return () => { mo.disconnect(); if (raf) cancelAnimationFrame(raf); };
+    return () => { mo.disconnect(); };
   }, []);
   // the hero's nameplate may use the width between the lower side seats
   const appHeroMax = appGeo?.heroMax ?? null;
@@ -1088,7 +1148,7 @@ export default function PokerTable2D() {
     if (!cinematicEnabled) return;
     const root = document.documentElement;
     root.style.removeProperty('--app-hero-max');
-    root.classList.remove('app-hero-fit', 'app-fl');
+    root.classList.remove('app-hero-fit', 'app-fl', 'app-t-active');
   }, []);
   const flyPosRef = useRef({ seatEllipse: null, yourSeat: -1, seatCap: SEAT_COUNT, appGeo: null });
   flyPosRef.current = { seatEllipse, yourSeat, seatCap, appGeo };

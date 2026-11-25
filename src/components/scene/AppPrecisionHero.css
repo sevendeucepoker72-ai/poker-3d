@@ -50,6 +50,16 @@ html .hud.cinematic-hud .hud-cards.hud-cards-active .card-peek-front {
 html .hud.cinematic-hud .hud-cards .card-peek.card-winner-glow .card-peek-front {
   box-shadow: 0 0 0 2px #ffd24a, 0 0 14px rgba(255, 210, 74, 0.55), 0 4px 10px rgba(0, 0, 0, 0.6) !important;
 }
+/* (final repair 1) a hole card marked to discard (Draw games, Pineapple):
+   a gold edge and glow (the rule above took the live gold border away), and
+   lifted with `translate`, which adds to the deal-in animation's transform
+   (that transform kept a transform lift from showing) */
+html .hud.cinematic-hud .hud-cards .card-peek.app-card-marked .card-peek-front {
+  box-shadow: 0 0 0 2px #ffd24a, 0 0 10px rgba(255, 210, 74, 0.65), 0 4px 10px rgba(0, 0, 0, 0.6) !important;
+}
+/* (transform: the inline translateY(-8px) of an un-animated card would add
+   to it; the animation ends at no transform, so nothing else moves) */
+html .hud.cinematic-hud .hud-cards .card-peek.app-card-marked { transform: none !important; translate: 0 -8px; }
 html .hud.cinematic-hud .hud-cards .card-peek-front .card-rank {
   font-family: 'Playfair Display', Georgia, 'Times New Roman', serif !important;
   font-weight: 800 !important;
@@ -899,18 +909,18 @@ html .hud.cinematic-hud .rabbit-hunt-btn {
   html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) .card-peek:nth-child(2),
   html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) .card-slot:nth-child(2) { rotate: 7deg; }
   /* three cards (Pineapple, tapped to discard): 44px each, -7, 0, +7 degrees */
-  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many):has(> .card-peek:nth-child(3)) { gap: 2px !important; }
-  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many):has(> .card-peek:nth-child(3)) > .card-peek {
+  html.app-h-3c.app-h-3c .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) { gap: 2px !important; }
+  html.app-h-3c.app-h-3c .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) > .card-peek {
     width: max(var(--app-hcw), 44px) !important;
     height: max(var(--app-hch), 60px) !important;
   }
   /* a spectator (no plate): the empty hand's "?" places sit just above the
      "Spectating / Leave" line */
-  html.table-geometry .hud.cinematic-hud .hud-bottom-panel:not(:has(> .hud-nameplate-me)) > .hud-cards.hud-cards-floating {
+  html.table-geometry:not(.app-h-plate) .hud.cinematic-hud .hud-bottom-panel > .hud-cards.hud-cards-floating {
     bottom: calc(var(--hud-bar-h, 134px) + 51px) !important;
   }
-  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many):has(> .card-peek:nth-child(3)) > .card-peek:nth-child(1) { rotate: -7deg; }
-  html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many):has(> .card-peek:nth-child(3)) > .card-peek:nth-child(2) { rotate: 0deg; }
+  html.app-h-3c.app-h-3c .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) > .card-peek:nth-child(1) { rotate: -7deg; }
+  html.app-h-3c.app-h-3c .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) > .card-peek:nth-child(2) { rotate: 0deg; }
   html .hud.cinematic-hud .hud-cards.hud-cards-floating:not(.hud-cards-many) > .card-peek:nth-child(3) { rotate: 7deg; }
   /* Omaha and draw hands (4-6 cards): a row of 44px cards (a draw game taps
      them to discard: a full touch target each) */
@@ -1140,12 +1150,12 @@ html .hud.cinematic-hud .rabbit-hunt-btn {
      size smaller. Repair 1: the line is ONE line, always inside the button:
      the pot odds first; the equity / tier beside them only where the line
      has room (it wrapped to 4 lines over the rims at 320-390 px) */
-  html .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-call-group:has(.action-meta-row) { flex-grow: 1.22 !important; }
-  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.call:has(.action-meta-row) {
+  html.app-h-callmeta .hud.cinematic-hud .hud-bottom .action-bar-flat .ab-call-group { flex-grow: 1.22 !important; }
+  html.app-h-callmeta .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.call {
     gap: 1px !important;
     padding: 1px 3px !important;
   }
-  html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.call:has(.action-meta-row) .action-verb {
+  html.app-h-callmeta .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.call .action-verb {
     font-size: clamp(13px, calc(var(--app-verb) - 2px), 18px) !important;
   }
   html .hud.cinematic-hud .hud-bottom .action-bar-flat .action-btn.call .action-meta-row {
@@ -1210,13 +1220,13 @@ html .hud.cinematic-hud .rabbit-hunt-btn {
   html .hud.cinematic-hud .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive { order: -1; }
   html .hud.cinematic-hud .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive .action-bar-flat > :is(.action-btn, .ab-call-group, .ab-aof-note),
   html .hud.cinematic-hud .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive .raise-inline-group > .action-btn { display: none !important; }
-  html .hud.cinematic-hud:not(:has(.show-muck-prompt, .rabbit-hunt-btn, .post-hand-analysis)) .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive .raise-inline-slider-wrap {
+  html:not(:is(.app-h-muck, .app-h-rabbit, .app-h-pha)) .hud.cinematic-hud .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive .raise-inline-slider-wrap {
     display: flex !important;
     flex: 1 1 100% !important;
     margin-bottom: 0 !important;
   }
   /* sitting out: the gold "Sitting Out" pill keeps the band's left end */
-  html .hud.cinematic-hud:has(.sit-out-quick-btn--active) .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive .raise-inline-slider-wrap {
+  html.app-h-so .hud.cinematic-hud .hud-bottom .pre-action-btns + .hud-actions-inner.hud-actions--inactive .raise-inline-slider-wrap {
     margin-left: 112px !important;
   }
   html .hud.cinematic-hud .hud-bottom .pre-action-btns {
@@ -1302,17 +1312,17 @@ html .hud.cinematic-hud .rabbit-hunt-btn {
     left: calc(16px + env(safe-area-inset-left, 0px)) !important;
     z-index: 171 !important;
   }
-  html.table-geometry .hud.cinematic-hud:has(.hud-bottom--my-turn) .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
+  html.table-geometry.app-h-turn .hud.cinematic-hud .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
     bottom: calc(var(--app-hero-b) + var(--app-hav) + 6px) !important;
     left: calc(8px + env(safe-area-inset-left, 0px)) !important;
   }
   /* (a show / muck prompt or the hand review then keeps clear of it) */
-  html.table-geometry .hud.cinematic-hud:has(.sit-out-quick-btn--active):not(:has(.hud-bottom--my-turn)) .show-muck-prompt {
+  html.table-geometry.app-h-so:not(.app-h-turn) .hud.cinematic-hud .show-muck-prompt {
     left: auto !important;
     right: calc(16px + env(safe-area-inset-right, 0px)) !important;
     transform: none !important;
   }
-  html.table-geometry .hud.cinematic-hud:has(.sit-out-quick-btn--active):not(:has(.hud-bottom--my-turn)) .post-hand-analysis {
+  html.table-geometry.app-h-so:not(.app-h-turn) .hud.cinematic-hud .post-hand-analysis {
     left: calc(150px + env(safe-area-inset-left, 0px)) !important;
   }
   /* Pineapple's "pick one card to discard" line: over his cards (it hung
@@ -1364,8 +1374,8 @@ html .hud.cinematic-hud .rabbit-hunt-btn {
     transform: translateX(-50%) !important;
     height: 44px;
   }
-  html.table-geometry .hud.cinematic-hud:has(.show-muck-prompt) .rabbit-hunt-btn,
-  html.table-geometry .hud.cinematic-hud:has(.post-hand-analysis) .rabbit-hunt-btn {
+  html.table-geometry.app-h-muck .hud.cinematic-hud .rabbit-hunt-btn,
+  html.table-geometry.app-h-pha .hud.cinematic-hud .rabbit-hunt-btn {
     left: auto !important;
     right: calc(16px + env(safe-area-inset-right, 0px)) !important;
     max-width: 128px;
@@ -1374,7 +1384,7 @@ html .hud.cinematic-hud .rabbit-hunt-btn {
     white-space: nowrap;
     transform: none !important;
   }
-  html.table-geometry .hud.cinematic-hud:has(.rabbit-hunt-btn) .show-muck-prompt {
+  html.table-geometry.app-h-rabbit .hud.cinematic-hud .show-muck-prompt {
     left: calc(16px + env(safe-area-inset-left, 0px)) !important;
     transform: none !important;
   }
@@ -1399,7 +1409,7 @@ html .hud.cinematic-hud .rabbit-hunt-btn {
   html.table-geometry .hud.cinematic-hud .post-hand-analysis .pha-header { min-height: 44px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
   html.table-geometry .hud.cinematic-hud .post-hand-analysis .pha-header span[style*="0.68rem"] { font-size: 12px !important; }
   /* with the rabbit offered too, the rabbit keeps the row's right end */
-  html.table-geometry .hud.cinematic-hud:has(.rabbit-hunt-btn) .post-hand-analysis { right: calc(150px + env(safe-area-inset-right, 0px)) !important; }
+  html.table-geometry.app-h-rabbit .hud.cinematic-hud .post-hand-analysis { right: calc(150px + env(safe-area-inset-right, 0px)) !important; }
 
   /* the last raiser's tab stays clear of the amount pill */
   html .hud.cinematic-hud .hud-bottom .last-aggressor-badge { top: -9px; }

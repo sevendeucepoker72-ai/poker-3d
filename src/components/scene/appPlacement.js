@@ -11,6 +11,8 @@
 //     data-app-fl and --app-fx / --app-fy (AppPrecisionSeats.css).
 // PokerTable2D runs both after each render of the table; GameHUD pings it
 // after each render of the HUD (the hero's row and the outs live there).
+// Final repair 1: a run with no DOM, page or viewport change since the last
+// one stops before it reads anything (appInputsDirty).
 // Repair 2: a crowded small phone searches rings around each seat (the
 // hardest label first), a WINNER tag may narrow or turn compact, and a run
 // with nothing changed stops early (placeSig).
@@ -25,6 +27,13 @@ const shown = (el) => {
   const r = el.getBoundingClientRect();
   if (r.width < 1 || r.height < 1) return false;
   return getComputedStyle(el).visibility !== 'hidden';
+};
+// (final repair 1) shown() and its box in one read: null when not drawn
+const shownRect = (el) => {
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  if (r.width < 1 || r.height < 1) return null;
+  return getComputedStyle(el).visibility !== 'hidden' ? r : null;
 };
 const rnd = (v) => Math.round(v);
 // (APP Precision P5 repair 2) a board card's laid-out box: while its deal-in
@@ -67,8 +76,8 @@ export function measureAppSeats(scene) {
     let l = cx - ar.left;
     let r = ar.right - cx;
     for (const el of [pod, ...pod.querySelectorAll(POD_PARTS)]) {
-      if (!shown(el)) continue;
-      const b = el.getBoundingClientRect();
+      const b = shownRect(el);
+      if (!b) continue;
       up = Math.max(up, cy - b.top);
       down = Math.max(down, b.bottom - cy);
       l = Math.max(l, cx - b.left);
@@ -78,13 +87,15 @@ export function measureAppSeats(scene) {
     // showdown the WINNER tag (the bets are in the pot by then)
     const bet = pod.querySelector(':scope > .chip-stack');
     const win = pod.querySelector(':scope > .seat-pod__winner-label');
-    const betH = Math.max(shown(bet) ? bet.getBoundingClientRect().height : 0, shown(win) ? win.getBoundingClientRect().height : 0);
+    const betR = shownRect(bet);
+    const winR = shownRect(win);
+    const betH = Math.max(betR ? betR.height : 0, winR ? winR.height : 0);
     ext[`${mm[1]}-${mm[2]}`] = { up: rnd(up), down: rnd(down), l: rnd(l), r: rnd(r), betH: rnd(betH) };
   }
   const hero = [];
   for (const el of document.querySelectorAll(HERO_ROW)) {
-    if (!shown(el)) continue;
-    const b = el.getBoundingClientRect();
+    const b = shownRect(el);
+    if (!b) continue;
     hero.push({ x: rnd(b.left - sr.left), y: rnd(b.top - sr.top), w: rnd(b.width), h: rnd(b.height) });
   }
   hero.sort((p, q) => p.x - q.x || p.y - q.y);
@@ -94,6 +105,74 @@ export function measureAppSeats(scene) {
 }
 
 export const sameAppMeas = (p, q) => JSON.stringify(p) === JSON.stringify(q);
+
+// ── 1b. what changed (APP Precision final repair 1) ──────────────────────
+// Measuring forces a style + layout pass in the middle of a React commit,
+// and it ran after every render of the table and of the HUD (a turn clock
+// renders each second). Now a run measures only when something it reads may
+// have changed since the last run: a DOM change in the scene or the HUD
+// (a MutationObserver, read at once with takeRecords), the page root's or
+// body's classes / style (the felt and bar vars, the skin's state classes),
+// or the viewport. The turn clocks' rings (svg) are left out: they move no
+// box. The skin's own writes (placed labels' vars) are dropped after a run.
+let inMo = null;
+let inScene = null;
+let inHud = null;
+let inDirty = true;
+// (the viewport: a resize event, not a read of innerWidth - that read forces
+// a layout, the very cost this check saves)
+const inResized = () => { inDirty = true; };
+let inResizeOn = false;
+const inRelevant = (recs) => recs.some((r) => {
+  const t = r.target.nodeType === 1 ? r.target : r.target.parentElement;
+  return !(t && t.closest && t.closest('svg'));
+});
+function inWatch(scene, hud) {
+  if (inMo && scene === inScene && hud === inHud) return;
+  if (inMo) inMo.disconnect();
+  inMo = null;
+  inScene = scene;
+  inHud = hud;
+  inDirty = true;
+  if (!inResizeOn && typeof window !== 'undefined') {
+    window.addEventListener('resize', inResized);
+    window.addEventListener('orientationchange', inResized);
+    inResizeOn = true;
+  }
+  if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
+  inMo = new MutationObserver((recs) => { if (inRelevant(recs)) inDirty = true; });
+  const all = { subtree: true, childList: true, attributes: true, characterData: true };
+  if (scene) inMo.observe(scene, all);
+  if (hud) inMo.observe(hud, all);
+  const own = { attributes: true, attributeFilter: ['class', 'style'] };
+  inMo.observe(document.documentElement, own);
+  if (document.body) inMo.observe(document.body, own);
+}
+const findHud = () => (inHud && inHud.isConnected ? inHud : document.querySelector('.hud.cinematic-hud'));
+// true when a run must measure (the scene, the HUD or the page changed)
+export function appInputsDirty(scene) {
+  if (typeof document === 'undefined') return true;
+  inWatch(scene || null, findHud());
+  if (inMo && inRelevant(inMo.takeRecords())) inDirty = true;
+  return inDirty;
+}
+// after a run: its own writes are not new inputs
+export function appInputsClean() {
+  if (inMo) inMo.takeRecords();
+  inDirty = false;
+}
+export function appInputsReset() {
+  if (inMo) inMo.disconnect();
+  if (inResizeOn) {
+    window.removeEventListener('resize', inResized);
+    window.removeEventListener('orientationchange', inResized);
+    inResizeOn = false;
+  }
+  inMo = null;
+  inScene = null;
+  inHud = null;
+  inDirty = true;
+}
 
 // ── 2. placing ───────────────────────────────────────────────────────────
 function overlapArea(p, q, m) {
@@ -204,13 +283,13 @@ function tagSizes(el) {
 let lastSig = '';
 export function invalidateAppPlacement() { lastSig = ''; }
 const sigBox = (el) => {
-  if (!shown(el)) return '-';
-  const r = el.getBoundingClientRect();
+  const r = shownRect(el);
+  if (!r) return '-';
   return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
 };
 const sigSize = (el) => {
-  if (!shown(el)) return '-';
-  const r = el.getBoundingClientRect();
+  const r = shownRect(el);
+  if (!r) return '-';
   return `${Math.round(r.width)}x${Math.round(r.height)}`;
 };
 function placeSig(scene, hud) {
@@ -239,13 +318,15 @@ export function placeAppFloaters() {
   const root = document.documentElement;
   const scene = document.querySelector('.table2d-scene.app-seat-layout');
   const prev = Array.from(document.querySelectorAll('[data-app-fl]'));
+  // (final repair 1: the class is written only when it changes; a write of
+  // the same value still counted as a change of the page root)
   if (!scene) {
     lastSig = '';
     prev.forEach(release);
-    root.classList.remove('app-fl');
+    if (root.classList.contains('app-fl')) root.classList.remove('app-fl');
     return;
   }
-  root.classList.add('app-fl');
+  if (!root.classList.contains('app-fl')) root.classList.add('app-fl');
   const hud = document.querySelector('.hud.cinematic-hud');
   const felt = scene.querySelector('.table2d-felt');
   const sig = placeSig(scene, hud);

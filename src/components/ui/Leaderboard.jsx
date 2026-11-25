@@ -7,6 +7,8 @@ import { nextDenverMonthStartMs, formatCountdown, denverParts, toEpochMs } from 
 import { profileTargetOf } from '../../utils/profileTarget';
 import './Leaderboard.css';
 import { cinematicEnabled } from '../scene/cinematicSkin';
+// APP Precision: the reference-leaderboard rules (switch-on builds only)
+import 'virtual:app-precision-styles/chrome';
 
 // 2026-10-11 (.online R2 — C9 / APPUI-17 / APPUI-50 / addendum).
 // - Every period tab says what it ranks. The server ranks daily / weekly /

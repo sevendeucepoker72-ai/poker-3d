@@ -92,23 +92,20 @@ import './GameHUD.css';
 // layer of the table cascade (it reads useTableGeometry's measured CSS vars).
 import './TableLayout.css';
 import { cinematicEnabled, cinematicAsset } from '../scene/cinematicSkin';
-import '../scene/CinematicSkin.css';
-// APP Precision (2026-11-24) - the skin's top area (strip, extras, ticker) and
-// its layout layer; both act only under the cinematic classes.
+// APP Precision - the skin's CSS for the HUD (CinematicSkin, AppPrecision,
+// Hero, Wide, States; see appPrecisionStyles.hud.js), in a switch-on build
+// only (vite.config.js); it acts only under the cinematic classes.
+import 'virtual:app-precision-styles/hud';
+// APP Precision (2026-11-24) - the skin's top area (strip, extras, ticker).
 import { AppStatStrip, AppTopExtras, AppTicker } from './AppPrecisionTop';
-import '../scene/AppPrecision.css';
-// APP Precision package 3 - the hero (big avatar, gold title tab, glass
-// plate) and the action bar; acts only under the cinematic classes.
+// APP Precision package 3 - the hero's big avatar.
 import AppSeatAvatar from '../scene/AppSeatAvatar';
-import '../scene/AppPrecisionHero.css';
-// APP Precision package 4 - phones held sideways, tablets, laptops, desktops.
-import '../scene/AppPrecisionWide.css';
-// APP Precision package 5 - game states and overlays (show / muck, hand
-// review, winner banner, bust banner, notices, panels).
-import '../scene/AppPrecisionStates.css';
 // APP Precision package 2 repair: the table re-measures its seats and places
 // its loose labels after the HUD changes (the hero's row, the outs counter).
 import { appLayoutPing } from '../scene/appPlacement';
+// APP Precision final repair 1: the HUD's state classes the skin CSS reads
+// (they replace its :has() selectors).
+import { syncAppHudFlags, releaseAppHudFlags } from '../scene/appHudFlags';
 import { TABLE_GEOMETRY_EVENT } from './useTableGeometry';
 
 import OverlayBoundary from '../ui/OverlayBoundary';
@@ -273,8 +270,12 @@ export default function GameHUD() {
     try { window.dispatchEvent(new Event(TABLE_GEOMETRY_EVENT)); } catch { /* ignore */ }
   }, [hasTabBar]);
   useLayoutEffect(() => {
-    if (cinematicEnabled) appLayoutPing();
+    if (!cinematicEnabled) return;
+    // (final repair 1: the state classes first, they move what is measured)
+    syncAppHudFlags();
+    appLayoutPing();
   });
+  useLayoutEffect(() => () => releaseAppHudFlags(), []);
 
   const { setScreen, playerName } = useGameStore(
     useShallow((s) => ({ setScreen: s.setScreen, playerName: s.playerName }))
@@ -4642,7 +4643,7 @@ export default function GameHUD() {
               return (
                 <div
                   key={`${card.rank}-${card.suit}-${i}`}
-                  className={`card-peek ${isWinHoleCard ? 'card-winner-glow' : ''}`}
+                  className={`card-peek ${isWinHoleCard ? 'card-winner-glow' : ''}${cinematicEnabled && isSelected ? ' app-card-marked' : ''}`}
                   onClick={cardClick}
                   title={cardTitle}
                   style={{

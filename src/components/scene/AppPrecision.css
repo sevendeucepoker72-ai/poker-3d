@@ -14,6 +14,10 @@
      Emote), the stat strip, the extras line and the action ticker, all inside
      .hud-top so useTableGeometry keeps measuring its real bottom edge.
    Phones: no backdrop-filter, no filter, no animated shadows.
+   Final repair 1: no :has() in the skin's files (it slowed every table
+   update). State classes stand in: html.app-cin-hud / app-h-* / app-t-active
+   (appHudFlags.js) and app-pod-* on a seat (PokerTable2D); where a :has()
+   counted for more, its class is written twice to keep the same weight.
    ════════════════════════════════════════════════════════════════════════ */
 
 html .hud.cinematic-hud,
@@ -224,7 +228,7 @@ html .hud.cinematic-hud .app-top__logo {
   user-select: none;
 }
 /* with the Training dock beside the hamburger the logo gives it room */
-html .hud.cinematic-hud .app-top:has(.hud-training-badge) .app-top__logo { max-width: calc(100% - 2 * 84px); }
+html.app-h-train .hud.cinematic-hud .app-top .app-top__logo { max-width: calc(100% - 2 * 84px); }
 html .hud.cinematic-hud .app-top .hud-training-badge {
   grid-area: logo;
   justify-self: start;

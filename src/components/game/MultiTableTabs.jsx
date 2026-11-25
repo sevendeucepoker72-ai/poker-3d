@@ -3,7 +3,7 @@ import { useTableStore, liveTableIds } from '../../store/tableStore';
 import { useGameStore } from '../../store/gameStore';
 // APP Precision package 5: glass tabs in the table skin (classes only in skin builds)
 import { cinematicEnabled } from '../scene/cinematicSkin';
-import '../scene/AppPrecisionChrome.css';
+import 'virtual:app-precision-styles/chrome';
 
 const MAX_TABLES = 4;
 const appCls = (c) => (cinematicEnabled ? c : undefined);
@@ -221,7 +221,7 @@ export default function MultiTableTabs() {
             <div
               key={tableId}
               style={isActive ? tabActiveStyle : tabStyle}
-              className={appCls(`app-tab${isActive ? ' app-tab--active' : ''}`)}
+              className={appCls(`app-tab${isActive ? ' app-tab--active' : ''}${tableData?.extra ? '' : ' app-tab--noclose'}`)}
               onClick={() => switchActiveTable(tableId)}
             >
               <span className={appCls('app-tab__name')}>{tableName}</span>

@@ -39,7 +39,7 @@ html body .multi-table-tabs-bar.app-tabs .app-tab {
   color: #c9d6e8 !important;
   transition: none !important;
 }
-html body .multi-table-tabs-bar.app-tabs .app-tab:not(:has(.app-tab__close)) { padding-right: 12px !important; }
+html body .multi-table-tabs-bar.app-tabs .app-tab.app-tab--noclose { padding-right: 12px !important; }
 html body .multi-table-tabs-bar.app-tabs .app-tab--active {
   border-color: #f2cf6b !important;
   background: linear-gradient(180deg, rgba(36, 60, 104, 0.97), rgba(8, 22, 52, 0.97)) !important;
@@ -179,3 +179,10 @@ html body .app-seat-picker .seat-picker-cancel {
   html body .app-seat-picker .seat-picker-actions { grid-column: 1; grid-row: 5; margin-top: 6px; }
   html body .app-seat-picker .seat-picker-table { grid-column: 2; grid-row: 1 / 7; margin: 0; }
 }
+
+/* Reference skin for the leaderboard, opt-in via the same staging flag as the
+   table (moved here from Leaderboard.css in APP Precision final repair 1, so
+   a switch-off build links none of it). */
+.reference-leaderboard .leaderboard-panel { background:linear-gradient(155deg,#102a4d,#06101f 40%,#020815);border:1px solid #b2dcff;box-shadow:0 0 0 2px #164a77,0 0 24px #0099ff99,inset 0 0 22px #154b7777; }
+.reference-leaderboard .leaderboard-title { color:#ffe2a2; text-shadow:0 2px 5px #000,0 0 12px #c3842a77; }
+.reference-leaderboard .leaderboard-tab.active,.reference-leaderboard .leaderboard-close { background:url('/cinematic/exact/stat-frame.png') center/100% 100% no-repeat;color:#eff8ff;border:0; }

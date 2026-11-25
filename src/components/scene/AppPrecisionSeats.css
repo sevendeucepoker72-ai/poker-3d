@@ -321,7 +321,7 @@ html .cinematic-table .seat-pod.seat-pod--active::after {
 html .cinematic-table .seat-pod.seat-pod--hero::after { display: none; }
 /* while another seat acts, the others dim only a little (the plates stay readable) */
 @media (max-width: 480px) and (orientation: portrait) {
-  html body:has(.seat-pod--active) .cinematic-table .seat-pod:not(.seat-pod--active):not(.seat-pod--hero):not(.seat-pod--winner):not(.seat-pod--empty) {
+  html.app-t-active body .cinematic-table .seat-pod:not(.seat-pod--active):not(.seat-pod--hero):not(.seat-pod--winner):not(.seat-pod--empty) {
     opacity: 0.9;
     filter: none;
   }
@@ -734,11 +734,11 @@ html .cinematic-table.app-seat-layout .seat-pod .seat-pod__cards .card2d--small:
 }
 /* (repair) a two-card hand turned over at showdown sits on the avatar itself
    (beside it, it reached the board) */
-html .cinematic-table.app-seat-layout .seat-pod .seat-pod__cards:not(.seat-pod__cards--stud):not(.seat-pod__cards--many):has(> .card2d:not(.card2d--back)) {
+html .cinematic-table.app-seat-layout .seat-pod.app-pod-up.app-pod-up .seat-pod__cards:not(.seat-pod__cards--stud):not(.seat-pod__cards--many) {
   left: 50% !important;
   transform: translate(-50%, -50%) !important;
 }
-html .cinematic-table.app-seat-layout .seat-pod.seat-pod--app:has(> .seat-pod__cards > .card2d:not(.card2d--back)) > .dealer-btn {
+html .cinematic-table.app-seat-layout .seat-pod.seat-pod--app.app-pod-up.app-pod-up.app-pod-up > .dealer-btn {
   left: calc(50% + var(--app-d-x, 1) * (var(--app-av, 46px) / 2 + 10px)) !important;
 }
 /* (overlapped a little: the pair is as wide as the avatar, the dealer button stays clear) */
@@ -766,7 +766,7 @@ html .cinematic-table.app-seat-layout .seat-pod .chip-stack {
 @keyframes app-bet-in { from { opacity: 0; } to { opacity: 1; } }
 /* a short screen: while the bet shows, it stands for the last action (the
    plate keeps two lines, the ticker names the action) */
-html .cinematic-table.app-seat-short .seat-pod:has(.chip-stack) .seat-pod__action-pill { display: none; }
+html .cinematic-table.app-seat-short .seat-pod.app-pod-bet .seat-pod__action-pill { display: none; }
 /* (repair) ... and a folded seat's "Fold" (the plate is dimmed and the
    ticker names it), and the plate's AWAY line (the avatar wears the AWAY
    badge): the 9-seat columns fit a 568px-tall phone */
@@ -833,7 +833,7 @@ html .cinematic-table.app-seat-short .seat-pod > .seat-pod__winner-label { colum
 html .cinematic-table.app-seat-short .seat-pod > .seat-pod__winner-label .seat-pod__winner-text { letter-spacing: 0.02em; }
 html .cinematic-table.app-seat-short .seat-pod.seat-pod--winner .seat-pod__action-pill { display: none; }
 /* a hand shown at showdown sits over the avatar's edge (both cards readable) */
-html .cinematic-table.app-seat-layout .seat-pod .seat-pod__cards:not(.seat-pod__cards--stud):has(> .card2d:not(.card2d--back)) { z-index: 3 !important; }
+html .cinematic-table.app-seat-layout .seat-pod.app-pod-up.app-pod-up .seat-pod__cards:not(.seat-pod__cards--stud) { z-index: 3 !important; }
 html .cinematic-table.app-seat-layout .seat-pod--app-r .seat-pod__winner-label { left: auto; right: 0; transform: none; }
 html .cinematic-table.app-seat-layout .seat-pod--app-l .seat-pod__winner-label { left: 0; transform: none; }
 html .cinematic-table.app-seat-layout .seat-pod--app-hero .seat-pod__winner-label { top: -48px; }

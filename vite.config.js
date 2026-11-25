@@ -4,9 +4,43 @@ import { fileURLToPath } from 'node:url'
 
 const rootFile = (name) => fileURLToPath(new URL(name, import.meta.url))
 
+// APP Precision (final repair 1): the table skin's CSS is linked only in a
+// switch-on build (VITE_APP_CINEMATIC=1). Components import
+// 'virtual:app-precision-styles/<part>'; a switch-off build resolves it to an
+// empty module, so its pages load exactly the live CSS. There the skin's CSS
+// is still built, as one file no page links (assets/app-precision-skin-*.css),
+// so canonical-features.txt finds its tokens in every build.
+const APP_STYLES = 'virtual:app-precision-styles/'
+const APP_STYLE_PARTS = ['hud', 'table', 'chrome']
+function appPrecisionStyles() {
+  let on = false
+  let build = false
+  return {
+    name: 'app-precision-styles',
+    enforce: 'pre',
+    configResolved(c) {
+      on = c.env.VITE_APP_CINEMATIC === '1'
+      build = c.command === 'build'
+    },
+    buildStart() {
+      if (on || !build) return
+      this.emitFile({ type: 'chunk', id: rootFile('./src/components/scene/appPrecisionStyles.all.js'), name: 'app-precision-skin' })
+    },
+    resolveId(id) {
+      if (!id.startsWith(APP_STYLES)) return null
+      const part = id.slice(APP_STYLES.length)
+      if (!APP_STYLE_PARTS.includes(part)) return null
+      return on ? rootFile(`./src/components/scene/appPrecisionStyles.${part}.js`) : `\0${id}`
+    },
+    load(id) {
+      return id.startsWith(`\0${APP_STYLES}`) ? 'export {}' : null
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [appPrecisionStyles(), react()],
   base: '/',
   resolve: {
     dedupe: ['react', 'react-dom', 'zustand'],

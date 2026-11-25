@@ -4,7 +4,7 @@ import { phaseLabel } from '../../utils/tableList';
 import './SeatPicker.css';
 // APP Precision package 5: the picker in the table skin's glass (skin builds only)
 import { cinematicEnabled } from '../scene/cinematicSkin';
-import '../scene/AppPrecisionChrome.css';
+import 'virtual:app-precision-styles/chrome';
 
 const OVERLAY_CLASS = `seat-picker-overlay${cinematicEnabled ? ' app-seat-picker' : ''}`;
 

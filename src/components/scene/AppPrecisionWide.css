@@ -84,7 +84,7 @@
     max-width: none;
     margin: 0;
   }
-  html body .hud.cinematic-hud .app-top:has(.hud-training-badge) .app-top__logo { max-width: none; }
+  html.app-h-train body .hud.cinematic-hud .app-top .app-top__logo { max-width: none; }
   html body .hud.cinematic-hud .app-strip,
   html body .hud.cinematic-hud .app-strip.app-strip--three,
   html body .hud.cinematic-hud .app-strip.app-strip--level,
@@ -318,27 +318,27 @@
     left: calc(var(--app-bar-side) + 16px) !important;
     right: calc(var(--app-bar-side) + 16px) !important;
   }
-  html.table-geometry body .hud.cinematic-hud:has(.rabbit-hunt-btn) .post-hand-analysis { right: calc(var(--app-bar-side) + 150px) !important; }
-  html.table-geometry body .hud.cinematic-hud:has(.show-muck-prompt) .rabbit-hunt-btn,
-  html.table-geometry body .hud.cinematic-hud:has(.post-hand-analysis) .rabbit-hunt-btn { right: calc(var(--app-bar-side) + 16px) !important; }
-  html.table-geometry body .hud.cinematic-hud:has(.rabbit-hunt-btn) .show-muck-prompt { left: calc(var(--app-bar-side) + 16px) !important; }
+  html.table-geometry.app-h-rabbit body .hud.cinematic-hud .post-hand-analysis { right: calc(var(--app-bar-side) + 150px) !important; }
+  html.table-geometry.app-h-muck body .hud.cinematic-hud .rabbit-hunt-btn,
+  html.table-geometry.app-h-pha body .hud.cinematic-hud .rabbit-hunt-btn { right: calc(var(--app-bar-side) + 16px) !important; }
+  html.table-geometry.app-h-rabbit body .hud.cinematic-hud .show-muck-prompt { left: calc(var(--app-bar-side) + 16px) !important; }
   /* (repair 2) Show / Muck and the hand review at once (his fold ended the
      hand): the review starts after the two keys (its header covered them) */
-  html.table-geometry body .hud.cinematic-hud:has(.post-hand-analysis) .show-muck-prompt {
+  html.table-geometry.app-h-pha body .hud.cinematic-hud .show-muck-prompt {
     left: calc(var(--app-bar-side) + 16px) !important;
     transform: none !important;
   }
-  html.table-geometry body .hud.cinematic-hud:has(.show-muck-prompt):has(.post-hand-analysis) .post-hand-analysis { left: calc(var(--app-bar-side) + 213px) !important; }
+  html.table-geometry.app-h-muck.app-h-pha body .hud.cinematic-hud .post-hand-analysis { left: calc(var(--app-bar-side) + 213px) !important; }
   html.table-geometry body .hud.cinematic-hud .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
     left: calc(var(--app-bar-side) + 16px) !important;
   }
-  html.table-geometry body .hud.cinematic-hud:has(.hud-bottom--my-turn) .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
+  html.table-geometry.app-h-turn body .hud.cinematic-hud .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
     left: calc(var(--app-bar-side) + 8px) !important;
   }
-  html.table-geometry body .hud.cinematic-hud:has(.sit-out-quick-btn--active):not(:has(.hud-bottom--my-turn)) .show-muck-prompt {
+  html.table-geometry.app-h-so:not(.app-h-turn) body .hud.cinematic-hud .show-muck-prompt {
     right: calc(var(--app-bar-side) + 16px) !important;
   }
-  html.table-geometry body .hud.cinematic-hud:has(.sit-out-quick-btn--active):not(:has(.hud-bottom--my-turn)) .post-hand-analysis {
+  html.table-geometry.app-h-so:not(.app-h-turn) body .hud.cinematic-hud .post-hand-analysis {
     left: calc(var(--app-bar-side) + 150px) !important;
   }
   /* the session pill (its line is also in the menu) and Last Hand (also in
@@ -419,7 +419,7 @@
   }
   html.table-geometry body .hud.cinematic-hud .session-tracker-collapsed { max-width: calc(50vw - var(--app-bar-w) / 2 - 20px); }
   /* opened, the stats panel grows up and to the left from beside the bar */
-  html.table-geometry body .hud.cinematic-hud .session-tracker:has(.session-tracker-panel) {
+  html.table-geometry.app-h-stp body .hud.cinematic-hud .session-tracker {
     right: auto !important;
     left: calc(8px + env(safe-area-inset-left, 0px)) !important;
     bottom: calc(var(--hud-bar-h, 142px) + 8px) !important;
@@ -543,7 +543,7 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__cards .card2d--sm
   width: calc(var(--app-av) * 0.58);
   height: calc(var(--app-av) * 0.8);
 }
-html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__cards:not(.seat-pod__cards--stud):not(.seat-pod__cards--many):has(> .card2d:not(.card2d--back)) {
+html body .cinematic-table .seat-pod.seat-pod--ring.app-pod-up.app-pod-up .seat-pod__cards:not(.seat-pod__cards--stud):not(.seat-pod__cards--many) {
   left: 50% !important;
   transform: translate(-50%, -50%) !important;
   z-index: 3 !important;
@@ -730,7 +730,7 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
   }
   html.table-geometry body .hud.cinematic-hud .post-hand-analysis .pha-header { min-height: 44px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
   html.table-geometry body .hud.cinematic-hud .post-hand-analysis .pha-header span[style*="0.68rem"] { font-size: 12px !important; }
-  html body .hud.cinematic-hud:has(.post-hand-analysis) .hud-bottom .app-wait-row { justify-content: flex-end !important; }
+  html.app-h-pha body .hud.cinematic-hud .hud-bottom .app-wait-row { justify-content: flex-end !important; }
 }
 /* (repair: from 640 px wide, not 740: the 667 px phones had no amount pill;
    the slider keeps about 80 px there) */
@@ -854,7 +854,7 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
     transform: translate(-50%, -70%) !important;
   }
   /* a hand shown at showdown: over the avatar */
-  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero) .seat-pod__cards:not(.seat-pod__cards--stud):not(.seat-pod__cards--many):has(> .card2d:not(.card2d--back)) {
+  html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero).app-pod-up.app-pod-up .seat-pod__cards:not(.seat-pod__cards--stud):not(.seat-pod__cards--many) {
     top: calc(2px + var(--app-av) / 2) !important;
     left: var(--app-avx) !important;
     transform: translate(-50%, -50%) !important;
@@ -908,7 +908,7 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
      the plate's last-action line steps aside while the seat's bet shows or
      it has folded, so three seats fit one above the other) */
   @media (max-height: 340px) {
-    html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero):has(> .chip-stack) .seat-pod__action-pill,
+    html body .cinematic-table .seat-pod.seat-pod--ring:not(.seat-pod--hero).app-pod-bet .seat-pod__action-pill,
     html body .cinematic-table .seat-pod.seat-pod--ring.seat-pod--folded:not(.seat-pod--hero) .seat-pod__action-pill { display: none; }
     /* (and the board's cards a quarter of the felt's height, so the board
        fits between the top seats and the hero's cards) */
@@ -948,7 +948,7 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
      folded (the bet and the dimmed plate say it; the ticker names the
      action), so its bet hangs beside the felt's pot plate, over the board
      (a three-line top seat's bet sat behind the board's last card) */
-  html body .cinematic-table .seat-pod.seat-pod--ring-crown:not(.seat-pod--hero):has(> .chip-stack) .seat-pod__action-pill,
+  html body .cinematic-table .seat-pod.seat-pod--ring-crown:not(.seat-pod--hero).app-pod-bet .seat-pod__action-pill,
   html body .cinematic-table .seat-pod.seat-pod--ring-crown.seat-pod--folded:not(.seat-pod--hero) .seat-pod__action-pill { display: none; }
   /* (repair) the floating action word on the avatar's lower half, fading
      where it appears (rising, it ran over the dealer button and the cards) */
@@ -997,16 +997,16 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
    row, so the table keeps a cash table's height (the extra line cost 19 px:
    the top seats then covered the felt's pot plate) */
 @media (orientation: landscape) and (max-height: 500px) {
-  html body .hud.cinematic-hud .hud-top.app-top:has(> .app-info):not(:has(> .hud-training-badge)) {
+  html.app-h-info:not(.app-h-trainc) body .hud.cinematic-hud .hud-top.app-top {
     grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr) 44px;
     grid-template-areas: "menu strip strip chat" "info info ticker ticker";
   }
-  html body .hud.cinematic-hud .app-top:has(> .app-info):not(:has(> .hud-training-badge)) > .app-info {
+  html.app-h-info:not(.app-h-trainc) body .hud.cinematic-hud .app-top > .app-info {
     justify-self: end;
     max-width: 100%;
     margin-top: 3px;
   }
-  html body .hud.cinematic-hud .app-top:has(> .app-info):not(:has(> .hud-training-badge)) > .app-ticker {
+  html.app-h-info:not(.app-h-trainc) body .hud.cinematic-hud .app-top > .app-ticker {
     justify-self: stretch;
     width: auto;
     min-width: 0;
@@ -1014,7 +1014,7 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
     margin-top: 3px;
   }
   /* (the average stack steps aside, as on a narrow phone) */
-  html body .hud.cinematic-hud .app-top:has(> .app-info):not(:has(> .hud-training-badge)) .app-info__item--avg { display: none; }
+  html.app-h-info:not(.app-h-trainc) body .hud.cinematic-hud .app-top .app-info__item--avg { display: none; }
 }
 
 /* ── 8. (repair 2) A phone held sideways: the loose controls ─────────────
@@ -1045,11 +1045,11 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
     --app-lead: 0px;
     --app-band-b: calc(8px + env(safe-area-inset-bottom, 0px));
   }
-  html body .hud.cinematic-hud:has(.sit-out-quick-btn--active):not(:has(.hud-bottom--my-turn)) { --app-so: 110px; --app-lead: 8px; }
-  html body .hud.cinematic-hud:has(.show-muck-prompt) { --app-sm: 162px; --app-lead: 8px; }
-  html body .hud.cinematic-hud:has(.rabbit-hunt-btn) { --app-rb: 138px; --app-lead: 8px; }
+  html.app-h-so:not(.app-h-turn) body .hud.cinematic-hud { --app-so: 110px; --app-lead: 8px; }
+  html.app-h-muck body .hud.cinematic-hud { --app-sm: 162px; --app-lead: 8px; }
+  html.app-h-rabbit body .hud.cinematic-hud { --app-rb: 138px; --app-lead: 8px; }
   /* a qualifier's plain pill (the hand's name only) */
-  html body .hud.cinematic-hud:has(.hand-strength-portal--plain) { --app-hsp-w: clamp(104px, 22vw, 170px); }
+  html.app-h-hspplain body .hud.cinematic-hud { --app-hsp-w: clamp(104px, 22vw, 170px); }
 
   /* the hand-strength pill: the ticker row's left end */
   html.table-geometry body .hud.cinematic-hud .hand-strength-portal {
@@ -1068,9 +1068,9 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
   html body .hud.cinematic-hud .hand-strength-portal .hsp-bar { flex: 0 0 24px !important; width: 24px !important; }
   html body .hud.cinematic-hud .hand-strength-portal .hsp-tier { padding: 0 6px !important; line-height: 14px; }
   html body .hud.cinematic-hud .hand-strength-portal .hsp-label { line-height: 14px; }
-  html body .hud.cinematic-hud:has(.hand-strength-portal) .app-ticker { padding-left: calc(var(--app-hsp-w) + 8px); }
+  html.app-h-hsp body .hud.cinematic-hud .app-ticker { padding-left: calc(var(--app-hsp-w) + 8px); }
   /* (a qualifier's extras line shares the row: the ticker is its right half) */
-  html.table-geometry body .hud.cinematic-hud:has(.app-top > .app-info):not(:has(.app-top > .hud-training-badge)) .hand-strength-portal {
+  html.table-geometry.app-h-info.app-h-info:not(.app-h-trainc.app-h-trainc) body .hud.cinematic-hud .hand-strength-portal {
     left: calc(50% + 4px) !important;
   }
 
@@ -1099,14 +1099,14 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
     white-space: nowrap;
     z-index: 150 !important;
   }
-  html body .hud.cinematic-hud:has(.bomb-pot-banner) .app-ticker { padding-right: 104px; }
+  html.app-h-bomb body .hud.cinematic-hud .app-ticker { padding-right: 104px; }
   /* (a narrow phone: the level panel's "LVL 6/20" a little tighter, it was
      cut by 3 px) */
   @media (max-width: 640px) {
     html body .hud.cinematic-hud .app-strip__panel--level .app-strip__label { letter-spacing: 0.03em; }
   }
   /* (a qualifier's half-row ticker: its right end is the row's) */
-  html body .hud.cinematic-hud:has(.app-top > .app-info):not(:has(.app-top > .hud-training-badge)) .bomb-pot-banner {
+  html.app-h-info.app-h-info:not(.app-h-trainc.app-h-trainc) body .hud.cinematic-hud .bomb-pot-banner {
     right: calc(8px + env(safe-area-inset-right, 0px)) !important;
   }
 
@@ -1133,20 +1133,20 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
   }
   /* his own turn: a 44 px chair key at the row's left end (its words stay
      its name for a screen reader; the title says what a tap does) */
-  html.table-geometry body .hud.cinematic-hud:has(.hud-bottom--my-turn) .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
+  html.table-geometry.app-h-turn body .hud.cinematic-hud .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active {
     width: 44px !important;
     padding: 0 !important;
     font-size: 0 !important;
   }
-  html.table-geometry body .hud.cinematic-hud:has(.hud-bottom--my-turn) .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active::before {
+  html.table-geometry.app-h-turn body .hud.cinematic-hud .app-top .hud-player > .sit-out-quick-btn.sit-out-quick-btn--active::before {
     content: '\1FA91';
     font-size: 20px;
     line-height: 1;
   }
-  html body .hud.cinematic-hud:has(.sit-out-quick-btn--active) .hud-bottom.hud-bottom--my-turn .action-bar-flat { padding-left: 50px !important; }
+  html.app-h-so body .hud.cinematic-hud .hud-bottom.hud-bottom--my-turn .action-bar-flat { padding-left: 50px !important; }
   /* (and the amount pill steps aside, as on the live table held sideways:
      RAISE names the amount; the slider keeps its width) */
-  html body .hud.cinematic-hud:has(.sit-out-quick-btn--active) .hud-bottom.hud-bottom--my-turn .action-bar-flat .raise-inline-val { display: none !important; }
+  html.app-h-so body .hud.cinematic-hud .hud-bottom.hud-bottom--my-turn .action-bar-flat .raise-inline-val { display: none !important; }
 
   /* Show Hand / Muck: in the band after Sitting Out (44 px keys) */
   html.table-geometry body .hud.cinematic-hud .show-muck-prompt {
@@ -1199,9 +1199,9 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
   }
   /* the queue row and the waiting line with Deal now keep the band's right
      end while any of them shows (the waiting line words wrap, two lines) */
-  html body .hud.cinematic-hud:has(.sit-out-quick-btn--active, .show-muck-prompt, .rabbit-hunt-btn) .hud-bottom .pre-action-btns { justify-content: flex-end !important; }
-  html body .hud.cinematic-hud:has(.sit-out-quick-btn--active, .show-muck-prompt, .rabbit-hunt-btn, .post-hand-analysis) .hud-bottom .app-wait-row { justify-content: flex-end !important; }
-  html body .hud.cinematic-hud:has(.sit-out-quick-btn--active, .show-muck-prompt, .rabbit-hunt-btn) .hud-bottom .app-wait-row > .app-wait-pill {
+  html:is(.app-h-so, .app-h-muck, .app-h-rabbit) body .hud.cinematic-hud .hud-bottom .pre-action-btns { justify-content: flex-end !important; }
+  html:is(.app-h-so, .app-h-muck, .app-h-rabbit, .app-h-pha) body .hud.cinematic-hud .hud-bottom .app-wait-row { justify-content: flex-end !important; }
+  html:is(.app-h-so, .app-h-muck, .app-h-rabbit) body .hud.cinematic-hud .hud-bottom .app-wait-row > .app-wait-pill {
     max-width: 120px;
     white-space: normal !important;
     text-align: center;
@@ -1213,12 +1213,12 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
   html.table-geometry body .hud.cinematic-hud .post-hand-analysis {
     left: calc(8px + env(safe-area-inset-left, 0px) + var(--app-lead) + var(--app-so) + var(--app-sm) + var(--app-rb)) !important;
   }
-  html body .hud.cinematic-hud:has(.post-hand-analysis) .hud-bottom .app-wait-row > .app-wait-pill { visibility: hidden; }
-  html body .hud.cinematic-hud:has(.post-hand-analysis) .hud-bottom .hud-actions-inner.hud-actions--inactive { visibility: hidden; }
+  html.app-h-pha body .hud.cinematic-hud .hud-bottom .app-wait-row > .app-wait-pill { visibility: hidden; }
+  html.app-h-pha body .hud.cinematic-hud .hud-bottom .hud-actions-inner.hud-actions--inactive { visibility: hidden; }
   /* (a narrow phone with Show / Muck and the rabbit up: the review waits
      the five seconds of Show / Muck, then takes the band) */
   @media (max-width: 739px) {
-    html body .hud.cinematic-hud:has(.show-muck-prompt):has(.rabbit-hunt-btn) .post-hand-analysis { visibility: hidden; }
+    html.app-h-muck.app-h-rabbit body .hud.cinematic-hud .post-hand-analysis { visibility: hidden; }
   }
 
   /* spectating: the status line at the band's left, Spectating / Leave at
@@ -1280,7 +1280,7 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
   /* (the columns of a short scene for a spectator: an open seat's Sit Here
      key sits a little tighter on its glass circle, so the seats of a column
      never touch) */
-  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring.seat-pod--empty:has(> .seat-pod__sit-btn) {
+  html body .cinematic-table.app-land-cols .seat-pod.seat-pod--ring.seat-pod--empty.app-pod-sit {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
   }
@@ -1296,13 +1296,13 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
   }
   /* (a spectator holds no hand: the empty slots stood on seat 0's plate at
      the bottom middle; the live table's dark slots hide behind that seat) */
-  html body .hud.cinematic-hud:has(.app-spectator-banner) .hud-cards.hud-cards-floating:has(.card-slot) { visibility: hidden; }
+  html.app-h-specban.app-h-slot body .hud.cinematic-hud .hud-cards.hud-cards-floating { visibility: hidden; }
 
   /* the all-in equity list (a help tool; cash tables only): one row in the
      ticker row after the hand-strength pill (at the screen's right edge it
      covered the side seats) */
   html body .hud.cinematic-hud { --app-hsp-on: 0px; }
-  html body .hud.cinematic-hud:has(.hand-strength-portal) { --app-hsp-on: calc(var(--app-hsp-w) + 6px); }
+  html.app-h-hsp body .hud.cinematic-hud { --app-hsp-on: calc(var(--app-hsp-w) + 6px); }
   html.table-geometry body .hud.cinematic-hud .equity-badges-container {
     top: calc(var(--hud-top-h, 78px) - 4px - var(--app-ticker-h, 20px)) !important;
     bottom: auto !important;
@@ -1336,7 +1336,7 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
   html body .hud.cinematic-hud .equity-badges-container .equity-player-name { color: #c9d6ea; }
   html body .hud.cinematic-hud .equity-badges-container .equity-pct { color: #9fe6ff; text-shadow: none; }
   /* (the ticker's line steps aside while the list shows) */
-  html body .hud.cinematic-hud:has(.equity-badges-container) .app-ticker__items { visibility: hidden; }
+  html.app-h-eq body .hud.cinematic-hud .app-ticker__items { visibility: hidden; }
 }
 
 /* ── 8b. (repair 2) Any screen held sideways: the away / sitting-out
@@ -1430,7 +1430,7 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
   html.table-geometry body .hud.cinematic-hud .equity-badges-container :is(.equity-player-name, .equity-pct) { font-size: 12px !important; line-height: 14px; }
   html.table-geometry body .hud.cinematic-hud .equity-badges-container .equity-player-name { color: #c9d6ea; max-width: 110px; }
   html.table-geometry body .hud.cinematic-hud .equity-badges-container .equity-pct { color: #9fe6ff; text-shadow: none; }
-  html.table-geometry body .hud.cinematic-hud:has(.equity-badges-container) .app-ticker__items { visibility: hidden; }
+  html.table-geometry.app-h-eq body .hud.cinematic-hud .app-ticker__items { visibility: hidden; }
 }
 @media (orientation: landscape) and (min-width: 601px) and (min-height: 501px) {
   html.table-geometry body .hud.cinematic-hud .equity-badges-container { --app-tk-w: min(100vw - 16px, var(--app-strip-w, 860px)); }
@@ -1458,8 +1458,8 @@ html body .cinematic-table .seat-pod.seat-pod--ring .seat-pod__action-bubble { f
     text-overflow: ellipsis;
     line-height: calc(var(--app-ticker-h, 24px) - 4px);
   }
-  html.table-geometry body .hud.cinematic-hud:has(.hand-strength-container .outs-display) .app-ticker { padding-right: calc(min(100vw - 16px, var(--app-strip-w, 860px)) * 0.56 + 16px); }
-  html.table-geometry body .hud.cinematic-hud:has(.hand-strength-container .outs-display) .equity-badges-container { max-width: calc(var(--app-tk-w) * 0.4); }
+  html.table-geometry.app-h-outs.app-h-outs body .hud.cinematic-hud .app-ticker { padding-right: calc(min(100vw - 16px, var(--app-strip-w, 860px)) * 0.56 + 16px); }
+  html.table-geometry.app-h-outs.app-h-outs body .hud.cinematic-hud .equity-badges-container { max-width: calc(var(--app-tk-w) * 0.4); }
 }
 
 /* (repair 2) the hand-strength tier tag's LIGHT step in the skin's cyan, not
@@ -1482,4 +1482,16 @@ html body .hud.cinematic-hud .bomb-pot-banner {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   animation: none;
+}
+
+/* ── 9. (final repair 1) A phone held sideways wider than 768 px (an 844 or
+   932 px iPhone): no backdrop-filter. The live HUD keeps its blurs there
+   (the queue keys, the hand-strength pill, an empty card slot, the Split
+   Pot and winner banners); every other phone size had them off. ── */
+@media (orientation: landscape) and (max-height: 500px) {
+  html body .hud.cinematic-hud :is(.pre-action-btn, .hand-strength-portal, .card-slot, .chop-pot-banner, .winner-banner),
+  html body .cinematic-table .card-slot {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
 }
