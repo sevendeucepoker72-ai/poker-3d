@@ -164,21 +164,33 @@ if (!socketHostChunk) {
 }
 console.log(`[deploy-online] socket host ${SOCKET_HOST} verified in ${path.basename(socketHostChunk)}.`);
 
-// 2026-11-25 (APP Precision) — say which table look this build ships. The
-// switch is a BUILD flag (VITE_APP_CINEMATIC=1), so nothing else in the deploy
-// output shows it. A switch-off build carries the skin's CSS only as one
-// unlinked file (assets/app-precision-skin-*.css, kept for the token check);
-// a switch-on build links it. Information only, never a FAIL.
+// 2026-11-25 (APP Precision) — the table look lock. The APP Precision table
+// look is live (owner 2026-11-25, "Lets make it live") and ON by default in
+// the build. The only way to build without it is VITE_APP_CINEMATIC=0 (the
+// rollback: exactly the table look that was live before). Such a build
+// carries the skin's CSS only as one unlinked file
+// (assets/app-precision-skin-*.css, kept for the token check); an ON build
+// links it. A real deploy of an OFF build FAILS unless VITE_APP_CINEMATIC=0 is
+// set for the deploy too, so a stray build can never quietly put the old
+// table back. --check-only only warns.
 {
   const assetNames = fs.existsSync(path.join(DIST_DIR, 'assets')) ? fs.readdirSync(path.join(DIST_DIR, 'assets')) : [];
   const offMarker = assetNames.some((n) => /^app-precision-skin-.*\.css$/.test(n));
   const skinCss = assetNames.filter((n) => n.endsWith('.css')).some((n) => {
     try { return fs.readFileSync(path.join(DIST_DIR, 'assets', n), 'utf8').includes('cinematic-hud'); } catch (_) { return false; }
   });
-  if (!offMarker && skinCss) {
-    console.warn('[deploy-online] table look: APP Precision is ON in this build (VITE_APP_CINEMATIC=1) - every player gets the new table. Ship only with the owner\'s OK; rollback = rebuild without the flag.');
+  const lookOn = !offMarker && skinCss;
+  const rollbackAsked = process.env.VITE_APP_CINEMATIC === '0';
+  if (lookOn) {
+    console.log('[deploy-online] table look: APP Precision (the live table look).');
+  } else if (rollbackAsked) {
+    console.warn('[deploy-online] table look: ROLLBACK build (VITE_APP_CINEMATIC=0) - every player gets the table look from before 2026-11-25.');
   } else {
-    console.log('[deploy-online] table look: the live look (APP Precision switch OFF).');
+    const say = CHECK_ONLY ? console.warn : console.error;
+    say(`[deploy-online] ${CHECK_ONLY ? 'WARN' : 'FAIL'}: this build has the OLD table look (APP Precision is off), but VITE_APP_CINEMATIC=0 is not set.`);
+    say('  The APP Precision table look is live. To roll it back on purpose, build AND deploy with VITE_APP_CINEMATIC=0;');
+    say('  otherwise run `npm run build` again without VITE_APP_CINEMATIC set.');
+    if (!CHECK_ONLY) process.exit(1);
   }
 }
 

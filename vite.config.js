@@ -7,6 +7,11 @@ import { join, relative } from 'node:path'
 
 const rootFile = (name) => fileURLToPath(new URL(name, import.meta.url))
 
+// APP Precision table look: ON unless VITE_APP_CINEMATIC=0 (owner 2026-11-25:
+// live by default; =0 builds the table look that was live before, the
+// rollback). Same rule as cinematicEnabled in src/components/scene/cinematicSkin.js.
+const appLookOn = (env) => env.VITE_APP_CINEMATIC !== '0'
+
 // APP Precision: the skin's art in public/cinematic/ keeps fixed names, and
 // the host serves .webp / .png as immutable for a year, so a changed picture
 // would never reach a phone that already has the old one. Every reference
@@ -35,7 +40,7 @@ function appArtCacheBust() {
     name: 'app-art-cache-bust',
     enforce: 'pre',
     configResolved(c) {
-      on = c.env.VITE_APP_CINEMATIC === '1'
+      on = appLookOn(c.env)
       build = c.command === 'build'
       versions = appArtVersions()
     },
@@ -52,7 +57,7 @@ function appArtCacheBust() {
 }
 
 // APP Precision (final repair 1): the table skin's CSS is linked only in a
-// switch-on build (VITE_APP_CINEMATIC=1). Components import
+// switch-on build (the default; off = VITE_APP_CINEMATIC=0). Components import
 // 'virtual:app-precision-styles/<part>'; a switch-off build resolves it to an
 // empty module, so its pages load exactly the live CSS. There the skin's CSS
 // is still built, as one file no page links (assets/app-precision-skin-*.css),
@@ -66,7 +71,7 @@ function appPrecisionStyles() {
     name: 'app-precision-styles',
     enforce: 'pre',
     configResolved(c) {
-      on = c.env.VITE_APP_CINEMATIC === '1'
+      on = appLookOn(c.env)
       build = c.command === 'build'
     },
     buildStart() {

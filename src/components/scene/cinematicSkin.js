@@ -1,7 +1,13 @@
-// Explicit staging opt-in; set VITE_APP_CINEMATIC=1 at build time.
+// APP Precision table look: ON by default since it went live (owner
+// 2026-11-25, "Lets make it live"). The ROLLBACK is a build with
+// VITE_APP_CINEMATIC=0, which is exactly the table look that was live before
+// (same CSS files, the skin's helpers stubbed out; see vite.config.js), and
+// deploy-online.mjs refuses to ship that build unless VITE_APP_CINEMATIC=0 is
+// set for the deploy too. Keep this rule identical to appLookOn in
+// vite.config.js.
 import APP_ART_VERSIONS from 'virtual:app-art-versions';
 
-export const cinematicEnabled = import.meta.env.VITE_APP_CINEMATIC === '1';
+export const cinematicEnabled = import.meta.env.VITE_APP_CINEMATIC !== '0';
 // (?v=<content hash>: the host keeps /cinematic/ art for a year, so a changed
 // picture needs a new URL; see vite.config.js appArtCacheBust)
 export const cinematicAsset = (name) => `${import.meta.env.BASE_URL}cinematic/${name}${APP_ART_VERSIONS[name] ? `?v=${APP_ART_VERSIONS[name]}` : ''}`;

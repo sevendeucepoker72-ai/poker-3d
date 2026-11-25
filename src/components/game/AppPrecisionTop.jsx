@@ -2,7 +2,7 @@
 // (TOTAL POT, BLINDS, SPR or the level clock, the street with its progress
 // dashes), the extras line (side pots, next level, tournament standings,
 // dealer's choice next) and the one-line action ticker. GameHUD renders these
-// only when cinematicEnabled (VITE_APP_CINEMATIC=1), inside .hud-top, from the
+// only when cinematicEnabled (on by default; off = VITE_APP_CINEMATIC=0), inside .hud-top, from the
 // same values the old top row showed: nothing new is computed here.
 // Blue + gold, never red. Every help tool (SPR) arrives already gated by the
 // caller on helpToolsOff.
