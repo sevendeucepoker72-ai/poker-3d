@@ -60,10 +60,13 @@
  *                  the screen is not switched, a banner offers the table.
  * Memory only (per page load): after a reload the server's
  * 'tournamentSeatKept' / 'reconnectedToTable' and the gameState markers
- * rebuild it. Imports nothing but zustand (gameStore imports it to forget the
- * seats on sign-out).
+ * rebuild it. Imports nothing but zustand and the pure, import-free
+ * utils/tournamentSitOut.js (gameStore imports it to forget the seats on
+ * sign-out).
  */
 import { create } from 'zustand';
+// 2026-11-26 (owner FIX 2) — the sit-out limit's words (pure, import-free).
+import { satOutRemovedHands, satOutRemovedOwnLine, awaySeatSitOutWarningLine } from '../utils/tournamentSitOut.js';
 
 function idString(v) {
   if (v === null || v === undefined) return null;
@@ -176,6 +179,9 @@ function upsertAway(entry) {
     name: entry.name || (prev ? prev.name : null) || DEFAULT_NAME,
     leftAt: prev ? prev.leftAt : (entry.leftAt || Date.now()),
     via: (prev && prev.via) || entry.via || 'server',
+    // 2026-11-26 (FIX 2) — the sit-out warning line stays with the seat
+    // through a rebalance / sign-in update of it (the streak goes on).
+    sitOutWarning: (prev && prev.sitOutWarning) || null,
   };
   merged.key = awaySeatKey(merged);
   // Re-keyed (its tournamentId learned): a Return in flight / a Dismiss line
@@ -213,6 +219,28 @@ export function noteTournamentTableMove(toTable, fromTable) {
 export function awaySeatOfTournament(tournamentId) {
   const t = idString(tournamentId);
   return t ? (st().awaySeats.find((a) => a.tournamentId === t) || null) : null;
+}
+
+/**
+ * 2026-11-26 (owner FIX 2) — socket 'tournamentSitOutWarning' for a seat this
+ * tab is AWAY from: the lobby Return banner says the rule under that seat
+ * (`sitOutWarning`, awaySeatSitOutWarningLine) until he returns or the seat
+ * ends. Matched by tournamentId only (Z8): a warning never lands on another
+ * tournament's seat. Returns true when an away seat took it.
+ */
+export function noteAwaySeatSitOutWarning(data, now = Date.now()) {
+  const t = idString(data && data.tournamentId);
+  if (!t) return false;
+  const line = awaySeatSitOutWarningLine(data, now);
+  if (!line) return false;
+  let hit = false;
+  const list = st().awaySeats.map((a) => {
+    if (a.tournamentId !== t) return a;
+    hit = true;
+    return { ...a, sitOutWarning: line };
+  });
+  if (hit) putAway(list);
+  return hit;
 }
 
 /**
@@ -435,8 +463,11 @@ export function noteTournamentSeatReturned(data) {
  * A seat whose tournament is unknown matches only by its table. `room`: the
  * notice is the room broadcast of the table on screen (the room's
  * 'tournamentFinished'), which may also end the LIVE seat by itself.
+ * 2026-11-26 (owner FIX 2) — `reason` 'sat_out_limit' (+ `handsSatOut`): he
+ * was REMOVED for sitting out, and the line says so (satOutRemovedOwnLine);
+ * any other reason / none keeps today's line.
  */
-export function noteTournamentOver({ tournamentId, tableId, position, finished, room = false } = {}) {
+export function noteTournamentOver({ tournamentId, tableId, position, finished, room = false, reason, handsSatOut } = {}) {
   const tId = idString(tournamentId);
   const tbl = idString(tableId);
   const matches = (x, live) => {
@@ -454,8 +485,11 @@ export function noteTournamentOver({ tournamentId, tableId, position, finished, 
   if (ended.length) {
     const name = ended[0].name || DEFAULT_NAME;
     const pos = Number(position);
+    const removedHands = finished ? null : satOutRemovedHands({ reason, handsSatOut });
     if (finished) {
       notice = tournamentFinishedText(name, pos);
+    } else if (removedHands) {
+      notice = satOutRemovedOwnLine(name, pos, removedHands, DEFAULT_NAME);
     } else {
       notice = Number.isFinite(pos) && pos > 0
         ? `${name}: you finished in position ${pos}.`

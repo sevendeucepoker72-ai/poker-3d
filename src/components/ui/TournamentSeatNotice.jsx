@@ -170,6 +170,14 @@ export function TournamentReturnBanner() {
                 {`Your hand is folded for you while you are away (${TOURNAMENT_ABSENT_LIMP_NOTE}) and your blinds are posted from your stack.`}
                 {Number.isFinite(a.chips) ? ` Stack: ${a.chips.toLocaleString()} chips.` : ''}
               </div>
+              {/* 2026-11-26 (owner FIX 2) — the server's 3-hand sit-out
+                  warning for this seat ('tournamentSitOutWarning'): the rule
+                  in gold, never a count that goes stale. */}
+              {a.sitOutWarning ? (
+                <div className="tournament-return-sitout-limit" style={{ marginTop: 6, fontSize: 13, lineHeight: 1.45, color: '#ffd24a', fontWeight: 600 }}>
+                  {a.sitOutWarning}
+                </div>
+              ) : null}
               <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 12 }}>
                 {/* Round 6 — a Return that got NO answer at all (an older
                     server: nothing will ever answer) can be dismissed.

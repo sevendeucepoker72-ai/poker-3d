@@ -1593,3 +1593,29 @@ app-tab--noclose
 # Online League no-shows seated + blinded out, never released (owner 2026-11-25: "It should seat you and blind you out")
 is still seated and blinded out until they arrive
 you are still seated and blinded out.
+# 2026-11-26 (owner orders 2026-11-25, every tournament) FIX 2: nobody sits out more than 30 hands in a
+# row. The 3-hand warning event + toast, the sit-out note / away banner sentence (gameState.mySitOutLimit),
+# the timeout toast's limit sentence (only when the table's server sends mySitOutLimit), the removal reason
+# ('sat_out_limit', never the cash 'sit_out_limit') on the bust banner, the toasts and the lobby line, the
+# away seat's Return banner line, the league registrant note and the rules lines (gated on the list item's
+# sitOutLimitHands). FIX 1: a table under 4 players waits for balancing while 2+ tables play
+# (gameState.tableHold 'short_table': the waiting line, no Deal now; rules line gated on minTablePlayers).
+tournamentSitOutWarning
+sat_out_limit
+You can't sit out more than
+You have sat out
+hands or you will be removed from the tournament.
+Come back this hand or you will be removed.
+If you are still away when late entry closes, you will be removed.
+Removed for sitting out
+: you were removed for sitting out
+You were removed for sitting out
+tournament-sitout-limit
+tournament-bust-reason
+tournament-return-sitout-limit
+Waiting for players to be moved to this table.
+Anyone still away when late entry closes is removed.
+hand you are removed, the same as a bust: you finish in the next place.
+a table never plays with fewer than {minTablePlayers} players. It waits until players are moved to it.
+If you are still away when late entry closes at 7:00 PM MT, you are removed and finish in the next place.
+hand you are removed and finish in the next place.

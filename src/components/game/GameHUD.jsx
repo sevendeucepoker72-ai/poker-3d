@@ -67,6 +67,9 @@ import {
 } from '../../store/tournamentSeatStore';
 import { returnToTournament } from '../../services/tournamentReturn';
 import { TournamentLeaveDialog } from '../ui/TournamentSeatNotice';
+// 2026-11-26 (owner orders 2026-11-25) — FIX 2 the sit-out limit's sentence
+// and the bust banner's removal line; FIX 1 the held short table (pure).
+import { sitOutLimitSentence, bustBannerRemovalLine, shortTableHeldOf, SHORT_TABLE_WAITING_TEXT } from '../../utils/tournamentSitOut';
 // 2026-10-22 — the tournament's running level clock, standings line and
 // held-table banner, from the OPTIONAL gameState.tournamentClock.
 import { TournamentClockStrip, TournamentHeldBanner } from './TournamentClockStrip';
@@ -381,7 +384,9 @@ export default function GameHUD() {
       // Round 3 (P-e'): a cash table he only WATCHES (P-d marks it) stays too.
       if (eliminationShownElsewhere(useTableStore.getState().gameState, data)) return;
       // Sit & Go fix-all F7 — `prize` (present when the place is paid and final).
-      setEliminatedPosition({ position: data.position, totalPlayers: data.totalPlayers, prize: data.prize });
+      // 2026-11-26 (owner FIX 2) — `reason` 'sat_out_limit' + `handsSatOut`:
+      // removed for sitting out (the banner says why; absent = a bust).
+      setEliminatedPosition({ position: data.position, totalPlayers: data.totalPlayers, prize: data.prize, reason: data.reason, handsSatOut: data.handsSatOut });
       // Sit & Go fix-all C2 — his chip result for the bankroll graph (in memory).
       try {
         const tid = data && data.tournamentId != null ? String(data.tournamentId) : null;
@@ -3588,6 +3593,16 @@ export default function GameHUD() {
   const tournamentClock = tournamentView.clock;
   const showTournamentClock = tournamentView.show;
   const tournamentHeld = tournamentView.held;
+  // 2026-11-26 (owner FIX 1) — while 2+ tables play, a table under 4 players
+  // waits for balancing (gameState.tableHold 'short_table'; absent / null =
+  // today's waiting line): it says so, and Deal now is not offered (the
+  // server deals it once players are moved in). Never via tournamentClock
+  // (an unknown pause reason freezes the level clock and reads as a pause).
+  const shortTableHeld = shortTableHeldOf(gameState);
+  // 2026-11-26 (owner FIX 2) — his own seat's sit-out count
+  // (gameState.mySitOutLimit, per socket; null / absent = no sentence, the
+  // note as before): "Come back within 27 hands or you will be removed."
+  const sitOutLimitLine = onTournamentSeat ? sitOutLimitSentence(gameState?.mySitOutLimit, serverNow()) : '';
   const isShowdown = phase === 'Showdown';
   const lastHandHistory = handHistories.length > 0 ? handHistories[handHistories.length - 1] : null;
   // Sit & Go fix-all C5 — his own newest hand (pure, probed: utils/handLog).
@@ -4475,7 +4490,12 @@ export default function GameHUD() {
       {isAFK && (
         <div className={`afk-away-banner${onTournamentSeat ? ' afk-away-banner--tournament' : ''}`}>
           <span>🌙</span>
-          <span>{onTournamentSeat ? `You're away — you stay dealt in: ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT}.` : "You're away — hands will be auto-folded"}</span>
+          <span>
+            {onTournamentSeat ? `You're away — you stay dealt in: ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT}.` : "You're away — hands will be auto-folded"}
+            {/* 2026-11-26 (owner FIX 2) — the sit-out limit (this note hides the
+                tournament-sitout-note while isAFK, so it says it too). */}
+            {onTournamentSeat && sitOutLimitLine ? <> <span className="tournament-sitout-limit">{sitOutLimitLine}</span></> : null}
+          </span>
           <button className="afk-back-btn" onClick={() => {
             emitAwayAll('playerBack');
             setAfkWarning(false);
@@ -4490,7 +4510,13 @@ export default function GameHUD() {
       {onTournamentSeat && sittingOutHere && !isAFK && (
         <div className="afk-away-banner afk-away-banner--tournament tournament-sitout-note" role="status">
           <span>🪑</span>
-          <span>{`Sitting out — you stay dealt in: your blinds are posted and ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT}.`}</span>
+          <span>
+            {`Sitting out — you stay dealt in: your blinds are posted and ${TOURNAMENT_SEAT_AWAY_ACTS_TEXT}.`}
+            {/* 2026-11-26 (owner FIX 2) — "Come back within N hands or you will
+                be removed." inside the same text span (the skin's
+                span:nth-child(2) rule and the phone band placement hold). */}
+            {sitOutLimitLine ? <> <span className="tournament-sitout-limit">{sitOutLimitLine}</span></> : null}
+          </span>
           {/* Review (round 7): 'playerBack' ALWAYS means "not sitting out" (safe
               to repeat) — a toggle could sit him OUT when the local flag was stale. */}
           <button className="afk-back-btn" onClick={() => {
@@ -4827,7 +4853,17 @@ export default function GameHUD() {
                       You placed {eliminatedPosition.position}{eliminatedPosition.position === 1 ? 'st' : eliminatedPosition.position === 2 ? 'nd' : eliminatedPosition.position === 3 ? 'rd' : 'th'}
                     </div>
                   )}
-                  <div style={{ color: '#888', fontSize: '0.8rem' }}>out of {eliminatedPosition.totalPlayers} players</div>
+                  <div style={{ color: '#888', fontSize: '0.8rem' }}>
+                    out of {eliminatedPosition.totalPlayers} players
+                    {/* 2026-11-26 (owner FIX 2) — removed for sitting out
+                        (reason 'sat_out_limit'): why, inside the last line
+                        so the skin's first / last line styles hold. */}
+                    {bustBannerRemovalLine(eliminatedPosition) ? (
+                      <span className="tournament-bust-reason" style={{ display: 'block' }}>
+                        {bustBannerRemovalLine(eliminatedPosition)}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               )}
 
@@ -4891,10 +4927,12 @@ export default function GameHUD() {
               }}>
                 {/* R2 (TABLEUI-17) — CSS-owned so phones / reduced motion stop it. */}
                 <span className="hud-waiting-dot" aria-hidden="true" />
-                {phase === 'HandComplete' ? 'Starting next hand…' : 'Waiting for players…'}
+                {/* 2026-11-26 (owner FIX 1) — a short table held for balancing says so. */}
+                {shortTableHeld ? SHORT_TABLE_WAITING_TEXT : (phase === 'HandComplete' ? 'Starting next hand…' : 'Waiting for players…')}
               </span>
               )}
-              {!tournamentHeld && (
+              {/* (FIX 1: no Deal now on a held short table either — the server deals it.) */}
+              {!tournamentHeld && !shortTableHeld && (
               <button
                 className="action-btn deal"
                 onClick={startHand}

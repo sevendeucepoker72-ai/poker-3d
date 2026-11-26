@@ -18,6 +18,12 @@
 // registrant not online at the start is seated and blinded out, never
 // released (poker-server qualifierNoShow.noShowsSeatedAbsent). Two Schedule
 // lines added.
+// Owner orders 2026-11-25 (FIX 2, every tournament): nobody can sit out more
+// than 30 hands in a row; a no-show is protected until late entry closes at
+// 7:00 PM MT and, if still away then, removed (he finishes in the next place,
+// like a bust). Two Schedule lines added after the no-show lines, shown only
+// while the league item carries the server's sitOutLimitHands (key
+// sitOutLimitHands / sitOutLimitNth). A no-show is still never "released".
 //
 // Same shape as content/qualifierRules.js QUALIFIER_RULES, so the same rules
 // window (components/ui/QualifierRules.jsx) renders it: [{ heading, rules }],
@@ -29,6 +35,10 @@
 //   leagueMinField  the server set a minimum number of finishers for the
 //                   night's weekly credits + prize ({leagueMinField}); absent
 //                   = no minimum
+//   sitOutLimitHands the server removes a player after this many hands in a
+//                   row sitting out, and a no-show still away when late
+//                   entry closes ({sitOutLimitHands}, {sitOutLimitNth});
+//                   absent = no such line
 // So a line about points, credits or the prize shows only while the server
 // gives them. Never write a rule here that the code does not do.
 // Plain ASCII, short sentences, no dashes as asides (AGENT.md rule 20).
@@ -41,7 +51,7 @@ export const ONLINE_LEAGUE_RULES_TITLE = 'Online League Rules';
 export const ONLINE_LEAGUE_RULES_SUBTITLE = 'Monday to Saturday at 6:00 PM MT on americanpubpoker.online';
 
 /** The day these rules were last changed (YYYY-MM-DD). */
-export const ONLINE_LEAGUE_RULES_UPDATED = '2026-11-25';
+export const ONLINE_LEAGUE_RULES_UPDATED = '2026-11-26';
 
 export const ONLINE_LEAGUE_RULES = [
   {
@@ -67,6 +77,14 @@ export const ONLINE_LEAGUE_RULES = [
       'Late entry and one re-entry are open until 7:00 PM MT.',
       'If you registered but are not online when it starts, you are still seated and blinded out.',
       'You are dealt in and your blinds are posted until you sign in on americanpubpoker.online and take your seat.',
+      {
+        needs: ['sitOutLimitHands'],
+        text: 'If you are still away when late entry closes at 7:00 PM MT, you are removed and finish in the next place.',
+      },
+      {
+        needs: ['sitOutLimitHands'],
+        text: 'Nobody can sit out more than {sitOutLimitHands} hands in a row. On the {sitOutLimitNth} hand you are removed and finish in the next place.',
+      },
       'Levels are 10 minutes long, with a 5-minute break after every 5 levels.',
       'All times are Mountain Time (MT).',
     ],
