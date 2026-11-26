@@ -29,6 +29,14 @@
 //   leaguePoints, leaguePrize, leagueMinField
 //                         read only by the Online League Rules
 //                         (content/onlineLeagueRules.js, 2026-11-21)
+//   sitOutLimitHands, sitOutLimitNth
+//                         poker-server removes a player who sits out this
+//                         many hands in a row, like a bust (owner 2026-11-25
+//                         FIX 2; the item's sitOutLimitHands, 30 -> "30" and
+//                         "30th"; absent = no such line, today's server)
+//   minTablePlayers       poker-server holds a table under this many players
+//                         while 2+ tables play (owner 2026-11-25 FIX 1; the
+//                         item's minTablePlayers, 4; absent = no such line)
 // So the week's seat package and bubble come from the qualifier itself, and a
 // rule that needs a server change shows only once that server says it does it.
 // Never write a rule here that the code does not do.
@@ -53,8 +61,10 @@ export const QUALIFIER_RULES_SUBTITLE = 'Every Sunday at 11:00 AM MT on american
 
 // 2026-11-02 (owner, approved wording B1): "21+ to enter." and the Live streams section.
 // 2026-11-21 (owner: "Do not show the monthly qualifiers"): the monthly lines hidden.
+// 2026-11-26 (owner orders 2026-11-25): the 30-hand sit-out limit (FIX 2) and
+// the 4-player short-table hold (FIX 1), each shown only with its server flag.
 /** The day these rules were last changed (YYYY-MM-DD, shown as "Updated Oct 23, 2026."). */
-export const QUALIFIER_RULES_UPDATED = '2026-11-21';
+export const QUALIFIER_RULES_UPDATED = '2026-11-26';
 
 export const QUALIFIER_RULES = [
   {
@@ -178,7 +188,22 @@ export const QUALIFIER_RULES = [
       'Late entries and re-entries are seated at the table with the fewest players that has room.',
       'If your new seat is between the button and the small blind, you sit out one hand before you are dealt in.',
       'Tables are kept even. After each hand at the fullest table (6 or more players), if another table has at least 2 fewer players, the player due the big blind next moves to the shortest table. The game takes you to your new seat.',
-      'If every seat is full when someone late-registers or re-enters, a new table opens. A player alone there is not dealt in and pays no blinds. If that player is at the table, one player moves over from the fullest table so play can start. There is no limit on extra tables.',
+      // 2026-11-26 (owner FIX 1) - a server that holds short tables fills a new
+      // table to {minTablePlayers} before it deals (the overflow feed, then the
+      // short-table fill from any table with 6 or more), whether or not its
+      // first player is there, so "one player moves over ... so play can
+      // start" is true only of an older server: `otherwise` is the approved
+      // line word for word.
+      {
+        needs: ['minTablePlayers'],
+        text: 'If every seat is full when someone late-registers or re-enters, a new table opens. Players move over from the other tables until it has {minTablePlayers}, then play starts there. There is no limit on extra tables.',
+        otherwise: 'If every seat is full when someone late-registers or re-enters, a new table opens. A player alone there is not dealt in and pays no blinds. If that player is at the table, one player moves over from the fullest table so play can start. There is no limit on extra tables.',
+      },
+      // 2026-11-26 (owner FIX 1) - only while poker-server holds short tables.
+      {
+        needs: ['minTablePlayers'],
+        text: 'While two or more tables are running, a table never plays with fewer than {minTablePlayers} players. It waits until players are moved to it.',
+      },
       'As players bust, tables are combined. A table closes when everyone fits at one fewer table, or when it drops below 5 players and the other tables have room. Its players move to open seats at the other tables. The final table seats up to 9.',
     ],
   },
@@ -249,6 +274,11 @@ export const QUALIFIER_RULES = [
       'For your first 20 hands away, your turns still get the full 30 seconds. After that, your turns get 3 seconds.',
       'When you sign back in after a lost connection, you go straight back to your seat.',
       'If you leave the table on purpose or sit out, your seat keeps playing on a 3-second clock. To play again, tap Go to my table on the qualifier card, or sit back in.',
+      // 2026-11-26 (owner FIX 2) - only while poker-server enforces the limit.
+      {
+        needs: ['sitOutLimitHands'],
+        text: "You can't sit out more than {sitOutLimitHands} hands in a row. On the {sitOutLimitNth} hand you are removed, the same as a bust: you finish in the next place.",
+      },
     ],
   },
   {
@@ -448,6 +478,17 @@ export function qualifierRulesContext(q) {
   if (q.leaguePrize === 'chair_month' && q.leaguePoints !== false) ctx.leaguePrize = true;
   const minField = Number(q.leagueAwardsMinField);
   if (Number.isInteger(minField) && minField > 1 && minField <= 1000) ctx.leagueMinField = String(minField);
+  // 2026-11-26 (owner orders 2026-11-25) - the server's sit-out limit (FIX 2)
+  // and its short-table minimum (FIX 1); absent = their lines are not shown.
+  const sitOutLimit = q.sitOutLimitHands === null || q.sitOutLimitHands === undefined || typeof q.sitOutLimitHands === 'boolean'
+    ? NaN : Number(q.sitOutLimitHands);
+  if (Number.isInteger(sitOutLimit) && sitOutLimit >= 1 && sitOutLimit <= 1000) {
+    ctx.sitOutLimitHands = String(sitOutLimit);
+    ctx.sitOutLimitNth = ordinalWord(sitOutLimit);
+  }
+  const minTable = q.minTablePlayers === null || q.minTablePlayers === undefined || typeof q.minTablePlayers === 'boolean'
+    ? NaN : Number(q.minTablePlayers);
+  if (Number.isInteger(minTable) && minTable >= 2 && minTable <= 9) ctx.minTablePlayers = String(minTable);
   return ctx;
 }
 

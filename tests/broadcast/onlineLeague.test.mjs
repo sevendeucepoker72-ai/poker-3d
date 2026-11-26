@@ -268,11 +268,15 @@ test('finished line + Game Over: place + points; top-5 credit / prize only when 
 
 test('Online League Rules: own title / subtitle / date, plain ASCII, the drafted sections, lines follow the switches', () => {
   assert.equal(OLR.ONLINE_LEAGUE_RULES_TITLE, 'Online League Rules');
-  assert.equal(OLR.ONLINE_LEAGUE_RULES_UPDATED, '2026-11-25');
+  // 2026-11-26 (owner orders 2026-11-25, FIX 2): the sit-out limit lines.
+  assert.equal(OLR.ONLINE_LEAGUE_RULES_UPDATED, '2026-11-26');
   const raw = JSON.stringify(OLR.ONLINE_LEAGUE_RULES);
   assert.ok(/^[\x20-\x7e]*$/.test(raw), 'plain ASCII (AGENT.md rule 20)');
   assert.doesNotMatch(raw, /4:00 PM/, 'owner 2026-11-25: sign-up opens at 3:00 PM MT, never the old 4:00 PM');
-  assert.doesNotMatch(raw, /released|removed/i, 'owner 2026-11-25: a league no-show is seated and blinded out, never released / removed');
+  // Owner 2026-11-25: a league no-show is seated and blinded out, never
+  // released. FIX 2 (same day): "removed" only for the first-hour / 30-hand
+  // removal, and only while the server sends sitOutLimitHands (below).
+  assert.doesNotMatch(raw, /released/i, 'owner 2026-11-25: a league no-show is seated and blinded out, never released');
   assert.doesNotMatch(raw, /monthly|championship seat/i);
   assert.doesNotMatch(raw, /free month|in a chair|chair availability/i, 'owner 2026-11-25: the prize is a 1-month seat subscription, never "a free month in a chair"');
   const q = L.normalizeQualifierItem(leagueRaw());
@@ -284,7 +288,7 @@ test('Online League Rules: own title / subtitle / date, plain ASCII, the drafted
   const page = R.rulesPageFor(q);
   assert.equal(page.title, 'Online League Rules');
   assert.equal(page.subtitle, 'Monday to Saturday at 6:00 PM MT on americanpubpoker.online');
-  assert.equal(page.updated, 'Updated Nov 25, 2026.');
+  assert.equal(page.updated, 'Updated Nov 26, 2026.');
   const headings = page.sections.map((s) => s.heading);
   assert.deepEqual(headings, ['Free to enter', 'Who can play', 'Schedule', 'Points and weekly credits', "Nightly winner's prize", 'Fair play']);
   const lines = page.sections.flatMap((s) => s.rules);
@@ -313,6 +317,28 @@ test('Online League Rules: own title / subtitle / date, plain ASCII, the drafted
   const minLines = R.rulesPageFor({ ...q, leagueAwardsMinField: 6 }).sections.flatMap((s) => s.rules);
   assert.ok(minLines.includes('On a night with fewer than 6 finishers, points still count, but no weekly qualifier credits or prizes are given.'));
   assert.equal(lines.some((l) => /fewer than/.test(l)), false, 'no minimum line without a minimum');
+  // FIX 2 (owner 2026-11-25): the removal lines show only while the server
+  // sends sitOutLimitHands, right after the two no-show lines.
+  assert.equal(lines.some((l) => /removed/i.test(l)), false, 'no removal line without the server flag');
+  const fix2 = R.rulesPageFor(L.normalizeQualifierItem(leagueRaw({ sitOutLimitHands: 30 })));
+  assert.deepEqual(fix2.sections.map((s) => s.heading), headings, 'no new section');
+  const sched = fix2.sections.find((s) => s.heading === 'Schedule').rules;
+  const noShow = sched.indexOf('You are dealt in and your blinds are posted until you sign in on americanpubpoker.online and take your seat.');
+  assert.ok(noShow > 0);
+  // Owner rule 2026-11-25 ~11:15 PM MT: the first hour is for anyone who has
+  // not played a hand yet (seated before 6 and left counts), not only one who
+  // never arrived.
+  assert.equal(sched[noShow + 1], 'If you have not played a hand yet, you have until late entry closes at 7:00 PM MT. If you are still away then, you are removed and finish in the next place.');
+  // Review fix 2026-11-26: not "Nobody can ..." - an entrant who has not played a hand is protected until 7:00 PM MT.
+  assert.equal(sched[noShow + 2], "Once you have played a hand, you can't sit out more than 30 hands in a row. On the 30th hand you are removed and finish in the next place.");
+  // The two locked no-show lines stay word for word, right before them.
+  assert.equal(sched[noShow - 1], 'If you registered but are not online when it starts, you are still seated and blinded out.');
+  assert.equal(sched.length, R.rulesPageFor(q).sections.find((s) => s.heading === 'Schedule').rules.length + 2, 'exactly two lines added by the flag');
+  // Protection is never tied to arriving / taking your seat.
+  assert.equal(sched.some((l) => /taken your seat|has arrived|until you arrive/i.test(l)), false);
+  assert.doesNotMatch(JSON.stringify(fix2.sections), /released/i);
+  // CONTROL: without the flag, no "played a hand" line at all (an older server reads as before).
+  assert.equal(lines.some((l) => /played a hand/.test(l)), false, 'no first-hour line without the server flag');
   // The weekly page is unchanged.
   const wPage = R.rulesPageFor(L.normalizeQualifierItem(weeklyRaw()));
   assert.equal(wPage.title, R.QUALIFIER_RULES_TITLE);

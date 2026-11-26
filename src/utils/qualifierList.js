@@ -246,6 +246,14 @@ export function normalizeQualifierItem(raw) {
     // can be checked once that hand ends).
     lateRegClosesAtBubble: raw.lateRegClosesAtBubble === true,
     seedsHeldUntilEnd: raw.seedsHeldUntilEnd === true,
+    // 2026-11-26 (owner orders 2026-11-25) — two numbers a newer poker-server
+    // puts on the list item once it enforces them, read by the rules
+    // (qualifierRulesContext) and the league registrant note: the most hands
+    // in a row a player may sit out before he is removed (FIX 2, 30) and the
+    // fewest players a table deals to while 2+ tables play (FIX 1, 4).
+    // Absent (today's server) = null, and nothing says either rule.
+    sitOutLimitHands: posInt(raw.sitOutLimitHands),
+    minTablePlayers: posInt(raw.minTablePlayers),
     // 2026-10-24 (owner 2026-10-23: "Fix both") — the live late-entry state from a
     // newer poker-server: lateRegOpen (true / false while running; null = the
     // server does not say, e.g. today's server or not running), when and why it
@@ -558,16 +566,34 @@ export function qualifierTablesHeld(q, now = Date.now()) {
 /** An Online League registrant's note: anyone not here at the start is still seated and blinded out. */
 export const ONLINE_LEAGUE_NO_SHOW_TEXT = 'Anyone not here when it starts is still seated and blinded out until they arrive.';
 
+/**
+ * 2026-11-26 (owner FIX 2) — appended to the league note while the server
+ * enforces the sit-out limit (the item's sitOutLimitHands): an entrant who
+ * has not played a hand by the time late entry closes and is away then is
+ * removed (finishes in the next place). Owner rule 2026-11-25 ~11:15 PM MT
+ * ("A player who is seated before 6 and then leaves before never played a
+ * hand so they should get the 1st hour to play a hand"): the first hour is
+ * for anyone who has not played a hand yet, not only a registrant who never
+ * arrived, so the sentence names that, never "still away" alone.
+ */
+export const ONLINE_LEAGUE_NO_SHOW_REMOVED_TEXT = 'Anyone who has not played a hand by the time late entry closes is removed if they are away then.';
+
 /** A registrant's note before the start: be online at the start or be released (+ refund). */
 export function qualifierBeOnlineText(q) {
   const at = q && q.scheduledAt != null ? formatDenverTime(q.scheduledAt) : '';
   // 2026-11-25 (owner: "It should seat you and blind you out", Online League
   // only) — a league night's no-shows are seated and blinded out (poker-server
   // qualifierNoShow.noShowsSeatedAbsent), never released.
+  // 2026-11-26 (owner FIX 2) — and removed if he has not played a hand by the
+  // time late entry closes and is away then (owner rule 2026-11-25 ~11:15 PM
+  // MT), said only while the server sends sitOutLimitHands (rule 20).
   if (isLeagueItem(q)) {
+    const note = posInt(q.sitOutLimitHands)
+      ? `${ONLINE_LEAGUE_NO_SHOW_TEXT} ${ONLINE_LEAGUE_NO_SHOW_REMOVED_TEXT}`
+      : ONLINE_LEAGUE_NO_SHOW_TEXT;
     return at
-      ? `Be on americanpubpoker.online by ${at}. ${ONLINE_LEAGUE_NO_SHOW_TEXT}`
-      : `Be on americanpubpoker.online at the start. ${ONLINE_LEAGUE_NO_SHOW_TEXT}`;
+      ? `Be on americanpubpoker.online by ${at}. ${note}`
+      : `Be on americanpubpoker.online at the start. ${note}`;
   }
   // 2026-11-21 — a free event (the Online League) used no credit: nothing to refund.
   if (qualifierEntryIsFree(q)) {

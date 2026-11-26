@@ -9,7 +9,7 @@ import {
   TABLE_GONE_TEXT, TABLE_GONE_CHIPS_TEXT, tableGoneCreditsChips,
 } from './utils/tableFlows';
 import { runTableBack, consumeProgrammaticBack } from './services/tableBack';
-import { useTimerStore } from './store/timerStore';
+import { useTimerStore, serverNow } from './store/timerStore';
 import { getAuthToken, setAuthToken, clearAuthToken, setOAuthItem, bearerForThisTab } from './services/tokenStorage';
 import { runSocketLogin, isCredentialDead, isDefinitiveLoginFailure } from './services/socketAuth';
 // 2026-10-07 — game suspension + guest play OFF: server play refusals (C5).
@@ -55,8 +55,14 @@ import {
   noteTournamentSeatReturned, noteTournamentOver, noteTournamentSeatKept,
   noteAwaySeatMoved, hasAwaySeatAt, noteSeatRestoredInBackground, clearSeatRestored,
   useTournamentSeatStore, eliminationShownElsewhere, awaySeatOfTournament,
-  tournamentFinishedText, noteSeatProtocolServer,
+  tournamentFinishedText, noteSeatProtocolServer, noteAwaySeatSitOutWarning,
 } from './store/tournamentSeatStore';
+// 2026-11-26 (owner orders 2026-11-25, FIX 2) — the sit-out limit's words (pure).
+import {
+  TOURNAMENT_SIT_OUT_WARNING_EVENT, SIT_OUT_WARNING_TITLE, sitOutWarningText, timeoutSitOutText,
+  sitOutLimitEnforcedAt, satOutRemovedHands, satOutRemovedNoShow, satOutRemovedOwnLine, satOutRemovedElsewhereText,
+  satOutRemovedRoomText, finishedForEntrantRemovalLine,
+} from './utils/tournamentSitOut';
 import { TournamentReturnBanner, SeatRestoredBanner } from './components/ui/TournamentSeatNotice';
 import {
   handleReturnToTournamentResult, RETURN_TO_TOURNAMENT_RESULT_EVENT,
@@ -1233,11 +1239,22 @@ function App() {
       // 2026-10-26 (owner: a timeout sits a tournament player out "until they
       // tap I'm Back") — the server sat him out because his clock ran out: say
       // why (the tournament "Sitting out ... I'm back" banner follows the seat).
+      // 2026-11-26 (owner FIX 2: "can't sit out more than 30 hands in a row")
+      // — the toast adds the limit only when that table's server enforces it
+      // (its gameState carries `mySitOutLimit`; an older server never sends
+      // it: today's text, word for word).
       if (data.reason === 'timeout' && data.sittingOut === true) {
         try {
+          let limitOn = false;
+          try {
+            const tsT = useTableStore.getState();
+            const entry = data.tableId != null ? tsT.activeTables.get(data.tableId) : null;
+            limitOn = sitOutLimitEnforcedAt(entry && entry.gameState) || sitOutLimitEnforcedAt(tsT.gameState);
+          } catch { limitOn = false; }
           useProgressStore.getState().addNotification({
             type: 'system', title: 'Sitting out',
-            message: "Your time ran out, so you're sitting out. Tap I'm back to play again.",
+            // "Your time ran out, so you're sitting out. Tap I'm back to play again." (+ the limit)
+            message: timeoutSitOutText(limitOn),
           });
         } catch { /* best-effort */ }
       }
@@ -1271,6 +1288,28 @@ function App() {
       }
       ts.setSittingOut(data.sittingOut);
     });
+
+    // 2026-11-26 (owner orders 2026-11-25, FIX 2) — poker-server warns ONCE
+    // per sit-out streak, when a tournament entry has sat out 3 hands in a
+    // row ('tournamentSitOutWarning' {tournamentId, tableId, handsSatOut,
+    // handsLimit, handsLeft, protectedUntil, message}) on every live socket of
+    // that entrant: a 'system' toast titled "Sitting out" (never a 'warn'
+    // toast), and, for a seat this tab is AWAY from, a line on the lobby's
+    // Return banner (the toast fades at 5 s). At the table the sit-out note
+    // keeps the live count (gameState.mySitOutLimit, GameHUD). An older
+    // server never sends it.
+    const handleTournamentSitOutWarning = (data) => {
+      if (!data || typeof data !== 'object') return;
+      let now = Date.now();
+      try { now = serverNow(); } catch { /* the local clock */ }
+      const message = sitOutWarningText(data, now);
+      if (!message) return;
+      try { noteAwaySeatSitOutWarning(data, now); } catch { /* best-effort */ }
+      try {
+        useProgressStore.getState().addNotification({ type: 'system', title: SIT_OUT_WARNING_TITLE, message });
+      } catch { /* best-effort */ }
+    };
+    socket.on(TOURNAMENT_SIT_OUT_WARNING_EVENT, handleTournamentSitOutWarning);
 
     // Spin & Go reveal
     socket.on('spinReveal', (data) => {
@@ -1930,15 +1969,17 @@ function App() {
       let seatedElsewhere = false;
       try { seatedElsewhere = eliminationShownElsewhere(useTableStore.getState().gameState, data); } catch { /* best-effort */ }
       let known = false;
-      try { known = noteTournamentOver({ tournamentId: data?.tournamentId, tableId: data?.tableId, position: data?.position }); } catch { /* best-effort */ }
+      try { known = noteTournamentOver({ tournamentId: data?.tournamentId, tableId: data?.tableId, position: data?.position, reason: data?.reason, handsSatOut: data?.handsSatOut, noShow: data?.noShow }); } catch { /* best-effort */ }
       try {
         if (seatedElsewhere) {
           const pos = Number(data?.position);
+          // 2026-11-26 (owner FIX 2) — removed for sitting out (reason 'sat_out_limit'): said so.
+          const removedHands = satOutRemovedHands(data);
           useProgressStore.getState().addNotification({
             type: 'mission',
-            message: Number.isFinite(pos) && pos > 0
+            message: removedHands ? satOutRemovedElsewhereText(data?.position, removedHands, satOutRemovedNoShow(data)) : (Number.isFinite(pos) && pos > 0
               ? `Your tournament has ended: you finished in position ${pos}.`
-              : 'Your tournament has ended.',
+              : 'Your tournament has ended.'),
           });
           try { console.warn('[tournament-seat] eliminated while seated at another table: notice only, no spectator switch', { known }); } catch { /* ignore */ }
         }
@@ -2047,11 +2088,17 @@ function App() {
       const tid = data && data.tournamentId != null ? String(data.tournamentId) : null;
       const awayOf = tid ? awaySeatOfTournament(tid) : null;
       const pos = Number(data?.position);
+      // 2026-11-26 (owner FIX 2) — a removal for sitting out (reason
+      // 'sat_out_limit', placed exactly like a bust) says why; any other
+      // notice (or an older server's) keeps today's words.
+      const removedHands = satOutRemovedHands(data);
       // Sit & Go fix-all F7 / F12 — a paid place carries its prize (the direct
       // notice and the sign-in notice, `atSignIn`); the room's copy has none.
-      const ownLine = (name) => (Number.isFinite(pos) && pos > 0
-        ? `${name || 'Your tournament'}: you finished in position ${pos}.${prizeSuffix(data?.prize)}`
-        : `${name || 'Your tournament'}: your tournament has ended.`);
+      const ownLine = (name) => (removedHands
+        ? `${satOutRemovedOwnLine(name, data?.position, removedHands, undefined, satOutRemovedNoShow(data))}${prizeSuffix(data?.prize)}`
+        : (Number.isFinite(pos) && pos > 0
+          ? `${name || 'Your tournament'}: you finished in position ${pos}.${prizeSuffix(data?.prize)}`
+          : `${name || 'Your tournament'}: your tournament has ended.`));
       // Sit & Go fix-all C2 — his own bust (direct / sign-in notice): his chip result.
       if (tid && (awayOf || !repeat) && data?.handForHand !== true) {
         const me = String(useGameStore.getState().playerName || '').trim().toLowerCase();
@@ -2059,7 +2106,7 @@ function App() {
         if (aboutMe) noteOwnTournamentResult({ tournamentId: tid, place: data?.position, prize: data?.prize });
       }
       if (awayOf) {
-        try { noteTournamentOver({ tournamentId: data.tournamentId, position: data.position }); } catch { /* best-effort */ }
+        try { noteTournamentOver({ tournamentId: data.tournamentId, position: data.position, reason: data.reason, handsSatOut: data.handsSatOut, noShow: data.noShow }); } catch { /* best-effort */ }
         if (repeat || !claimOwnEndToast(tid)) return;
         useProgressStore.getState().addNotification({ type: 'achievement', message: ownLine(awayOf.name), reward: { chips: 0, xp: 0 } });
         return;
@@ -2090,14 +2137,18 @@ function App() {
         if (!claimOwnEndToast(ownTid)) return;
         useProgressStore.getState().addNotification({
           type: 'achievement',
-          message: Number.isFinite(pos) && pos > 0 ? `You were eliminated (${pos}${getOrdinal(pos)})` : 'You were eliminated',
+          message: removedHands
+            ? satOutRemovedRoomText(null, data?.position, true)
+            : (Number.isFinite(pos) && pos > 0 ? `You were eliminated (${pos}${getOrdinal(pos)})` : 'You were eliminated'),
           reward: { chips: 0, xp: 0 },
         });
         return;
       }
       useProgressStore.getState().addNotification({
         type: 'achievement',
-        message: `${data.playerName} eliminated (${data.position}${getOrdinal(data.position)})`,
+        message: removedHands
+          ? satOutRemovedRoomText(data.playerName, data.position)
+          : `${data.playerName} eliminated (${data.position}${getOrdinal(data.position)})`,
         reward: { chips: 0, xp: 0 },
       });
     });
@@ -2112,7 +2163,11 @@ function App() {
       const awayOf = tid ? awaySeatOfTournament(tid) : null;
       const pos = Number(data?.position);
       const place = Number.isInteger(pos) && pos > 0 ? pos : null;
-      try { noteTournamentOver({ tournamentId: tid, finished: true, position: place }); } catch { /* best-effort */ }
+      // Review fix (2026-11-26, owner FIX 2) — removed for sitting out while
+      // away and told at sign-in after the tournament finished (reason
+      // 'sat_out_limit' + handsSatOut, noShow?): the lobby line and the toast
+      // say why, in the 'playerEliminated' notice's words; a finish reads as today.
+      try { noteTournamentOver({ tournamentId: tid, finished: true, position: place, reason: data?.reason, handsSatOut: data?.handsSatOut, noShow: data?.noShow }); } catch { /* best-effort */ }
       // Sit & Go fix-all C2 — his chip result (prize - entry fee) for the bankroll graph.
       if (tid) noteOwnTournamentResult({ tournamentId: tid, place, prize: data?.prize, tournamentName: data?.tournamentName });
       if (!claimFinishedToast(tid)) return;
@@ -2122,9 +2177,10 @@ function App() {
       // a PRIZE is still news, so a notice with a prize is always shown (review).
       if (!claimOwnEndToast(tid) && !hasPrize) return;
       const name = awayOf ? awayOf.name : (typeof data?.tournamentName === 'string' ? data.tournamentName : null);
+      const removedLine = finishedForEntrantRemovalLine(data, name);
       useProgressStore.getState().addNotification({
         type: 'achievement',
-        message: tournamentFinishedText(name, place) + prizeSuffix(prize),
+        message: (removedLine || tournamentFinishedText(name, place)) + prizeSuffix(prize),
         reward: { chips: 0, xp: 0 },
       });
     };
@@ -2226,6 +2282,7 @@ function App() {
       socket.off('chatMessage');
       socket.off('trainingToggled');
       socket.off('sitOutToggled');
+      socket.off(TOURNAMENT_SIT_OUT_WARNING_EVENT, handleTournamentSitOutWarning);
       socket.off('spinReveal');
       socket.off('quickGameOver');
       socket.off('quickGameStarted');

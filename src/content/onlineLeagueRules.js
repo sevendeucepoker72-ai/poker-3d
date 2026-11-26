@@ -18,6 +18,25 @@
 // registrant not online at the start is seated and blinded out, never
 // released (poker-server qualifierNoShow.noShowsSeatedAbsent). Two Schedule
 // lines added.
+// Owner orders 2026-11-25 (FIX 2, every tournament): nobody can sit out more
+// than 30 hands in a row; a no-show is protected until late entry closes at
+// 7:00 PM MT and, if still away then, removed at the first hand end after it,
+// whatever his count (he finishes in the next place, like a bust). Two
+// Schedule lines added after the no-show lines, shown only while the league
+// item carries the server's sitOutLimitHands (key sitOutLimitHands /
+// sitOutLimitNth). A no-show is still never "released". The 30-hand line
+// starts "Once you have taken your seat" (review fix 2026-11-26): before
+// 7:00 PM a registrant who never arrived is not removed at 30.
+// Owner rule 2026-11-25 ~11:15 PM MT ("A player who is seated before 6 and
+// then leaves before never played a hand so they should get the 1st hour to
+// play a hand"), replacing "never arrived": the first hour belongs to every
+// entrant who HAS NOT PLAYED A HAND YET in this event (away at the start, sat
+// in the early rooms and left, at another table, late-registered and left).
+// A sign-in / seat restore alone is not playing a hand. Once he has played a
+// hand the protection is gone for good in this event (a re-entry does not
+// bring it back). So the two FIX 2 lines say "If you have not played a hand
+// yet" / "Once you have played a hand", never "taken your seat". The two
+// no-show lines above them are locked word for word.
 //
 // Same shape as content/qualifierRules.js QUALIFIER_RULES, so the same rules
 // window (components/ui/QualifierRules.jsx) renders it: [{ heading, rules }],
@@ -29,6 +48,11 @@
 //   leagueMinField  the server set a minimum number of finishers for the
 //                   night's weekly credits + prize ({leagueMinField}); absent
 //                   = no minimum
+//   sitOutLimitHands the server removes a player after this many hands in a
+//                   row sitting out, and an entrant who has not played a
+//                   hand yet and is still away when late entry closes
+//                   ({sitOutLimitHands}, {sitOutLimitNth});
+//                   absent = no such line
 // So a line about points, credits or the prize shows only while the server
 // gives them. Never write a rule here that the code does not do.
 // Plain ASCII, short sentences, no dashes as asides (AGENT.md rule 20).
@@ -41,7 +65,7 @@ export const ONLINE_LEAGUE_RULES_TITLE = 'Online League Rules';
 export const ONLINE_LEAGUE_RULES_SUBTITLE = 'Monday to Saturday at 6:00 PM MT on americanpubpoker.online';
 
 /** The day these rules were last changed (YYYY-MM-DD). */
-export const ONLINE_LEAGUE_RULES_UPDATED = '2026-11-25';
+export const ONLINE_LEAGUE_RULES_UPDATED = '2026-11-26';
 
 export const ONLINE_LEAGUE_RULES = [
   {
@@ -67,6 +91,21 @@ export const ONLINE_LEAGUE_RULES = [
       'Late entry and one re-entry are open until 7:00 PM MT.',
       'If you registered but are not online when it starts, you are still seated and blinded out.',
       'You are dealt in and your blinds are posted until you sign in on americanpubpoker.online and take your seat.',
+      // Owner rule 2026-11-25 ~11:15 PM MT: the first hour is for anyone who
+      // has not played a hand yet (not only a registrant who never arrived).
+      {
+        needs: ['sitOutLimitHands'],
+        text: 'If you have not played a hand yet, you have until late entry closes at 7:00 PM MT. If you are still away then, you are removed and finish in the next place.',
+      },
+      // Review fix (2026-11-26): not "Nobody can sit out more than ..." - an
+      // entrant who has not played a hand yet is protected until 7:00 PM MT
+      // and can sit out more than that many hands before then (the line above
+      // covers him). Owner rule 2026-11-25 ~11:15 PM MT: the limit binds once
+      // he has PLAYED a hand, never merely once he has taken his seat.
+      {
+        needs: ['sitOutLimitHands'],
+        text: "Once you have played a hand, you can't sit out more than {sitOutLimitHands} hands in a row. On the {sitOutLimitNth} hand you are removed and finish in the next place.",
+      },
       'Levels are 10 minutes long, with a 5-minute break after every 5 levels.',
       'All times are Mountain Time (MT).',
     ],
