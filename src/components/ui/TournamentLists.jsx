@@ -4,7 +4,7 @@ import './TournamentLists.css';
 // registered in the lobby and a list for it to show who busted in each
 // position") - every rule lives in the pure module; this file only draws it.
 import {
-  registeredLabel, REGISTERED_EMPTY_TEXT, resultsButtonLabel,
+  registeredLabel, REGISTERED_EMPTY_TEXT, resultsButtonLabel, isLastResults,
   standingsLists, finishListSections, finishRowText, chipsText,
 } from '../../utils/tournamentLists';
 
@@ -59,6 +59,8 @@ export function RegisteredToggle({ names, className = '' }) {
  * `ownTournamentId` = the card's own run: when the server points the card at
  * an EARLIER run (a registering Sit & Go, an upcoming qualifier) it reads
  * "Last results" (resultsButtonLabel; not passed = "Results").
+ * 2026-11-26 — `onOpen(tournamentId, { results: true, last })`: `last` (an
+ * earlier event) makes the Results window name that event and its day.
  */
 export function ResultsButton({ tournamentId, ownTournamentId, onOpen, className = '' }) {
   if (!tournamentId || typeof onOpen !== 'function') return null;
@@ -67,7 +69,7 @@ export function ResultsButton({ tournamentId, ownTournamentId, onOpen, className
       type="button"
       className={`tl-results-btn ${className}`.trim()}
       aria-haspopup="dialog"
-      onClick={(e) => { e.stopPropagation(); onOpen(tournamentId); }}
+      onClick={(e) => { e.stopPropagation(); onOpen(tournamentId, { results: true, last: isLastResults(tournamentId, ownTournamentId) }); }}
     >
       <span aria-hidden="true">🏁</span> {resultsButtonLabel(tournamentId, ownTournamentId)}
     </button>
@@ -106,7 +108,7 @@ export function FinishOrderList({ standings }) {
             {sec.rows.length > 0 && sec.kind === 'busted' && (
               <ol className="tl-finish-list" role="list">
                 {sec.rows.map((r) => (
-                  <li key={r.key} className="tl-finish-row" aria-label={finishRowText(r)}>
+                  <li key={r.key} className={r.disqualified ? 'tl-finish-row tl-finish-row--dq' : 'tl-finish-row'} aria-label={finishRowText(r)}>
                     <span className="tl-finish-place">{r.placeText}</span>
                     <span className="tl-finish-name">{r.name}</span>
                   </li>

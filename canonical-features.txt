@@ -1614,3 +1614,10 @@ Final results (
 # last finished run's results from the server's resultsTournamentId (kept >= 24 h; the finished card
 # itself leaves the list 10 s after the final hand).
 Last results
+# Review round 2 (2026-11-26): a slow standings answer says it is still loading (never "no longer
+# available"); a server-disqualified row says "Disqualified" (no place); a finished event shows when it
+# ended (Denver); the Results window takes focus on open and gives it back on close (data-autofocus).
+Still loading the results
+tl-finish-row--dq
+tb-finished-at
+data-autofocus

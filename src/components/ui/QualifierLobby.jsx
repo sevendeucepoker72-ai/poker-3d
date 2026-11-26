@@ -924,7 +924,8 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll, onOpenRe
         <RegisteredToggle names={q.registrantNames} />
         {resultsId && (
           // "Last results" when the server points an upcoming card at its last finished event.
-          <ResultsButton tournamentId={resultsId} ownTournamentId={q.tournamentId} onOpen={(id) => onOpenResults(id, q.name, { results: true })} />
+          // (opts = { results: true, last }: "Last results" names that earlier event in the window.)
+          <ResultsButton tournamentId={resultsId} ownTournamentId={q.tournamentId} onOpen={(id, opts) => onOpenResults(id, q.name, opts)} />
         )}
       </div>
     );

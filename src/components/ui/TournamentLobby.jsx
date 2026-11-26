@@ -342,7 +342,7 @@ export default function TournamentLobby({ onOpenBracket = null }) {
                     className="tournament-results-btn"
                     tournamentId={resultsId}
                     ownTournamentId={String(id)}
-                    onOpen={(tid) => onOpenBracket(tid, t.name, { results: true })}
+                    onOpen={(tid, opts) => onOpenBracket(tid, t.name, opts)}
                   />
                 )}
                 {/* GAP 15 — admin-only live TD controls. Server re-checks the

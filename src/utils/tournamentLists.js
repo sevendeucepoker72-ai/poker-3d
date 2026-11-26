@@ -21,7 +21,15 @@
  *    busted and re-entered is one row (poker-server reinstateForReentry resets
  *    his row to alive, same playerId); a repeated token is still shown once
  *    (alive wins, else the better stored place).
+ *
+ * 2026-11-26 review round 2: rows may carry the server's `tied: true` (a TDA
+ * tie: same hand, equal stacks) and `disqualified: true`; the Results window
+ * names an earlier event ("Last results - Online League, Wed Nov 25", the
+ * standings' `finishedAt` on the Denver clock); a slow answer is never "no
+ * longer available". Imports only the pure utils/denverTime.js (no React).
  */
+
+import { ECONOMY_TIME_ZONE, toEpochMs } from './denverTime.js';
 
 /** At most this many names are kept from one list item (bounded payload / DOM). */
 export const REGISTRANT_NAMES_MAX = 2000;
@@ -37,6 +45,14 @@ export const LAST_RESULTS_BUTTON_TEXT = 'Last results';
 export const RESULTS_TITLE_TEXT = 'Results';
 export const RESULTS_LOADING_TEXT = 'Loading the results…';
 export const RESULTS_UNAVAILABLE_TEXT = 'These results are no longer available.';
+/** Results mode, the game server has not answered within 8 s: still asking (never "no longer available"). */
+export const RESULTS_SLOW_TEXT = 'Still loading the results… the game server is slow to answer.';
+/** The Results window's title when it shows an EARLIER event than the card's own ("Last results - <name>, <day>"). */
+export const LAST_RESULTS_TITLE_TEXT = 'Last results';
+/** A row the server marks `disqualified: true`: this instead of a place. */
+export const DISQUALIFIED_TEXT = 'Disqualified';
+/** After the shared place of rows the server marks `tied: true` ("3rd (tie)"). */
+export const TIE_SUFFIX_TEXT = ' (tie)';
 export const FINISH_ORDER_NOTE_TEXT = 'Most recent bust first';
 export const FINISH_ORDER_EMPTY_TEXT = 'No one has busted yet.';
 export const FINISH_LIST_VIEW_TEXT = 'Finish order';
@@ -101,10 +117,55 @@ export function tournamentResultsTournamentId(t) {
  * "Results", the words before this rule.
  */
 export function resultsButtonLabel(resultsId, ownTournamentId) {
-  if (ownTournamentId === undefined) return RESULTS_BUTTON_TEXT;
+  return isLastResults(resultsId, ownTournamentId) ? LAST_RESULTS_BUTTON_TEXT : RESULTS_BUTTON_TEXT;
+}
+
+/**
+ * 2026-11-26 — true when a card's Results control opens an EARLIER event than
+ * the card's own (its "Last results"): the Results window then names that
+ * event (lastResultsTitle). `ownTournamentId` undefined (the caller did not
+ * say) = false, the behaviour before this rule.
+ */
+export function isLastResults(resultsId, ownTournamentId) {
+  if (ownTournamentId === undefined) return false;
   const own = ownTournamentId !== null && ownTournamentId !== '' && resultsId != null
     && String(ownTournamentId) === String(resultsId);
-  return own ? RESULTS_BUTTON_TEXT : LAST_RESULTS_BUTTON_TEXT;
+  return !own;
+}
+
+let denverDayFmt = null;
+let denverClockFmt = null;
+const tidySpaces = (s) => String(s).replace(/[\u202f\u00a0]/g, ' ');
+
+/** "Wed Nov 25" - the day an event finished, on the Denver clock ('' without a usable time). */
+export function finishedDayText(finishedAt) {
+  const v = toEpochMs(finishedAt);
+  if (v == null) return '';
+  try {
+    if (!denverDayFmt) denverDayFmt = new Intl.DateTimeFormat('en-US', { timeZone: ECONOMY_TIME_ZONE, weekday: 'short', month: 'short', day: 'numeric' });
+    return tidySpaces(denverDayFmt.format(new Date(v))).replace(',', '');
+  } catch { return ''; }
+}
+
+/** "Wed Nov 25, 10:45 PM MT" - when an event finished, on the Denver clock ('' without a usable time). */
+export function finishedWhenText(finishedAt) {
+  const day = finishedDayText(finishedAt);
+  if (!day) return '';
+  try {
+    if (!denverClockFmt) denverClockFmt = new Intl.DateTimeFormat('en-US', { timeZone: ECONOMY_TIME_ZONE, hour: 'numeric', minute: '2-digit' });
+    return `${day}, ${tidySpaces(denverClockFmt.format(new Date(toEpochMs(finishedAt))))} MT`;
+  } catch { return day; }
+}
+
+/**
+ * The Results window's title for an EARLIER event (opened from "Last results"
+ * on an upcoming / registering card): "Last results - Online League, Wed Nov
+ * 25" from the STANDINGS' own name and `finishedAt` (Denver day), so it never
+ * reads as tonight's event being over. Either part missing is left out.
+ */
+export function lastResultsTitle(name, finishedAt) {
+  const parts = [cleanName(name), finishedDayText(finishedAt)].filter(Boolean);
+  return parts.length ? `${LAST_RESULTS_TITLE_TEXT} - ${parts.join(', ')}` : LAST_RESULTS_TITLE_TEXT;
 }
 
 /** English ordinal, same rule as qualifierList.ordinal ('' for anything but a positive integer). */
@@ -137,13 +198,25 @@ export function chipsText(n) {
 /**
  * A standings answer -> the lists the Results view draws, or null (no answer /
  * the server knows no such tournament).
- *   { tournamentId, name, status, finished, registering,
+ *   { tournamentId, name, status, finished, registering, finishedAt,
  *     stillIn: [{key, name, chips}]            chips high to low,
- *     busted:  [{key, name, place, placeText, tied}]  best stored place first
- *                                              = the most recent bust first,
+ *     busted:  [{key, name, place, shownPlace, placeText, tied, disqualified}]
+ *              best stored place first = the most recent bust first; the
+ *              server's disqualified rows last,
  *     total }
  * Equal stored places (should the server ever store a shared place) keep the
  * server's elimination order, newest first.
+ * 2026-11-26 (review round 2) — two OPTIONAL server row fields, nothing
+ * without them (today's display):
+ *  - `tied: true` (poker-server TournamentManager tieGroup, 2+ members: busted
+ *    in the same hand with equal stacks; they split their places' prize). The
+ *    server stores each tied player his own consecutive number (3, 4); the
+ *    rows of one run of consecutive tied places show the run's BEST stored
+ *    place, "3rd (tie)" both (`shownPlace`; `place` stays the stored one). A
+ *    lone tied row is shown as stored, with no "(tie)". Limit: two DIFFERENT
+ *    ties on directly adjacent places read as one run (rows carry no group).
+ *  - `disqualified: true`: "Disqualified" and no place, listed after every
+ *    placed row (also a disqualified row the server sent without a place).
  */
 export function standingsLists(standings) {
   if (!standings || typeof standings !== 'object') return null;
@@ -153,6 +226,9 @@ export function standingsLists(standings) {
   order.forEach((id, i) => orderAt.set(id, i));
   const rows = Array.isArray(standings.players) ? standings.players : [];
   const byKey = new Map();
+  // Out = a stored place, or disqualified (a DQ is never "still in").
+  const isOut = (r) => r.place !== null || r.disqualified;
+  const placeRank = (r) => (r.place === null ? Number.MAX_SAFE_INTEGER : r.place);
   rows.forEach((p, i) => {
     if (!p || typeof p !== 'object') return;
     const key = p.playerId != null && p.playerId !== '' ? String(p.playerId) : `row-${i}`;
@@ -162,38 +238,71 @@ export function standingsLists(standings) {
       chips: chipsOf(p.chipCount),
       place: placeOf(p.finishPosition),
       tied: p.tied === true,
+      disqualified: p.disqualified === true,
       at: i,
     };
     const prev = byKey.get(key);
     if (!prev) { byKey.set(key, row); return; }
     // One person once: an alive row wins, else the better stored place.
-    if (prev.place === null) return;
-    if (row.place === null || row.place < prev.place) byKey.set(key, row);
+    if (!isOut(prev)) return;
+    if (!isOut(row) || placeRank(row) < placeRank(prev)) byKey.set(key, row);
   });
   const all = [...byKey.values()];
-  const stillIn = all.filter((r) => r.place === null)
+  const stillIn = all.filter((r) => !isOut(r))
     .sort((a, b) => ((b.chips ?? -1) - (a.chips ?? -1)) || (a.at - b.at))
     .map((r) => ({ key: r.key, name: r.name, chips: r.chips }));
   const recency = (r) => (orderAt.has(r.key) ? orderAt.get(r.key) : -1);
-  const busted = all.filter((r) => r.place !== null)
-    .sort((a, b) => (a.place - b.place) || (recency(b) - recency(a)) || (a.at - b.at))
-    .map((r) => ({
-      key: r.key,
-      name: r.name,
-      place: r.place,
-      placeText: ordinalOf(r.place) + (r.tied ? ' (tie)' : ''),
-      tied: r.tied,
-    }));
+  const byPlace = (a, b) => (placeRank(a) - placeRank(b)) || (recency(b) - recency(a)) || (a.at - b.at);
+  const placed = all.filter((r) => isOut(r) && !r.disqualified).sort(byPlace);
+  const disqualified = all.filter((r) => r.disqualified).sort(byPlace);
+  // Runs of consecutive tied places (equal or +1): one tie each.
+  const runs = [];
+  for (const r of placed) {
+    const run = runs[runs.length - 1];
+    const last = run && run[run.length - 1];
+    if (r.tied && last && last.tied && r.place - last.place <= 1) run.push(r);
+    else runs.push([r]);
+  }
+  const busted = [];
+  for (const run of runs) {
+    const tie = run.length >= 2 && run[0].tied;
+    for (const r of run) {
+      const shownPlace = tie ? run[0].place : r.place;
+      busted.push({
+        key: r.key,
+        name: r.name,
+        place: r.place,
+        shownPlace,
+        placeText: ordinalOf(shownPlace) + (tie ? TIE_SUFFIX_TEXT : ''),
+        tied: tie,
+        disqualified: false,
+      });
+    }
+  }
+  for (const r of disqualified) {
+    busted.push({
+      key: r.key, name: r.name, place: r.place, shownPlace: null, placeText: DISQUALIFIED_TEXT, tied: false, disqualified: true,
+    });
+  }
   return {
     tournamentId: standings.tournamentId != null ? String(standings.tournamentId) : null,
     name: cleanName(standings.name) || '',
     status,
     finished: status === 'finished',
     registering: status === 'registering',
+    finishedAt: toEpochMs(standings.finishedAt),
     stillIn,
     busted,
     total: all.length,
   };
+}
+
+/** A busted row on the bracket's CARDS view: "3rd place", "3rd place (tie)", "Disqualified" (same rule as the list). */
+export function finishCardText(row) {
+  if (!row) return '';
+  if (row.disqualified) return DISQUALIFIED_TEXT;
+  const n = ordinalOf(row.shownPlace ?? row.place);
+  return n ? `${n} place${row.tied ? TIE_SUFFIX_TEXT : ''}` : '';
 }
 
 /** The heading over the players not yet out: "Still in (N)"; "Registered (N)" before the start; "Not placed (N)" once it ended. */
@@ -247,7 +356,31 @@ export function initialBracketView({ results = false, status = null } = {}) {
 /**
  * A finished answer needs no more polling (it does not change); a running one
  * (or none yet) is asked again.
+ * 2026-11-26 (review round 2) — `forId`: the bracket asked for ONE tournament
+ * by id. A null answer then means the server keeps no such tournament (past
+ * the >= 24 h keep, or gone): it is not asked again every 3 s (a later real
+ * answer, e.g. a stray null from an earlier window, starts polling again).
+ * Without an id (the Live Bracket's "any running one") a null is asked again,
+ * as before: one may start.
  */
-export function standingsNeedPolling(answer) {
-  return !(answer && typeof answer === 'object' && answer.status === 'finished');
+export function standingsNeedPolling(answer, { forId = false } = {}) {
+  if (!answer || typeof answer !== 'object') return !forId;
+  return answer.status !== 'finished';
+}
+
+/**
+ * Lobby -> TournamentBracket `loading`. `answered` = a REAL standings frame
+ * (or a null one) arrived; `slow` = the 8 s watchdog fired with none. Results
+ * mode keeps loading until a real answer (a slow server is never "no longer
+ * available"); the Live Bracket gives up at the watchdog, as before ("No
+ * tournament running").
+ */
+export function bracketLoading({ results = false, answered = false, slow = false } = {}) {
+  return results ? !answered : (!answered && !slow);
+}
+
+/** Results mode with no list to draw: loading, still loading (slow), or a real null answer. */
+export function resultsEmptyText({ loading = false, slow = false } = {}) {
+  if (!loading) return RESULTS_UNAVAILABLE_TEXT;
+  return slow ? RESULTS_SLOW_TEXT : RESULTS_LOADING_TEXT;
 }

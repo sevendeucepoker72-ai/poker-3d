@@ -200,6 +200,19 @@ function resultsIdOf(raw) {
   return null;
 }
 
+/**
+ * 2026-11-26 (review round 2) — the server's `resultsQualifierId`: the
+ * qualifier EVENT whose results `resultsTournamentId` is (this card's own id
+ * while it runs / once it finished, the previous event's on an upcoming
+ * card). A string, null (none / not named), or undefined (not sent).
+ */
+function resultsQualifierIdOf(raw) {
+  if (!raw || typeof raw !== 'object' || raw.resultsQualifierId === undefined) return undefined;
+  const v = raw.resultsQualifierId;
+  if ((typeof v === 'string' && v) || (typeof v === 'number' && Number.isFinite(v))) return String(v);
+  return null;
+}
+
 /** One list item → the shape the lobby renders; null when it has no id. */
 export function normalizeQualifierItem(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -286,6 +299,8 @@ export function normalizeQualifierItem(raw) {
     // finished one (null = none; undefined = not sent, see qualifierResultsTournamentId).
     registrantNames: registrantNamesOf(raw),
     resultsTournamentId: resultsIdOf(raw),
+    // 2026-11-26 — the event that pointer belongs to (see qualifierResultsTournamentId).
+    resultsQualifierId: resultsQualifierIdOf(raw),
     result: normalizeResult(raw),
     // An older server's own window verdict (it had no status for "not open yet").
     legacySignupOpen: typeof raw.signupOpen === 'boolean' ? raw.signupOpen : null,
@@ -645,7 +660,12 @@ export function qualifierUpdateExtras(data) {
   // their registration name, which is not a public name).
   if (Array.isArray(data.registrantNames)) out.registrantNames = registrantNamesOf(data);
   const resultsId = resultsIdOf(data);
-  if (resultsId !== undefined) out.resultsTournamentId = resultsId;
+  if (resultsId !== undefined) {
+    out.resultsTournamentId = resultsId;
+    // 2026-11-26 — the pointer and the event it belongs to travel together
+    // (a frame that does not name the event leaves it unknown: null).
+    out.resultsQualifierId = resultsQualifierIdOf(data) ?? null;
+  }
   return out;
 }
 
@@ -657,13 +677,23 @@ export function qualifierUpdateExtras(data) {
  * server, or the list before the start push), its running `tournamentId`
  * (today's server answers standings for a running tournament by id). Never
  * for a cancelled event, and never a guess for a finished one.
+ * 2026-11-26 review fix (round 2) — once the event is LIVE its own running
+ * `tournamentId` wins: the start / status pushes carry no pointer, so the
+ * list's pre-start pointer (the PREVIOUS night) was opened until the next
+ * list landed (0.3-2 s, up to the 10 s poll). A live or finished card whose
+ * pointer names ANOTHER event (`resultsQualifierId` set and not this one:
+ * left over from before the start) shows no Results until the list names
+ * its own.
  */
 export function qualifierResultsTournamentId(q, now = Date.now()) {
   if (!q || q.cancelled === true) return null;
-  if (typeof q.resultsTournamentId === 'string' && q.resultsTournamentId) return q.resultsTournamentId;
   const state = qualifierSignupState(q, now);
-  if ((state === 'running' || state === 'late') && q.tournamentId) return String(q.tournamentId);
-  return null;
+  const live = state === 'running' || state === 'late';
+  if (live && q.tournamentId) return String(q.tournamentId);
+  if (typeof q.resultsTournamentId !== 'string' || !q.resultsTournamentId) return null;
+  const otherEvent = typeof q.resultsQualifierId === 'string' && q.resultsQualifierId !== '' && q.resultsQualifierId !== q.qualifierId;
+  if (otherEvent && (live || state === 'finished')) return null;
+  return q.resultsTournamentId;
 }
 
 /**
