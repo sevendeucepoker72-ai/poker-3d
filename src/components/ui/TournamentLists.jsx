@@ -4,7 +4,7 @@ import './TournamentLists.css';
 // registered in the lobby and a list for it to show who busted in each
 // position") - every rule lives in the pure module; this file only draws it.
 import {
-  registeredLabel, REGISTERED_EMPTY_TEXT, RESULTS_BUTTON_TEXT,
+  registeredLabel, REGISTERED_EMPTY_TEXT, resultsButtonLabel,
   standingsLists, finishListSections, finishRowText, chipsText,
 } from '../../utils/tournamentLists';
 
@@ -56,8 +56,11 @@ export function RegisteredToggle({ names, className = '' }) {
 /**
  * "Results" on a lobby card: opens the finish-order list (the Live Bracket's
  * list view) of `tournamentId`. Nothing without an id or a handler.
+ * `ownTournamentId` = the card's own run: when the server points the card at
+ * an EARLIER run (a registering Sit & Go, an upcoming qualifier) it reads
+ * "Last results" (resultsButtonLabel; not passed = "Results").
  */
-export function ResultsButton({ tournamentId, onOpen, className = '' }) {
+export function ResultsButton({ tournamentId, ownTournamentId, onOpen, className = '' }) {
   if (!tournamentId || typeof onOpen !== 'function') return null;
   return (
     <button
@@ -66,7 +69,7 @@ export function ResultsButton({ tournamentId, onOpen, className = '' }) {
       aria-haspopup="dialog"
       onClick={(e) => { e.stopPropagation(); onOpen(tournamentId); }}
     >
-      <span aria-hidden="true">🏁</span> {RESULTS_BUTTON_TEXT}
+      <span aria-hidden="true">🏁</span> {resultsButtonLabel(tournamentId, ownTournamentId)}
     </button>
   );
 }

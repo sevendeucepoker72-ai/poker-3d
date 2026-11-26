@@ -923,7 +923,8 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll, onOpenRe
       <div className="tl-lists-row qualifier-lists-row" onClick={(e) => e.stopPropagation()}>
         <RegisteredToggle names={q.registrantNames} />
         {resultsId && (
-          <ResultsButton tournamentId={resultsId} onOpen={(id) => onOpenResults(id, q.name, { results: true })} />
+          // "Last results" when the server points an upcoming card at its last finished event.
+          <ResultsButton tournamentId={resultsId} ownTournamentId={q.tournamentId} onOpen={(id) => onOpenResults(id, q.name, { results: true })} />
         )}
       </div>
     );

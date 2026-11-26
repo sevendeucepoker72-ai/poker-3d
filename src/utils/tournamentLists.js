@@ -32,6 +32,8 @@ export const LIST_NAME_FALLBACK = 'Player';
 
 export const REGISTERED_EMPTY_TEXT = 'No one has registered yet.';
 export const RESULTS_BUTTON_TEXT = 'Results';
+/** The Results control of a card whose results are an EARLIER run's (a registering Sit & Go, an upcoming qualifier). */
+export const LAST_RESULTS_BUTTON_TEXT = 'Last results';
 export const RESULTS_TITLE_TEXT = 'Results';
 export const RESULTS_LOADING_TEXT = 'Loading the results…';
 export const RESULTS_UNAVAILABLE_TEXT = 'These results are no longer available.';
@@ -66,6 +68,43 @@ export function registrantNamesOf(item) {
 export function registeredLabel(names) {
   const n = Array.isArray(names) ? names.length : 0;
   return `Registered (${n})`;
+}
+
+/**
+ * 2026-11-26 review fix (a Sit & Go's / template event's Results vanished
+ * about 10 s after its final hand) - the tournament whose finish order a
+ * TOURNAMENT lobby card opens, or null (no Results control).
+ * poker-server drops a finished template instance's record 10 s after the
+ * finish (its 'finished' card leaves the list with it) but keeps the finished
+ * roster >= 24 h and points the template's REGISTERING card at it:
+ * `resultsTournamentId` (getTournamentList; its own id while running /
+ * finished, the latest finished run of the same template on a registering
+ * card, null when none is kept). That id wins; without it (an older server,
+ * or null) a running / finished card opens its own id - the rule before the
+ * field existed. Never for a cancelled event.
+ */
+export function tournamentResultsTournamentId(t) {
+  if (!t || typeof t !== 'object' || t.status === 'cancelled') return null;
+  const v = t.resultsTournamentId;
+  if ((typeof v === 'string' && v.trim()) || (typeof v === 'number' && Number.isFinite(v))) return String(v);
+  if ((t.status === 'running' || t.status === 'finished') && t.tournamentId != null && t.tournamentId !== '') {
+    return String(t.tournamentId);
+  }
+  return null;
+}
+
+/**
+ * The words on a card's Results control: "Results" when it opens the card's
+ * OWN event, "Last results" when the server points it at an earlier run (a
+ * registering Sit & Go's previous instance, an upcoming qualifier's last
+ * finished one). `ownTournamentId` undefined (the caller did not say) =
+ * "Results", the words before this rule.
+ */
+export function resultsButtonLabel(resultsId, ownTournamentId) {
+  if (ownTournamentId === undefined) return RESULTS_BUTTON_TEXT;
+  const own = ownTournamentId !== null && ownTournamentId !== '' && resultsId != null
+    && String(ownTournamentId) === String(resultsId);
+  return own ? RESULTS_BUTTON_TEXT : LAST_RESULTS_BUTTON_TEXT;
 }
 
 /** English ordinal, same rule as qualifierList.ordinal ('' for anything but a positive integer). */

@@ -82,6 +82,45 @@ test('qualifierResultsTournamentId: the server\'s id; a live event\'s running id
   assert.equal(L.qualifierResultsTournamentId(null, NOW), null);
 });
 
+// Review fix 2026-11-26: a Sit & Go / template event's finished card leaves
+// the list 10 s after the final hand (poker-server drops the record and opens
+// the next instance), so Results must follow the server's resultsTournamentId
+// on the REGISTERING card (the kept roster, >= 24 h).
+test('tournamentResultsTournamentId: the server\'s resultsTournamentId wins; without it, running / finished open their own id (CONTROL)', () => {
+  // The bug: a registering template card pointing at its last finished run (kept >= 24 h).
+  const nextSng = { tournamentId: 'sng-2', name: 'Sit & Go', status: 'registering', registeredPlayers: 1, resultsTournamentId: 'sng-1' };
+  assert.equal(T.tournamentResultsTournamentId(nextSng), 'sng-1');
+  assert.equal(T.resultsButtonLabel('sng-1', 'sng-2'), T.LAST_RESULTS_BUTTON_TEXT);
+  assert.equal(T.LAST_RESULTS_BUTTON_TEXT, 'Last results');
+  // A newer server's running / finished card names itself: "Results".
+  assert.equal(T.tournamentResultsTournamentId({ tournamentId: 'sng-1', status: 'running', resultsTournamentId: 'sng-1' }), 'sng-1');
+  assert.equal(T.tournamentResultsTournamentId({ tournamentId: 'sng-1', status: 'finished', resultsTournamentId: 'sng-1' }), 'sng-1');
+  assert.equal(T.resultsButtonLabel('sng-1', 'sng-1'), T.RESULTS_BUTTON_TEXT);
+  assert.equal(T.tournamentResultsTournamentId({ tournamentId: 7, status: 'registering', resultsTournamentId: 6 }), '6', 'numeric ids as strings');
+  // CONTROL: an older server (no field) = the rule before the fix: running / finished only, its own id.
+  assert.equal(T.tournamentResultsTournamentId({ tournamentId: 'c-1', status: 'running' }), 'c-1');
+  assert.equal(T.tournamentResultsTournamentId({ tournamentId: 'c-1', status: 'finished' }), 'c-1');
+  assert.equal(T.tournamentResultsTournamentId({ tournamentId: 'c-1', status: 'registering' }), null);
+  // CONTROL: the server says none is kept (null / blank): a registering card has no Results; a live one keeps its own.
+  assert.equal(T.tournamentResultsTournamentId({ tournamentId: 'c-1', status: 'registering', resultsTournamentId: null }), null);
+  assert.equal(T.tournamentResultsTournamentId({ tournamentId: 'c-1', status: 'registering', resultsTournamentId: '  ' }), null);
+  assert.equal(T.tournamentResultsTournamentId({ tournamentId: 'c-1', status: 'running', resultsTournamentId: null }), 'c-1');
+  // Never for a cancelled event; junk in = null.
+  assert.equal(T.tournamentResultsTournamentId({ tournamentId: 'c-1', status: 'cancelled', resultsTournamentId: 'c-0' }), null);
+  assert.equal(T.tournamentResultsTournamentId(null), null);
+  assert.equal(T.tournamentResultsTournamentId({ status: 'running' }), null, 'no id, nothing to open');
+  // Label CONTROL: a caller that does not pass its own id keeps today's "Results".
+  assert.equal(T.resultsButtonLabel('sng-1', undefined), T.RESULTS_BUTTON_TEXT);
+  // An upcoming qualifier (tournamentId null) pointed at last week's event: "Last results".
+  assert.equal(T.resultsButtonLabel('tq-last', null), T.LAST_RESULTS_BUTTON_TEXT);
+  const upcoming = L.normalizeQualifierItem(weeklyRaw({ status: 'registering', resultsTournamentId: 'tq-last' }));
+  assert.equal(T.resultsButtonLabel(L.qualifierResultsTournamentId(upcoming, NOW), upcoming.tournamentId), T.LAST_RESULTS_BUTTON_TEXT);
+  const live = L.normalizeQualifierItem(weeklyRaw({ status: 'running', tournamentId: 'tq-run', resultsTournamentId: 'tq-run' }));
+  assert.equal(T.resultsButtonLabel(L.qualifierResultsTournamentId(live, NOW), live.tournamentId), T.RESULTS_BUTTON_TEXT);
+  // The league card's text locks: the label says no seat / credit.
+  assert.doesNotMatch(T.LAST_RESULTS_BUTTON_TEXT, /credit|\bseat/i);
+});
+
 // ── Results (finish order) ──────────────────────────────────────────────────
 
 // A running 6-entrant event as publicTournamentStandings sends it: opaque
@@ -278,11 +317,17 @@ test('wiring: both qualifier cards + every tournament card; the bracket list vie
   assert.match(LOBBY, /setBracketRequest\(\{ tournamentId: id, results: !!\(opts && opts\.results\) \}\)/);
   assert.match(LOBBY, /resultsMode=\{!!bracketRequest\?\.results\}/);
   assert.match(LOBBY, /if \(!standingsNeedPolling\(data\) && iv\)/);
-  // TournamentLobby: Registered from the server's names; Results on running + finished; Live Bracket kept.
+  // TournamentLobby: Registered from the server's names; Results from the pure
+  // picker (server resultsTournamentId, else running + finished); Live Bracket kept.
   assert.match(TLOBBY, /const registrantNames = registrantNamesOf\(t\);/);
   assert.match(TLOBBY, /<RegisteredToggle names=\{registrantNames\} \/>/);
-  assert.match(TLOBBY, /\(t\.status === 'running' \|\| t\.status === 'finished'\) && typeof onOpenBracket === 'function'/);
+  assert.match(TLOBBY, /const resultsId = tournamentResultsTournamentId\(t\);/);
+  assert.match(TLOBBY, /\{resultsId && typeof onOpenBracket === 'function' && \(/);
+  assert.match(TLOBBY, /tournamentId=\{resultsId\}\s*\n\s*ownTournamentId=\{String\(id\)\}/);
+  assert.doesNotMatch(TLOBBY, /\(t\.status === 'running' \|\| t\.status === 'finished'\) && typeof onOpenBracket/, 'the card no longer decides Results from its own status alone');
   assert.match(TLOBBY, /onOpenBracket\(tid, t\.name, \{ results: true \}\)/);
+  assert.match(QLOBBY, /<ResultsButton tournamentId=\{resultsId\} ownTournamentId=\{q\.tournamentId\} /);
+  assert.match(LISTS, /\{resultsButtonLabel\(tournamentId, ownTournamentId\)\}/);
   assert.ok(TLOBBY.includes('🏆 Live Bracket'), 'the Live Bracket button is kept');
   // Bracket: the list view + the cards view kept; results-mode empty text; Esc; dialog role.
   assert.match(BRACKET, /\{view === 'list' && players\.length > 0 && <FinishOrderList standings=\{tournament\} \/>\}/);
@@ -300,7 +345,8 @@ test('canonical-features locks: every lobby-lists token is in the manifest AND i
   const manifest = fs.readFileSync(new URL('../../canonical-features.txt', import.meta.url), 'utf8').split('\n').map((l) => l.trim());
   const src = [LISTS, LISTS_CSS, BRACKET, readSrc('utils/tournamentLists.js')].join('\n');
   for (const tok of ['tl-registered-toggle', 'tl-registrants-panel', 'tl-results-btn', 'tl-still-in-list', 'tl-finish-list', 'tb-view-toggle',
-    'No one has registered yet.', 'These results are no longer available.', 'Most recent bust first', 'No one has busted yet.', 'Still in (', 'Final results (']) {
+    'No one has registered yet.', 'These results are no longer available.', 'Most recent bust first', 'No one has busted yet.', 'Still in (', 'Final results (',
+    'Last results']) {
     assert.ok(manifest.includes(tok), `manifest: ${tok}`);
     assert.ok(src.includes(tok), `source: ${tok}`);
   }

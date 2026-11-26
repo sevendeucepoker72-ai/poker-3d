@@ -1610,3 +1610,7 @@ Most recent bust first
 No one has busted yet.
 Still in (
 Final results (
+# Review fix 2026-11-26: a registering Sit & Go / template card (and an upcoming qualifier) opens its
+# last finished run's results from the server's resultsTournamentId (kept >= 24 h; the finished card
+# itself leaves the list 10 s after the final hand).
+Last results
