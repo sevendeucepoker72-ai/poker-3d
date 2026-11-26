@@ -46,6 +46,10 @@
  *   tournamentFinishedForEntrant atSignIn (the tournament finished while he
  *     was away) carries the same reason / handsSatOut / noShow when he was
  *     removed (review fix 2026-11-26: finishedForEntrantRemovalLine);
+ *   'sitOutToggled' {sittingOut: true, reason: 'timeout', tableId,
+ *     protectedUntil: number|null, noShowDue: boolean} - the timeout toast's
+ *     first-hour / no-show wording (review fix 2026-11-26: timeoutSitOutText;
+ *     no fields = gameState.mySitOutLimit.protectedUntil, else today's text);
  *   gameState.tableHold 'short_table' | null (FIX 1);
  *   the qualifier list item's sitOutLimitHands (30) / minTablePlayers (4):
  *     the rules show their lines only while these are sent (rule 20).
@@ -75,6 +79,20 @@ export const TIMEOUT_SIT_OUT_TEXT = "Your time ran out, so you're sitting out. T
 
 /** ... and with the limit, once the server enforces it. */
 export const TIMEOUT_SIT_OUT_LIMIT_TEXT = `${TIMEOUT_SIT_OUT_TEXT} You can't sit out more than ${SIT_OUT_LIMIT_HANDS} hands in a row.`;
+
+/**
+ * Review fix (2026-11-26) - the timeout toast of an Online League entrant who
+ * has NOT PLAYED A HAND YET, inside his first hour (protectedUntil in the
+ * future): the 30-hand limit does not bind him yet, removal when late entry
+ * closes does. Whole literal (canonical-features greps it).
+ */
+export const TIMEOUT_SIT_OUT_PROTECTED_TEXT = "Your time ran out, so you're sitting out. Tap I'm back to play again. If you are still away when late entry closes, you will be removed.";
+
+/**
+ * ... and once his first hour is over with no hand played (the server's
+ * noShowDue): he goes at this hand's end whatever his count. Whole literal.
+ */
+export const TIMEOUT_SIT_OUT_NO_SHOW_TEXT = "Your time ran out, so you're sitting out. Tap I'm back to play again. Come back this hand or you will be removed.";
 
 function posInt(v) {
   if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
@@ -123,9 +141,37 @@ export function sitOutLimitEnforcedAt(gameState) {
     && Object.prototype.hasOwnProperty.call(gameState, 'mySitOutLimit');
 }
 
-/** The timeout toast: today's text, plus the 30-hand limit when the server enforces it. */
-export function timeoutSitOutText(limitEnforced) {
-  return limitEnforced ? TIMEOUT_SIT_OUT_LIMIT_TEXT : TIMEOUT_SIT_OUT_TEXT;
+/**
+ * The timeout toast ('sitOutToggled' {sittingOut: true, reason: 'timeout'}):
+ *   - `toggled.noShowDue === true` (an Online League entrant whose first hour
+ *     is over and who has not played a hand: removed at this hand's end
+ *     whatever his count) -> TIMEOUT_SIT_OUT_NO_SHOW_TEXT;
+ *   - `toggled.protectedUntil` in the future (that entrant inside his first
+ *     hour) -> TIMEOUT_SIT_OUT_PROTECTED_TEXT;
+ *   - otherwise today's text, plus the 30-hand limit when the server enforces
+ *     it (`limitEnforced`, or the payload carries the fields: only a FIX 2
+ *     server sends them).
+ * The server sets at most one of the two (its protected / no-show tests are
+ * now <= until / now > until); noShowDue is checked first because it is the
+ * server's own decision, not a clock compare. `sitOutLimit` (that table's
+ * gameState.mySitOutLimit) is the fallback ONLY while the payload carries
+ * neither field (a server from before the fields): its protectedUntil in the
+ * future -> the protected text. `now`: the server-corrected clock.
+ * Review fix 2026-11-26 (the toast promised a 30-hand limit to an entrant the
+ * server removes when late entry closes).
+ */
+export function timeoutSitOutText(limitEnforced, toggled = null, sitOutLimit = null, now = Date.now()) {
+  const t = toggled && typeof toggled === 'object' && !Array.isArray(toggled) ? toggled : null;
+  const sent = !!t && (Object.prototype.hasOwnProperty.call(t, 'protectedUntil')
+    || Object.prototype.hasOwnProperty.call(t, 'noShowDue'));
+  if (sent) {
+    if (t.noShowDue === true) return TIMEOUT_SIT_OUT_NO_SHOW_TEXT;
+    if (protectedAt(t, now)) return TIMEOUT_SIT_OUT_PROTECTED_TEXT;
+  } else {
+    const limit = readSitOutLimit(sitOutLimit);
+    if (limit && protectedAt(limit, now)) return TIMEOUT_SIT_OUT_PROTECTED_TEXT;
+  }
+  return limitEnforced || sent ? TIMEOUT_SIT_OUT_LIMIT_TEXT : TIMEOUT_SIT_OUT_TEXT;
 }
 
 /**

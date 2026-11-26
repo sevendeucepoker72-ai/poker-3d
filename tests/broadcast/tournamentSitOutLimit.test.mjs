@@ -75,6 +75,55 @@ test('timeout toast: today\'s text word for word unless the table\'s server enfo
   assert.equal(S.sitOutLimitEnforcedAt(null), false);
 });
 
+test('timeout toast (review fix 2026-11-26): a league entrant who has not played a hand is told the first-hour / no-show rule, never the 30 hands', () => {
+  const TODAY = "Your time ran out, so you're sitting out. Tap I'm back to play again.";
+  const LIMIT = "Your time ran out, so you're sitting out. Tap I'm back to play again. You can't sit out more than 30 hands in a row.";
+  const PROTECTED = "Your time ran out, so you're sitting out. Tap I'm back to play again. If you are still away when late entry closes, you will be removed.";
+  const NO_SHOW = "Your time ran out, so you're sitting out. Tap I'm back to play again. Come back this hand or you will be removed.";
+  const toggled = (o) => ({ sittingOut: true, reason: 'timeout', tableId: 'tb1', ...o });
+  // CONTROL: no fields (today's server) and no table count = today's text word for word, with / without the limit.
+  assert.equal(S.timeoutSitOutText(false, toggled(), null, NOW), TODAY);
+  assert.equal(S.timeoutSitOutText(true, toggled(), null, NOW), LIMIT);
+  assert.equal(S.timeoutSitOutText(true, toggled(), { handsSatOut: 4, handsLimit: 30, handsLeft: 26, protectedUntil: null }, NOW), LIMIT,
+    'CONTROL: a table count with no protection keeps the 30-hand sentence');
+  // The server's fields.
+  assert.equal(S.timeoutSitOutText(true, toggled({ protectedUntil: LATER, noShowDue: false }), null, NOW), PROTECTED);
+  assert.equal(S.timeoutSitOutText(true, toggled({ protectedUntil: null, noShowDue: true }), null, LATER + 1), NO_SHOW);
+  assert.equal(S.timeoutSitOutText(true, toggled({ protectedUntil: null, noShowDue: false }), null, NOW), LIMIT, 'neither: the 30 hands');
+  assert.equal(S.timeoutSitOutText(false, toggled({ protectedUntil: null, noShowDue: false }), null, NOW), LIMIT,
+    'only a FIX 2 server sends the fields: the limit is on even when the gameState key was not seen');
+  assert.equal(S.timeoutSitOutText(true, toggled({ protectedUntil: LATER, noShowDue: false }), null, LATER + 1), LIMIT,
+    'protectedUntil already passed: the 30 hands');
+  assert.equal(S.timeoutSitOutText(true, toggled({ protectedUntil: LATER, noShowDue: true }), null, NOW), NO_SHOW,
+    'noShowDue (the server\'s own decision) wins over a clock compare');
+  for (const junk of [0, -5, 'x', true, NaN]) {
+    assert.equal(S.timeoutSitOutText(true, toggled({ protectedUntil: junk, noShowDue: false }), null, NOW), LIMIT, `junk protectedUntil ${String(junk)}`);
+  }
+  assert.equal(S.timeoutSitOutText(true, toggled({ noShowDue: 'yes' }), null, NOW), LIMIT, 'noShowDue must be true itself');
+  // A server from before the fields: the table's own gameState.mySitOutLimit.protectedUntil.
+  const protectedCount = { handsSatOut: 2, handsLimit: 30, handsLeft: 28, protectedUntil: LATER };
+  assert.equal(S.timeoutSitOutText(true, toggled(), protectedCount, NOW), PROTECTED);
+  assert.equal(S.timeoutSitOutText(true, toggled(), protectedCount, LATER + 1), LIMIT, 'its first hour is over: the 30 hands');
+  assert.equal(S.timeoutSitOutText(true, toggled(), { ...protectedCount, handsSatOut: 0 }, NOW), LIMIT, 'no count (null view): no fallback');
+  // Once the server sends the fields, they decide: a stale table count never overrides them.
+  assert.equal(S.timeoutSitOutText(true, toggled({ protectedUntil: null, noShowDue: false }), protectedCount, NOW), LIMIT);
+  assert.equal(S.timeoutSitOutText(true, toggled({ protectedUntil: null, noShowDue: true }), protectedCount, NOW), NO_SHOW);
+  // A bad payload is the CONTROL text, never a throw.
+  for (const bad of [null, undefined, 'x', 3, []]) {
+    assert.equal(S.timeoutSitOutText(false, bad, null, NOW), TODAY, `bad payload ${JSON.stringify(bad)}`);
+    assert.equal(S.timeoutSitOutText(true, bad, 'x', NOW), LIMIT);
+  }
+  // The exported literals are the exact copy, lead with the 98397e0 lock token and are plain ASCII.
+  assert.equal(S.TIMEOUT_SIT_OUT_PROTECTED_TEXT, PROTECTED);
+  assert.equal(S.TIMEOUT_SIT_OUT_NO_SHOW_TEXT, NO_SHOW);
+  for (const s of [PROTECTED, NO_SHOW]) {
+    assert.ok(s.startsWith("Your time ran out, so you're sitting out."), s);
+    assert.ok(ASCII.test(s), s);
+    assert.doesNotMatch(s, NEVER, s);
+    assert.doesNotMatch(s, /30 hands/, 'never the 30-hand sentence');
+  }
+});
+
 test('removal: only reason sat_out_limit (never the cash sit_out_limit); bust banner, own, elsewhere, room and lobby lines', () => {
   const rm = { tournamentId: 't1', position: 7, totalPlayers: 40, reason: 'sat_out_limit', handsSatOut: 30 };
   assert.equal(S.satOutRemovedHands(rm), 30);
@@ -495,8 +544,12 @@ test('App: the warning listener is registered and removed by its handler ref; sy
 test('App: timeout toast gated on the table\'s mySitOutLimit key; elimination toasts carry the removal wording', () => {
   const sit = between(APP, "socket.on('sitOutToggled', (data) => {", '// 2026-11-26 (owner orders 2026-11-25, FIX 2) — poker-server warns ONCE');
   assert.match(sit, /type: 'system', title: 'Sitting out'/);
-  assert.match(sit, /message: timeoutSitOutText\(limitOn\)/);
+  assert.match(sit, /message: timeoutSitOutText\(limitOn, data, tableSitOutLimit, now\)/, 'the payload\'s fields + that table\'s count reach the builder');
   assert.match(sit, /sitOutLimitEnforcedAt\(entry && entry\.gameState\) \|\| sitOutLimitEnforcedAt\(tsT\.gameState\)/);
+  // The fallback count is THAT table's (its entry, else the table on screen only when it is that table).
+  assert.match(sit, /String\(tsT\.gameState\.tableId\) === String\(data\.tableId\)\) \? tsT\.gameState : null;/);
+  assert.match(sit, /const own = \(entry && entry\.gameState\) \|\| onScreen;\s*tableSitOutLimit = own \? own\.mySitOutLimit : null;/);
+  assert.match(sit, /try \{ now = serverNow\(\); \} catch/, 'the server-corrected clock, as the warning handler');
   assertNoRedOrAmber(sit, 'sitOutToggled');
   const elsewhere = between(APP, 'const handleEliminatedToSpectator = (data) => {', "socket.on('eliminatedToSpectator', handleEliminatedToSpectator);");
   assert.match(elsewhere, /reason: data\?\.reason, handsSatOut: data\?\.handsSatOut, noShow: data\?\.noShow/, 'the lobby line gets the reason (+ noShow)');
@@ -653,6 +706,9 @@ test('canonical-features: every new event / visible string is locked and is a li
     LEAGUE_FIRST_HOUR,
     "Once you have played a hand, you can't sit out more than",
     LEAGUE_NOTE_REMOVED,
+    // Review fix 2026-11-26: the timeout toast of a league entrant who has not played a hand yet.
+    "Your time ran out, so you're sitting out. Tap I'm back to play again. If you are still away when late entry closes, you will be removed.",
+    "Your time ran out, so you're sitting out. Tap I'm back to play again. Come back this hand or you will be removed.",
   ];
   // The replaced arrival-based phrases are no longer locked (nor said).
   for (const gone of ['Anyone still away when late entry closes is removed.',

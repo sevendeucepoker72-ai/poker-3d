@@ -1243,18 +1243,30 @@ function App() {
       // — the toast adds the limit only when that table's server enforces it
       // (its gameState carries `mySitOutLimit`; an older server never sends
       // it: today's text, word for word).
+      // Review fix 2026-11-26 — an Online League entrant who has not played a
+      // hand yet is not bound by the 30 hands: the payload's protectedUntil /
+      // noShowDue pick the first-hour / no-show wording; a server from before
+      // those fields: THAT table's mySitOutLimit.protectedUntil (never another
+      // table's count).
       if (data.reason === 'timeout' && data.sittingOut === true) {
         try {
           let limitOn = false;
+          let tableSitOutLimit = null;
           try {
             const tsT = useTableStore.getState();
             const entry = data.tableId != null ? tsT.activeTables.get(data.tableId) : null;
             limitOn = sitOutLimitEnforcedAt(entry && entry.gameState) || sitOutLimitEnforcedAt(tsT.gameState);
-          } catch { limitOn = false; }
+            const onScreen = tsT.gameState
+              && (data.tableId == null || String(tsT.gameState.tableId) === String(data.tableId)) ? tsT.gameState : null;
+            const own = (entry && entry.gameState) || onScreen;
+            tableSitOutLimit = own ? own.mySitOutLimit : null;
+          } catch { limitOn = false; tableSitOutLimit = null; }
+          let now = Date.now();
+          try { now = serverNow(); } catch { /* the local clock */ }
           useProgressStore.getState().addNotification({
             type: 'system', title: 'Sitting out',
-            // "Your time ran out, so you're sitting out. Tap I'm back to play again." (+ the limit)
-            message: timeoutSitOutText(limitOn),
+            // "Your time ran out, so you're sitting out. Tap I'm back to play again." (+ the limit / first-hour / no-show sentence)
+            message: timeoutSitOutText(limitOn, data, tableSitOutLimit, now),
           });
         } catch { /* best-effort */ }
       }

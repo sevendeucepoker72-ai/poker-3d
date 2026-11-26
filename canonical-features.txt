@@ -1630,6 +1630,11 @@ because you were still away when late entry closed
 If you have not played a hand yet, you have until late entry closes at 7:00 PM MT. If you are still away then, you are removed and finish in the next place.
 Once you have played a hand, you can't sit out more than
 Anyone who has not played a hand by the time late entry closes is removed if they are away then.
+# Review fix 2026-11-26: the timeout toast of a league entrant who has not played a hand yet says the
+# first-hour rule (sitOutToggled protectedUntil, or the table's mySitOutLimit.protectedUntil) or, once his
+# hour is over (noShowDue), that he goes this hand - never the 30-hand sentence (timeoutSitOutText).
+Your time ran out, so you're sitting out. Tap I'm back to play again. If you are still away when late entry closes, you will be removed.
+Your time ran out, so you're sitting out. Tap I'm back to play again. Come back this hand or you will be removed.
 # Lobby lists (owner 2026-11-25: "for all online tournaments to be able to see who is registered in the
 # lobby and a list for it to show who busted in each position"): "Registered (N)" on every qualifier /
 # league / tournament card (server registrantNames, public names), "Results" on running + finished
