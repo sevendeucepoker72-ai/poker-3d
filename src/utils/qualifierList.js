@@ -568,10 +568,15 @@ export const ONLINE_LEAGUE_NO_SHOW_TEXT = 'Anyone not here when it starts is sti
 
 /**
  * 2026-11-26 (owner FIX 2) — appended to the league note while the server
- * enforces the sit-out limit (the item's sitOutLimitHands): a no-show still
- * away when late entry closes is removed (finishes in the next place).
+ * enforces the sit-out limit (the item's sitOutLimitHands): an entrant who
+ * has not played a hand by the time late entry closes and is away then is
+ * removed (finishes in the next place). Owner rule 2026-11-25 ~11:15 PM MT
+ * ("A player who is seated before 6 and then leaves before never played a
+ * hand so they should get the 1st hour to play a hand"): the first hour is
+ * for anyone who has not played a hand yet, not only a registrant who never
+ * arrived, so the sentence names that, never "still away" alone.
  */
-export const ONLINE_LEAGUE_NO_SHOW_REMOVED_TEXT = 'Anyone still away when late entry closes is removed.';
+export const ONLINE_LEAGUE_NO_SHOW_REMOVED_TEXT = 'Anyone who has not played a hand by the time late entry closes is removed if they are away then.';
 
 /** A registrant's note before the start: be online at the start or be released (+ refund). */
 export function qualifierBeOnlineText(q) {
@@ -579,8 +584,9 @@ export function qualifierBeOnlineText(q) {
   // 2026-11-25 (owner: "It should seat you and blind you out", Online League
   // only) — a league night's no-shows are seated and blinded out (poker-server
   // qualifierNoShow.noShowsSeatedAbsent), never released.
-  // 2026-11-26 (owner FIX 2) — and removed if still away when late entry
-  // closes, said only while the server sends sitOutLimitHands (rule 20).
+  // 2026-11-26 (owner FIX 2) — and removed if he has not played a hand by the
+  // time late entry closes and is away then (owner rule 2026-11-25 ~11:15 PM
+  // MT), said only while the server sends sitOutLimitHands (rule 20).
   if (isLeagueItem(q)) {
     const note = posInt(q.sitOutLimitHands)
       ? `${ONLINE_LEAGUE_NO_SHOW_TEXT} ${ONLINE_LEAGUE_NO_SHOW_REMOVED_TEXT}`

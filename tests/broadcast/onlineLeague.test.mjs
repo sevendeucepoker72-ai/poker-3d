@@ -325,10 +325,20 @@ test('Online League Rules: own title / subtitle / date, plain ASCII, the drafted
   const sched = fix2.sections.find((s) => s.heading === 'Schedule').rules;
   const noShow = sched.indexOf('You are dealt in and your blinds are posted until you sign in on americanpubpoker.online and take your seat.');
   assert.ok(noShow > 0);
-  assert.equal(sched[noShow + 1], 'If you are still away when late entry closes at 7:00 PM MT, you are removed and finish in the next place.');
-  // Review fix 2026-11-26: not "Nobody can ..." - a no-show is protected until 7:00 PM MT.
-  assert.equal(sched[noShow + 2], "Once you have taken your seat, you can't sit out more than 30 hands in a row. On the 30th hand you are removed and finish in the next place.");
+  // Owner rule 2026-11-25 ~11:15 PM MT: the first hour is for anyone who has
+  // not played a hand yet (seated before 6 and left counts), not only one who
+  // never arrived.
+  assert.equal(sched[noShow + 1], 'If you have not played a hand yet, you have until late entry closes at 7:00 PM MT. If you are still away then, you are removed and finish in the next place.');
+  // Review fix 2026-11-26: not "Nobody can ..." - an entrant who has not played a hand is protected until 7:00 PM MT.
+  assert.equal(sched[noShow + 2], "Once you have played a hand, you can't sit out more than 30 hands in a row. On the 30th hand you are removed and finish in the next place.");
+  // The two locked no-show lines stay word for word, right before them.
+  assert.equal(sched[noShow - 1], 'If you registered but are not online when it starts, you are still seated and blinded out.');
+  assert.equal(sched.length, R.rulesPageFor(q).sections.find((s) => s.heading === 'Schedule').rules.length + 2, 'exactly two lines added by the flag');
+  // Protection is never tied to arriving / taking your seat.
+  assert.equal(sched.some((l) => /taken your seat|has arrived|until you arrive/i.test(l)), false);
   assert.doesNotMatch(JSON.stringify(fix2.sections), /released/i);
+  // CONTROL: without the flag, no "played a hand" line at all (an older server reads as before).
+  assert.equal(lines.some((l) => /played a hand/.test(l)), false, 'no first-hour line without the server flag');
   // The weekly page is unchanged.
   const wPage = R.rulesPageFor(L.normalizeQualifierItem(weeklyRaw()));
   assert.equal(wPage.title, R.QUALIFIER_RULES_TITLE);

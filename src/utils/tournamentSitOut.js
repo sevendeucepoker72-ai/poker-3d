@@ -10,9 +10,18 @@
  * in a row. One timeout still sits him out. After 3 hands in a row sitting out
  * he is warned; on the 30th he is REMOVED at that hand's end, placed exactly
  * like a bust (next finishing place, no bounty, prize / points / seat per that
- * place). An Online League no-show is protected until late entry closes
- * (protectedUntil), then, if still away, removed at the first hand end after
- * it whatever his count (owner order; noShow: true on that removal).
+ * place). On an Online League night an entrant who has NOT PLAYED A HAND YET
+ * in this event is protected until late entry closes (protectedUntil), then,
+ * if he still has not played a hand and is away, removed at the first hand
+ * end after it whatever his count (owner order; noShow: true on that
+ * removal). Owner rule 2026-11-25 ~11:15 PM MT ("A player who is seated
+ * before 6 and then leaves before never played a hand so they should get the
+ * 1st hour to play a hand") replaced "never arrived": away at the start, sat
+ * in the early rooms and left, at another table, late-registered and left -
+ * all protected until he plays a hand; a sign-in / seat restore alone is not
+ * playing one; once he has, the protection is gone for good in this event.
+ * The server decides who is protected (protectedUntil / noShow); the words
+ * below never say "taken your seat" or "arrived" for it.
  * FIX 1 (poker-server): while 2 or more tables are in play, a table with fewer
  * than 4 players does not deal until balancing brings it to 4 or more.
  *
@@ -31,8 +40,9 @@
  *   eliminatedToSpectator / playerEliminated (direct, atSignIn and the room's)
  *     reason 'sat_out_limit' + handsSatOut (never the cash 'sit_out_limit',
  *     whose text says the chips went back to the balance - false here), and
- *     noShow: true when it is an Online League no-show removed because he was
- *     still away when late entry closed (review fix 2026-11-26);
+ *     noShow: true when it is an Online League entrant who had not played a
+ *     hand, removed because he was still away when late entry closed (review
+ *     fix 2026-11-26; owner rule 2026-11-25 ~11:15 PM MT);
  *   tournamentFinishedForEntrant atSignIn (the tournament finished while he
  *     was away) carries the same reason / handsSatOut / noShow when he was
  *     removed (review fix 2026-11-26: finishedForEntrantRemovalLine);
@@ -138,8 +148,9 @@ export function readSitOutLimit(raw) {
  * The sentence the sit-out note / the away banner adds at a tournament seat
  * (from gameState.mySitOutLimit): "Come back within 27 hands or you will be
  * removed." / "Come back this hand or you will be removed." / while an Online
- * League no-show is protected: "If you are still away when late entry closes,
- * you will be removed." '' when the server does not say (today's note).
+ * League entrant who has not played a hand yet is protected: "If you are
+ * still away when late entry closes, you will be removed." '' when the
+ * server does not say (today's note).
  */
 export function sitOutLimitSentence(raw, now = Date.now()) {
   const limit = readSitOutLimit(raw);
@@ -152,9 +163,10 @@ export function sitOutLimitSentence(raw, now = Date.now()) {
 /**
  * The 3-hand warning toast (socket 'tournamentSitOutWarning'): "You have sat
  * out 3 hands in a row. Come back within 27 hands or you will be removed from
- * the tournament." While protected (an Online League no-show before late
- * entry closes): "... If you are still away when late entry closes, you will
- * be removed from the tournament." '' for a payload that is not an object.
+ * the tournament." While protected (an Online League entrant who has not
+ * played a hand yet, before late entry closes): "... If you are still away
+ * when late entry closes, you will be removed from the tournament." '' for a
+ * payload that is not an object.
  */
 export function sitOutWarningText(data, now = Date.now()) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return '';
@@ -181,9 +193,11 @@ export function satOutRemovedHands(data) {
 }
 
 /**
- * Review fix (2026-11-26) - the removal of an Online League NO-SHOW (seated
- * absent at the start, never arrived) at the first hand end after late entry
- * closes: reason 'sat_out_limit' + `noShow: true`. The owner's order removes
+ * Review fix (2026-11-26) - the removal of an Online League entrant who has
+ * NOT PLAYED A HAND in this event (owner rule 2026-11-25 ~11:15 PM MT: away
+ * at the start, or seated early / late-registered and left before playing
+ * one) and is away at the first hand end after late entry closes: reason
+ * 'sat_out_limit' + `noShow: true`. The owner's order removes
  * him then WHATEVER his count, so a hand count (30, or his real 22) would not
  * say why: the lines below say "because you were still away when late entry
  * closed" instead. Absent / not true = the 30-hand wording.

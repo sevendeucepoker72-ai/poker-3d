@@ -1614,15 +1614,19 @@ tournament-sitout-limit
 tournament-bust-reason
 tournament-return-sitout-limit
 Waiting for players to be moved to this table.
-Anyone still away when late entry closes is removed.
 hand you are removed, the same as a bust: you finish in the next place.
 a table never plays with fewer than {minTablePlayers} players. It waits until players are moved to it.
-If you are still away when late entry closes at 7:00 PM MT, you are removed and finish in the next place.
 hand you are removed and finish in the next place.
 # 2026-11-26 review fixes: the weekly Seating line about a new table follows FIX 1 when the server holds
 # short tables (gated on minTablePlayers; the approved line otherwise); the league 30-hand line names who
 # it binds (a no-show is protected until 7:00 PM MT); a league no-show removed when late entry closes
 # (removal payload noShow: true) is told that, not a hand count.
 Players move over from the other tables until it has {minTablePlayers}, then play starts there.
-Once you have taken your seat, you can't sit out more than
 because you were still away when late entry closed
+# Owner rule 2026-11-25 ~11:15 PM MT ("A player who is seated before 6 and then leaves before never played
+# a hand so they should get the 1st hour to play a hand"), Online League only: the first hour belongs to
+# every entrant who has NOT PLAYED A HAND YET (not only one who never arrived). The league Schedule's two
+# FIX 2 lines and the registrant note's appended sentence say "played a hand", never "taken your seat".
+If you have not played a hand yet, you have until late entry closes at 7:00 PM MT. If you are still away then, you are removed and finish in the next place.
+Once you have played a hand, you can't sit out more than
+Anyone who has not played a hand by the time late entry closes is removed if they are away then.

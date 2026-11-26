@@ -246,7 +246,17 @@ const leagueRaw = (over = {}) => ({
 });
 const WEEKLY_SITOUT = "You can't sit out more than 30 hands in a row. On the 30th hand you are removed, the same as a bust: you finish in the next place.";
 const WEEKLY_SHORT = 'While two or more tables are running, a table never plays with fewer than 4 players. It waits until players are moved to it.';
-const LEAGUE_SITOUT = "Once you have taken your seat, you can't sit out more than 30 hands in a row. On the 30th hand you are removed and finish in the next place.";
+// Owner rule 2026-11-25 ~11:15 PM MT: the first hour belongs to every entrant
+// who has NOT PLAYED A HAND YET (seated before 6 and left counts), so the league
+// lines say "played a hand", never "taken your seat".
+const LEAGUE_SITOUT = "Once you have played a hand, you can't sit out more than 30 hands in a row. On the 30th hand you are removed and finish in the next place.";
+const LEAGUE_FIRST_HOUR = 'If you have not played a hand yet, you have until late entry closes at 7:00 PM MT. If you are still away then, you are removed and finish in the next place.';
+const LEAGUE_NOTE_REMOVED = 'Anyone who has not played a hand by the time late entry closes is removed if they are away then.';
+// The two locked no-show Schedule lines (owner 2026-11-25), word for word.
+const LEAGUE_LOCKED_NO_SHOW = [
+  'If you registered but are not online when it starts, you are still seated and blinded out.',
+  'You are dealt in and your blinds are posted until you sign in on americanpubpoker.online and take your seat.',
+];
 // The approved Seating line about a new table (owner 2026-10-23), word for word.
 const WEEKLY_NEW_TABLE_OLD = 'If every seat is full when someone late-registers or re-enters, a new table opens. A player alone there is not dealt in and pays no blinds. If that player is at the table, one player moves over from the fullest table so play can start. There is no limit on extra tables.';
 // ... and as it reads once poker-server holds short tables (FIX 1).
@@ -330,10 +340,10 @@ test('league rules + registrant note: the removal lines / sentence only with sit
   assert.equal(off.sections.flatMap((s) => s.rules).some((l) => /removed|in a row/i.test(l)), false);
   const on = R.rulesPageFor(L.normalizeQualifierItem(leagueRaw({ sitOutLimitHands: 30, minTablePlayers: 4 })));
   const lines = on.sections.flatMap((s) => s.rules);
-  assert.ok(lines.includes('If you are still away when late entry closes at 7:00 PM MT, you are removed and finish in the next place.'));
+  assert.ok(lines.includes(LEAGUE_FIRST_HOUR));
   assert.ok(lines.includes(LEAGUE_SITOUT));
-  // Review fix: a registrant who never arrived is protected until 7:00 PM MT,
-  // so the page never says that NOBODY can sit out more than 30 in a row.
+  // Review fix: an entrant who has not played a hand yet is protected until
+  // 7:00 PM MT, so the page never says that NOBODY can sit out more than 30 in a row.
   assert.equal(lines.some((l) => /^Nobody can sit out/.test(l)), false);
   assert.equal(lines.includes(WEEKLY_SHORT), false, 'the short-table line is the weekly page\'s');
   assert.doesNotMatch(JSON.stringify(on.sections), /released/i);
@@ -341,13 +351,79 @@ test('league rules + registrant note: the removal lines / sentence only with sit
   assert.equal(L.qualifierBeOnlineText(qOff), 'Be on americanpubpoker.online by 6:00 PM MT. Anyone not here when it starts is still seated and blinded out until they arrive.');
   const qOn = L.normalizeQualifierItem(leagueRaw({ sitOutLimitHands: 30 }));
   assert.equal(L.qualifierBeOnlineText(qOn),
-    'Be on americanpubpoker.online by 6:00 PM MT. Anyone not here when it starts is still seated and blinded out until they arrive. Anyone still away when late entry closes is removed.');
+    'Be on americanpubpoker.online by 6:00 PM MT. Anyone not here when it starts is still seated and blinded out until they arrive. Anyone who has not played a hand by the time late entry closes is removed if they are away then.');
   assert.equal(L.qualifierBeOnlineText({ ...qOn, scheduledAt: null }),
-    'Be on americanpubpoker.online at the start. Anyone not here when it starts is still seated and blinded out until they arrive. Anyone still away when late entry closes is removed.');
+    'Be on americanpubpoker.online at the start. Anyone not here when it starts is still seated and blinded out until they arrive. Anyone who has not played a hand by the time late entry closes is removed if they are away then.');
   assert.doesNotMatch(L.qualifierBeOnlineText(qOn), /released|refund/);
   // The weekly note is unchanged by the flag.
   assert.equal(L.qualifierBeOnlineText(L.normalizeQualifierItem(weeklyRaw({ sitOutLimitHands: 30 }))),
     'Be on americanpubpoker.online by 11:00 AM MT — anyone not here when it starts is released and the credit refunded.');
+});
+
+// Owner rule 2026-11-25 ~11:15 PM MT ("A player who is seated before 6 and
+// then leaves before never played a hand so they should get the 1st hour to
+// play a hand"), replacing "never arrived": the league copy ties the first
+// hour to NOT HAVING PLAYED A HAND, never to arriving / taking your seat. The
+// server decides who is protected (protectedUntil / noShow), so the warning
+// and removal words are unchanged. Weekly: no first hour, page unchanged.
+test('league first hour = has not played a hand yet (owner 2026-11-25 11:15 PM); CONTROL: locked lines, no flag, weekly page, warning + removal words unchanged', () => {
+  const on = L.normalizeQualifierItem(leagueRaw({ sitOutLimitHands: 30 }));
+  const sched = R.rulesPageFor(on).sections.find((s) => s.heading === 'Schedule').rules;
+  const lockAt = sched.indexOf(LEAGUE_LOCKED_NO_SHOW[0]);
+  assert.ok(lockAt >= 0, 'locked line 1 word for word');
+  assert.equal(sched[lockAt + 1], LEAGUE_LOCKED_NO_SHOW[1], 'locked line 2 word for word');
+  assert.equal(sched[lockAt + 2], LEAGUE_FIRST_HOUR);
+  assert.equal(sched[lockAt + 3], LEAGUE_SITOUT);
+  // The two FIX 2 lines name the rule by playing a hand, never by arriving.
+  for (const l of [LEAGUE_FIRST_HOUR, LEAGUE_SITOUT, LEAGUE_NOTE_REMOVED]) {
+    assert.match(l, /played a hand/, l);
+    assert.doesNotMatch(l, /taken your seat|take your seat|arriv/i, l);
+    assert.ok(ASCII.test(l), `ASCII: ${l}`);
+    assert.doesNotMatch(l, NEVER, l);
+  }
+  // The old "arrival" wording is gone everywhere it was said.
+  const raw = JSON.stringify(R.rulesPageFor(on).sections);
+  assert.doesNotMatch(raw, /Once you have taken your seat/);
+  assert.doesNotMatch(raw, /If you are still away when late entry closes at 7:00 PM MT/);
+  assert.equal(L.ONLINE_LEAGUE_NO_SHOW_REMOVED_TEXT, LEAGUE_NOTE_REMOVED);
+  const note = L.qualifierBeOnlineText(on);
+  assert.ok(note.endsWith(` ${LEAGUE_NOTE_REMOVED}`), note);
+  assert.doesNotMatch(note, /Anyone still away when late entry closes is removed\./);
+  // CONTROL: the locked registrant phrase stays word for word, before the appended sentence.
+  assert.ok(note.includes(`${L.ONLINE_LEAGUE_NO_SHOW_TEXT} ${LEAGUE_NOTE_REMOVED}`));
+  assert.equal(L.ONLINE_LEAGUE_NO_SHOW_TEXT, 'Anyone not here when it starts is still seated and blinded out until they arrive.');
+  // CONTROL: no flag (an older server) - the locked lines only, no "played a hand" anywhere.
+  const off = L.normalizeQualifierItem(leagueRaw());
+  const offSched = R.rulesPageFor(off).sections.find((s) => s.heading === 'Schedule').rules;
+  assert.deepEqual(offSched.filter((l) => LEAGUE_LOCKED_NO_SHOW.includes(l)), LEAGUE_LOCKED_NO_SHOW);
+  assert.equal(JSON.stringify(R.rulesPageFor(off).sections).includes('played a hand'), false);
+  assert.equal(L.qualifierBeOnlineText(off).includes('played a hand'), false);
+  assert.deepEqual(sched.filter((l) => l !== LEAGUE_FIRST_HOUR && l !== LEAGUE_SITOUT), offSched, 'the flag adds exactly the two lines');
+  // CONTROL: weekly (every other tournament) - no first hour; its 30-hand line is word for word as before.
+  const weekly = R.qualifierRulesFor(L.normalizeQualifierItem(weeklyRaw({ sitOutLimitHands: 30, minTablePlayers: 4 }))).flatMap((s) => s.rules);
+  assert.ok(weekly.includes(WEEKLY_SITOUT));
+  assert.equal(weekly.some((l) => /played a hand|late entry closes at 7:00 PM/.test(l)), false);
+  assert.equal(L.qualifierBeOnlineText(L.normalizeQualifierItem(weeklyRaw({ sitOutLimitHands: 30 }))).includes('played a hand'), false);
+  // CONTROL: the protected warning and the no-show removal words are unchanged (the server decides who is protected).
+  assert.equal(S.sitOutWarningText({ handsSatOut: 3, handsLimit: 30, handsLeft: 27, protectedUntil: LATER }, NOW),
+    'You have sat out 3 hands in a row. If you are still away when late entry closes, you will be removed from the tournament.');
+  assert.equal(S.sitOutLimitSentence({ handsSatOut: 3, handsLimit: 30, handsLeft: 27, protectedUntil: LATER }, NOW),
+    'If you are still away when late entry closes, you will be removed.');
+  assert.equal(S.awaySeatSitOutWarningLine({ protectedUntil: LATER }, NOW),
+    'If you are still away when late entry closes, you will be removed from the tournament.');
+  assert.equal(S.bustBannerRemovalLine({ reason: 'sat_out_limit', handsSatOut: 4, noShow: true }),
+    'Removed because you were still away when late entry closed.');
+  // A seated-early-and-left entrant (few hands sat out, still protected) gets the same protected words, never a count.
+  assert.equal(S.sitOutLimitSentence({ handsSatOut: 1, handsLimit: 30, handsLeft: 29, protectedUntil: LATER }, NOW),
+    'If you are still away when late entry closes, you will be removed.');
+  // ... and once protection is over (protectedUntil null: he played a hand, or 7:00 PM passed) the count words.
+  assert.equal(S.sitOutLimitSentence({ handsSatOut: 1, handsLimit: 30, handsLeft: 29, protectedUntil: null }, NOW),
+    'Come back within 29 hands or you will be removed.');
+  // No source the player reads ties the protection to arriving.
+  const leagueSrc = readSrc('content/onlineLeagueRules.js').replace(/\/\/[^\n]*/g, '');
+  assert.doesNotMatch(leagueSrc, /taken your seat/);
+  const modCode = readSrc('utils/tournamentSitOut.js').replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(modCode, /taken your seat|arriv/i);
 });
 
 // ── Static guards on the JSX (no React renderer in node) ────────────────────
@@ -567,16 +643,23 @@ test('canonical-features: every new event / visible string is locked and is a li
     'tournament-bust-reason',
     'tournament-return-sitout-limit',
     'Waiting for players to be moved to this table.',
-    'Anyone still away when late entry closes is removed.',
     'hand you are removed, the same as a bust: you finish in the next place.',
     'a table never plays with fewer than {minTablePlayers} players. It waits until players are moved to it.',
-    'If you are still away when late entry closes at 7:00 PM MT, you are removed and finish in the next place.',
     'hand you are removed and finish in the next place.',
     // Review fixes 2026-11-26.
     'Players move over from the other tables until it has {minTablePlayers}, then play starts there.',
-    "Once you have taken your seat, you can't sit out more than",
     'because you were still away when late entry closed',
+    // Owner rule 2026-11-25 ~11:15 PM MT: the first hour = has not played a hand yet.
+    LEAGUE_FIRST_HOUR,
+    "Once you have played a hand, you can't sit out more than",
+    LEAGUE_NOTE_REMOVED,
   ];
+  // The replaced arrival-based phrases are no longer locked (nor said).
+  for (const gone of ['Anyone still away when late entry closes is removed.',
+    'If you are still away when late entry closes at 7:00 PM MT, you are removed and finish in the next place.',
+    "Once you have taken your seat, you can't sit out more than"]) {
+    assert.equal(CANON.split(/\r?\n/).includes(gone), false, `stale token: ${gone}`);
+  }
   const lines = new Set(CANON.split(/\r?\n/));
   const all = ['utils/tournamentSitOut.js', 'App.jsx', 'components/game/GameHUD.jsx', 'components/ui/TournamentSeatNotice.jsx',
     'utils/qualifierList.js', 'content/qualifierRules.js', 'content/onlineLeagueRules.js'].map(readSrc).join('\n');

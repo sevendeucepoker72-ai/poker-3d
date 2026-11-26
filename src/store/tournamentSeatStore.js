@@ -466,7 +466,8 @@ export function noteTournamentSeatReturned(data) {
  * 2026-11-26 (owner FIX 2) — `reason` 'sat_out_limit' (+ `handsSatOut`): he
  * was REMOVED for sitting out, and the line says so (satOutRemovedOwnLine);
  * any other reason / none keeps today's line. `noShow` true (review fix): an
- * Online League no-show removed when late entry closed - the line says that.
+ * Online League entrant who had not played a hand (owner rule 2026-11-25
+ * ~11:15 PM MT), removed when late entry closed - the line says that.
  * Review fix (2026-11-26) - the removal reason wins over `finished`: the
  * sign-in 'tournamentFinishedForEntrant' of a player removed while away
  * carries it, and the lobby line says removed, like the toast. `finished`
