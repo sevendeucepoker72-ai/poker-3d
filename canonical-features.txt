@@ -1630,3 +1630,31 @@ because you were still away when late entry closed
 If you have not played a hand yet, you have until late entry closes at 7:00 PM MT. If you are still away then, you are removed and finish in the next place.
 Once you have played a hand, you can't sit out more than
 Anyone who has not played a hand by the time late entry closes is removed if they are away then.
+# Lobby lists (owner 2026-11-25: "for all online tournaments to be able to see who is registered in the
+# lobby and a list for it to show who busted in each position"): "Registered (N)" on every qualifier /
+# league / tournament card (server registrantNames, public names), "Results" on running + finished
+# cards (qualifier resultsTournamentId), and the bracket's Finish order view (Still in + each bust with
+# the server's finishPosition, most recent first; works for a finished event).
+tl-registered-toggle
+tl-registrants-panel
+tl-results-btn
+tl-still-in-list
+tl-finish-list
+tb-view-toggle
+No one has registered yet.
+These results are no longer available.
+Most recent bust first
+No one has busted yet.
+Still in (
+Final results (
+# Review fix 2026-11-26: a registering Sit & Go / template card (and an upcoming qualifier) opens its
+# last finished run's results from the server's resultsTournamentId (kept >= 24 h; the finished card
+# itself leaves the list 10 s after the final hand).
+Last results
+# Review round 2 (2026-11-26): a slow standings answer says it is still loading (never "no longer
+# available"); a server-disqualified row says "Disqualified" (no place); a finished event shows when it
+# ended (Denver); the Results window takes focus on open and gives it back on close (data-autofocus).
+Still loading the results
+tl-finish-row--dq
+tb-finished-at
+data-autofocus

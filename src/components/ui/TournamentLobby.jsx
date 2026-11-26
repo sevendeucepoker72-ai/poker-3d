@@ -8,6 +8,12 @@ import { marksDirectorPause } from '../../utils/tournamentClock';
 import { payoutTableText, payoutsNote } from '../../utils/tournamentFinish';
 // Sit & Go fix-all F8 + F21 — when it starts, when it cancels, its structure (server item, pure).
 import { startRuleText, stallDeadlineText, structureText } from '../../utils/tournamentCard';
+// 2026-11-25 (owner: "see who is registered in the lobby and a list ... who
+// busted in each position") — Registered (N) on every card (the server's
+// public `registrantNames`), Results on a running / finished one (and, from
+// the server's `resultsTournamentId`, "Last results" on a registering one).
+import { registrantNamesOf, tournamentResultsTournamentId } from '../../utils/tournamentLists';
+import { RegisteredToggle, ResultsButton } from './TournamentLists';
 import './TournamentLobby.css';
 
 // How long a Register / Withdraw tap waits for its answer (or an `error`)
@@ -220,6 +226,13 @@ export default function TournamentLobby({ onOpenBracket = null }) {
           const isPaused = (!!t.paused && marksDirectorPause({ reason: t.pauseReason })) || pausedIds.has(id);
           const startsIn = t.status === 'registering' ? formatTime(t.nextStartTime) : null;
           const buyIn = Number(t.buyIn) || 0;
+          // null = the server sent no names (an older server): no Registered control.
+          const registrantNames = registrantNamesOf(t);
+          // 2026-11-26 review fix — the finish order this card opens: the server's
+          // resultsTournamentId (a registering Sit & Go points at its last finished
+          // run, kept >= 24 h; the finished card itself leaves the list 10 s after
+          // the final hand), else its own id while running / finished.
+          const resultsId = tournamentResultsTournamentId(t);
 
           return (
             <div key={id} className={`tournament-card ${t.status}${isRegistered ? ' tournament-card--mine' : ''}`}>
@@ -282,6 +295,12 @@ export default function TournamentLobby({ onOpenBracket = null }) {
                     {t.currentBlinds.ante > 0 && ` | Ante: ${t.currentBlinds.ante}`}
                   </div>
                 )}
+
+                {registrantNames && (
+                  <div className="tl-lists-row tournament-lists-row">
+                    <RegisteredToggle names={registrantNames} />
+                  </div>
+                )}
               </div>
 
               <div className="tournament-actions">
@@ -313,6 +332,18 @@ export default function TournamentLobby({ onOpenBracket = null }) {
                   <button className="btn-tournament-bracket" onClick={() => onOpenBracket(id, t.name)}>
                     🏆 Live Bracket
                   </button>
+                )}
+                {/* 2026-11-25 — the finish-order list of a running or finished event
+                    (the bracket window on its list view; a finished event's too);
+                    2026-11-26 — on a registering card, "Last results" = its last
+                    finished run when the server names one (resultsTournamentId). */}
+                {resultsId && typeof onOpenBracket === 'function' && (
+                  <ResultsButton
+                    className="tournament-results-btn"
+                    tournamentId={resultsId}
+                    ownTournamentId={String(id)}
+                    onOpen={(tid, opts) => onOpenBracket(tid, t.name, opts)}
+                  />
                 )}
                 {/* GAP 15 — admin-only live TD controls. Server re-checks the
                     privilege on every emit, so this is UX gating only. */}

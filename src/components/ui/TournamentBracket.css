@@ -10,6 +10,15 @@
   z-index: 8100;
   padding: 16px;
 }
+/* 2026-11-25 — no blur on phones (the Results list opens this overlay from
+   every lobby card now): a plain, darker scrim instead. */
+@media (max-width: 768px), (pointer: coarse) {
+  .tb-overlay {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgba(0, 0, 0, 0.88);
+  }
+}
 
 /* Modal */
 .tb-modal {

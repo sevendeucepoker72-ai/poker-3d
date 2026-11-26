@@ -1,10 +1,22 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import './TournamentBracket.css';
 // Sit & Go fix-all F7 — the payout table in the event detail (the lobby item's `payouts`).
 import { useTournamentRegistrationStore } from '../../store/tournamentRegistrationStore';
 import { payoutTableText, payoutsNote } from '../../utils/tournamentFinish';
 // Sit & Go fix-all F21 — the structure in the event detail too.
 import { structureText } from '../../utils/tournamentCard';
+// 2026-11-25 (owner: "a list for it to show who busted in each position") —
+// the finish-order list view (Still in + each bust with the server's place),
+// for a running AND a finished event.
+import { FinishOrderList } from './TournamentLists';
+import {
+  initialBracketView, RESULTS_TITLE_TEXT, LAST_RESULTS_TITLE_TEXT, resultsEmptyText,
+  FINISH_LIST_VIEW_TEXT, CARDS_VIEW_TEXT,
+  lastResultsTitle, finishedWhenText, standingsLists, finishCardText,
+} from '../../utils/tournamentLists';
+// 2026-11-26 (review round 2) — aria-modal means it: focus moves into the
+// window when it opens, Tab stays inside, and goes back to the opener on close.
+import { focusIntoDialog, trapTabKey, restoreFocusTo } from '../../utils/dialogFocus';
 
 function formatChips(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
@@ -18,8 +30,15 @@ function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
-function PlayerCard({ player, isChipLeader, isFinalTable, justEliminated }) {
-  const isEliminated = player.finishPosition != null;
+// 2026-11-26 (review round 2) — out of the event: a stored place, or the
+// server's `disqualified: true` (sent with finishPosition null: no place).
+function isOutOfBracket(p) {
+  return p.finishPosition != null || p.disqualified === true;
+}
+
+function PlayerCard({ player, isChipLeader, isFinalTable, justEliminated, finishText = '' }) {
+  // (2026-11-26 — a server-disqualified row is out even with no place: finishPosition null.)
+  const isEliminated = isOutOfBracket(player);
   const initial = (player.playerName || '?').charAt(0).toUpperCase();
 
   return (
@@ -48,7 +67,8 @@ function PlayerCard({ player, isChipLeader, isFinalTable, justEliminated }) {
               <span className="tb-chip-count">{formatChips(player.chipCount)}</span>
             </div>
           ) : (
-            <div className="tb-card-finish">{ordinal(player.finishPosition)} place</div>
+            // 2026-11-26 — the list's rule (finishCardText): a server-tied place, "Disqualified".
+            <div className="tb-card-finish">{finishText || `${ordinal(player.finishPosition)} place`}</div>
           )}
         </div>
         {isChipLeader && !isEliminated && (
@@ -76,37 +96,80 @@ export const BRACKET_NONE_TEXT = 'No tournament running';
  * the id of the card that opened it). `tournament` null after the server
  * answered = there is no such running tournament: says so instead of an empty
  * "Live" bracket; `loading` while the first answer is pending.
+ * 2026-11-25 — `resultsMode` (opened from a card's Results control): it opens
+ * on the finish-order list, and an answer of null means the results are no
+ * longer kept (not "no tournament running"). Esc closes it.
+ * 2026-11-26 (review round 2) — `slow`: the 8 s watchdog fired with no answer
+ * (results mode still says it is loading: resultsEmptyText; only a REAL null
+ * answer is "no longer available"). `lastResults`: opened from a card's "Last
+ * results" (an EARLIER event): the title names it ("Last results - Online
+ * League, Wed Nov 25"). Focus moves into the window on open, Tab stays in it,
+ * and focus goes back to the opener (the Results button) on close.
  */
-export default function TournamentBracket({ tournament, loading = false, onClose }) {
+export default function TournamentBracket({ tournament, loading = false, slow = false, onClose, resultsMode = false, lastResults = false }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && typeof onClose === 'function') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  // The control that had focus when the window opened (read once, at the first
+  // render: before the window takes focus); it gets focus back on close.
+  const [opener] = useState(() => (typeof document !== 'undefined' ? document.activeElement : null));
+  useEffect(() => () => { restoreFocusTo(opener, typeof document !== 'undefined' ? document : null); }, [opener]);
+  // Each modal box (the empty one, then the list) takes focus as it mounts,
+  // unless focus is already inside it.
+  const dialogRef = useCallback((el) => {
+    if (el && typeof document !== 'undefined') focusIntoDialog(el, document.activeElement);
+  }, []);
   if (!tournament) {
+    const title = resultsMode ? (lastResults ? LAST_RESULTS_TITLE_TEXT : RESULTS_TITLE_TEXT) : (loading ? 'Live Bracket' : BRACKET_NONE_TEXT);
     return (
       <div className="tb-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-        <div className="tb-modal tb-modal--empty">
+        <div className="tb-modal tb-modal--empty" role="dialog" aria-modal="true" aria-label={title}
+          ref={dialogRef} onKeyDown={(e) => trapTabKey(e, e.currentTarget, document.activeElement)}>
           <div className="tb-header">
             <div className="tb-header-left">
-              <h2 className="tb-title">{loading ? 'Live Bracket' : BRACKET_NONE_TEXT}</h2>
+              <h2 className="tb-title">{title}</h2>
             </div>
-            <button className="tb-close-btn" onClick={onClose} aria-label="Close">✕</button>
+            <button className="tb-close-btn" onClick={onClose} aria-label="Close" data-autofocus="">✕</button>
           </div>
           <div className="tb-content">
-            <div className="tb-empty">
-              {loading ? 'Loading the bracket…' : 'There is no tournament in progress right now. The bracket opens here while one is running.'}
+            <div className="tb-empty" role="status">
+              {resultsMode
+                ? resultsEmptyText({ loading, slow })
+                : (loading ? 'Loading the bracket…' : 'There is no tournament in progress right now. The bracket opens here while one is running.')}
             </div>
           </div>
         </div>
       </div>
     );
   }
-  return <TournamentBracketView tournament={tournament} onClose={onClose} />;
+  return <TournamentBracketView tournament={tournament} onClose={onClose} resultsMode={resultsMode} lastResults={lastResults} dialogRef={dialogRef} />;
 }
 
-function TournamentBracketView({ tournament, onClose }) {
+function TournamentBracketView({ tournament, onClose, resultsMode = false, lastResults = false, dialogRef }) {
   const {
     name = 'Tournament',
     players = [],
     eliminationOrder = [],
     status = 'running',
   } = tournament || {};
+  // 2026-11-26 — an EARLIER event (a card's "Last results") is named with its
+  // day; a finished event shows when it finished (Denver clock).
+  const title = lastResults ? lastResultsTitle(name, tournament?.finishedAt) : name;
+  const finishedWhen = status === 'finished' ? finishedWhenText(tournament?.finishedAt) : '';
+  // The cards view's place lines follow the list's rule (server ties, "Disqualified").
+  const finishTextByKey = useMemo(() => {
+    const m = new Map();
+    const lists = standingsLists(tournament);
+    if (lists) for (const r of lists.busted) m.set(r.key, finishCardText(r));
+    return m;
+  }, [tournament]);
+
+  // 2026-11-25 — 'list' (Still in + the finish order) or 'cards' (the Live
+  // Bracket's grid, unchanged): the list from a Results control or for a
+  // finished event, else the cards; one tap switches.
+  const [view, setView] = useState(() => initialBracketView({ results: resultsMode, status }));
 
   // Track recently eliminated players for fade animation
   const [recentlyEliminated, setRecentlyEliminated] = useState(new Set());
@@ -135,10 +198,11 @@ function TournamentBracketView({ tournament, onClose }) {
   }, [eliminationOrder]);
 
   const { activePlayers, eliminatedPlayers, chipLeaderId, maxChips } = useMemo(() => {
-    const active = players.filter(p => p.finishPosition == null);
+    const active = players.filter(p => !isOutOfBracket(p));
     const eliminated = players
-      .filter(p => p.finishPosition != null)
-      .sort((a, b) => a.finishPosition - b.finishPosition); // lower finish = later out = show first
+      .filter(p => isOutOfBracket(p))
+      // lower finish = later out = show first; a disqualified row (no place) last
+      .sort((a, b) => (a.finishPosition ?? Number.MAX_SAFE_INTEGER) - (b.finishPosition ?? Number.MAX_SAFE_INTEGER));
 
     const maxChips = active.reduce((m, p) => Math.max(m, p.chipCount || 0), 0);
     const leader = active.reduce((best, p) => (!best || (p.chipCount || 0) > (best.chipCount || 0) ? p : best), null);
@@ -182,13 +246,15 @@ function TournamentBracketView({ tournament, onClose }) {
 
   return (
     <div className="tb-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="tb-modal">
+      <div className="tb-modal" role="dialog" aria-modal="true" aria-label={title}
+        ref={dialogRef} onKeyDown={(e) => trapTabKey(e, e.currentTarget, document.activeElement)}>
         {/* Header */}
         <div className="tb-header">
           <div className="tb-header-left">
-            <h2 className="tb-title">{name}</h2>
+            <h2 className="tb-title">{title}</h2>
             <div className="tb-header-meta">
               <span className={`tb-status-badge ${statusClass}`}>{statusLabel}</span>
+              {finishedWhen && <span className="tb-finished-at">{finishedWhen}</span>}
               {isFinalTable && status === 'running' && (
                 <span className="tb-final-table-badge">Final Table</span>
               )}
@@ -197,7 +263,7 @@ function TournamentBracketView({ tournament, onClose }) {
               </span>
             </div>
           </div>
-          <button className="tb-close-btn" onClick={onClose}>✕</button>
+          <button className="tb-close-btn" onClick={onClose} aria-label="Close" data-autofocus="">✕</button>
         </div>
 
         {payoutsText && (
@@ -236,10 +302,22 @@ function TournamentBracketView({ tournament, onClose }) {
           )}
         </div>
 
+        {/* 2026-11-25 — Finish order | Cards (toggle buttons, keyboard-reachable). */}
+        <div className="tb-view-toggle" role="group" aria-label="Bracket view">
+          <button type="button" className="tb-view-btn tb-view-btn--list" aria-pressed={view === 'list'} onClick={() => setView('list')}>
+            {FINISH_LIST_VIEW_TEXT}
+          </button>
+          <button type="button" className="tb-view-btn tb-view-btn--cards" aria-pressed={view === 'cards'} onClick={() => setView('cards')}>
+            {CARDS_VIEW_TEXT}
+          </button>
+        </div>
+
         {/* Content */}
         <div className="tb-content">
+          {view === 'list' && players.length > 0 && <FinishOrderList standings={tournament} />}
+
           {/* Active players */}
-          {activePlayers.length > 0 && (
+          {view === 'cards' && activePlayers.length > 0 && (
             <section className="tb-section">
               <h3 className="tb-section-title">
                 Active Players
@@ -260,7 +338,7 @@ function TournamentBracketView({ tournament, onClose }) {
           )}
 
           {/* Eliminated players */}
-          {eliminatedPlayers.length > 0 && (
+          {view === 'cards' && eliminatedPlayers.length > 0 && (
             <section className="tb-section">
               <h3 className="tb-section-title tb-section-title--elim">
                 Eliminated
@@ -273,6 +351,7 @@ function TournamentBracketView({ tournament, onClose }) {
                     isChipLeader={false}
                     isFinalTable={false}
                     justEliminated={recentlyEliminated.has(player.playerId)}
+                    finishText={finishTextByKey.get(String(player.playerId)) || ''}
                   />
                 ))}
               </div>
