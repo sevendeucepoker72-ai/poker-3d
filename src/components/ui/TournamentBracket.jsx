@@ -5,6 +5,14 @@ import { useTournamentRegistrationStore } from '../../store/tournamentRegistrati
 import { payoutTableText, payoutsNote } from '../../utils/tournamentFinish';
 // Sit & Go fix-all F21 — the structure in the event detail too.
 import { structureText } from '../../utils/tournamentCard';
+// 2026-11-25 (owner: "a list for it to show who busted in each position") —
+// the finish-order list view (Still in + each bust with the server's place),
+// for a running AND a finished event.
+import { FinishOrderList } from './TournamentLists';
+import {
+  initialBracketView, RESULTS_TITLE_TEXT, RESULTS_LOADING_TEXT, RESULTS_UNAVAILABLE_TEXT,
+  FINISH_LIST_VIEW_TEXT, CARDS_VIEW_TEXT,
+} from '../../utils/tournamentLists';
 
 function formatChips(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
@@ -76,37 +84,53 @@ export const BRACKET_NONE_TEXT = 'No tournament running';
  * the id of the card that opened it). `tournament` null after the server
  * answered = there is no such running tournament: says so instead of an empty
  * "Live" bracket; `loading` while the first answer is pending.
+ * 2026-11-25 — `resultsMode` (opened from a card's Results control): it opens
+ * on the finish-order list, and an answer of null means the results are no
+ * longer kept (not "no tournament running"). Esc closes it.
  */
-export default function TournamentBracket({ tournament, loading = false, onClose }) {
+export default function TournamentBracket({ tournament, loading = false, onClose, resultsMode = false }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && typeof onClose === 'function') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
   if (!tournament) {
+    const title = resultsMode ? RESULTS_TITLE_TEXT : (loading ? 'Live Bracket' : BRACKET_NONE_TEXT);
     return (
       <div className="tb-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-        <div className="tb-modal tb-modal--empty">
+        <div className="tb-modal tb-modal--empty" role="dialog" aria-modal="true" aria-label={title}>
           <div className="tb-header">
             <div className="tb-header-left">
-              <h2 className="tb-title">{loading ? 'Live Bracket' : BRACKET_NONE_TEXT}</h2>
+              <h2 className="tb-title">{title}</h2>
             </div>
             <button className="tb-close-btn" onClick={onClose} aria-label="Close">✕</button>
           </div>
           <div className="tb-content">
-            <div className="tb-empty">
-              {loading ? 'Loading the bracket…' : 'There is no tournament in progress right now. The bracket opens here while one is running.'}
+            <div className="tb-empty" role="status">
+              {resultsMode
+                ? (loading ? RESULTS_LOADING_TEXT : RESULTS_UNAVAILABLE_TEXT)
+                : (loading ? 'Loading the bracket…' : 'There is no tournament in progress right now. The bracket opens here while one is running.')}
             </div>
           </div>
         </div>
       </div>
     );
   }
-  return <TournamentBracketView tournament={tournament} onClose={onClose} />;
+  return <TournamentBracketView tournament={tournament} onClose={onClose} resultsMode={resultsMode} />;
 }
 
-function TournamentBracketView({ tournament, onClose }) {
+function TournamentBracketView({ tournament, onClose, resultsMode = false }) {
   const {
     name = 'Tournament',
     players = [],
     eliminationOrder = [],
     status = 'running',
   } = tournament || {};
+
+  // 2026-11-25 — 'list' (Still in + the finish order) or 'cards' (the Live
+  // Bracket's grid, unchanged): the list from a Results control or for a
+  // finished event, else the cards; one tap switches.
+  const [view, setView] = useState(() => initialBracketView({ results: resultsMode, status }));
 
   // Track recently eliminated players for fade animation
   const [recentlyEliminated, setRecentlyEliminated] = useState(new Set());
@@ -182,7 +206,7 @@ function TournamentBracketView({ tournament, onClose }) {
 
   return (
     <div className="tb-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="tb-modal">
+      <div className="tb-modal" role="dialog" aria-modal="true" aria-label={name}>
         {/* Header */}
         <div className="tb-header">
           <div className="tb-header-left">
@@ -197,7 +221,7 @@ function TournamentBracketView({ tournament, onClose }) {
               </span>
             </div>
           </div>
-          <button className="tb-close-btn" onClick={onClose}>✕</button>
+          <button className="tb-close-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
 
         {payoutsText && (
@@ -236,10 +260,22 @@ function TournamentBracketView({ tournament, onClose }) {
           )}
         </div>
 
+        {/* 2026-11-25 — Finish order | Cards (toggle buttons, keyboard-reachable). */}
+        <div className="tb-view-toggle" role="group" aria-label="Bracket view">
+          <button type="button" className="tb-view-btn tb-view-btn--list" aria-pressed={view === 'list'} onClick={() => setView('list')}>
+            {FINISH_LIST_VIEW_TEXT}
+          </button>
+          <button type="button" className="tb-view-btn tb-view-btn--cards" aria-pressed={view === 'cards'} onClick={() => setView('cards')}>
+            {CARDS_VIEW_TEXT}
+          </button>
+        </div>
+
         {/* Content */}
         <div className="tb-content">
+          {view === 'list' && players.length > 0 && <FinishOrderList standings={tournament} />}
+
           {/* Active players */}
-          {activePlayers.length > 0 && (
+          {view === 'cards' && activePlayers.length > 0 && (
             <section className="tb-section">
               <h3 className="tb-section-title">
                 Active Players
@@ -260,7 +296,7 @@ function TournamentBracketView({ tournament, onClose }) {
           )}
 
           {/* Eliminated players */}
-          {eliminatedPlayers.length > 0 && (
+          {view === 'cards' && eliminatedPlayers.length > 0 && (
             <section className="tb-section">
               <h3 className="tb-section-title tb-section-title--elim">
                 Eliminated

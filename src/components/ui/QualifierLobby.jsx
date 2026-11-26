@@ -44,6 +44,11 @@ import { qualifierHasWeeklyRules, qualifierHasLeagueRules } from '../../content/
 // show the monthly qualifiers.") - ONE flag hides every monthly qualifier here:
 // no row, no home card, no cancelled card, no "Monthly Major" line.
 import { MONTHLY_QUALIFIERS_SHOWN, withoutHiddenMonthlyQualifiers, monthlyQualifierHidden } from '../../utils/monthlyQualifiers';
+// 2026-11-25 (owner: "for all online tournaments to be able to see who is
+// registered in the lobby and a list for it to show who busted in each
+// position") - Registered (N) + Results on every card, the league night's too.
+import { qualifierResultsTournamentId } from '../../utils/qualifierList';
+import { RegisteredToggle, ResultsButton } from './TournamentLists';
 
 // A first entry waits on the master API's credit consume (awaited server-side),
 // so allow longer than a table join before calling the server unreachable.
@@ -184,7 +189,7 @@ export const QUALIFIER_WAITING_FOR_PLAYERS_TEXT = 'You have a seat at a new tabl
  * while there is none. Same data, actions and registration flow as the Play
  * tab's full list (only one of the two is mounted at a time).
  */
-export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
+export default function QualifierLobby({ onSpectate, variant, onSeeAll, onOpenResults }) {
   const home = variant === 'home';
   const playerName = useGameStore((s) => s.playerName);
   const userId = useGameStore((s) => s.userId);
@@ -906,6 +911,24 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
     );
   };
 
+  // 2026-11-25 (owner) — the card's lists: "Registered (N)" (the server's
+  // public names, in registration order; only when it sends registrantNames)
+  // and "Results" (the finish-order list of the running event, else the latest
+  // finished one: qualifierResultsTournamentId), opened in the lobby's bracket
+  // window. Neither opens the detail window under it. Blue + gold.
+  const listsRow = (q) => {
+    const resultsId = typeof onOpenResults === 'function' ? qualifierResultsTournamentId(q, now) : null;
+    if (!Array.isArray(q.registrantNames) && !resultsId) return null;
+    return (
+      <div className="tl-lists-row qualifier-lists-row" onClick={(e) => e.stopPropagation()}>
+        <RegisteredToggle names={q.registrantNames} />
+        {resultsId && (
+          <ResultsButton tournamentId={resultsId} onOpen={(id) => onOpenResults(id, q.name, { results: true })} />
+        )}
+      </div>
+    );
+  };
+
   // Dashboard modal
   const dashboardNode = (() => {
     if (!openDashboard) return null;
@@ -991,6 +1014,7 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
             <span>👥 <strong style={{ color: '#fff' }}>{q.players}{q.maxPlayers ? `/${q.maxPlayers}` : ''}</strong> registered</span>
             {youText && <span className="home-qualifier-you" style={{ color: '#cfe0ff', fontWeight: 600 }}>{youText}</span>}
           </div>
+          {listsRow(q)}
           <div style={{ marginTop: 10 }}>{renderAction(q, true)}</div>
           {broadcastNotice(q)}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
@@ -1108,6 +1132,8 @@ export default function QualifierLobby({ onSpectate, variant, onSeeAll }) {
                 <span style={{ color: '#6abaff' }}>⏱ Late registration until {formatDenverTime(q.lateRegUntil)}</span>
               )}
             </div>
+
+            {listsRow(q)}
 
             {/* 2026-11-21 (owner: the Online League) — a league night: free entry,
                 its lines, rules + standings, instead of HOW TO QUALIFY (no credit). */}

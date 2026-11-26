@@ -7,6 +7,8 @@ import MissionsPanel, { missionIcon } from './MissionsPanel';
 import { formatCountdown, nextDenverMidnightMs, denverDateKey } from '../../utils/denverTime';
 import { PROFILE_BGS } from '../../utils/economyCatalog';
 import { ownHandResult } from '../../utils/handLog';
+// 2026-11-25 — a finished event's Results are asked once (pure rule, probed).
+import { standingsNeedPolling } from '../../utils/tournamentLists';
 import { lifetimeAchievementRows, sortAchievementRows } from '../../utils/achievementCatalog';
 import StatsPanel from './StatsPanel';
 import BattlePass from './BattlePass';
@@ -1174,11 +1176,16 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
   // The server answers `tournamentStandings` (null when it has no such
   // tournament): the bracket then says "No tournament running" (it used to
   // show an empty "Live" bracket).
-  const [bracketRequest, setBracketRequest] = useState(null); // null | { tournamentId|null }
+  // 2026-11-25 (owner: "a list for it to show who busted in each position") —
+  // a card's Results control opens the same bracket on its finish-order list
+  // (`opts.results`), for a running OR a finished event (a qualifier's
+  // `resultsTournamentId` too); a finished answer is not polled again.
+  const [bracketRequest, setBracketRequest] = useState(null); // null | { tournamentId|null, results }
   const [bracketTournament, setBracketTournament] = useState(null);
   const [bracketAnswered, setBracketAnswered] = useState(false);
   const showTournamentBracket = !!bracketRequest;
-  const openBracket = useCallback((tournamentId = null) => {
+  // (args: the card's tournament id, its name — unused here — and { results }.)
+  const openBracket = useCallback((tournamentId = null, _name, opts) => {
     let id = tournamentId != null ? String(tournamentId) : null;
     if (!id) {
       const st = useTournamentRegistrationStore.getState();
@@ -1188,26 +1195,29 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     }
     setBracketTournament(null);
     setBracketAnswered(false);
-    setBracketRequest({ tournamentId: id });
+    setBracketRequest({ tournamentId: id, results: !!(opts && opts.results) });
   }, []);
   useEffect(() => {
     if (!bracketRequest) { setBracketTournament(null); setBracketAnswered(false); return undefined; }
     const socket = getSocket();
     if (!socket) { setBracketAnswered(true); return undefined; }
     const wanted = bracketRequest.tournamentId;
+    let iv = null;
     const onStandings = (data) => {
       // A frame for another tournament (an older server's default pick, or a
       // late answer of an earlier bracket) is not this bracket's.
       if (data && wanted && String(data.tournamentId) !== wanted) return;
       setBracketTournament(data || null);
       setBracketAnswered(true);
+      // A finished event's standings no longer change: stop asking.
+      if (!standingsNeedPolling(data) && iv) { clearInterval(iv); iv = null; }
     };
     socket.on('tournamentStandings', onStandings);
     const fetchStandings = () => socket.emit('getTournamentStandings', wanted ? { tournamentId: wanted } : {});
     fetchStandings();
-    const iv = setInterval(fetchStandings, 3000);
+    iv = setInterval(fetchStandings, 3000);
     const answerWatch = setTimeout(() => setBracketAnswered(true), 8000);
-    return () => { clearInterval(iv); clearTimeout(answerWatch); socket.off('tournamentStandings', onStandings); };
+    return () => { if (iv) clearInterval(iv); clearTimeout(answerWatch); socket.off('tournamentStandings', onStandings); };
   }, [bracketRequest]);
   const [showTournamentDirector, setShowTournamentDirector] = useState(false);
   // Success toast surfaced when the server acks a custom tournament create
@@ -1652,7 +1662,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
             page at .online") — the next / current online qualifier, first on
             the home tab (nothing while none is listed). Only one QualifierLobby
             is mounted at a time: this one (home) or the Play tab's list. */}
-        <QualifierLobby variant="home" onSpectate={() => setScreen('table')} onSeeAll={onTabChange ? () => onTabChange('play') : undefined} />
+        <QualifierLobby variant="home" onSpectate={() => setScreen('table')} onSeeAll={onTabChange ? () => onTabChange('play') : undefined} onOpenResults={openBracket} />
 
         {/* Return player banner (upgrade #8) */}
         {isReturningPlayer && !returnBannerDismissed && (
@@ -1779,7 +1789,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
     <div className="lobby-tab-content lobby-tab-fade" key="play">
       {/* Qualifiers */}
       <SectionHeader>Qualifier Tournaments</SectionHeader>
-      <QualifierLobby onSpectate={() => setScreen('table')} />
+      <QualifierLobby onSpectate={() => setScreen('table')} onOpenResults={openBracket} />
 
       {/* Cash Games — #7 two-column grid on wider screens */}
       <SectionHeader>Cash Games</SectionHeader>
@@ -2564,7 +2574,7 @@ export default function Lobby({ activeTab = 'home', onTabChange, pwaAction = nul
             unreachableText={GAME_SERVER_UNREACHABLE_TEXT}
           />
         )}
-        {showTournamentBracket && <TournamentBracket tournament={bracketTournament} loading={!bracketAnswered} onClose={() => setBracketRequest(null)} />}
+        {showTournamentBracket && <TournamentBracket tournament={bracketTournament} loading={!bracketAnswered} resultsMode={!!bracketRequest?.results} onClose={() => setBracketRequest(null)} />}
         {showTournamentDirector && isAdminUser && <TournamentDirector onClose={() => setShowTournamentDirector(false)} onCreateTournament={handleCreateCustomTournament} playerName={playerName} />}
         {showHandHistoryImporter && <HandHistoryImporter onClose={() => setShowHandHistoryImporter(false)} />}
         {/* 2026-10-09 — side-bet refusals: handling passed in (see SocialBracket). */}
