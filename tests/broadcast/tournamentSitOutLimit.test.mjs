@@ -142,6 +142,50 @@ test('removal of a league no-show when late entry closes (noShow): says why, nev
   assert.equal(S.satOutRemovedNoShow(null), false);
 });
 
+// Review fix (2026-11-26): a player removed while AWAY whose tournament then
+// finished is told at his next sign-in by 'tournamentFinishedForEntrant'
+// {tournamentId, position, prize?, tournamentName, atSignIn: true, reason:
+// 'sat_out_limit', handsSatOut, noShow?} (poker-server tellRemovalSignInNotices
+// / tellUnseenTournamentResults). The toast said only "<name> has finished: you
+// placed 31st." - never why. It now says removed, in the playerEliminated words.
+test('finished-for-entrant at sign-in: a removal says why (30 hands / no-show); CONTROL: no reason = null, today\'s finished text', () => {
+  const fin = { tournamentId: 'wq1', position: 31, tournamentName: 'Weekly Qualifier - Nov 29', atSignIn: true, reason: 'sat_out_limit', handsSatOut: 30 };
+  assert.equal(S.finishedForEntrantRemovalLine(fin, fin.tournamentName),
+    'Weekly Qualifier - Nov 29: you were removed for sitting out 30 hands in a row and finished in position 31.');
+  // The same words as the playerEliminated direct / sign-in notice (satOutRemovedOwnLine).
+  assert.equal(S.finishedForEntrantRemovalLine(fin, 'Q'), S.satOutRemovedOwnLine('Q', 31, 30, undefined, false));
+  assert.equal(S.finishedForEntrantRemovalLine({ ...fin, handsSatOut: undefined }, 'Q'),
+    'Q: you were removed for sitting out 30 hands in a row and finished in position 31.', 'count not sent: the limit');
+  assert.equal(S.finishedForEntrantRemovalLine(fin, null),
+    'Your tournament: you were removed for sitting out 30 hands in a row and finished in position 31.', 'no name');
+  assert.equal(S.finishedForEntrantRemovalLine(fin, '  '),
+    'Your tournament: you were removed for sitting out 30 hands in a row and finished in position 31.', 'blank name');
+  assert.equal(S.finishedForEntrantRemovalLine({ ...fin, position: null }, 'Q'),
+    'Q: you were removed for sitting out 30 hands in a row.', 'place unknown');
+  assert.equal(S.finishedForEntrantRemovalLine({ ...fin, position: 0 }, 'Q'),
+    'Q: you were removed for sitting out 30 hands in a row.', 'place 0 is not a place');
+  // An Online League no-show removed when late entry closed: why, never a hand count.
+  const ns = { ...fin, tournamentId: 'ol1', tournamentName: 'Online League - Sat, Nov 28', position: 9, handsSatOut: 22, noShow: true };
+  assert.equal(S.finishedForEntrantRemovalLine(ns, ns.tournamentName),
+    'Online League - Sat, Nov 28: you were removed because you were still away when late entry closed, and finished in position 9.');
+  assert.doesNotMatch(S.finishedForEntrantRemovalLine(ns, 'Q'), /\d+ hands? in a row/);
+  // noShow not exactly true: the hand-count wording.
+  assert.equal(S.finishedForEntrantRemovalLine({ ...ns, noShow: 'true' }, 'Q'),
+    'Q: you were removed for sitting out 22 hands in a row and finished in position 9.');
+  for (const s of [S.finishedForEntrantRemovalLine(fin, 'Q'), S.finishedForEntrantRemovalLine(ns, 'Q')]) {
+    assert.ok(ASCII.test(s), `ASCII: ${s}`);
+    assert.doesNotMatch(s, NEVER, s);
+  }
+  // CONTROL: a plain finish (today's payload: no reason), the cash reason, a
+  // noShow without the reason, an older server - null, so the caller keeps
+  // tournamentFinishedText ("<name> has finished: you placed 31st.").
+  const plain = { tournamentId: 'wq1', position: 31, prize: 270, tournamentName: 'Weekly Qualifier - Nov 29' };
+  for (const not of [plain, { ...plain, atSignIn: true }, { ...fin, reason: undefined }, { ...fin, reason: 'sit_out_limit' },
+    { ...plain, noShow: true }, { ...plain, handsSatOut: 30 }, null, undefined, 'sat_out_limit']) {
+    assert.equal(S.finishedForEntrantRemovalLine(not, 'Weekly Qualifier - Nov 29'), null, JSON.stringify(not));
+  }
+});
+
 test('away seat line (lobby Return banner): the rule, never a stale count', () => {
   assert.equal(S.awaySeatSitOutWarningLine({ tournamentId: 't1', handsSatOut: 3, handsLimit: 30, handsLeft: 27 }, NOW),
     'If you are away for 30 hands in a row, you will be removed from the tournament.');
@@ -403,6 +447,73 @@ test('tournamentSeatStore + Return banner: lobby end line says removed; an away 
   const line = between(NOTICE, '{a.sitOutWarning ? (', ') : null}');
   assert.match(line, /className="tournament-return-sitout-limit"/);
   assertNoRedOrAmber(line, 'Return banner line');
+});
+
+// Review fix (2026-11-26): the sign-in 'tournamentFinishedForEntrant' of a
+// removed player carries the reason; App passes it, and the store's lobby line
+// lets the reason win over `finished`.
+test('App: tournamentFinishedForEntrant toasts the removal line and passes the reason to the lobby line; CONTROL: today\'s finished text', () => {
+  const fin = between(APP, 'const handleTournamentFinishedForEntrant = (data) => {', "socket.on('tournamentFinishedForEntrant', handleTournamentFinishedForEntrant);");
+  assert.match(fin, /noteTournamentOver\(\{ tournamentId: tid, finished: true, position: place, reason: data\?\.reason, handsSatOut: data\?\.handsSatOut, noShow: data\?\.noShow \}\)/);
+  assert.match(fin, /const removedLine = finishedForEntrantRemovalLine\(data, name\);/);
+  assert.match(fin, /message: \(removedLine \|\| tournamentFinishedText\(name, place\)\) \+ prizeSuffix\(prize\),/, 'removal line, else today\'s text; + the prize either way');
+  assert.equal((stripComments(fin).match(/addNotification\(/g) || []).length, 1, 'still one toast');
+  assertNoRedOrAmber(fin, 'tournamentFinishedForEntrant');
+  assert.match(APP, /satOutRemovedRoomText, finishedForEntrantRemovalLine,\n\} from '\.\/utils\/tournamentSitOut';/);
+  // The room's finish frame is untouched: no reason there.
+  assert.match(APP, /noteTournamentOver\(\{ tournamentId: data\?\.tournamentId, finished: true, position: myPlace, room: true \}\)/);
+  assert.match(SEAT_STORE, /const removedHands = satOutRemovedHands\(\{ reason, handsSatOut \}\);\n\s*if \(removedHands\) \{/, 'the reason is read whatever `finished` says');
+});
+
+test('lobby line (the REAL tournamentSeatStore): a finished notice with the removal reason says removed; CONTROL: a plain finish reads as today', async () => {
+  const STORE = await import(new URL('store/tournamentSeatStore.js', SRC_DIR).href);
+  const warn = console.warn;
+  console.warn = () => {};
+  const keep = (tid, name) => {
+    STORE.resetTournamentSeat();
+    STORE.noteTournamentSeatKept({ tournamentId: tid, tableId: `tb-${tid}`, seatIndex: 3, tournamentName: name });
+    assert.equal(STORE.useTournamentSeatStore.getState().awaySeats.length, 1, 'away seat kept');
+  };
+  const notice = () => STORE.useTournamentSeatStore.getState().notice;
+  try {
+    // The fix: finished + reason 'sat_out_limit'.
+    keep('wq1', 'Weekly Qualifier - Nov 29');
+    assert.equal(STORE.noteTournamentOver({ tournamentId: 'wq1', finished: true, position: 31, reason: 'sat_out_limit', handsSatOut: 30 }), true);
+    assert.equal(notice(), 'Weekly Qualifier - Nov 29: you were removed for sitting out 30 hands in a row and finished in position 31.');
+    assert.equal(STORE.useTournamentSeatStore.getState().noticeKind, 'finished');
+    assert.equal(STORE.useTournamentSeatStore.getState().awaySeats.length, 0, 'the seat ended');
+    keep('ol1', 'Online League - Sat, Nov 28');
+    STORE.noteTournamentOver({ tournamentId: 'ol1', finished: true, position: 9, reason: 'sat_out_limit', handsSatOut: 22, noShow: true });
+    assert.equal(notice(), 'Online League - Sat, Nov 28: you were removed because you were still away when late entry closed, and finished in position 9.');
+    // The same words the toast uses (one place, one wording).
+    assert.equal(notice(), S.finishedForEntrantRemovalLine({ position: 9, reason: 'sat_out_limit', handsSatOut: 22, noShow: true }, 'Online League - Sat, Nov 28'));
+    // CONTROL: a plain finish (today's per-entrant notice, the room's frame) - today's words.
+    keep('wq1', 'Weekly Qualifier - Nov 29');
+    STORE.noteTournamentOver({ tournamentId: 'wq1', finished: true, position: 31 });
+    assert.equal(notice(), 'Weekly Qualifier - Nov 29 has finished: you placed 31st.');
+    keep('wq1', 'Weekly Qualifier - Nov 29');
+    STORE.noteTournamentOver({ tournamentId: 'wq1', finished: true, position: 31, room: true });
+    assert.equal(notice(), 'Weekly Qualifier - Nov 29 has finished: you placed 31st.');
+    // CONTROL: the cash reason is never a tournament removal.
+    keep('wq1', 'Weekly Qualifier - Nov 29');
+    STORE.noteTournamentOver({ tournamentId: 'wq1', finished: true, position: 31, reason: 'sit_out_limit', handsSatOut: 30 });
+    assert.equal(notice(), 'Weekly Qualifier - Nov 29 has finished: you placed 31st.');
+    // Unchanged: a bust, and a removal while the tournament still runs.
+    keep('wq1', 'Weekly Qualifier - Nov 29');
+    STORE.noteTournamentOver({ tournamentId: 'wq1', position: 31 });
+    assert.equal(notice(), 'Weekly Qualifier - Nov 29: you finished in position 31.');
+    keep('wq1', 'Weekly Qualifier - Nov 29');
+    STORE.noteTournamentOver({ tournamentId: 'wq1', position: 31, reason: 'sat_out_limit', handsSatOut: 30 });
+    assert.equal(notice(), 'Weekly Qualifier - Nov 29: you were removed for sitting out 30 hands in a row and finished in position 31.');
+    // Another tournament's notice never writes over this seat (Z8).
+    keep('wq1', 'Weekly Qualifier - Nov 29');
+    assert.equal(STORE.noteTournamentOver({ tournamentId: 'other', finished: true, position: 2, reason: 'sat_out_limit', handsSatOut: 30 }), false);
+    assert.equal(notice(), null);
+    assert.equal(STORE.useTournamentSeatStore.getState().awaySeats.length, 1);
+  } finally {
+    console.warn = warn;
+    STORE.resetTournamentSeat();
+  }
 });
 
 test('GameHUD: sit-out note + AFK banner add the sentence; classes kept for APP Precision placement', () => {

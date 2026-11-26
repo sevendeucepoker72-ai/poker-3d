@@ -467,6 +467,10 @@ export function noteTournamentSeatReturned(data) {
  * was REMOVED for sitting out, and the line says so (satOutRemovedOwnLine);
  * any other reason / none keeps today's line. `noShow` true (review fix): an
  * Online League no-show removed when late entry closed - the line says that.
+ * Review fix (2026-11-26) - the removal reason wins over `finished`: the
+ * sign-in 'tournamentFinishedForEntrant' of a player removed while away
+ * carries it, and the lobby line says removed, like the toast. `finished`
+ * without the reason (the room's frame, a plain finish) reads as today.
  */
 export function noteTournamentOver({ tournamentId, tableId, position, finished, room = false, reason, handsSatOut, noShow } = {}) {
   const tId = idString(tournamentId);
@@ -486,11 +490,11 @@ export function noteTournamentOver({ tournamentId, tableId, position, finished, 
   if (ended.length) {
     const name = ended[0].name || DEFAULT_NAME;
     const pos = Number(position);
-    const removedHands = finished ? null : satOutRemovedHands({ reason, handsSatOut });
-    if (finished) {
-      notice = tournamentFinishedText(name, pos);
-    } else if (removedHands) {
+    const removedHands = satOutRemovedHands({ reason, handsSatOut });
+    if (removedHands) {
       notice = satOutRemovedOwnLine(name, pos, removedHands, DEFAULT_NAME, satOutRemovedNoShow({ reason, noShow }));
+    } else if (finished) {
+      notice = tournamentFinishedText(name, pos);
     } else {
       notice = Number.isFinite(pos) && pos > 0
         ? `${name}: you finished in position ${pos}.`

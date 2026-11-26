@@ -61,7 +61,7 @@ import {
 import {
   TOURNAMENT_SIT_OUT_WARNING_EVENT, SIT_OUT_WARNING_TITLE, sitOutWarningText, timeoutSitOutText,
   sitOutLimitEnforcedAt, satOutRemovedHands, satOutRemovedNoShow, satOutRemovedOwnLine, satOutRemovedElsewhereText,
-  satOutRemovedRoomText,
+  satOutRemovedRoomText, finishedForEntrantRemovalLine,
 } from './utils/tournamentSitOut';
 import { TournamentReturnBanner, SeatRestoredBanner } from './components/ui/TournamentSeatNotice';
 import {
@@ -2163,7 +2163,11 @@ function App() {
       const awayOf = tid ? awaySeatOfTournament(tid) : null;
       const pos = Number(data?.position);
       const place = Number.isInteger(pos) && pos > 0 ? pos : null;
-      try { noteTournamentOver({ tournamentId: tid, finished: true, position: place }); } catch { /* best-effort */ }
+      // Review fix (2026-11-26, owner FIX 2) — removed for sitting out while
+      // away and told at sign-in after the tournament finished (reason
+      // 'sat_out_limit' + handsSatOut, noShow?): the lobby line and the toast
+      // say why, in the 'playerEliminated' notice's words; a finish reads as today.
+      try { noteTournamentOver({ tournamentId: tid, finished: true, position: place, reason: data?.reason, handsSatOut: data?.handsSatOut, noShow: data?.noShow }); } catch { /* best-effort */ }
       // Sit & Go fix-all C2 — his chip result (prize - entry fee) for the bankroll graph.
       if (tid) noteOwnTournamentResult({ tournamentId: tid, place, prize: data?.prize, tournamentName: data?.tournamentName });
       if (!claimFinishedToast(tid)) return;
@@ -2173,9 +2177,10 @@ function App() {
       // a PRIZE is still news, so a notice with a prize is always shown (review).
       if (!claimOwnEndToast(tid) && !hasPrize) return;
       const name = awayOf ? awayOf.name : (typeof data?.tournamentName === 'string' ? data.tournamentName : null);
+      const removedLine = finishedForEntrantRemovalLine(data, name);
       useProgressStore.getState().addNotification({
         type: 'achievement',
-        message: tournamentFinishedText(name, place) + prizeSuffix(prize),
+        message: (removedLine || tournamentFinishedText(name, place)) + prizeSuffix(prize),
         reward: { chips: 0, xp: 0 },
       });
     };

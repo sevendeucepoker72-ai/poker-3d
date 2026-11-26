@@ -33,6 +33,9 @@
  *     whose text says the chips went back to the balance - false here), and
  *     noShow: true when it is an Online League no-show removed because he was
  *     still away when late entry closed (review fix 2026-11-26);
+ *   tournamentFinishedForEntrant atSignIn (the tournament finished while he
+ *     was away) carries the same reason / handsSatOut / noShow when he was
+ *     removed (review fix 2026-11-26: finishedForEntrantRemovalLine);
  *   gameState.tableHold 'short_table' | null (FIX 1);
  *   the qualifier list item's sitOutLimitHands (30) / minTablePlayers (4):
  *     the rules show their lines only while these are sent (rule 20).
@@ -223,6 +226,21 @@ export function satOutRemovedOwnLine(name, position, hands, fallbackName = 'Your
   return pos
     ? `${n}: you were removed for sitting out ${handsWord(h)} in a row and finished in position ${pos}.`
     : `${n}: you were removed for sitting out ${handsWord(h)} in a row.`;
+}
+
+/**
+ * Review fix (2026-11-26) - socket 'tournamentFinishedForEntrant' for a player
+ * REMOVED for sitting out while away, told at his next sign-in after the
+ * tournament finished ({tournamentId, position, prize?, tournamentName,
+ * atSignIn: true, reason 'sat_out_limit', handsSatOut, noShow?}): his own
+ * removal line, the words the 'playerEliminated' notice uses (the caller adds
+ * the prize). null for a plain finish (no reason, the cash 'sit_out_limit', an
+ * older server): the caller keeps tournamentFinishedText, today's words.
+ */
+export function finishedForEntrantRemovalLine(data, name) {
+  const hands = satOutRemovedHands(data);
+  if (!hands) return null;
+  return satOutRemovedOwnLine(name, data.position, hands, undefined, satOutRemovedNoShow(data));
 }
 
 /** Seated at another table when his tournament seat was removed (App's eliminatedToSpectator toast). `noShow` as above. */
