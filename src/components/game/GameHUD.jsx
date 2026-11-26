@@ -386,7 +386,8 @@ export default function GameHUD() {
       // Sit & Go fix-all F7 — `prize` (present when the place is paid and final).
       // 2026-11-26 (owner FIX 2) — `reason` 'sat_out_limit' + `handsSatOut`:
       // removed for sitting out (the banner says why; absent = a bust).
-      setEliminatedPosition({ position: data.position, totalPlayers: data.totalPlayers, prize: data.prize, reason: data.reason, handsSatOut: data.handsSatOut });
+      // Review fix: + `noShow` (a league no-show removed when late entry closed).
+      setEliminatedPosition({ position: data.position, totalPlayers: data.totalPlayers, prize: data.prize, reason: data.reason, handsSatOut: data.handsSatOut, noShow: data.noShow });
       // Sit & Go fix-all C2 — his chip result for the bankroll graph (in memory).
       try {
         const tid = data && data.tournamentId != null ? String(data.tournamentId) : null;

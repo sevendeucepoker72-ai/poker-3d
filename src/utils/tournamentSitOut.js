@@ -11,7 +11,8 @@
  * he is warned; on the 30th he is REMOVED at that hand's end, placed exactly
  * like a bust (next finishing place, no bounty, prize / points / seat per that
  * place). An Online League no-show is protected until late entry closes
- * (protectedUntil), then removed at the first hand end after it.
+ * (protectedUntil), then, if still away, removed at the first hand end after
+ * it whatever his count (owner order; noShow: true on that removal).
  * FIX 1 (poker-server): while 2 or more tables are in play, a table with fewer
  * than 4 players does not deal until balancing brings it to 4 or more.
  *
@@ -29,7 +30,9 @@
  *     FIX 2: its presence is how the client knows the limit is enforced);
  *   eliminatedToSpectator / playerEliminated (direct, atSignIn and the room's)
  *     reason 'sat_out_limit' + handsSatOut (never the cash 'sit_out_limit',
- *     whose text says the chips went back to the balance - false here);
+ *     whose text says the chips went back to the balance - false here), and
+ *     noShow: true when it is an Online League no-show removed because he was
+ *     still away when late entry closed (review fix 2026-11-26);
  *   gameState.tableHold 'short_table' | null (FIX 1);
  *   the qualifier list item's sitOutLimitHands (30) / minTablePlayers (4):
  *     the rules show their lines only while these are sent (rule 20).
@@ -174,10 +177,29 @@ export function satOutRemovedHands(data) {
   return posInt(data.handsSatOut) || SIT_OUT_LIMIT_HANDS;
 }
 
-/** The bust banner's reason line: "Removed for sitting out 30 hands in a row.", else null. */
+/**
+ * Review fix (2026-11-26) - the removal of an Online League NO-SHOW (seated
+ * absent at the start, never arrived) at the first hand end after late entry
+ * closes: reason 'sat_out_limit' + `noShow: true`. The owner's order removes
+ * him then WHATEVER his count, so a hand count (30, or his real 22) would not
+ * say why: the lines below say "because you were still away when late entry
+ * closed" instead. Absent / not true = the 30-hand wording.
+ */
+export function satOutRemovedNoShow(data) {
+  return !!data && typeof data === 'object' && data.reason === SAT_OUT_LIMIT_REASON && data.noShow === true;
+}
+
+/** Why a no-show was removed (the bust banner's reason line). */
+export const NO_SHOW_REMOVED_TEXT = 'Removed because you were still away when late entry closed.';
+
+/**
+ * The bust banner's reason line: "Removed for sitting out 30 hands in a
+ * row." / a no-show's NO_SHOW_REMOVED_TEXT, else null (a bust).
+ */
 export function bustBannerRemovalLine(elim) {
   const hands = satOutRemovedHands(elim);
-  return hands ? `Removed for sitting out ${handsWord(hands)} in a row.` : null;
+  if (!hands) return null;
+  return satOutRemovedNoShow(elim) ? NO_SHOW_REMOVED_TEXT : `Removed for sitting out ${handsWord(hands)} in a row.`;
 }
 
 /**
@@ -185,21 +207,33 @@ export function bustBannerRemovalLine(elim) {
  * "<name|Your tournament>: you were removed for sitting out 30 hands in a row
  * and finished in position 7." (the caller adds the prize). `fallbackName`:
  * the word used when there is no name (the toast's 'Your tournament'; the
- * lobby passes its own seat name).
+ * lobby passes its own seat name). `noShow` (satOutRemovedNoShow): "...: you
+ * were removed because you were still away when late entry closed, and
+ * finished in position 7." Whole literals (canonical-features greps them).
  */
-export function satOutRemovedOwnLine(name, position, hands, fallbackName = 'Your tournament') {
+export function satOutRemovedOwnLine(name, position, hands, fallbackName = 'Your tournament', noShow = false) {
   const n = (typeof name === 'string' && name.trim()) || fallbackName;
-  const h = posInt(hands) || SIT_OUT_LIMIT_HANDS;
   const pos = posInt(position);
+  if (noShow === true) {
+    return pos
+      ? `${n}: you were removed because you were still away when late entry closed, and finished in position ${pos}.`
+      : `${n}: you were removed because you were still away when late entry closed.`;
+  }
+  const h = posInt(hands) || SIT_OUT_LIMIT_HANDS;
   return pos
     ? `${n}: you were removed for sitting out ${handsWord(h)} in a row and finished in position ${pos}.`
     : `${n}: you were removed for sitting out ${handsWord(h)} in a row.`;
 }
 
-/** Seated at another table when his tournament seat was removed (App's eliminatedToSpectator toast). */
-export function satOutRemovedElsewhereText(position, hands) {
-  const h = posInt(hands) || SIT_OUT_LIMIT_HANDS;
+/** Seated at another table when his tournament seat was removed (App's eliminatedToSpectator toast). `noShow` as above. */
+export function satOutRemovedElsewhereText(position, hands, noShow = false) {
   const pos = posInt(position);
+  if (noShow === true) {
+    return pos
+      ? `Your tournament has ended: you were removed because you were still away when late entry closed, and finished in position ${pos}.`
+      : 'Your tournament has ended: you were removed because you were still away when late entry closed.';
+  }
+  const h = posInt(hands) || SIT_OUT_LIMIT_HANDS;
   return pos
     ? `Your tournament has ended: you were removed for sitting out ${handsWord(h)} in a row and finished in position ${pos}.`
     : `Your tournament has ended: you were removed for sitting out ${handsWord(h)} in a row.`;

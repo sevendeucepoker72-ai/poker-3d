@@ -103,6 +103,45 @@ test('removal: only reason sat_out_limit (never the cash sit_out_limit); bust ba
   assert.equal(S.satOutRemovedRoomText(null, null, true), 'You were removed for sitting out');
 });
 
+// Review fix (2026-11-26): the owner's order removes an Online League no-show
+// still away when late entry closes at the first hand end after it, WHATEVER
+// his count. That removal carries noShow: true and says why; a hand count
+// ("30", or his real 22) would not.
+test('removal of a league no-show when late entry closes (noShow): says why, never a hand count; control: 30-hand wording', () => {
+  const ns = { tournamentId: 'ol1', position: 9, totalPlayers: 20, reason: 'sat_out_limit', handsSatOut: 22, noShow: true };
+  assert.equal(S.satOutRemovedNoShow(ns), true);
+  assert.equal(S.NO_SHOW_REMOVED_TEXT, 'Removed because you were still away when late entry closed.');
+  assert.equal(S.bustBannerRemovalLine(ns), 'Removed because you were still away when late entry closed.');
+  assert.equal(S.satOutRemovedOwnLine('Online League - Sat, Nov 28', 9, S.satOutRemovedHands(ns), undefined, S.satOutRemovedNoShow(ns)),
+    'Online League - Sat, Nov 28: you were removed because you were still away when late entry closed, and finished in position 9.');
+  assert.equal(S.satOutRemovedOwnLine(null, null, 22, undefined, true),
+    'Your tournament: you were removed because you were still away when late entry closed.');
+  assert.equal(S.satOutRemovedOwnLine('', 9, 22, 'your tournament', true),
+    'your tournament: you were removed because you were still away when late entry closed, and finished in position 9.');
+  assert.equal(S.satOutRemovedElsewhereText(9, 22, true),
+    'Your tournament has ended: you were removed because you were still away when late entry closed, and finished in position 9.');
+  assert.equal(S.satOutRemovedElsewhereText(undefined, 22, true),
+    'Your tournament has ended: you were removed because you were still away when late entry closed.');
+  for (const s of [S.bustBannerRemovalLine(ns), S.satOutRemovedOwnLine('Q', 9, 22, undefined, true), S.satOutRemovedElsewhereText(9, 22, true)]) {
+    assert.doesNotMatch(s, /\d+ hands? in a row/, `no hand count: ${s}`);
+    assert.ok(ASCII.test(s), `ASCII: ${s}`);
+    assert.doesNotMatch(s, NEVER, s);
+  }
+  // CONTROL: the same payload without noShow (or noShow not exactly true) is the 30-hand removal, word for word as before.
+  for (const not of [{ ...ns, noShow: undefined, handsSatOut: 30 }, { ...ns, noShow: 'true', handsSatOut: 30 }, { ...ns, noShow: 1, handsSatOut: 30 }]) {
+    assert.equal(S.satOutRemovedNoShow(not), false, JSON.stringify(not));
+    assert.equal(S.bustBannerRemovalLine(not), 'Removed for sitting out 30 hands in a row.');
+  }
+  assert.equal(S.satOutRemovedOwnLine('Weekly Qualifier', 7, 30), 'Weekly Qualifier: you were removed for sitting out 30 hands in a row and finished in position 7.');
+  assert.equal(S.satOutRemovedOwnLine('Weekly Qualifier', 7, 30, undefined, false), 'Weekly Qualifier: you were removed for sitting out 30 hands in a row and finished in position 7.');
+  assert.equal(S.satOutRemovedElsewhereText(7, 30, false), 'Your tournament has ended: you were removed for sitting out 30 hands in a row and finished in position 7.');
+  // noShow never turns a BUST (or the cash reason) into a removal.
+  assert.equal(S.satOutRemovedNoShow({ position: 9, noShow: true }), false);
+  assert.equal(S.bustBannerRemovalLine({ position: 9, noShow: true }), null);
+  assert.equal(S.satOutRemovedNoShow({ reason: 'sit_out_limit', noShow: true }), false);
+  assert.equal(S.satOutRemovedNoShow(null), false);
+});
+
 test('away seat line (lobby Return banner): the rule, never a stale count', () => {
   assert.equal(S.awaySeatSitOutWarningLine({ tournamentId: 't1', handsSatOut: 3, handsLimit: 30, handsLeft: 27 }, NOW),
     'If you are away for 30 hands in a row, you will be removed from the tournament.');
@@ -163,6 +202,11 @@ const leagueRaw = (over = {}) => ({
 });
 const WEEKLY_SITOUT = "You can't sit out more than 30 hands in a row. On the 30th hand you are removed, the same as a bust: you finish in the next place.";
 const WEEKLY_SHORT = 'While two or more tables are running, a table never plays with fewer than 4 players. It waits until players are moved to it.';
+const LEAGUE_SITOUT = "Once you have taken your seat, you can't sit out more than 30 hands in a row. On the 30th hand you are removed and finish in the next place.";
+// The approved Seating line about a new table (owner 2026-10-23), word for word.
+const WEEKLY_NEW_TABLE_OLD = 'If every seat is full when someone late-registers or re-enters, a new table opens. A player alone there is not dealt in and pays no blinds. If that player is at the table, one player moves over from the fullest table so play can start. There is no limit on extra tables.';
+// ... and as it reads once poker-server holds short tables (FIX 1).
+const WEEKLY_NEW_TABLE_FIX1 = 'If every seat is full when someone late-registers or re-enters, a new table opens. Players move over from the other tables until it has 4, then play starts there. There is no limit on extra tables.';
 
 test('list item: sitOutLimitHands / minTablePlayers pass through normalizeQualifierItem (null when not sent)', () => {
   const on = L.normalizeQualifierItem(weeklyRaw({ sitOutLimitHands: 30, minTablePlayers: 4 }));
@@ -203,6 +247,39 @@ test('weekly rules: the two new lines only with their flags, in place, plain ASC
   assert.deepEqual(R.rulesPageFor(L.normalizeQualifierItem(weeklyRaw({ sitOutLimitHands: 30, minTablePlayers: 4 }))).sections, full);
 });
 
+// Review fix (2026-11-26): with FIX 1 a new (overflow) table is held until it
+// has 4 alive and is filled to 4 from the other tables (poker-server: the
+// overflow feed, then planShortTableFill from any table with 6+, present or
+// not) - so "one player moves over from the fullest table so play can start"
+// is no longer what the server does. The approved line stays word for word
+// for an older server (AGENT.md rule 20: never a rule the code does not do).
+test('weekly Seating: the new-table line follows FIX 1 only with minTablePlayers; control: the approved line verbatim without it', () => {
+  const seatingOf = (q) => R.qualifierRulesFor(q).find((s) => s.heading === 'Seating').rules;
+  // CONTROL: no flag (an older server), or only the sit-out flag -> today's approved line, word for word.
+  for (const q of [L.normalizeQualifierItem(weeklyRaw()), { type: 'weekly', sitOutLimitHands: 30 }, null]) {
+    const seating = seatingOf(q);
+    assert.ok(seating.includes(WEEKLY_NEW_TABLE_OLD), `approved line kept: ${JSON.stringify(q)}`);
+    assert.equal(seating.includes(WEEKLY_NEW_TABLE_FIX1), false);
+    assert.equal(seating.includes(WEEKLY_SHORT), false);
+  }
+  // FIX 1 server: the new wording, then the short-table line; the old promise is gone.
+  const on = seatingOf(L.normalizeQualifierItem(weeklyRaw({ sitOutLimitHands: 30, minTablePlayers: 4 })));
+  const at = on.indexOf(WEEKLY_NEW_TABLE_FIX1);
+  assert.ok(at >= 0, 'FIX 1 new-table line');
+  assert.equal(on[at + 1], WEEKLY_SHORT);
+  assert.equal(on.includes(WEEKLY_NEW_TABLE_OLD), false);
+  assert.equal(on.some((l) => /one player moves over/.test(l)), false, 'no "one player moves over" with FIX 1');
+  assert.equal(on.some((l) => /A player alone there is not dealt in/.test(l)), false);
+  assert.equal(on.filter((l) => l.startsWith('If every seat is full')).length, 1, 'one new-table line, never both');
+  // The other Seating lines are unchanged and in the same order.
+  const off = seatingOf(L.normalizeQualifierItem(weeklyRaw()));
+  assert.deepEqual(on.filter((l) => l !== WEEKLY_NEW_TABLE_FIX1 && l !== WEEKLY_SHORT), off.filter((l) => l !== WEEKLY_NEW_TABLE_OLD));
+  assert.equal(on.length, off.length + 1);
+  // The number follows the server's minTablePlayers.
+  assert.ok(seatingOf({ type: 'weekly', minTablePlayers: 5 }).includes(WEEKLY_NEW_TABLE_FIX1.replace('until it has 4', 'until it has 5')));
+  assert.ok(ASCII.test(WEEKLY_NEW_TABLE_FIX1));
+});
+
 test('league rules + registrant note: the removal lines / sentence only with sitOutLimitHands; never "released"', () => {
   const off = R.rulesPageFor(L.normalizeQualifierItem(leagueRaw()));
   assert.equal(off.updated, 'Updated Nov 26, 2026.');
@@ -210,7 +287,10 @@ test('league rules + registrant note: the removal lines / sentence only with sit
   const on = R.rulesPageFor(L.normalizeQualifierItem(leagueRaw({ sitOutLimitHands: 30, minTablePlayers: 4 })));
   const lines = on.sections.flatMap((s) => s.rules);
   assert.ok(lines.includes('If you are still away when late entry closes at 7:00 PM MT, you are removed and finish in the next place.'));
-  assert.ok(lines.includes('Nobody can sit out more than 30 hands in a row. On the 30th hand you are removed and finish in the next place.'));
+  assert.ok(lines.includes(LEAGUE_SITOUT));
+  // Review fix: a registrant who never arrived is protected until 7:00 PM MT,
+  // so the page never says that NOBODY can sit out more than 30 in a row.
+  assert.equal(lines.some((l) => /^Nobody can sit out/.test(l)), false);
   assert.equal(lines.includes(WEEKLY_SHORT), false, 'the short-table line is the weekly page\'s');
   assert.doesNotMatch(JSON.stringify(on.sections), /released/i);
   const qOff = L.normalizeQualifierItem(leagueRaw());
@@ -299,13 +379,13 @@ test('App: timeout toast gated on the table\'s mySitOutLimit key; elimination to
   assert.match(sit, /sitOutLimitEnforcedAt\(entry && entry\.gameState\) \|\| sitOutLimitEnforcedAt\(tsT\.gameState\)/);
   assertNoRedOrAmber(sit, 'sitOutToggled');
   const elsewhere = between(APP, 'const handleEliminatedToSpectator = (data) => {', "socket.on('eliminatedToSpectator', handleEliminatedToSpectator);");
-  assert.match(elsewhere, /reason: data\?\.reason, handsSatOut: data\?\.handsSatOut/, 'the lobby line gets the reason');
-  assert.match(elsewhere, /removedHands \? satOutRemovedElsewhereText\(data\?\.position, removedHands\)/);
+  assert.match(elsewhere, /reason: data\?\.reason, handsSatOut: data\?\.handsSatOut, noShow: data\?\.noShow/, 'the lobby line gets the reason (+ noShow)');
+  assert.match(elsewhere, /removedHands \? satOutRemovedElsewhereText\(data\?\.position, removedHands, satOutRemovedNoShow\(data\)\)/);
   assert.match(elsewhere, /`Your tournament has ended: you finished in position \$\{pos\}\.`/, 'a bust reads as today');
   const elim = between(APP, "socket.on('playerEliminated', (data) => {", "Round 6 (P-h') — the finished notice");
   assert.match(elim, /const removedHands = satOutRemovedHands\(data\);/);
-  assert.match(elim, /satOutRemovedOwnLine\(name, data\?\.position, removedHands\)\}\$\{prizeSuffix\(data\?\.prize\)\}/, 'direct / sign-in: + the prize');
-  assert.match(elim, /reason: data\.reason, handsSatOut: data\.handsSatOut/, 'the away seat\'s lobby line gets the reason');
+  assert.match(elim, /satOutRemovedOwnLine\(name, data\?\.position, removedHands, undefined, satOutRemovedNoShow\(data\)\)\}\$\{prizeSuffix\(data\?\.prize\)\}/, 'direct / sign-in: + the prize');
+  assert.match(elim, /reason: data\.reason, handsSatOut: data\.handsSatOut, noShow: data\.noShow/, 'the away seat\'s lobby line gets the reason (+ noShow)');
   assert.match(elim, /satOutRemovedRoomText\(null, data\?\.position, true\)/, 'his own room copy');
   assert.match(elim, /satOutRemovedRoomText\(data\.playerName, data\.position\)/, 'the room copy');
   assert.match(elim, /`You were eliminated \(\$\{pos\}\$\{getOrdinal\(pos\)\}\)`/, 'a bust reads as today');
@@ -314,8 +394,8 @@ test('App: timeout toast gated on the table\'s mySitOutLimit key; elimination to
 });
 
 test('tournamentSeatStore + Return banner: lobby end line says removed; an away seat shows the warning line', () => {
-  assert.match(SEAT_STORE, /export function noteTournamentOver\(\{ tournamentId, tableId, position, finished, room = false, reason, handsSatOut \} = \{\}\)/);
-  assert.match(SEAT_STORE, /satOutRemovedOwnLine\(name, pos, removedHands, DEFAULT_NAME\)/);
+  assert.match(SEAT_STORE, /export function noteTournamentOver\(\{ tournamentId, tableId, position, finished, room = false, reason, handsSatOut, noShow \} = \{\}\)/);
+  assert.match(SEAT_STORE, /satOutRemovedOwnLine\(name, pos, removedHands, DEFAULT_NAME, satOutRemovedNoShow\(\{ reason, noShow \}\)\)/);
   assert.match(SEAT_STORE, /`\$\{name\}: you finished in position \$\{pos\}\.`/, 'a bust reads as today');
   assert.match(SEAT_STORE, /export function noteAwaySeatSitOutWarning\(data, now = Date\.now\(\)\)/);
   assert.match(SEAT_STORE, /if \(a\.tournamentId !== t\) return a;/, 'Z8: matched by tournamentId only');
@@ -342,7 +422,7 @@ test('GameHUD: sit-out note + AFK banner add the sentence; classes kept for APP 
 });
 
 test('GameHUD: the bust banner says removed for sitting out; a bust banner is unchanged', () => {
-  assert.match(HUD, /prize: data\.prize, reason: data\.reason, handsSatOut: data\.handsSatOut \}\);/);
+  assert.match(HUD, /prize: data\.prize, reason: data\.reason, handsSatOut: data\.handsSatOut, noShow: data\.noShow \}\);/);
   const bust = between(HUD, '{/* Eliminated banner */}', '{/* Tournament spectator controls */}');
   assert.match(bust, /\{bustBannerRemovalLine\(eliminatedPosition\) \? \(\s*<span className="tournament-bust-reason" style=\{\{ display: 'block' \}\}>\s*\{bustBannerRemovalLine\(eliminatedPosition\)\}/);
   assert.match(bust, /out of \{eliminatedPosition\.totalPlayers\} players/);
@@ -381,6 +461,10 @@ test('canonical-features: every new event / visible string is locked and is a li
     'a table never plays with fewer than {minTablePlayers} players. It waits until players are moved to it.',
     'If you are still away when late entry closes at 7:00 PM MT, you are removed and finish in the next place.',
     'hand you are removed and finish in the next place.',
+    // Review fixes 2026-11-26.
+    'Players move over from the other tables until it has {minTablePlayers}, then play starts there.',
+    "Once you have taken your seat, you can't sit out more than",
+    'because you were still away when late entry closed',
   ];
   const lines = new Set(CANON.split(/\r?\n/));
   const all = ['utils/tournamentSitOut.js', 'App.jsx', 'components/game/GameHUD.jsx', 'components/ui/TournamentSeatNotice.jsx',

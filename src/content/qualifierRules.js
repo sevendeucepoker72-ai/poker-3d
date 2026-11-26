@@ -188,7 +188,17 @@ export const QUALIFIER_RULES = [
       'Late entries and re-entries are seated at the table with the fewest players that has room.',
       'If your new seat is between the button and the small blind, you sit out one hand before you are dealt in.',
       'Tables are kept even. After each hand at the fullest table (6 or more players), if another table has at least 2 fewer players, the player due the big blind next moves to the shortest table. The game takes you to your new seat.',
-      'If every seat is full when someone late-registers or re-enters, a new table opens. A player alone there is not dealt in and pays no blinds. If that player is at the table, one player moves over from the fullest table so play can start. There is no limit on extra tables.',
+      // 2026-11-26 (owner FIX 1) - a server that holds short tables fills a new
+      // table to {minTablePlayers} before it deals (the overflow feed, then the
+      // short-table fill from any table with 6 or more), whether or not its
+      // first player is there, so "one player moves over ... so play can
+      // start" is true only of an older server: `otherwise` is the approved
+      // line word for word.
+      {
+        needs: ['minTablePlayers'],
+        text: 'If every seat is full when someone late-registers or re-enters, a new table opens. Players move over from the other tables until it has {minTablePlayers}, then play starts there. There is no limit on extra tables.',
+        otherwise: 'If every seat is full when someone late-registers or re-enters, a new table opens. A player alone there is not dealt in and pays no blinds. If that player is at the table, one player moves over from the fullest table so play can start. There is no limit on extra tables.',
+      },
       // 2026-11-26 (owner FIX 1) - only while poker-server holds short tables.
       {
         needs: ['minTablePlayers'],

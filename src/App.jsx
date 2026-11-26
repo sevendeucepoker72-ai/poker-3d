@@ -60,7 +60,7 @@ import {
 // 2026-11-26 (owner orders 2026-11-25, FIX 2) — the sit-out limit's words (pure).
 import {
   TOURNAMENT_SIT_OUT_WARNING_EVENT, SIT_OUT_WARNING_TITLE, sitOutWarningText, timeoutSitOutText,
-  sitOutLimitEnforcedAt, satOutRemovedHands, satOutRemovedOwnLine, satOutRemovedElsewhereText,
+  sitOutLimitEnforcedAt, satOutRemovedHands, satOutRemovedNoShow, satOutRemovedOwnLine, satOutRemovedElsewhereText,
   satOutRemovedRoomText,
 } from './utils/tournamentSitOut';
 import { TournamentReturnBanner, SeatRestoredBanner } from './components/ui/TournamentSeatNotice';
@@ -1969,7 +1969,7 @@ function App() {
       let seatedElsewhere = false;
       try { seatedElsewhere = eliminationShownElsewhere(useTableStore.getState().gameState, data); } catch { /* best-effort */ }
       let known = false;
-      try { known = noteTournamentOver({ tournamentId: data?.tournamentId, tableId: data?.tableId, position: data?.position, reason: data?.reason, handsSatOut: data?.handsSatOut }); } catch { /* best-effort */ }
+      try { known = noteTournamentOver({ tournamentId: data?.tournamentId, tableId: data?.tableId, position: data?.position, reason: data?.reason, handsSatOut: data?.handsSatOut, noShow: data?.noShow }); } catch { /* best-effort */ }
       try {
         if (seatedElsewhere) {
           const pos = Number(data?.position);
@@ -1977,7 +1977,7 @@ function App() {
           const removedHands = satOutRemovedHands(data);
           useProgressStore.getState().addNotification({
             type: 'mission',
-            message: removedHands ? satOutRemovedElsewhereText(data?.position, removedHands) : (Number.isFinite(pos) && pos > 0
+            message: removedHands ? satOutRemovedElsewhereText(data?.position, removedHands, satOutRemovedNoShow(data)) : (Number.isFinite(pos) && pos > 0
               ? `Your tournament has ended: you finished in position ${pos}.`
               : 'Your tournament has ended.'),
           });
@@ -2095,7 +2095,7 @@ function App() {
       // Sit & Go fix-all F7 / F12 — a paid place carries its prize (the direct
       // notice and the sign-in notice, `atSignIn`); the room's copy has none.
       const ownLine = (name) => (removedHands
-        ? `${satOutRemovedOwnLine(name, data?.position, removedHands)}${prizeSuffix(data?.prize)}`
+        ? `${satOutRemovedOwnLine(name, data?.position, removedHands, undefined, satOutRemovedNoShow(data))}${prizeSuffix(data?.prize)}`
         : (Number.isFinite(pos) && pos > 0
           ? `${name || 'Your tournament'}: you finished in position ${pos}.${prizeSuffix(data?.prize)}`
           : `${name || 'Your tournament'}: your tournament has ended.`));
@@ -2106,7 +2106,7 @@ function App() {
         if (aboutMe) noteOwnTournamentResult({ tournamentId: tid, place: data?.position, prize: data?.prize });
       }
       if (awayOf) {
-        try { noteTournamentOver({ tournamentId: data.tournamentId, position: data.position, reason: data.reason, handsSatOut: data.handsSatOut }); } catch { /* best-effort */ }
+        try { noteTournamentOver({ tournamentId: data.tournamentId, position: data.position, reason: data.reason, handsSatOut: data.handsSatOut, noShow: data.noShow }); } catch { /* best-effort */ }
         if (repeat || !claimOwnEndToast(tid)) return;
         useProgressStore.getState().addNotification({ type: 'achievement', message: ownLine(awayOf.name), reward: { chips: 0, xp: 0 } });
         return;

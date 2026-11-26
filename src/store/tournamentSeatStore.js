@@ -66,7 +66,7 @@
  */
 import { create } from 'zustand';
 // 2026-11-26 (owner FIX 2) — the sit-out limit's words (pure, import-free).
-import { satOutRemovedHands, satOutRemovedOwnLine, awaySeatSitOutWarningLine } from '../utils/tournamentSitOut.js';
+import { satOutRemovedHands, satOutRemovedNoShow, satOutRemovedOwnLine, awaySeatSitOutWarningLine } from '../utils/tournamentSitOut.js';
 
 function idString(v) {
   if (v === null || v === undefined) return null;
@@ -465,9 +465,10 @@ export function noteTournamentSeatReturned(data) {
  * 'tournamentFinished'), which may also end the LIVE seat by itself.
  * 2026-11-26 (owner FIX 2) — `reason` 'sat_out_limit' (+ `handsSatOut`): he
  * was REMOVED for sitting out, and the line says so (satOutRemovedOwnLine);
- * any other reason / none keeps today's line.
+ * any other reason / none keeps today's line. `noShow` true (review fix): an
+ * Online League no-show removed when late entry closed - the line says that.
  */
-export function noteTournamentOver({ tournamentId, tableId, position, finished, room = false, reason, handsSatOut } = {}) {
+export function noteTournamentOver({ tournamentId, tableId, position, finished, room = false, reason, handsSatOut, noShow } = {}) {
   const tId = idString(tournamentId);
   const tbl = idString(tableId);
   const matches = (x, live) => {
@@ -489,7 +490,7 @@ export function noteTournamentOver({ tournamentId, tableId, position, finished, 
     if (finished) {
       notice = tournamentFinishedText(name, pos);
     } else if (removedHands) {
-      notice = satOutRemovedOwnLine(name, pos, removedHands, DEFAULT_NAME);
+      notice = satOutRemovedOwnLine(name, pos, removedHands, DEFAULT_NAME, satOutRemovedNoShow({ reason, noShow }));
     } else {
       notice = Number.isFinite(pos) && pos > 0
         ? `${name}: you finished in position ${pos}.`

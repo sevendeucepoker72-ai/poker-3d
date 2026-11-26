@@ -326,7 +326,8 @@ test('Online League Rules: own title / subtitle / date, plain ASCII, the drafted
   const noShow = sched.indexOf('You are dealt in and your blinds are posted until you sign in on americanpubpoker.online and take your seat.');
   assert.ok(noShow > 0);
   assert.equal(sched[noShow + 1], 'If you are still away when late entry closes at 7:00 PM MT, you are removed and finish in the next place.');
-  assert.equal(sched[noShow + 2], 'Nobody can sit out more than 30 hands in a row. On the 30th hand you are removed and finish in the next place.');
+  // Review fix 2026-11-26: not "Nobody can ..." - a no-show is protected until 7:00 PM MT.
+  assert.equal(sched[noShow + 2], "Once you have taken your seat, you can't sit out more than 30 hands in a row. On the 30th hand you are removed and finish in the next place.");
   assert.doesNotMatch(JSON.stringify(fix2.sections), /released/i);
   // The weekly page is unchanged.
   const wPage = R.rulesPageFor(L.normalizeQualifierItem(weeklyRaw()));

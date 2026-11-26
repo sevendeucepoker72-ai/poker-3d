@@ -20,10 +20,13 @@
 // lines added.
 // Owner orders 2026-11-25 (FIX 2, every tournament): nobody can sit out more
 // than 30 hands in a row; a no-show is protected until late entry closes at
-// 7:00 PM MT and, if still away then, removed (he finishes in the next place,
-// like a bust). Two Schedule lines added after the no-show lines, shown only
-// while the league item carries the server's sitOutLimitHands (key
-// sitOutLimitHands / sitOutLimitNth). A no-show is still never "released".
+// 7:00 PM MT and, if still away then, removed at the first hand end after it,
+// whatever his count (he finishes in the next place, like a bust). Two
+// Schedule lines added after the no-show lines, shown only while the league
+// item carries the server's sitOutLimitHands (key sitOutLimitHands /
+// sitOutLimitNth). A no-show is still never "released". The 30-hand line
+// starts "Once you have taken your seat" (review fix 2026-11-26): before
+// 7:00 PM a registrant who never arrived is not removed at 30.
 //
 // Same shape as content/qualifierRules.js QUALIFIER_RULES, so the same rules
 // window (components/ui/QualifierRules.jsx) renders it: [{ heading, rules }],
@@ -81,9 +84,13 @@ export const ONLINE_LEAGUE_RULES = [
         needs: ['sitOutLimitHands'],
         text: 'If you are still away when late entry closes at 7:00 PM MT, you are removed and finish in the next place.',
       },
+      // Review fix (2026-11-26): not "Nobody can sit out more than ..." - a
+      // registrant who has not arrived is protected until 7:00 PM MT and can
+      // sit out more than that many hands before then (the line above covers
+      // him). "Take your seat" is the line two above's own words for arriving.
       {
         needs: ['sitOutLimitHands'],
-        text: 'Nobody can sit out more than {sitOutLimitHands} hands in a row. On the {sitOutLimitNth} hand you are removed and finish in the next place.',
+        text: "Once you have taken your seat, you can't sit out more than {sitOutLimitHands} hands in a row. On the {sitOutLimitNth} hand you are removed and finish in the next place.",
       },
       'Levels are 10 minutes long, with a 5-minute break after every 5 levels.',
       'All times are Mountain Time (MT).',
